@@ -10,6 +10,8 @@ import numpy as np
 import pandas as pd
 from pop import population
 from bayes_opt import BayesianOptimization
+from skopt import gp_minimize
+from skopt.space import Real
 from functools import partial
 from PSD_Exp import write_read_exp
 ## For plots
@@ -21,6 +23,7 @@ class kernel_opt():
     def __init__(self, dim=1, disc='geo', first_cal=False):
         self.kernel = 2
         self.delta_flag = 1
+        self.add_noise = True
         self.noise_strength = 0.01
         self.first_cal = first_cal
         self.p = population(dim=dim, disc=disc)
@@ -28,24 +31,8 @@ class kernel_opt():
         
         self.exp_data_path = os.path.join(self.p.pth,"data\\")+'CED_focus_Sim.xlsx'
         self.filename_kernels = "kernels.txt"
-        # check if the file exists
-        if self.first_cal == True:
-            if not os.path.exists(self.filename_kernels):
-                warnings.warn("file does not exist: {}".format(self.filename_kernels))
-                
-            else:
-                with open(self.filename_kernels, 'r') as file:
-                    lines = file.readlines()  
-                    
-                self.corr_beta = None
-                self.alpha_prime = None
-                for line in lines:
-                    if 'CORR_BETA:' in line:
-                        self.corr_beta = float(line.split(':')[1].strip())
-                    elif 'alpha_prim:' in line:
-                        self.alpha_prime = float(line.split(':')[1].strip())
         
-    def cal_delta(self, corr_beta=None, alpha_prim=None):
+    def cal_delta(self, corr_beta=None, alpha_prim=None, scale=1):
         # Case(1): optimazition with constant beta and alpha_prim, but too slow, don't use
         # Case(2): optimazition with constant corr_beta and alpha_prim
         # Case(3): optimazition with constant corr_beta and calculated alpha_prim
@@ -89,7 +76,8 @@ class kernel_opt():
             for idt in range(0, len(self.p.t_vec)):
                 _, q3, _, _, _, _ = self.p.return_num_distribution(t=idt)
                 # add noise to the original data
-                q3 = self.function_noise(q3)
+                if self.add_noise == True:
+                    q3 = self.function_noise(q3)
 
                 if len(q3) < len(x_uni):
                     # Pad all arrays to the same length
@@ -103,6 +91,22 @@ class kernel_opt():
             return 
             
         else:     
+            # read the kernels of original data
+            if not os.path.exists(self.filename_kernels):
+                warnings.warn("file does not exist: {}".format(self.filename_kernels))
+                
+            else:
+                with open(self.filename_kernels, 'r') as file:
+                    lines = file.readlines()  
+                    
+                    self.corr_beta = None
+                    self.alpha_prim = None
+                    for line in lines:
+                        if 'CORR_BETA:' in line:
+                            self.corr_beta = float(line.split(':')[1].strip())
+                        elif 'alpha_prim:' in line:
+                            self.alpha_prim = float(line.split(':')[1].strip())
+            
             x_uni, q3, Q3, x_10, x_50, x_90 = self.p.return_num_distribution(t=len(self.p.t_vec)-1)
             # Conversion unit
             x_uni *= 1e6    
@@ -117,7 +121,7 @@ class kernel_opt():
             # Calculate the error between experimental data and simulation results
             delta = self.cost_fun(x_uni_exp, x_uni, Q3_exp, Q3, x_50_exp, x_50)
         
-            return -delta
+            return (delta * scale)
     
     def read_exp(self, x_uni, t):
         compare = write_read_exp(self.exp_data_path, read=True)
@@ -147,10 +151,10 @@ class kernel_opt():
         
         return delta
     
-    def optimierer(self, algo='BO', init_points=2, hyperparameter=None):
+    def optimierer(self, algo='BO', init_points=4, hyperparameter=None):
         if algo == 'BO':
             pbounds = {'corr_beta': (0, 100), 'alpha_prim': (0, 0.5)}
-            objective = partial(self.cal_delta)
+            objective = partial(self.cal_delta, scale=-1)
             opt = BayesianOptimization(
                 f=objective, 
                 pbounds=pbounds,
@@ -161,8 +165,22 @@ class kernel_opt():
                 init_points=init_points,
                 n_iter=100,
             )   
+            corr_beta_opt = opt.max['params']['corr_beta']
+            alpha_prim_opt = opt.max['params']['alpha_prim']
+            delta_opt = -opt.max['target']
             
-        return opt.max['params']['corr_beta'], opt.max['params']['alpha_prim'], opt.max['target']
+        if algo == 'gp_minimize':
+            opt = gp_minimize(
+                lambda params: self.cal_delta(corr_beta=params[0], alpha_prim=params[1]),
+                [Real(0, 100), Real(0, 0.5)],
+                n_calls=100,
+                n_initial_points=init_points,
+                random_state=0
+            )
+            corr_beta_opt, alpha_prim_opt = opt.x
+            delta_opt = opt.fun
+            
+        return corr_beta_opt, alpha_prim_opt, delta_opt
     
     def visualize_distribution(self, ax=None,fig=None,close_all=False,clr='k',scl_a4=1,figsze=[12.8,6.4*1.5]):
         
