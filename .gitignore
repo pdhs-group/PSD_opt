@@ -1,0 +1,5 @@
+# ignore file
+.log
+
+# ignore ordner
+__pycache__
