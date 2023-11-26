@@ -21,7 +21,7 @@ import plotter.plotter as pt
 # from plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
 
 class kernel_opt():
-    def __init__(self, dim=1, disc='geo', generate_data=False):
+    def __init__(self, dim=1, disc='geo', noise_type='Gaussian', noise_strength=0.01, t_vec=None, generate_data=False):
         # kernel = 1: optimazition with constant beta and alpha_prim, but too slow, don't use
         # kernel = 2: optimazition with constant corr_beta and alpha_prim
         # kernel = 3: optimazition with constant corr_beta and calculated alpha_prim
@@ -30,16 +30,29 @@ class kernel_opt():
         # delta_flag = 2: use x_50
         self.delta_flag = 1         
         self.add_noise = True
-        self.noise_type = 'Gaussian'     # Gaussian, Uniform, Poisson, Multiplicative
-        self.noise_strength = 0.01
+        self.noise_type = noise_type    # Gaussian, Uniform, Poisson, Multiplicative
+        self.noise_strength = noise_strength
         self.generate_data = generate_data
+        self.t_vec = t_vec
         self.p = population(dim=dim, disc=disc)
         
+        # Set the base path for exp_data_path
+        base_path = os.path.join(self.p.pth, "data\\")
+
+        # Check if noise should be added
+        if self.add_noise:
+            # Modify the file name to include noise type and strength
+            filename = f"CED_focus_Sim_{self.noise_type}_{self.noise_strength}.xlsx"
+        else:
+            # Use the default file name
+            filename = "CED_focus_Sim.xlsx"
+
+        # Combine the base path with the modified file name
+        self.exp_data_path = os.path.join(base_path, filename)
         
-        self.exp_data_path = os.path.join(self.p.pth,"data\\")+'CED_focus_Sim.xlsx'
         self.filename_kernels = "kernels.txt"
         
-    def cal_delta(self, corr_beta=None, alpha_prim=None, scale=1):
+    def cal_delta(self, corr_beta=None, alpha_prim=None, scale=1, t_step=0):
         
         self.cal_pop(corr_beta, alpha_prim)
         
@@ -91,20 +104,23 @@ class kernel_opt():
                             array_str = line.split(':')[1].strip()
                             array_str = array_str.replace(" ", ", ")
                             self.alpha_prim = ast.literal_eval(array_str)
-            
-            x_uni, q3, Q3, x_10, x_50, x_90 = self.p.return_num_distribution(t=len(self.p.t_vec)-1)
-            # Conversion unit
-            x_uni *= 1e6    
-            x_10 *= 1e6   
-            x_50 *= 1e6   
-            x_90 *= 1e6   
-            # read and calculate the experimental data
-            t = max(self.p.t_vec)
-
-            x_uni_exp, q3_exp, Q3_exp, x_10_exp, x_50_exp, x_90_exp = self.read_exp(x_uni, t)    
-
-            # Calculate the error between experimental data and simulation results
-            delta = self.cost_fun(x_uni_exp, x_uni, Q3_exp, Q3, x_50_exp, x_50)
+            if t_step >= len(self.p.t_vec):
+                raise ValueError("Current time step is out of the range of the data table.")
+                
+            else:
+                x_uni, q3, Q3, x_10, x_50, x_90 = self.p.return_num_distribution(t=t_step)
+                # Conversion unit
+                x_uni *= 1e6    
+                x_10 *= 1e6   
+                x_50 *= 1e6   
+                x_90 *= 1e6   
+                # read and calculate the experimental data
+                t = self.p.t_vec[t_step]
+    
+                x_uni_exp, q3_exp, Q3_exp, x_10_exp, x_50_exp, x_90_exp = self.read_exp(x_uni, t)    
+    
+                # Calculate the error between experimental data and simulation results
+                delta = self.cost_fun(x_uni_exp, x_uni, Q3_exp, Q3, x_50_exp, x_50)
         
             return (delta * scale)
         
@@ -119,7 +135,7 @@ class kernel_opt():
             self.p.CORR_BETA = corr_beta
             self.p.alpha_prim = alpha_prim
             self.p.full_init(calc_alpha=False)
-            self.p.solve_PBE()
+            self.p.solve_PBE(t_vec=self.t_vec)
             
         elif self.kernel == 2:
             self.p.COLEVAL = 2
@@ -134,14 +150,14 @@ class kernel_opt():
                 alpha_prim_temp[3] = alpha_prim[2]
             self.p.alpha_prim = alpha_prim_temp
             self.p.full_init(calc_alpha=False)
-            self.p.solve_PBE()
+            self.p.solve_PBE(t_vec=self.t_vec)
             
         elif self.kernel == 3:
             self.p.COLEVAL = 2
             self.p.EFFEVAL = 2
             self.p.CORR_BETA = corr_beta
             self.p.full_init(calc_alpha=True)
-            self.p.solve_PBE()
+            self.p.solve_PBE(t_vec=self.t_vec)
     
     def read_exp(self, x_uni, t):
         
@@ -153,7 +169,8 @@ class kernel_opt():
             # interpolation is required
             q3_exp_interpolated = np.interp(x_uni, x_uni_exp, q3_exp)
             q3_exp_interpolated_clipped = np.clip(q3_exp_interpolated, 0, 1)
-            q3_exp = pd.Series(q3_exp_interpolated_clipped, index=x_uni)
+            q3_exp_interpolated = q3_exp_interpolated_clipped / np.sum(q3_exp_interpolated_clipped)
+            q3_exp = pd.Series(q3_exp_interpolated, index=x_uni)
         Q3_exp = q3_exp.cumsum()
         x_10_exp = np.interp(0.1, Q3_exp, x_uni)
         x_50_exp = np.interp(0.5, Q3_exp, x_uni)
@@ -172,19 +189,19 @@ class kernel_opt():
         
         return delta
     
-    def optimierer(self, algo='BO', init_points=4, hyperparameter=None):
+    def optimierer(self, algo='BO', t_step=0, init_points=4, hyperparameter=None):
         if algo == 'BO':
             if self.p.dim == 1:
                 pbounds = {'corr_beta': (0, 100), 'alpha_prim': (0, 0.5)}
                 objective = lambda corr_beta, alpha_prim: self.cal_delta(
-                    corr_beta=corr_beta, alpha_prim=np.array([alpha_prim]), scale=-1)
+                    corr_beta=corr_beta, alpha_prim=np.array([alpha_prim]), t_step=t_step, scale=-1)
                 
             elif self.p.dim == 2:
                 pbounds = {'corr_beta': (0, 100), 'alpha_prim_0': (0, 0.5), 'alpha_prim_1': (0, 0.5), 'alpha_prim_2': (0, 0.5)}
                 objective = lambda corr_beta, alpha_prim_0, alpha_prim_1, alpha_prim_2: self.cal_delta(
                     corr_beta=corr_beta, 
                     alpha_prim=np.array([alpha_prim_0, alpha_prim_1, alpha_prim_1, alpha_prim_2]), 
-                    scale=-1)
+                    t_step=t_step, scale=-1)
                 
             opt = BayesianOptimization(
                 f=objective, 
@@ -304,15 +321,25 @@ class kernel_opt():
             # The first parameter 0 represents the mean value of the noise, 
             # the second parameter is the standard deviation of the noise,
             noise = np.random.normal(0, self.noise_strength, ori_data.shape)
+            noised_data = ori_data + noise
+            
         elif noise_type == 'Uniform':
             # Noises are uniformly distributed over the half-open interval [low, high)
             noise = np.random.uniform(low=-self.noise_strength/2, high=self.noise_strength/2, size=ori_data)
+            noised_data = ori_data + noise
+            
         elif noise_type == 'Poisson':
             noise = np.random.poisson(self.noise_strength, ori_data)
+            noised_data = ori_data + noise
+            
         elif noise_type == 'Multiplicative':
-            noise = np.random.normal(1, self.noise_strength, ori_data.shape) * ori_data - ori_data
-
-        return (ori_data + noise)
+            noise = np.random.normal(1, self.noise_strength, ori_data.shape)
+            noised_data = ori_data * noise
+        # Cliping the data out of range and rescale the data    
+        noised_data_clipped = np.clip(noised_data, 0, 1)
+        noised_data = noised_data_clipped /np.sum(noised_data_clipped)
+        
+        return noised_data
 
 
 
