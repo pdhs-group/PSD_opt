@@ -136,13 +136,40 @@ class Opt_test():
             # save DataFrame as Excel file
             self.k.exp_data_path = self.k.exp_data_path.replace(f"_{sample_num-1}.xlsx", ".xlsx")
             df.to_excel(self.k.exp_data_path)
-            para_opt, _ = self.k.optimierer(t_step=len(self.k.t_vec)-1, algo=self.algo)
+            para_opt, delta_opt = self.k.optimierer(t_step=len(self.k.t_vec)-1, algo=self.algo)
         
-        para_diff = abs(para_opt - self.k.corr_beta * np.sum(self.k.alpha_prim)) / (self.k.corr_beta * np.sum(self.k.alpha_prim))
+        if method ==4:
+            x_uni, _, _, _, _, _ = self.k.p.return_num_distribution(t=len(self.k.t_vec)-1)
+            x_uni *= 1e6 
+            q3_exp = np.zeros((sample_num, len(x_uni)))
+             
+            for i in range(0, sample_num):
+                if i ==0:
+                    self.k.exp_data_path = self.k.exp_data_path.replace(".xlsx", f"_{i}.xlsx")
+                else:
+                    self.k.exp_data_path = self.k.exp_data_path.replace(f"_{i-1}.xlsx", f"_{i}.xlsx")
+                # print(self.k.exp_data_path)
+                self.k.generate_new_data()
+
+            para_opt, delta_opt = self.k.optimierer(t_step=len(self.k.t_vec)-1, algo=self.algo, sample_num=sample_num)
+        
+        if self.dim == 1:
+            para_diff = abs(para_opt - self.k.corr_beta * np.sum(self.k.alpha_prim)) / (self.k.corr_beta * np.sum(self.k.alpha_prim))
+        elif self.dim == 2:
+            para_diff = np.zeros(5)
+            para_diff[0] = abs(self.k.corr_beta_opt- self.k.corr_beta) / self.k.corr_beta
+            para_diff[1:] = abs(self.k.alpha_prim_opt - self.k.alpha_prim) / self.k.alpha_prim
+            
+        if self.dim == 1:
+            para_diff = abs(para_opt - self.k.corr_beta * np.sum(self.k.alpha_prim)) / (self.k.corr_beta * np.sum(self.k.alpha_prim))
+        elif self.dim == 2:
+            para_diff = np.zeros(5)
+            para_diff[0] = abs(self.k.corr_beta_opt- self.k.corr_beta) / self.k.corr_beta
+            para_diff[1:] = abs(self.k.alpha_prim_opt - self.k.alpha_prim) / self.k.alpha_prim
         
         self.k.visualize_distribution()
         
-        return para_opt, para_diff
+        return self.k.corr_beta_opt, self.k.alpha_prim_opt, para_opt, para_diff, delta_opt
         
     def opt_test(self):
 
@@ -164,7 +191,7 @@ if __name__ == '__main__':
     # delta_flag = 3: use x_50
     delta_flag = 1
     # noise_type: Gaussian, Uniform, Poisson, Multiplicative
-    add_noise = False
+    add_noise = True
     noise_type='Gaussian'
     noise_strength = 0.01
     
@@ -172,7 +199,7 @@ if __name__ == '__main__':
     Opt.dim = 2
     Opt.algo='BO'
     
-    test = 1
+    test = 3
         
     if test == 1:
         para_opt, delta_opt, para_diff = Opt.opt_test()
@@ -184,7 +211,8 @@ if __name__ == '__main__':
         # method=1: Using different time points in a dataset
         # method=2: Using different datasets at same time points, mean kernels
         # method=3: Using different datasets at same time points, mean datasets
-        para_opt, para_diff = Opt.mean_kernel(sample_num=100, method=3)
+        # method=4: Using different datasets at same time points, mean delta
+        corr_beta_opt, alpha_prim_opt, para_opt, para_diff, delta_opt = Opt.mean_kernel(sample_num=100, method=4)
     else:
         print('Current test not available')
     

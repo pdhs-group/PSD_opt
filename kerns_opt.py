@@ -52,7 +52,7 @@ class kernel_opt():
         
         self.filename_kernels = "kernels.txt"
         
-    def cal_delta(self, corr_beta=None, alpha_prim=None, scale=1, t_step=0, Q3_exp=None, x_50_exp=None):
+    def cal_delta(self, corr_beta=None, alpha_prim=None, scale=1, t_step=0, Q3_exp=None, x_50_exp=None, sample_num=1):
         
         self.cal_pop(corr_beta, alpha_prim)
             
@@ -73,6 +73,7 @@ class kernel_opt():
                         array_str = line.split(':')[1].strip()
                         array_str = array_str.replace(" ", ", ")
                         self.alpha_prim = ast.literal_eval(array_str)
+                        
         if t_step >= len(self.p.t_vec):
             raise ValueError("Current time step is out of the range of the data table.")
             
@@ -85,13 +86,26 @@ class kernel_opt():
             x_90 *= 1e6   
             # read and calculate the experimental data
             t = self.p.t_vec[t_step]
-            if Q3_exp == None or x_50_exp == None:
-                x_uni_exp, q3_exp, Q3_exp, x_10_exp, x_50_exp, x_90_exp = self.read_exp(x_uni, t)    
+            delta_sum = 0
+            
+            if Q3_exp != None and x_50_exp != None:
+                x_uni_exp, q3_exp, Q3_exp, x_10_exp, x_50_exp, x_90_exp = self.read_exp(x_uni, t) 
+                delta = self.cost_fun(q3_exp, q3, Q3_exp, Q3, x_50_exp, x_50)
+            else:
+                for i in range (0, sample_num):
+                    x_uni_exp, q3_exp, Q3_exp, x_10_exp, x_50_exp, x_90_exp = self.read_exp(x_uni, t) 
+                    if sample_num != 1:
+                        if i != sample_num-1:
+                            self.exp_data_path = self.exp_data_path.replace(f"_{sample_num-1-i}.xlsx", f"_{sample_num-2-i}.xlsx")
+    
+                    # Calculate the error between experimental data and simulation results
+                    delta = self.cost_fun(q3_exp, q3, Q3_exp, Q3, x_50_exp, x_50)
+                    delta_sum +=delta
+                
+            delta_sum /= sample_num
 
-            # Calculate the error between experimental data and simulation results
-            delta = self.cost_fun(q3_exp, q3, Q3_exp, Q3, x_50_exp, x_50)
         
-            return (delta * scale)
+            return (delta_sum * scale)
         
     def generate_new_data(self):
         # save the kernels
@@ -192,19 +206,20 @@ class kernel_opt():
         
         return delta
     
-    def optimierer(self, algo='BO', t_step=0, init_points=4, Q3_exp=None, x_50_exp=None, hyperparameter=None):
+    def optimierer(self, algo='BO', t_step=0, init_points=4, Q3_exp=None, x_50_exp=None, sample_num=1, hyperparameter=None):
         if algo == 'BO':
             if self.p.dim == 1:
                 pbounds = {'corr_beta': (0, 100), 'alpha_prim': (0, 0.5)}
                 objective = lambda corr_beta, alpha_prim: self.cal_delta(
-                    corr_beta=corr_beta, alpha_prim=np.array([alpha_prim]), t_step=t_step, scale=-1, Q3_exp=None, x_50_exp=None)
+                    corr_beta=corr_beta, alpha_prim=np.array([alpha_prim]), t_step=t_step, 
+                    scale=-1, Q3_exp=Q3_exp, x_50_exp=x_50_exp, sample_num=sample_num)
                 
             elif self.p.dim == 2:
                 pbounds = {'corr_beta': (0, 100), 'alpha_prim_0': (0, 0.5), 'alpha_prim_1': (0, 0.5), 'alpha_prim_2': (0, 0.5)}
                 objective = lambda corr_beta, alpha_prim_0, alpha_prim_1, alpha_prim_2: self.cal_delta(
                     corr_beta=corr_beta, 
                     alpha_prim=np.array([alpha_prim_0, alpha_prim_1, alpha_prim_1, alpha_prim_2]), 
-                    t_step=t_step, scale=-1, Q3_exp=None, x_50_exp=None)
+                    t_step=t_step, scale=-1, Q3_exp=Q3_exp, x_50_exp=x_50_exp, sample_num=sample_num)
                 
             opt = BayesianOptimization(
                 f=objective, 
@@ -235,13 +250,15 @@ class kernel_opt():
         if algo == 'gp_minimize':
             if self.p.dim == 1:
                 space = [Real(0, 100), Real(0, 0.5)]
-                objective = lambda params: self.cal_delta(corr_beta=params[0], alpha_prim=np.array([params[1]]), scale=1)
+                objective = lambda params: self.cal_delta(corr_beta=params[0], alpha_prim=np.array([params[1]]), 
+                                                          scale=1, t_step=t_step, Q3_exp=Q3_exp, x_50_exp=x_50_exp, 
+                                                          sample_num=sample_num)
             elif self.p.dim == 2:
                 space = [Real(0, 100), Real(0, 0.5), Real(0, 0.5), Real(0, 0.5)]
                 objective = lambda params: self.cal_delta(
                     corr_beta=params[0], 
                     alpha_prim=np.array([params[1], params[2], params[2], params[3]]), 
-                    scale=1)
+                    scale=1, t_step=t_step, Q3_exp=Q3_exp, x_50_exp=x_50_exp, sample_num=sample_num)
 
             opt = gp_minimize(
                 objective,
