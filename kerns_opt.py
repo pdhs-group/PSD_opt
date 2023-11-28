@@ -12,6 +12,7 @@ from pop import population
 from bayes_opt import BayesianOptimization
 from skopt import gp_minimize
 from skopt.space import Real
+from scipy.stats import gaussian_kde
 # from functools import partial
 import ast
 from PSD_Exp import write_read_exp
@@ -78,7 +79,7 @@ class kernel_opt():
             raise ValueError("Current time step is out of the range of the data table.")
             
         else:
-            x_uni, q3, Q3, x_10, x_50, x_90 = self.p.return_num_distribution(t=t_step)
+            x_uni, q3, Q3, x_10, x_50, x_90, _ = self.p.return_num_distribution(t=t_step)
             # Conversion unit
             x_uni *= 1e6    
             x_10 *= 1e6   
@@ -114,13 +115,13 @@ class kernel_opt():
             file.write('alpha_prim: {}\n'.format(self.p.alpha_prim))
         
         # save the calculation result in experimental data form
-        x_uni, _, _, _, _, _ = self.p.return_num_distribution(t=len(self.p.t_vec)-1)
+        x_uni, _, _, _, _, _, _ = self.p.return_num_distribution(t=len(self.p.t_vec)-1)
         df = pd.DataFrame(index=x_uni*1e6)
         df.index.name = 'Circular Equivalent Diameter'
         formatted_times = write_read_exp.convert_seconds_to_time(self.p.t_vec)
 
         for idt in range(0, len(self.p.t_vec)):
-            _, q3, _, _, _, _ = self.p.return_num_distribution(t=idt)
+            _, q3, _, _, _, _, _ = self.p.return_num_distribution(t=idt)
             # add noise to the original data
             if self.add_noise:
                 q3 = self.function_noise(q3, noise_type=self.noise_type)
@@ -290,7 +291,7 @@ class kernel_opt():
         self.p.alpha_prim[:] = self.alpha_prim
         self.p.full_init(calc_alpha=False)
         self.p.solve_PBE(t_vec=self.t_vec)
-        x_uni_ori, q3_ori, Q3_ori, x_10_ori, x_50_ori, x_90_ori = self.p.return_num_distribution(t=len(self.p.t_vec)-1)
+        x_uni_ori, q3_ori, Q3_ori, x_10_ori, x_50_ori, x_90_ori, _ = self.p.return_num_distribution(t=len(self.p.t_vec)-1)
         # Conversion unit
         x_uni_ori *= 1e6    
         x_10_ori *= 1e6   
@@ -302,7 +303,7 @@ class kernel_opt():
         else:
             print("Need to run the optimization process at least once！")    
             
-        x_uni, q3, Q3, x_10, x_50, x_90 = self.p.return_num_distribution(t=len(self.p.t_vec)-1)
+        x_uni, q3, Q3, x_10, x_50, x_90, _ = self.p.return_num_distribution(t=len(self.p.t_vec)-1)
         # Conversion unit
         x_uni *= 1e6    
         x_10 *= 1e6   
@@ -375,8 +376,17 @@ class kernel_opt():
         
         return noised_data
 
-
-
+    ## Kernel density estimation
+    ## data_ori must be a quantity rather than a relative value!
+    def KDE_smoothing(self, x_uni_ori, data_ori, kernel_func="Gaussian"):
+        data_ori = data_ori.astype(int)
+        if kernel_func == "Gaussian":
+            data = np.repeat(x_uni_ori, data_ori)
+            kde = gaussian_kde(data)
+            data_smoothing = kde(x_uni_ori)
+            
+        return data_smoothing
+            
 
 
         

@@ -909,57 +909,48 @@ class population():
         plt.tight_layout()   
         
         return axq3, axQ3, fig
-    ## Return particle size distribution 
-    def return_distribution(self, comp='all', t=0):
+    
+    ## Return particle size distribution on fixed grid 
+    def return_distribution_fixed(self, comp='all', t=0, N=None):
         
-        v_uni = np.array([])
-        sumvol_uni = np.array([])
+        # If no N is provided use the one from the class instance
+        if N is None:
+            N = self.N
+        
+        # Extract unique values that are NOT -1 or 0 (border)
+        v_uni = np.setdiff1d(self.V,[-1,0])
+        sumvol_uni = np.zeros(v_uni.shape)
         
         if comp == 'all':
-            # Extract unique values of V and save corresponding volume if not empty
+            # Loop through all entries in V and add volume concentration to specific entry in sumvol_uni
             if self.dim == 1:
                 for i in range(1,self.NS+3):
-                    if (not self.N[i,t] == 0) and (not self.V[i] in v_uni):
-                        v_uni = np.append(v_uni,self.V[i])
-                        sumvol_uni = np.append(sumvol_uni,self.V[i]*self.N[i,t]) 
+                    if self.V[i] in v_uni:
+                        sumvol_uni[v_uni == self.V[i]] += self.V[i]*N[i,t] 
                         
-                    elif (not self.N[i,t] == 0) and (self.V[i] in v_uni):
-                        sumvol_uni[v_uni == self.V[i]] += self.V[i]*self.N[i,t] 
-                        
-            # Extract unique values of V and save corresponding volume if not empty
             if self.dim == 2:
                 for i in range(1,self.NS+3):
                     for j in range(1,self.NS+3):
-                        if (not self.N[i,j,t] == 0) and (not self.V[i,j] in v_uni):
-                            v_uni = np.append(v_uni,self.V[i,j])
-                            sumvol_uni = np.append(sumvol_uni,self.V[i,j]*self.N[i,j,t]) 
-                            
-                        elif (not self.N[i,j,t] == 0) and (self.V[i,j] in v_uni):
-                            sumvol_uni[v_uni == self.V[i,j]] += self.V[i,j]*self.N[i,j,t]
-                            
-            # Extract unique values of V and save corresponding volume if not empty
+                        if self.V[i,j] in v_uni:
+                            sumvol_uni[v_uni == self.V[i,j]] += self.V[i,j]*N[i,j,t]
+
             if self.dim == 3:
                 for i in range(1,self.NS+3):
                     for j in range(1,self.NS+3):
                         for k in range(1,self.NS+3):
-                            if (not self.N[i,j,k,t] == 0) and (not self.V[i,j,k] in v_uni):
-                                v_uni = np.append(v_uni,self.V[i,j,k])
-                                sumvol_uni = np.append(sumvol_uni,self.V[i,j,k]*self.N[i,j,k,t]) 
-                                
-                            elif (not self.N[i,j,k,t] == 0) and (self.V[i,j,k] in v_uni):
-                                sumvol_uni[v_uni == self.V[i,j,k]] += self.V[i,j,k]*self.N[i,j,k,t]
+                            if self.V[i,j,k] in v_uni:
+                                sumvol_uni[v_uni == self.V[i,j,k]] += self.V[i,j,k]*N[i,j,k,t]
                                 
             # Sort v_uni in ascending order and keep track in sumvol_uni
             v_uni = v_uni[np.argsort(v_uni)]
             sumvol_uni = sumvol_uni[np.argsort(v_uni)]
-            sumvol = np.sum(sumvol_uni)
             
             # Calculate diameter array
             x_uni=(6*v_uni/np.pi)**(1/3)
             
             # Calculate sum and density distribution
             Q3 = np.zeros(len(v_uni))
-            Q3 = np.cumsum(sumvol_uni)/sumvol
+            Q3 = np.cumsum(sumvol_uni)/np.sum(sumvol_uni)
             q3 = sumvol_uni/np.sum(sumvol_uni)
             
             # Retrieve x10, x50 and x90 through interpolation
@@ -971,8 +962,7 @@ class population():
             print('Case for comp not coded yet. Exiting')
             return
     
-        return x_uni, q3, Q3, x_10, x_50, x_90, sumvol
-        # return np.sum(sumvol_uni[1:])
+        return x_uni, q3, Q3, x_10, x_50, x_90
 
     ## Return particle size distribution based upon concentration 
     def return_num_distribution(self, comp='all', t=0):
@@ -1036,7 +1026,7 @@ class population():
             print('Case for comp not coded yet. Exiting')
             return
     
-        return x_uni, q3, Q3, x_10, x_50, x_90
+        return x_uni, q3, Q3, x_10, x_50, x_90, sumN_uni
         # return np.sum(sumN_uni[1:])
         
     ## Return total number. For t=None return full array, else return total number at time index t 
