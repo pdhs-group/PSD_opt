@@ -13,6 +13,7 @@ from bayes_opt import BayesianOptimization
 from skopt import gp_minimize
 from skopt.space import Real
 from scipy.stats import gaussian_kde
+import statsmodels.api as sm
 # from functools import partial
 import ast
 from PSD_Exp import write_read_exp
@@ -79,7 +80,7 @@ class kernel_opt():
             raise ValueError("Current time step is out of the range of the data table.")
             
         else:
-            x_uni, q3, Q3, x_10, x_50, x_90, _ = self.p.return_num_distribution(t=t_step)
+            x_uni, q3, Q3, x_10, x_50, x_90 = self.p.return_num_distribution(t=t_step)
             # Conversion unit
             x_uni *= 1e6    
             x_10 *= 1e6   
@@ -115,13 +116,13 @@ class kernel_opt():
             file.write('alpha_prim: {}\n'.format(self.p.alpha_prim))
         
         # save the calculation result in experimental data form
-        x_uni, _, _, _, _, _, _ = self.p.return_num_distribution(t=len(self.p.t_vec)-1)
+        x_uni, _, _, _, _, _ = self.p.return_num_distribution(t=len(self.p.t_vec)-1)
         df = pd.DataFrame(index=x_uni*1e6)
         df.index.name = 'Circular Equivalent Diameter'
         formatted_times = write_read_exp.convert_seconds_to_time(self.p.t_vec)
 
         for idt in range(0, len(self.p.t_vec)):
-            _, q3, _, _, _, _, _ = self.p.return_num_distribution(t=idt)
+            _, q3, _, _, _, _ = self.p.return_num_distribution(t=idt)
             # add noise to the original data
             if self.add_noise:
                 q3 = self.function_noise(q3, noise_type=self.noise_type)
@@ -291,7 +292,7 @@ class kernel_opt():
         self.p.alpha_prim[:] = self.alpha_prim
         self.p.full_init(calc_alpha=False)
         self.p.solve_PBE(t_vec=self.t_vec)
-        x_uni_ori, q3_ori, Q3_ori, x_10_ori, x_50_ori, x_90_ori, _ = self.p.return_num_distribution(t=len(self.p.t_vec)-1)
+        x_uni_ori, q3_ori, Q3_ori, x_10_ori, x_50_ori, x_90_ori = self.p.return_num_distribution(t=len(self.p.t_vec)-1)
         # Conversion unit
         x_uni_ori *= 1e6    
         x_10_ori *= 1e6   
@@ -303,7 +304,7 @@ class kernel_opt():
         else:
             print("Need to run the optimization process at least once！")    
             
-        x_uni, q3, Q3, x_10, x_50, x_90, _ = self.p.return_num_distribution(t=len(self.p.t_vec)-1)
+        x_uni, q3, Q3, x_10, x_50, x_90 = self.p.return_num_distribution(t=len(self.p.t_vec)-1)
         # Conversion unit
         x_uni *= 1e6    
         x_10 *= 1e6   
@@ -378,12 +379,40 @@ class kernel_opt():
 
     ## Kernel density estimation
     ## data_ori must be a quantity rather than a relative value!
-    def KDE_smoothing(self, x_uni_ori, data_ori, kernel_func="Gaussian"):
-        data_ori = data_ori.astype(int)
+    def KDE_smoothing(self, x_uni_ori, data_ori, bandwidth=None, kernel_func="Gaussian"):
+        # data_ori = data_ori.astype(np.int64)
+        total_samples = 1e2
+        x_uni_ori *= 1e6
+        
+        repeats = (total_samples * data_ori).astype(int)
+        
+        data_re = np.repeat(x_uni_ori, repeats)
+        
+        # estimate the value of bandwidth
+        # Bootstrapping method is used 
+        # Because the original data may not conform to the normal distribution
+        if bandwidth == None:
+            n_bootstrap = 100
+            estimated_bandwidth = np.zeros(n_bootstrap)
+            
+            for i in range(n_bootstrap):
+                sample_indices = np.random.choice(len(x_uni_ori), size=len(x_uni_ori), p=data_ori)
+                sample = x_uni_ori[sample_indices]
+                kde = gaussian_kde(sample)
+                estimated_bandwidth[i] = kde.factor * np.std(sample, ddof=1)
+            # bandwidth = np.median(estimated_bandwidth)
+            bandwidth = np.mean(estimated_bandwidth)
+            
+        # calculate kernel density estimation function
         if kernel_func == "Gaussian":
-            data = np.repeat(x_uni_ori, data_ori)
-            kde = gaussian_kde(data)
+            #data = np.repeat(x_uni_ori, data_ori)
+            kde = gaussian_kde(x_uni_ori, bw_method=bandwidth, weights=data_ori)
             data_smoothing = kde(x_uni_ori)
+            
+        else:
+            kde = sm.nonparametric.KDEUnivariate(data_re)
+            kde.fit(kernel=kernel_func, bw=bandwidth, fft=False)
+            data_smoothing=kde.evaluate(x_uni_ori)
             
         return data_smoothing
             

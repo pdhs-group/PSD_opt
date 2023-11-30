@@ -98,7 +98,7 @@ class Opt_test():
             self.k.alpha_prim_opt = alpha_prim
             
         if method ==3:
-            x_uni, _, _, _, _, _, _ = self.k.p.return_num_distribution(t=len(self.k.t_vec)-1)
+            x_uni, _, _, _, _, _ = self.k.p.return_num_distribution(t=len(self.k.t_vec)-1)
             x_uni *= 1e6 
             q3_exp = np.zeros((sample_num, len(x_uni)))
              
@@ -142,7 +142,7 @@ class Opt_test():
             para_opt, delta_opt = self.k.optimierer(t_step=len(self.k.t_vec)-1, algo=self.algo)
         
         if method ==4:
-            x_uni, _, _, _, _, _, _ = self.k.p.return_num_distribution(t=len(self.k.t_vec)-1)
+            x_uni, _, _, _, _, _ = self.k.p.return_num_distribution(t=len(self.k.t_vec)-1)
             x_uni *= 1e6 
             q3_exp = np.zeros((sample_num, len(x_uni)))
              
@@ -185,23 +185,26 @@ class Opt_test():
         return para_opt, delta_opt, para_diff    
         
     def smoothing_test(self):
-        x_uni_ori, q3_ori, Q3_ori, x_10_ori, x_50_ori, x_90_ori, _ = self.k.p.return_num_distribution(t=len(self.k.t_vec)-1)
+        x_uni_ori, q3_ori, Q3_ori, x_10_ori, x_50_ori, x_90_ori = self.k.p.return_num_distribution(t=len(self.k.t_vec)-1)
         # Conversion unit
         x_uni_ori *= 1e6    
         x_10_ori *= 1e6   
         x_50_ori *= 1e6   
         x_90_ori *= 1e6  
         
-        x_uni, _, _, _, _, _, sumN_uni_ori = self.k.p.return_num_distribution(t=len(self.k.t_vec)-1)
-        sumN_uni = self.k.KDE_smoothing(x_uni, sumN_uni_ori)
-
+        x_uni, q3, _, _, _, _ = self.k.p.return_num_distribution(t=len(self.k.t_vec)-1)
+        
+        # bandwidth = None: use Bootstrapping method to estimate bandwidth
+        # kernel_func = 'Gaussian': use Gaussian kernel
+        # kernel_func = 'tri': use triangle kernel
+        # kernel_func = 'epa':use Epanechnikov kernel
+        sumN_uni = self.k.KDE_smoothing(x_uni, q3, bandwidth=None, kernel_func='uni')
         sumN = np.sum(sumN_uni)
+
         Q3 = np.cumsum(sumN_uni)/sumN
         q3 = sumN_uni/np.sum(sumN_uni)
+    
         
-        x_10=np.interp(0.1, Q3, x_uni)
-        x_50=np.interp(0.5, Q3, x_uni)
-        x_90=np.interp(0.9, Q3, x_uni)
         
         pt.plot_init(scl_a4=1,figsze=[12.8,6.4*1.5],lnewdth=0.8,mrksze=5,use_locale=True,scl=1.2)
 

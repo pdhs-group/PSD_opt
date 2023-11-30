@@ -1026,7 +1026,7 @@ class population():
             print('Case for comp not coded yet. Exiting')
             return
     
-        return x_uni, q3, Q3, x_10, x_50, x_90, sumN_uni
+        return x_uni, q3, Q3, x_10, x_50, x_90
         # return np.sum(sumN_uni[1:])
         
     ## Return total number. For t=None return full array, else return total number at time index t 
