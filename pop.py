@@ -15,6 +15,8 @@ from numba.extending import overload, register_jitable
 import matplotlib.pyplot as plt
 import plotter.plotter as pt          
 from plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
+## For math
+from kernel_math import float_in_list, float_equal, isZero
 
 ### ------ POPULATION CLASS DEFINITION ------ ###
 class population():
@@ -963,50 +965,40 @@ class population():
             return
     
         return x_uni, q3, Q3, x_10, x_50, x_90
-
-    ## Return particle size distribution based upon concentration 
-    def return_num_distribution(self, comp='all', t=0):
+    
+    def return_num_distribution_fixed(self, comp='all', t=0, N=None):
+        # If no N is provided use the one from the class instance
+        if N is None:
+            N = self.N
         
-        v_uni = np.array([])
-        sumN_uni = np.array([])
+        # Extract unique values that are NOT -1 or 0 (border)
+        # At the same time, v_uni will be rearranged according to size.
+        v_uni = np.setdiff1d(self.V,[-1,0])
+        sumN_uni = np.zeros(v_uni.shape)
         
         if comp == 'all':
-            # Extract unique values of V and save corresponding volume if not empty
+            # Loop through all entries in V and add volume concentration to specific entry in sumN_uni
             if self.dim == 1:
                 for i in range(1,self.NS+3):
-                    if (not self.N[i,t] == 0) and (not self.V[i] in v_uni):
-                        v_uni = np.append(v_uni,self.V[i])
-                        sumN_uni = np.append(sumN_uni,self.N[i,t]) 
+                    if float_in_list(self.V[i], v_uni) and (not N[i,j,t] < 0):
+                        sumN_uni[v_uni == self.V[i]] += N[i,t] 
                         
-                    elif (not self.N[i,t] == 0) and (self.V[i] in v_uni):
-                        sumN_uni[v_uni == self.V[i]] += self.N[i,t] 
-                        
-            # Extract unique values of V and save corresponding volume if not empty
             if self.dim == 2:
                 for i in range(1,self.NS+3):
                     for j in range(1,self.NS+3):
-                        if (not self.N[i,j,t] == 0) and (not self.V[i,j] in v_uni):
-                            v_uni = np.append(v_uni,self.V[i,j])
-                            sumN_uni = np.append(sumN_uni,self.N[i,j,t]) 
-                            
-                        elif (not self.N[i,j,t] == 0) and (self.V[i,j] in v_uni):
-                            sumN_uni[v_uni == self.V[i,j]] += self.N[i,j,t]
-                            
-            # Extract unique values of V and save corresponding volume if not empty
+                        if float_in_list(self.V[i,j], v_uni) and (not N[i,j,t] < 0):
+                            sumN_uni[v_uni == self.V[i,j]] += N[i,j,t]
+
             if self.dim == 3:
                 for i in range(1,self.NS+3):
                     for j in range(1,self.NS+3):
                         for k in range(1,self.NS+3):
-                            if (not self.N[i,j,k,t] == 0) and (not self.V[i,j,k] in v_uni):
-                                v_uni = np.append(v_uni,self.V[i,j,k])
-                                sumN_uni = np.append(sumN_uni,self.N[i,j,k,t]) 
-                                
-                            elif (not self.N[i,j,k,t] == 0) and (self.V[i,j,k] in v_uni):
-                                sumN_uni[v_uni == self.V[i,j,k]] += self.N[i,j,k,t]
+                            if float_in_list(self.V[i,j,k], v_uni) and (not N[i,j,t] < 0):
+                                sumN_uni[v_uni == self.V[i,j,k]] += N[i,j,k,t]
                                 
             # Sort v_uni in ascending order and keep track in sumN_uni
-            v_uni = v_uni[np.argsort(v_uni)]
-            sumN_uni = sumN_uni[np.argsort(v_uni)]
+            # v_uni = v_uni[np.argsort(v_uni)]
+            # sumN_uni = sumN_uni[np.argsort(v_uni)]
             sumN = np.sum(sumN_uni)
             
             # Calculate diameter array
@@ -1027,7 +1019,6 @@ class population():
             return
     
         return x_uni, q3, Q3, x_10, x_50, x_90
-        # return np.sum(sumN_uni[1:])
         
     ## Return total number. For t=None return full array, else return total number at time index t 
     def return_N_t(self,t=None):

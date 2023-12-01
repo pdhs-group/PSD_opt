@@ -10,18 +10,18 @@ import numpy as np
 import time
 import pandas as pd
 sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),".."))
-from kerns_opt import kernel_opt
+from kernel_opt import kernel_opt
 from PSD_Exp import write_read_exp
 
 import matplotlib.pyplot as plt
 import plotter.plotter as pt   
 
 class Opt_test():
-    def __init__(self, add_noise, corr_beta, alpha_prim, delta_flag=1, noise_type='Gaussian', noise_strength=0.01, t_vec=None, generate_data=True):
+    def __init__(self, add_noise, smoothing, corr_beta, alpha_prim, delta_flag=1, noise_type='Gaussian', noise_strength=0.01, t_vec=None, generate_data=True):
         self.dim = 2
         self.algo='BO'
         
-        self.k = kernel_opt(add_noise=add_noise, dim=self.dim, t_vec=t_vec, noise_type=noise_type, noise_strength=noise_strength)
+        self.k = kernel_opt(add_noise=add_noise, smoothing=smoothing, dim=self.dim, t_vec=t_vec, noise_type=noise_type, noise_strength=noise_strength)
         self.k.delta_flag = delta_flag
         if generate_data:
             self.k.cal_pop(corr_beta, alpha_prim)
@@ -98,7 +98,7 @@ class Opt_test():
             self.k.alpha_prim_opt = alpha_prim
             
         if method ==3:
-            x_uni, _, _, _, _, _ = self.k.p.return_num_distribution(t=len(self.k.t_vec)-1)
+            x_uni, _, _, _, _, _ = self.k.p.return_num_distribution_fixed(t=len(self.k.t_vec)-1)
             x_uni *= 1e6 
             q3_exp = np.zeros((sample_num, len(x_uni)))
              
@@ -142,7 +142,7 @@ class Opt_test():
             para_opt, delta_opt = self.k.optimierer(t_step=len(self.k.t_vec)-1, algo=self.algo)
         
         if method ==4:
-            x_uni, _, _, _, _, _ = self.k.p.return_num_distribution(t=len(self.k.t_vec)-1)
+            x_uni, _, _, _, _, _ = self.k.p.return_num_distribution_fixed(t=len(self.k.t_vec)-1)
             x_uni *= 1e6 
             q3_exp = np.zeros((sample_num, len(x_uni)))
              
@@ -185,26 +185,23 @@ class Opt_test():
         return para_opt, delta_opt, para_diff    
         
     def smoothing_test(self):
-        x_uni_ori, q3_ori, Q3_ori, x_10_ori, x_50_ori, x_90_ori = self.k.p.return_num_distribution(t=len(self.k.t_vec)-1)
+        x_uni_ori, q3_ori, Q3_ori, x_10_ori, x_50_ori, x_90_ori = self.k.p.return_num_distribution_fixed(t=len(self.k.t_vec)-1)
         # Conversion unit
         x_uni_ori *= 1e6    
         x_10_ori *= 1e6   
         x_50_ori *= 1e6   
         x_90_ori *= 1e6  
         
-        x_uni, q3, _, _, _, _ = self.k.p.return_num_distribution(t=len(self.k.t_vec)-1)
+        x_uni, q3, _, _, _, _, = self.k.p.return_num_distribution_fixed(t=len(self.k.t_vec)-1)
         
         # bandwidth = None: use Bootstrapping method to estimate bandwidth
-        # kernel_func = 'Gaussian': use Gaussian kernel
-        # kernel_func = 'tri': use triangle kernel
-        # kernel_func = 'epa':use Epanechnikov kernel
-        sumN_uni = self.k.KDE_smoothing(x_uni, q3, bandwidth=None, kernel_func='uni')
+        # kernel_func = 'gaussian', 'tophat', 'epanechnikov', 'exponential', 'linear', 'cosine'
+        # bandwidth = 'scott', 'silverman' or a value
+        sumN_uni = self.k.KDE_smoothing(x_uni, q3, bandwidth='scott', kernel_func='gaussian')
         sumN = np.sum(sumN_uni)
 
         Q3 = np.cumsum(sumN_uni)/sumN
         q3 = sumN_uni/np.sum(sumN_uni)
-    
-        
         
         pt.plot_init(scl_a4=1,figsze=[12.8,6.4*1.5],lnewdth=0.8,mrksze=5,use_locale=True,scl=1.2)
 
@@ -243,11 +240,12 @@ if __name__ == '__main__':
     # delta_flag = 3: use x_50
     delta_flag = 1
     # noise_type: Gaussian, Uniform, Poisson, Multiplicative
-    add_noise = False
+    add_noise = True
+    smoothing = True
     noise_type='Gaussian'
     noise_strength = 0.01
     
-    Opt = Opt_test(add_noise, corr_beta, alpha_prim, t_vec=t_vec, noise_type=noise_type, noise_strength=noise_strength, generate_data=True)
+    Opt = Opt_test(add_noise, smoothing, corr_beta, alpha_prim, t_vec=t_vec, noise_type=noise_type, noise_strength=noise_strength, generate_data=True)
     Opt.dim = 2
     Opt.algo='BO'
     
