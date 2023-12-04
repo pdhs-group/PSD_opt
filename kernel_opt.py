@@ -68,22 +68,26 @@ class kernel_opt():
             with open(self.filename_kernels, 'r') as file:
                 lines = file.readlines()  
                 
-                self.corr_beta = None
-                self.alpha_prim = None
+                # self.corr_beta = None
+                # self.alpha_prim = None
                 for line in lines:
                     if 'CORR_BETA:' in line:
                         self.corr_beta = float(line.split(':')[1].strip())
                     elif 'alpha_prim:' in line:
                         array_str = line.split(':')[1].strip()
-                        array_str = array_str.replace(" ", ", ")
-                        self.alpha_prim = ast.literal_eval(array_str)
+                        # array_str = array_str.replace(" ", ", ")
+                        self.alpha_prim = np.array(ast.literal_eval(array_str))
                         
         if t_step >= len(self.p.t_vec):
             raise ValueError("Current time step is out of the range of the data table.")
             
         else:
             x_uni, q3, Q3, x_10, x_50, x_90 = self.p.return_num_distribution_fixed(t=t_step)
-
+            # Conversion unit
+            x_uni *= 1e6    
+            x_10 *= 1e6   
+            x_50 *= 1e6   
+            x_90 *= 1e6
             if self.smoothing:
                 sumN_uni = self.KDE_smoothing(x_uni, q3, bandwidth='scott', kernel_func='gaussian')
                 sumN = np.sum(sumN_uni)
@@ -95,11 +99,6 @@ class kernel_opt():
                 x_50 = np.interp(0.5, Q3, x_uni)
                 x_90 = np.interp(0.9, Q3, x_uni)
 
-            # Conversion unit
-            x_uni *= 1e6    
-            x_10 *= 1e6   
-            x_50 *= 1e6   
-            x_90 *= 1e6
             # read and calculate the experimental data
             t = self.p.t_vec[t_step]
             delta_sum = 0
@@ -110,9 +109,8 @@ class kernel_opt():
             else:
                 for i in range (0, sample_num):
                     x_uni_exp, q3_exp, Q3_exp, x_10_exp, x_50_exp, x_90_exp = self.read_exp(x_uni, t) 
-                    if sample_num != 1:
-                        if i != sample_num-1:
-                            self.exp_data_path = self.exp_data_path.replace(f"_{sample_num-1-i}.xlsx", f"_{sample_num-2-i}.xlsx")
+                    if sample_num != 1 and i != sample_num-1:
+                        self.exp_data_path = self.exp_data_path.replace(f"_{sample_num-1-i}.xlsx", f"_{sample_num-2-i}.xlsx")
     
                     # Calculate the error between experimental data and simulation results
                     delta = self.cost_fun(q3_exp, q3, Q3_exp, Q3, x_50_exp, x_50)
@@ -125,13 +123,15 @@ class kernel_opt():
         
     def generate_new_data(self):
         # save the kernels
+        alpha_prim_str = ', '.join([str(x) for x in self.alpha_prim])
         with open(self.filename_kernels, 'w') as file:
-            file.write('CORR_BETA: {}\n'.format(self.p.CORR_BETA))
-            file.write('alpha_prim: {}\n'.format(self.p.alpha_prim))
+            file.write('CORR_BETA: {}\n'.format(self.corr_beta))
+            file.write('alpha_prim: {}\n'.format(alpha_prim_str))
         
         # save the calculation result in experimental data form
         x_uni, _, _, _, _, _ = self.p.return_num_distribution_fixed(t=len(self.p.t_vec)-1)
-        df = pd.DataFrame(index=x_uni*1e6)
+        x_uni *= 1e6 
+        df = pd.DataFrame(index=x_uni)
         df.index.name = 'Circular Equivalent Diameter'
         formatted_times = write_read_exp.convert_seconds_to_time(self.p.t_vec)
 
@@ -237,7 +237,7 @@ class kernel_opt():
                 pbounds = {'corr_beta': (0, 100), 'alpha_prim_0': (0, 0.5), 'alpha_prim_1': (0, 0.5), 'alpha_prim_2': (0, 0.5)}
                 objective = lambda corr_beta, alpha_prim_0, alpha_prim_1, alpha_prim_2: self.cal_delta(
                     corr_beta=corr_beta, 
-                    alpha_prim=np.array([alpha_prim_0, alpha_prim_1, alpha_prim_1, alpha_prim_2]), 
+                    alpha_prim=np.array([alpha_prim_0, alpha_prim_1, alpha_prim_2]), 
                     t_step=t_step, scale=-1, Q3_exp=Q3_exp, x_50_exp=x_50_exp, sample_num=sample_num)
                 
             opt = BayesianOptimization(
@@ -256,13 +256,13 @@ class kernel_opt():
                 self.alpha_prim_opt = opt.max['params']['alpha_prim']
                 
             elif self.p.dim == 2:
-                self.alpha_prim_opt = np.zeros(4)
+                self.alpha_prim_opt = np.zeros(3)
                 para_opt = opt.max['params']['corr_beta'] *\
-                (opt.max['params']['alpha_prim_0'] + 2 * opt.max['params']['alpha_prim_1'] + opt.max['params']['alpha_prim_2'])
+                (opt.max['params']['alpha_prim_0'] + opt.max['params']['alpha_prim_1'] + opt.max['params']['alpha_prim_2'])
                 self.corr_beta_opt = opt.max['params']['corr_beta']
                 self.alpha_prim_opt[0] = opt.max['params']['alpha_prim_0']
-                self.alpha_prim_opt[1] = self.alpha_prim_opt[2] = opt.max['params']['alpha_prim_1']
-                self.alpha_prim_opt[3] = opt.max['params']['alpha_prim_2']
+                self.alpha_prim_opt[1] = opt.max['params']['alpha_prim_1']
+                self.alpha_prim_opt[2] = opt.max['params']['alpha_prim_2']
             
             delta_opt = -opt.max['target']
             
@@ -276,7 +276,7 @@ class kernel_opt():
                 space = [Real(0, 100), Real(0, 0.5), Real(0, 0.5), Real(0, 0.5)]
                 objective = lambda params: self.cal_delta(
                     corr_beta=params[0], 
-                    alpha_prim=np.array([params[1], params[2], params[2], params[3]]), 
+                    alpha_prim=np.array([params[1], params[2], params[3]]), 
                     scale=1, t_step=t_step, Q3_exp=Q3_exp, x_50_exp=x_50_exp, sample_num=sample_num)
 
             opt = gp_minimize(
@@ -292,35 +292,43 @@ class kernel_opt():
                 self.corr_beta_opt = opt.x[0]
                 self.alpha_prim_opt = opt.x[1]
             elif self.p.dim == 2:
-                self.alpha_prim_opt = np.zeros(4)
-                para_opt = opt.x[0] * (opt.x[1] + 2 * opt.x[2] + opt.x[3])
+                self.alpha_prim_opt = np.zeros(3)
+                para_opt = opt.x[0] * sum(opt.x[1:])
                 self.corr_beta_opt = opt.x[0]
                 self.alpha_prim_opt[0] = opt.x[1]
-                self.alpha_prim_opt[1] = self.alpha_prim_opt[2] = opt.x[2]
-                self.alpha_prim_opt[3] = opt.x[3]
+                self.alpha_prim_opt[1] = opt.x[2]
+                self.alpha_prim_opt[2] = opt.x[3]
 
             delta_opt = opt.fun
             
         return para_opt, delta_opt
     
     def visualize_distribution(self, ax=None,fig=None,close_all=False,clr='k',scl_a4=1,figsze=[12.8,6.4*1.5]):
-        # Recalculate PSD using original parameter
-        self.p.CORR_BETA = self.corr_beta
-        self.p.alpha_prim[:] = self.alpha_prim
+    # Recalculate PSD using original parameter
+        self.cal_pop(corr_beta=self.corr_beta, alpha_prim=self.alpha_prim)
+        '''if self.p.dim == 1:       
+            self.p.CORR_BETA = self.corr_beta
+            self.p.alpha_prim=self.corr_beta
+   
+        elif self.p.dim == 2:
+            self.p.CORR_BETA = self.corr_beta 
+            self.p.alpha_prim[:]=[self.corr_beta[0], self.corr_beta[1], self.corr_beta[2], self.corr_beta[3]]
+
         self.p.full_init(calc_alpha=False)
-        self.p.solve_PBE(t_vec=self.t_vec)
+        self.p.solve_PBE(t_vec=self.t_vec)'''
         x_uni_ori, q3_ori, Q3_ori, x_10_ori, x_50_ori, x_90_ori = self.p.return_num_distribution_fixed(t=len(self.p.t_vec)-1)
+        # Conversion unit
+        x_uni_ori *= 1e6    
+        x_10_ori *= 1e6   
+        x_50_ori *= 1e6   
+        x_90_ori *= 1e6  
         if self.smoothing:
             sumN_uni_ori = self.KDE_smoothing(x_uni_ori, q3_ori, bandwidth='scott', kernel_func='gaussian')
             sumN_ori = np.sum(sumN_uni_ori)
     
             Q3_ori = np.cumsum(sumN_uni_ori)/sumN_ori
             q3_ori = sumN_uni_ori/np.sum(sumN_uni_ori)
-        # Conversion unit
-        x_uni_ori *= 1e6    
-        x_10_ori *= 1e6   
-        x_50_ori *= 1e6   
-        x_90_ori *= 1e6  
+
         # Recalculate PSD using optimization results
         if hasattr(self, 'corr_beta_opt') and hasattr(self, 'alpha_prim_opt'):
             self.cal_pop(self.corr_beta_opt, self.alpha_prim_opt)
@@ -328,17 +336,18 @@ class kernel_opt():
             print("Need to run the optimization process at least once！")    
             
         x_uni, q3, Q3, x_10, x_50, x_90 = self.p.return_num_distribution_fixed(t=len(self.p.t_vec)-1)
+        # Conversion unit
+        x_uni *= 1e6    
+        x_10 *= 1e6   
+        x_50 *= 1e6   
+        x_90 *= 1e6  
         if self.smoothing:
             sumN_uni = self.KDE_smoothing(x_uni, q3, bandwidth='scott', kernel_func='gaussian')
             sumN = np.sum(sumN_uni)
 
             Q3 = np.cumsum(sumN_uni)/sumN
             q3 = sumN_uni/np.sum(sumN_uni)
-        # Conversion unit
-        x_uni *= 1e6    
-        x_10 *= 1e6   
-        x_50 *= 1e6   
-        x_90 *= 1e6   
+ 
         # read and calculate the experimental data
         t = max(self.p.t_vec)
 
@@ -425,13 +434,15 @@ class kernel_opt():
             # bandwidth = np.median(estimated_bandwidth)
             bandwidth = np.mean(estimated_bandwidth)
         '''
-        x_uni_ori *= 1e6
         
         # KernelDensity requires input to be a column vector
         # So x_uni_re must be reshaped
         x_uni_re = x_uni_ori.reshape(-1, 1)
+        # Avoid divide-by-zero warnings when calculating KDE
+        data_ori_adjested = np.where(data_ori == 0, 1e-20, data_ori)
+        
         kde = KernelDensity(kernel=kernel_func, bandwidth=bandwidth)
-        kde.fit(x_uni_re, sample_weight=data_ori)
+        kde.fit(x_uni_re, sample_weight=data_ori_adjested)
         data_smoothing = np.exp(kde.score_samples(x_uni_re))
         
         # Flatten a column vector into a one-dimensional array

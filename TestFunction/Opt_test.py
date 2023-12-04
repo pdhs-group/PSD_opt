@@ -23,6 +23,8 @@ class Opt_test():
         
         self.k = kernel_opt(add_noise=add_noise, smoothing=smoothing, dim=self.dim, t_vec=t_vec, noise_type=noise_type, noise_strength=noise_strength)
         self.k.delta_flag = delta_flag
+        self.k.corr_beta = corr_beta
+        self.k.alpha_prim = alpha_prim
         if generate_data:
             self.k.cal_pop(corr_beta, alpha_prim)
             self.k.generate_new_data()
@@ -58,19 +60,21 @@ class Opt_test():
         if method ==1:
             sample_num=len(self.k.t_vec)
             para_opt_sample = np.zeros(sample_num)
+            delta_opt_sample = np.zeros(sample_num)
             corr_beta_sample = np.zeros(sample_num)
             if self.dim == 1:
                 alpha_prim_sample = np.zeros(sample_num)
                 
             if self.dim == 2:
-                alpha_prim_sample = np.zeros((4, sample_num))
+                alpha_prim_sample = np.zeros((3, sample_num))
             
             # t_step=0 is initial conditions which should be excluded
             for i in range(1, sample_num):
-                para_opt_sample[i], _ = self.k.optimierer(t_step=i, algo=self.algo)
+                para_opt_sample[i], delta_opt_sample[i] = self.k.optimierer(t_step=i, algo=self.algo)
                 corr_beta_sample[i] = self.k.corr_beta_opt
                 alpha_prim_sample[:, i] = self.k.alpha_prim_opt
             para_opt = np.mean(para_opt_sample)
+            delta_opt = np.mean(delta_opt_sample)
             corr_beta = np.mean(corr_beta_sample)
             alpha_prim = np.mean(alpha_prim_sample, axis=1)
             self.k.corr_beta_opt = corr_beta
@@ -78,20 +82,23 @@ class Opt_test():
         
         if method ==2:
             para_opt_sample = np.zeros(sample_num)
+            delta_opt_sample = np.zeros(sample_num)
             corr_beta_sample = np.zeros(sample_num)
             if self.dim == 1:
                 alpha_prim_sample = np.zeros(sample_num)
                 
             if self.dim == 2:
-                alpha_prim_sample = np.zeros((4, sample_num))
+                alpha_prim_sample = np.zeros((3, sample_num))
                 
             for i in range(0, sample_num):
-                para_opt_sample[i], _ = self.k.optimierer(t_step=len(self.k.t_vec)-1, algo=self.algo)
+                para_opt_sample[i], delta_opt_sample[i] = self.k.optimierer(t_step=len(self.k.t_vec)-1, algo=self.algo)
                 corr_beta_sample[i] = self.k.corr_beta_opt
                 alpha_prim_sample[:, i] = self.k.alpha_prim_opt
+                self.k.cal_pop(self.k.corr_beta, self.k.alpha_prim)
                 self.k.generate_new_data()
 
             para_opt = np.mean(para_opt_sample)
+            delta_opt = np.mean(delta_opt_sample)
             corr_beta = np.mean(corr_beta_sample)
             alpha_prim = np.mean(alpha_prim_sample, axis=1)
             self.k.corr_beta_opt = corr_beta
@@ -159,14 +166,7 @@ class Opt_test():
         if self.dim == 1:
             para_diff = abs(para_opt - self.k.corr_beta * np.sum(self.k.alpha_prim)) / (self.k.corr_beta * np.sum(self.k.alpha_prim))
         elif self.dim == 2:
-            para_diff = np.zeros(5)
-            para_diff[0] = abs(self.k.corr_beta_opt- self.k.corr_beta) / self.k.corr_beta
-            para_diff[1:] = abs(self.k.alpha_prim_opt - self.k.alpha_prim) / self.k.alpha_prim
-            
-        if self.dim == 1:
-            para_diff = abs(para_opt - self.k.corr_beta * np.sum(self.k.alpha_prim)) / (self.k.corr_beta * np.sum(self.k.alpha_prim))
-        elif self.dim == 2:
-            para_diff = np.zeros(5)
+            para_diff = np.zeros(4)
             para_diff[0] = abs(self.k.corr_beta_opt- self.k.corr_beta) / self.k.corr_beta
             para_diff[1:] = abs(self.k.alpha_prim_opt - self.k.alpha_prim) / self.k.alpha_prim
         
@@ -193,7 +193,7 @@ class Opt_test():
         x_90_ori *= 1e6  
         
         x_uni, q3, _, _, _, _, = self.k.p.return_num_distribution_fixed(t=len(self.k.t_vec)-1)
-        
+        x_uni *= 1e6  
         # bandwidth = None: use Bootstrapping method to estimate bandwidth
         # kernel_func = 'gaussian', 'tophat', 'epanechnikov', 'exponential', 'linear', 'cosine'
         # bandwidth = 'scott', 'silverman' or a value
@@ -249,7 +249,7 @@ if __name__ == '__main__':
     Opt.dim = 2
     Opt.algo='BO'
     
-    test = 4
+    test = 3
         
     if test == 1:
         para_opt, delta_opt, para_diff = Opt.opt_test()
@@ -262,7 +262,7 @@ if __name__ == '__main__':
         # method=2: Using different datasets at same time points, mean kernels
         # method=3: Using different datasets at same time points, mean datasets
         # method=4: Using different datasets at same time points, mean delta
-        corr_beta_opt, alpha_prim_opt, para_opt, para_diff, delta_opt = Opt.mean_kernel(sample_num=100, method=4)
+        corr_beta_opt, alpha_prim_opt, para_opt, para_diff, delta_opt = Opt.mean_kernel(sample_num=5, method=2)
     elif test == 4:
         Opt.smoothing_test()
     else:
