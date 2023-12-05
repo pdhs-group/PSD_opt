@@ -27,7 +27,7 @@ class Opt_test():
         self.k.alpha_prim = alpha_prim
         if generate_data:
             self.k.cal_pop(corr_beta, alpha_prim)
-            self.k.generate_new_data()
+            self.k.write_new_data()
     
     # Test for BO with different number of init_points
     # only 1D
@@ -95,7 +95,7 @@ class Opt_test():
                 corr_beta_sample[i] = self.k.corr_beta_opt
                 alpha_prim_sample[:, i] = self.k.alpha_prim_opt
                 self.k.cal_pop(self.k.corr_beta, self.k.alpha_prim)
-                self.k.generate_new_data()
+                self.k.write_new_data()
 
             para_opt = np.mean(para_opt_sample)
             delta_opt = np.mean(delta_opt_sample)
@@ -115,7 +115,7 @@ class Opt_test():
                 else:
                     self.k.exp_data_path = self.k.exp_data_path.replace(f"_{i-1}.xlsx", f"_{i}.xlsx")
                 # print(self.k.exp_data_path)
-                self.k.generate_new_data()
+                self.k.write_new_data()
                 '''
                 # Read the data from the last time step and calculate average
                 t = self.k.t_vec[len(self.k.t_vec)-1]   
@@ -159,7 +159,7 @@ class Opt_test():
                 else:
                     self.k.exp_data_path = self.k.exp_data_path.replace(f"_{i-1}.xlsx", f"_{i}.xlsx")
                 # print(self.k.exp_data_path)
-                self.k.generate_new_data()
+                self.k.write_new_data()
 
             para_opt, delta_opt = self.k.optimierer(t_step=len(self.k.t_vec)-1, algo=self.algo, sample_num=sample_num)
         
@@ -262,7 +262,7 @@ if __name__ == '__main__':
         # method=2: Using different datasets at same time points, mean kernels
         # method=3: Using different datasets at same time points, mean datasets
         # method=4: Using different datasets at same time points, mean delta
-        corr_beta_opt, alpha_prim_opt, para_opt, para_diff, delta_opt = Opt.mean_kernel(sample_num=5, method=2)
+        corr_beta_opt, alpha_prim_opt, para_opt, para_diff, delta_opt = Opt.mean_kernel(sample_num=10, method=2)
     elif test == 4:
         Opt.smoothing_test()
     else:

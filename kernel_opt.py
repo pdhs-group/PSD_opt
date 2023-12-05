@@ -12,8 +12,8 @@ from pop import population
 from bayes_opt import BayesianOptimization
 from skopt import gp_minimize
 from skopt.space import Real
-from scipy.stats import gaussian_kde
-import statsmodels.api as sm
+# from scipy.stats import gaussian_kde
+# import statsmodels.api as sm
 from sklearn.neighbors import KernelDensity
 # from functools import partial
 import ast
@@ -41,7 +41,7 @@ class kernel_opt():
         self.p = population(dim=dim, disc=disc)
         
         # Set the base path for exp_data_path
-        base_path = os.path.join(self.p.pth, "data\\")
+        self.base_path = os.path.join(self.p.pth, "data\\")
 
         # Check if noise should be added
         if self.add_noise:
@@ -52,9 +52,9 @@ class kernel_opt():
             filename = "CED_focus_Sim.xlsx"
 
         # Combine the base path with the modified file name
-        self.exp_data_path = os.path.join(base_path, filename)
+        self.exp_data_path = os.path.join(self.base_path, filename)
         
-        self.filename_kernels = "kernels.txt"
+        self.filename_kernels = os.path.join(self.base_path, "kernels.txt")
         
     def cal_delta(self, corr_beta=None, alpha_prim=None, scale=1, t_step=0, Q3_exp=None, x_50_exp=None, sample_num=1):
         
@@ -107,21 +107,25 @@ class kernel_opt():
                 x_uni_exp, q3_exp, Q3_exp, x_10_exp, x_50_exp, x_90_exp = self.read_exp(x_uni, t) 
                 delta = self.cost_fun(q3_exp, q3, Q3_exp, Q3, x_50_exp, x_50)
             else:
-                for i in range (0, sample_num):
+                if sample_num == 1:
                     x_uni_exp, q3_exp, Q3_exp, x_10_exp, x_50_exp, x_90_exp = self.read_exp(x_uni, t) 
-                    if sample_num != 1 and i != sample_num-1:
-                        self.exp_data_path = self.exp_data_path.replace(f"_{sample_num-1-i}.xlsx", f"_{sample_num-2-i}.xlsx")
-    
-                    # Calculate the error between experimental data and simulation results
-                    delta = self.cost_fun(q3_exp, q3, Q3_exp, Q3, x_50_exp, x_50)
-                    delta_sum +=delta
+                else:
+                    for i in range (0, sample_num):
+                        if i ==0:
+                            self.exp_data_path = self.exp_data_path.replace(".xlsx", f"_{i}.xlsx")
+                        else:
+                            self.exp_data_path = self.exp_data_path.replace(f"_{i-1}.xlsx", f"_{i}.xlsx")
+                        x_uni_exp, q3_exp, Q3_exp, x_10_exp, x_50_exp, x_90_exp = self.read_exp(x_uni, t) 
+                        # Calculate the error between experimental data and simulation results
+                        delta = self.cost_fun(q3_exp, q3, Q3_exp, Q3, x_50_exp, x_50)
+                        delta_sum +=delta
                 
             delta_sum /= sample_num
 
         
             return (delta_sum * scale)
         
-    def generate_new_data(self):
+    def write_new_data(self):
         # save the kernels
         alpha_prim_str = ', '.join([str(x) for x in self.alpha_prim])
         with open(self.filename_kernels, 'w') as file:
@@ -228,13 +232,13 @@ class kernel_opt():
     def optimierer(self, algo='BO', t_step=0, init_points=4, Q3_exp=None, x_50_exp=None, sample_num=1, hyperparameter=None):
         if algo == 'BO':
             if self.p.dim == 1:
-                pbounds = {'corr_beta': (0, 100), 'alpha_prim': (0, 0.5)}
+                pbounds = {'corr_beta': (0, 50), 'alpha_prim': (0, 1)}
                 objective = lambda corr_beta, alpha_prim: self.cal_delta(
                     corr_beta=corr_beta, alpha_prim=np.array([alpha_prim]), t_step=t_step, 
                     scale=-1, Q3_exp=Q3_exp, x_50_exp=x_50_exp, sample_num=sample_num)
                 
             elif self.p.dim == 2:
-                pbounds = {'corr_beta': (0, 100), 'alpha_prim_0': (0, 0.5), 'alpha_prim_1': (0, 0.5), 'alpha_prim_2': (0, 0.5)}
+                pbounds = {'corr_beta': (0, 50), 'alpha_prim_0': (0, 1), 'alpha_prim_1': (0, 1), 'alpha_prim_2': (0, 1)}
                 objective = lambda corr_beta, alpha_prim_0, alpha_prim_1, alpha_prim_2: self.cal_delta(
                     corr_beta=corr_beta, 
                     alpha_prim=np.array([alpha_prim_0, alpha_prim_1, alpha_prim_2]), 
@@ -268,12 +272,12 @@ class kernel_opt():
             
         if algo == 'gp_minimize':
             if self.p.dim == 1:
-                space = [Real(0, 100), Real(0, 0.5)]
+                space = [Real(0, 100), Real(0, 1)]
                 objective = lambda params: self.cal_delta(corr_beta=params[0], alpha_prim=np.array([params[1]]), 
                                                           scale=1, t_step=t_step, Q3_exp=Q3_exp, x_50_exp=x_50_exp, 
                                                           sample_num=sample_num)
             elif self.p.dim == 2:
-                space = [Real(0, 100), Real(0, 0.5), Real(0, 0.5), Real(0, 0.5)]
+                space = [Real(0, 100), Real(0, 1), Real(0, 1), Real(0, 1)]
                 objective = lambda params: self.cal_delta(
                     corr_beta=params[0], 
                     alpha_prim=np.array([params[1], params[2], params[3]]), 
@@ -303,6 +307,7 @@ class kernel_opt():
             
         return para_opt, delta_opt
     
+    # Visualize only the last time step of the specified time vector and the last used experimental data
     def visualize_distribution(self, ax=None,fig=None,close_all=False,clr='k',scl_a4=1,figsze=[12.8,6.4*1.5]):
     # Recalculate PSD using original parameter
         self.cal_pop(corr_beta=self.corr_beta, alpha_prim=self.alpha_prim)
