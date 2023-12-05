@@ -8,6 +8,7 @@ import opt_method as opt
 import numpy as np
 
 if __name__ == '__main__':
+    # The search range for corr_beta is [0, 50], see optimierer() in kern_opt.py
     corr_beta = 25
     alpha_prim = np.array([0.8, 0.5, 0.2])
     t_vec = np.arange(0, 601, 60, dtype=float)
@@ -24,7 +25,8 @@ if __name__ == '__main__':
     
     sample_num = 10
     
-    Opt = opt.opt_method(add_noise, smoothing, corr_beta, alpha_prim, t_vec=t_vec, noise_type=noise_type, noise_strength=noise_strength)
+    Opt = opt.opt_method(add_noise, smoothing, corr_beta, alpha_prim, 
+                         t_vec=t_vec, noise_type=noise_type, noise_strength=noise_strength)
     Opt.dim = 2
     # Optimize method: 
     #   'BO': Bayesian Optimization with package BayesianOptimization
@@ -32,15 +34,20 @@ if __name__ == '__main__':
     Opt.algo='BO'
     
     # Generate synthetic Data
-    # The file name is automatically generated from the content specified when initializing Opt_method.
-    Opt.generate_synth_data(sample_num=sample_num)
+    # The file name is automatically generated from the content specified when initializing Opt_method
+    # in form "CED_focus_Sim_{noise_type}_{noise_strength}_{label}.xlsx". 
+    # PS: There is no label when sample_num = 1.
+    # Opt.generate_synth_data(sample_num=sample_num)
     
-    # If you use other data, you need to specify the file name without a numerical label.
+    # If other data are used, you need to specify the file name without a numerical label.
     # For example: 'CED_focus_Sim_Gaussian_0.01.xlsx' instead of CED_focus_Sim_Gaussian_0.01_0.xlsx
     if add_noise:
         data_name = f"CED_focus_Sim_{noise_type}_{noise_strength}.xlsx"
     else:
         data_name = "CED_focus_Sim.xlsx"
+    
+    # use real experimental data, currently unavailable, missing underlying data
+    # data_name = "CED_focus.xlsx"
     
     # method = 'kernels': Using the max(t_vec) time step of each dataset,
     #                     optimize each data independently and then average across all kernels
@@ -49,5 +56,6 @@ if __name__ == '__main__':
     # method = 'time_kernels': Using time step in t_vec for one dataset,
     #                          optimize data in each time step independently and then average across all kernels 
     corr_beta_opt, alpha_prim_opt, para_opt, para_diff, delta_opt = \
-        Opt.mean_kernels(sample_num=sample_num, method='delta', data_name=data_name)
+        Opt.mean_kernels(sample_num=sample_num, method='time_kernels', data_name=data_name)
     
+    Opt.k.visualize_distribution(exp_data_name=None)

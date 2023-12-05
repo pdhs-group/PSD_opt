@@ -65,8 +65,10 @@ class opt_method():
                         if i ==0:
                             self.k.exp_data_path = self.k.exp_data_path.replace(".xlsx", f"_{i}.xlsx")
                         else:
-                            self.k.exp_data_path = self.k.exp_data_path.replace(f"_{i-1}.xlsx", f"_{i}.xlsx")
-                        para_opt_sample[i], delta_opt_sample[i] = self.k.optimierer(t_step=len(self.k.t_vec)-1, algo=self.algo)
+                            self.k.exp_data_path = \
+                                self.k.exp_data_path.replace(f"_{i-1}.xlsx", f"_{i}.xlsx")
+                        para_opt_sample[i], delta_opt_sample[i] = \
+                            self.k.optimierer(t_step=len(self.k.t_vec)-1, algo=self.algo)
                         corr_beta_sample[i] = self.k.corr_beta_opt
                         alpha_prim_sample[:, i] = self.k.alpha_prim_opt
     
@@ -80,7 +82,8 @@ class opt_method():
                     self.k.alpha_prim_opt = alpha_prim
                 
             elif method == 'delta':
-                para_opt, delta_opt = self.k.optimierer(t_step=len(self.k.t_vec)-1, algo=self.algo, sample_num=sample_num)
+                para_opt, delta_opt = \
+                    self.k.optimierer(t_step=len(self.k.t_vec)-1, algo=self.algo, sample_num=sample_num)
                 
             elif method == 'time_kernels':
                 sample_num=len(self.k.t_vec)
@@ -112,8 +115,6 @@ class opt_method():
                 para_diff = np.zeros(4)
                 para_diff[0] = abs(self.k.corr_beta_opt- self.k.corr_beta) / self.k.corr_beta
                 para_diff[1:] = abs(self.k.alpha_prim_opt - self.k.alpha_prim) / self.k.alpha_prim
-            
-            self.k.visualize_distribution()
             
             return self.k.corr_beta_opt, self.k.alpha_prim_opt, para_opt, para_diff, delta_opt
         

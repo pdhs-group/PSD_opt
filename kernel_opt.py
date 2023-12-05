@@ -103,27 +103,28 @@ class kernel_opt():
             t = self.p.t_vec[t_step]
             delta_sum = 0
             
-            if Q3_exp != None and x_50_exp != None:
+            if sample_num == 1:
                 x_uni_exp, q3_exp, Q3_exp, x_10_exp, x_50_exp, x_90_exp = self.read_exp(x_uni, t) 
                 delta = self.cost_fun(q3_exp, q3, Q3_exp, Q3, x_50_exp, x_50)
-            else:
-                if sample_num == 1:
-                    x_uni_exp, q3_exp, Q3_exp, x_10_exp, x_50_exp, x_90_exp = self.read_exp(x_uni, t) 
-                else:
-                    for i in range (0, sample_num):
-                        if i ==0:
-                            self.exp_data_path = self.exp_data_path.replace(".xlsx", f"_{i}.xlsx")
-                        else:
-                            self.exp_data_path = self.exp_data_path.replace(f"_{i-1}.xlsx", f"_{i}.xlsx")
-                        x_uni_exp, q3_exp, Q3_exp, x_10_exp, x_50_exp, x_90_exp = self.read_exp(x_uni, t) 
-                        # Calculate the error between experimental data and simulation results
-                        delta = self.cost_fun(q3_exp, q3, Q3_exp, Q3, x_50_exp, x_50)
-                        delta_sum +=delta
                 
-            delta_sum /= sample_num
-
+                return (delta * scale)
+            else:
+                for i in range (0, sample_num):
+                    if i ==0:
+                        self.exp_data_path = self.exp_data_path.replace(".xlsx", f"_{i}.xlsx")
+                    else:
+                        self.exp_data_path = self.exp_data_path.replace(f"_{i-1}.xlsx", f"_{i}.xlsx")
+                    x_uni_exp, q3_exp, Q3_exp, x_10_exp, x_50_exp, x_90_exp = self.read_exp(x_uni, t) 
+                    # Calculate the error between experimental data and simulation results
+                    delta = self.cost_fun(q3_exp, q3, Q3_exp, Q3, x_50_exp, x_50)
+                    delta_sum +=delta
+                # Restore the original name of the file to prepare for the next step of training
+                self.exp_data_path = self.exp_data_path.replace(f"_{sample_num-1}.xlsx", ".xlsx")
+                delta_sum /= sample_num
+                
+                return (delta_sum * scale)
         
-            return (delta_sum * scale)
+
         
     def write_new_data(self):
         # save the kernels
@@ -308,7 +309,8 @@ class kernel_opt():
         return para_opt, delta_opt
     
     # Visualize only the last time step of the specified time vector and the last used experimental data
-    def visualize_distribution(self, ax=None,fig=None,close_all=False,clr='k',scl_a4=1,figsze=[12.8,6.4*1.5]):
+    def visualize_distribution(self, exp_data_name=None,ax=None,fig=None,
+                               close_all=False,clr='k',scl_a4=1,figsze=[12.8,6.4*1.5]):
     # Recalculate PSD using original parameter
         self.cal_pop(corr_beta=self.corr_beta, alpha_prim=self.alpha_prim)
         '''if self.p.dim == 1:       
@@ -351,12 +353,7 @@ class kernel_opt():
             sumN = np.sum(sumN_uni)
 
             Q3 = np.cumsum(sumN_uni)/sumN
-            q3 = sumN_uni/np.sum(sumN_uni)
- 
-        # read and calculate the experimental data
-        t = max(self.p.t_vec)
-
-        x_uni_exp, q3_exp, Q3_exp, x_10_exp, x_50_exp, x_90_exp = self.read_exp(x_uni, t)     
+            q3 = sumN_uni/np.sum(sumN_uni)   
         
         pt.plot_init(scl_a4=scl_a4,figsze=figsze,lnewdth=0.8,mrksze=5,use_locale=True,scl=1.2)
         if close_all:
@@ -373,8 +370,7 @@ class kernel_opt():
                                ylbl='volume distribution of agglomerates $q3$ / $-$',
                                lbl='q3_mod',clr='b',mrk='o')
         
-        axq3, fig = pt.plot_data(x_uni_exp, q3_exp, fig=fig, ax=axq3,
-                               lbl='q3_exp',clr='g',mrk='^')
+
         axq3, fig = pt.plot_data(x_uni_ori, q3_ori, fig=fig, ax=axq3,
                                lbl='q3_ori',clr='r',mrk='v')
         
@@ -382,11 +378,21 @@ class kernel_opt():
                                xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
                                ylbl='volume distribution of agglomerates $Q3$ / $-$',
                                lbl='Q3_mod',clr='b',mrk='o')
-        axQ3, fig = pt.plot_data(x_uni_exp, Q3_exp, fig=fig, ax=axQ3,
-                               lbl='Q3_exp',clr='g',mrk='^')
+
         axQ3, fig = pt.plot_data(x_uni_ori, Q3_ori, fig=fig, ax=axQ3,
                                lbl='Q3_ori',clr='r',mrk='v')
 
+        if not exp_data_name == None:
+            # read and calculate the experimental data
+            t = max(self.p.t_vec)
+    
+            x_uni_exp, q3_exp, Q3_exp, x_10_exp, x_50_exp, x_90_exp = self.read_exp(x_uni, t)
+            
+            axq3, fig = pt.plot_data(x_uni_exp, q3_exp, fig=fig, ax=axq3,
+                                   lbl='q3_exp',clr='g',mrk='^')
+            axQ3, fig = pt.plot_data(x_uni_exp, Q3_exp, fig=fig, ax=axQ3,
+                                   lbl='Q3_exp',clr='g',mrk='^')
+        
         axq3.grid('minor')
         axQ3.grid('minor')
         plt.tight_layout()   
