@@ -77,35 +77,25 @@ class kernel_opt():
                         array_str = line.split(':')[1].strip()
                         # array_str = array_str.replace(" ", ", ")
                         self.alpha_prim = np.array(ast.literal_eval(array_str))
-                        
-        if t_step >= len(self.p.t_vec):
-            raise ValueError("Current time step is out of the range of the data table.")
             
-        else:
-            x_uni, q3, Q3, x_10, x_50, x_90 = self.p.return_num_distribution_fixed(t=t_step)
+        if not self.smoothing:
+            data = self.p.return_num_distribution_fixed(t=t_step)
             # Conversion unit
+            indexes = [0, 3, 4, 5]
+            x_uni, x_10, x_50, x_90 = [data[i] for i in indexes]
+
             x_uni *= 1e6    
             x_10 *= 1e6   
             x_50 *= 1e6   
             x_90 *= 1e6
-            if self.smoothing:
-                sumN_uni = self.KDE_smoothing(x_uni, q3, bandwidth='scott', kernel_func='gaussian')
-                sumN = np.sum(sumN_uni)
-
-                Q3 = np.cumsum(sumN_uni)/sumN
-                q3 = sumN_uni/np.sum(sumN_uni)
-                
-                x_10 = np.interp(0.1, Q3, x_uni)
-                x_50 = np.interp(0.5, Q3, x_uni)
-                x_90 = np.interp(0.9, Q3, x_uni)
 
             # read and calculate the experimental data
             t = self.p.t_vec[t_step]
             delta_sum = 0
             
             if sample_num == 1:
-                x_uni_exp, q3_exp, Q3_exp, x_10_exp, x_50_exp, x_90_exp = self.read_exp(x_uni, t) 
-                delta = self.cost_fun(q3_exp, q3, Q3_exp, Q3, x_50_exp, x_50)
+                data_exp = self.read_exp(x_uni, t) 
+                delta = self.cost_fun(data_exp[self.delta_flag], data[self.delta_flag])
                 
                 return (delta * scale)
             else:
@@ -114,15 +104,43 @@ class kernel_opt():
                         self.exp_data_path = self.exp_data_path.replace(".xlsx", f"_{i}.xlsx")
                     else:
                         self.exp_data_path = self.exp_data_path.replace(f"_{i-1}.xlsx", f"_{i}.xlsx")
-                    x_uni_exp, q3_exp, Q3_exp, x_10_exp, x_50_exp, x_90_exp = self.read_exp(x_uni, t) 
+                    data_exp = self.read_exp(x_uni, t) 
                     # Calculate the error between experimental data and simulation results
-                    delta = self.cost_fun(q3_exp, q3, Q3_exp, Q3, x_50_exp, x_50)
+                    delta = self.cost_fun(data_exp[self.delta_flag], data[self.delta_flag])
                     delta_sum +=delta
                 # Restore the original name of the file to prepare for the next step of training
                 self.exp_data_path = self.exp_data_path.replace(f"_{sample_num-1}.xlsx", ".xlsx")
                 delta_sum /= sample_num
+            
+        else:
+            for t_step, t_time in self.p.t_vec:
+                data = self.p.return_num_distribution_fixed(t=t_step)
+                # Conversion unit
+                x_uni = data[0]
+                x_uni *= 1e6
                 
-                return (delta_sum * scale)
+                kde = self.KDE_fit(x_uni, data[1])
+                # read and calculate the experimental data
+                t = self.p.t_vec[t_step]
+                delta_sum = 0
+                
+                for i in range (0, sample_num):
+                    if i ==0:
+                        self.exp_data_path = self.exp_data_path.replace(".xlsx", f"_{i}.xlsx")
+                    else:
+                        self.exp_data_path = self.exp_data_path.replace(f"_{i-1}.xlsx", f"_{i}.xlsx")
+                        
+                    data_exp = self.read_exp(t) 
+                    sumN_uni = self.KDE_score(kde, data_exp[0])
+                    data_mod = self.re_cal_distribution(data_exp[0], sumN_uni)
+                    # Calculate the error between experimental data and simulation results
+                    delta = self.cost_fun(data_exp[self.delta_flag], data_mod[self.delta_flag])
+                    delta_sum +=delta
+            # Restore the original name of the file to prepare for the next step of training
+            self.exp_data_path = self.exp_data_path.replace(f"_{sample_num-1}.xlsx", ".xlsx")
+            delta_sum /= sample_num
+            
+            return (delta_sum * scale)
         
 
         
@@ -143,8 +161,9 @@ class kernel_opt():
         for idt in range(0, len(self.p.t_vec)):
             _, q3, _, _, _, _ = self.p.return_num_distribution_fixed(t=idt)
             if self.smoothing:
-                sumN_uni = self.KDE_smoothing(x_uni, q3, bandwidth='scott', kernel_func='gaussian')
-                q3 = sumN_uni/np.sum(sumN_uni)
+                kde = self.KDE_fit(x_uni, q3)
+                sumN_uni = self.KDE_score(kde, x_uni)
+                _, q3, _, _, _,_ = self.re_cal_distribution(x_uni, sumN_uni)
                 # add noise to the original data
                 if self.add_noise:
                     q3 = self.function_noise(q3, noise_type=self.noise_type)
@@ -197,38 +216,37 @@ class kernel_opt():
     
     # Read the experimental data and re-interpolate the particle distribution 
     # of the experimental data according to the simulation results.
-    def read_exp(self, x_uni, t):
+    def read_exp(self, t, x_uni=None):
         
         compare = write_read_exp(self.exp_data_path, read=True)
         q3_exp = compare.get_exp_data(t)
         x_uni_exp = q3_exp.index.to_numpy()
-        if not np.array_equal(x_uni_exp, x_uni):
+        if not self.smoothing:
             # If the experimental data has a different particle size scale than the simulations, 
             # interpolation is required
             q3_exp_interpolated = np.interp(x_uni, x_uni_exp, q3_exp)
             q3_exp_interpolated_clipped = np.clip(q3_exp_interpolated, 0, 1)
             q3_exp_interpolated = q3_exp_interpolated_clipped / np.sum(q3_exp_interpolated_clipped)
             q3_exp = pd.Series(q3_exp_interpolated, index=x_uni)
-        Q3_exp = q3_exp.cumsum()
-        x_10_exp = np.interp(0.1, Q3_exp, x_uni)
-        x_50_exp = np.interp(0.5, Q3_exp, x_uni)
-        x_90_exp = np.interp(0.9, Q3_exp, x_uni)
+            Q3_exp = q3_exp.cumsum()
+            x_10_exp = np.interp(0.1, Q3_exp, x_uni)
+            x_50_exp = np.interp(0.5, Q3_exp, x_uni)
+            x_90_exp = np.interp(0.9, Q3_exp, x_uni)
         
-        # q3_exp has been redistributed according to x_uni, so actually x_uni rather than x_uni_exp is returned
-        return x_uni, q3_exp, Q3_exp, x_10_exp, x_50_exp, x_90_exp
-    
-    def cost_fun(self, q3_exp, q3, Q3_exp, Q3, x_50_exp, x_50):
-        # delta_flag == 1: use q3
-        # delta_flag == 2: use Q3
-        # delta_flag == 3: use x_50
-        if self.delta_flag == 1:
-            delta = ((q3*100-q3_exp*100)**2).sum()
-        elif self.delta_flag == 2:
-            delta = ((Q3*100-Q3_exp*100)**2).sum()
+            # q3_exp has been redistributed according to x_uni, so actually x_uni rather than x_uni_exp is returned
+            return x_uni, q3_exp, Q3_exp, x_10_exp, x_50_exp, x_90_exp
+        
+        # Smoothing can return the value of the simulation result at any x, 
+        # so there is no need to process the experimental data.
         else:
-            delta = (x_50 - x_50_exp)**2
-        
-        return delta
+            Q3_exp = q3_exp.cumsum()
+            x_10_exp = np.interp(0.1, Q3_exp, x_uni_exp)
+            x_50_exp = np.interp(0.5, Q3_exp, x_uni_exp)
+            x_90_exp = np.interp(0.9, Q3_exp, x_uni_exp)
+            return x_uni_exp, q3_exp, Q3_exp, x_10_exp, x_50_exp, x_90_exp
+    
+    def cost_fun(self, data_exp, data_mod):
+        return ((data_mod*100-data_exp*100)**2).sum()
     
     def optimierer(self, algo='BO', t_step=0, init_points=4, Q3_exp=None, x_50_exp=None, sample_num=1, hyperparameter=None):
         if algo == 'BO':
@@ -330,11 +348,9 @@ class kernel_opt():
         x_50_ori *= 1e6   
         x_90_ori *= 1e6  
         if self.smoothing:
-            sumN_uni_ori = self.KDE_smoothing(x_uni_ori, q3_ori, bandwidth='scott', kernel_func='gaussian')
-            sumN_ori = np.sum(sumN_uni_ori)
-    
-            Q3_ori = np.cumsum(sumN_uni_ori)/sumN_ori
-            q3_ori = sumN_uni_ori/np.sum(sumN_uni_ori)
+            kde = self.KDE_fit(x_uni_ori, q3_ori)
+            sumN_uni = self.KDE_score(kde, x_uni_ori)
+            _, q3_ori, Q3_ori, _, _,_ = self.re_cal_distribution(x_uni_ori, sumN_uni)
 
         # Recalculate PSD using optimization results
         if hasattr(self, 'corr_beta_opt') and hasattr(self, 'alpha_prim_opt'):
@@ -349,11 +365,9 @@ class kernel_opt():
         x_50 *= 1e6   
         x_90 *= 1e6  
         if self.smoothing:
-            sumN_uni = self.KDE_smoothing(x_uni, q3, bandwidth='scott', kernel_func='gaussian')
-            sumN = np.sum(sumN_uni)
-
-            Q3 = np.cumsum(sumN_uni)/sumN
-            q3 = sumN_uni/np.sum(sumN_uni)   
+            kde = self.KDE_fit(x_uni, q3)
+            sumN_uni = self.KDE_score(kde, x_uni)
+            _, q3, Q3, _, _,_ = self.re_cal_distribution(x_uni, sumN_uni)
         
         pt.plot_init(scl_a4=scl_a4,figsze=figsze,lnewdth=0.8,mrksze=5,use_locale=True,scl=1.2)
         if close_all:
@@ -428,7 +442,7 @@ class kernel_opt():
 
     ## Kernel density estimation
     ## data_ori must be a quantity rather than a relative value!
-    def KDE_smoothing(self, x_uni_ori, data_ori, bandwidth='scott', kernel_func='gaussian'):
+    def KDE_fit(self, x_uni_ori, data_ori, bandwidth='scott', kernel_func='gaussian'):
         '''
         # estimate the value of bandwidth
         # Bootstrapping method is used 
@@ -448,19 +462,34 @@ class kernel_opt():
         
         # KernelDensity requires input to be a column vector
         # So x_uni_re must be reshaped
-        x_uni_re = x_uni_ori.reshape(-1, 1)
+        x_uni_ori_re = x_uni_ori.reshape(-1, 1)
         # Avoid divide-by-zero warnings when calculating KDE
         data_ori_adjested = np.where(data_ori == 0, 1e-20, data_ori)
         
         kde = KernelDensity(kernel=kernel_func, bandwidth=bandwidth)
-        kde.fit(x_uni_re, sample_weight=data_ori_adjested)
-        data_smoothing = np.exp(kde.score_samples(x_uni_re))
+        kde.fit(x_uni_ori_re, sample_weight=data_ori_adjested)
+        
+        return kde
+    
+    def KDE_score(self, kde, x_uni_new):
+        
+        x_uni_new_re = x_uni_new.reshape(-1, 1) 
+        data_smoothing = np.exp(kde.score_samples(x_uni_new_re))
         
         # Flatten a column vector into a one-dimensional array
         data_smoothing = data_smoothing.ravel()
         
         return data_smoothing
             
-
+    def re_cal_distribution(self, x_uni, sumN_uni):
+        sumN = np.sum(sumN_uni)
+        Q3 = np.cumsum(sumN_uni)/sumN
+        q3 = sumN_uni/np.sum(sumN_uni)
+        
+        x_10 = np.interp(0.1, Q3, x_uni)
+        x_50 = np.interp(0.5, Q3, x_uni)
+        x_90 = np.interp(0.9, Q3, x_uni)
+        
+        return x_uni, q3, Q3, x_10, x_50, x_90
 
         

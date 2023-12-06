@@ -28,17 +28,14 @@ class opt_method():
 
     def generate_synth_data(self, sample_num=1):
         self.k.cal_pop(self.k.corr_beta, self.k.alpha_prim)
-        
-        if sample_num == 1:
+
+        for i in range(0, sample_num):
+            if i ==0:
+                self.k.exp_data_path = self.k.exp_data_path.replace(".xlsx", f"_{i}.xlsx")
+            else:
+                self.k.exp_data_path = self.k.exp_data_path.replace(f"_{i-1}.xlsx", f"_{i}.xlsx")
+            # print(self.k.exp_data_path)
             self.k.write_new_data()
-        else:
-            for i in range(0, sample_num):
-                if i ==0:
-                    self.k.exp_data_path = self.k.exp_data_path.replace(".xlsx", f"_{i}.xlsx")
-                else:
-                    self.k.exp_data_path = self.k.exp_data_path.replace(f"_{i-1}.xlsx", f"_{i}.xlsx")
-                # print(self.k.exp_data_path)
-                self.k.write_new_data()
         
     def mean_kernels(self, sample_num, method='kernels', data_name=None):
         if data_name == None:
