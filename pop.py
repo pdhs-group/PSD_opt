@@ -980,7 +980,7 @@ class population():
             # Loop through all entries in V and add volume concentration to specific entry in sumN_uni
             if self.dim == 1:
                 for i in range(1,self.NS+3):
-                    if float_in_list(self.V[i], v_uni) and (not N[i,j,t] < 0):
+                    if float_in_list(self.V[i], v_uni) and (not N[i,t] < 0):
                         sumN_uni[v_uni == self.V[i]] += N[i,t] 
                         
             if self.dim == 2:

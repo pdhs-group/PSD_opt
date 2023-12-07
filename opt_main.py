@@ -8,9 +8,11 @@ import opt_method as opt
 import numpy as np
 
 if __name__ == '__main__':
+    dim = 1
     # The search range for corr_beta is [0, 50], see optimierer() in kern_opt.py
     corr_beta = 25
-    alpha_prim = np.array([0.8, 0.5, 0.2])
+    alpha_prim = 0.5
+    # alpha_prim = np.array([0.8, 0.5, 0.2])
     # t=0 is initial conditions which should be excluded
     t_vec = np.arange(1, 602, 60, dtype=float)
     
@@ -24,11 +26,12 @@ if __name__ == '__main__':
     noise_type='Gaussian'
     noise_strength = 0.005
     
-    sample_num = 1
+    sample_num = 5
+    Multi_Opt = False
     
-    Opt = opt.opt_method(add_noise, smoothing, corr_beta, alpha_prim, 
-                         t_vec=t_vec, noise_type=noise_type, noise_strength=noise_strength)
-    Opt.dim = 2
+    Opt = opt.opt_method(add_noise, smoothing, corr_beta, alpha_prim, dim,
+                         t_vec, noise_type, noise_strength, Multi_Opt)
+
     # Optimize method: 
     #   'BO': Bayesian Optimization with package BayesianOptimization
     #   'gp_minimize': Bayesian Optimization with package skopt.gp_minimize

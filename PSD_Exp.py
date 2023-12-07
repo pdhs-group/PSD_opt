@@ -72,11 +72,10 @@ class write_read_exp():
         # Rearrange the columns so they are in chronological order 
         self.exp_data = self.exp_data.reindex(sorted(self.exp_data.columns), axis=1)
         
-    def get_exp_data(self, t_exp):
-        # if t_exp is in the experiment data
-        if t_exp in self.exp_data.columns:
-            return self.exp_data[t_exp]
-        else:
+    def get_exp_data(self, t_vec):
+        interpolated_results = {}
+        
+        for t_exp in t_vec:
             # use interpolation to find experiment data
             time_points = self.exp_data.columns[:]  
             
@@ -89,20 +88,10 @@ class write_read_exp():
             for diameter in self.exp_data.index:
 
                 row_data = self.exp_data.loc[diameter, time_points]
-                ''' 
-                # Compares the corresponding values ​​in time_point and row_data_index
-                row_data_index = row_data.index
-                
-                for idx in range(len(time_points)):
-                    time_point = time_points[idx]
-                    row_data_time_point = row_data_index[idx]
-                    
-                    if time_point != row_data_time_point:
-                        print(f"Nonzero differences for diameter {diameter} at index {idx}: {time_point} vs {row_data_time_point}")
-                '''
                 interp_func = interp1d(time_points, row_data, kind='linear')
                 interpolated_data[diameter] = float(interp_func(t_exp))
-            # fix a type bug for the first element in interpolated_data
-            
-            
-            return pd.Series(interpolated_data, name=t_exp)
+                
+            interpolated_results[t_exp] = pd.Series(interpolated_data, name=t_exp)
+        # convert the result in dataframe    
+        result_df = pd.DataFrame(interpolated_results)
+        return result_df
