@@ -26,10 +26,11 @@ if __name__ == '__main__':
     noise_type='Gaussian'
     noise_strength = 0.005
     
-    sample_num = 5
+    sample_num = 2
+    multi_flag = True
     
     Opt = opt.opt_method(add_noise, smoothing, corr_beta, alpha_prim, dim,
-                        delta_flag, noise_type, noise_strength, t_vec)
+                        delta_flag, noise_type, noise_strength, t_vec, multi_flag)
 
     # Optimize method: 
     #   'BO': Bayesian Optimization with package BayesianOptimization
@@ -59,4 +60,4 @@ if __name__ == '__main__':
     corr_beta_opt, alpha_prim_opt, para_opt, para_diff, delta_opt = \
         Opt.mean_kernels(sample_num=sample_num, method='delta', data_name=data_name)
     
-    Opt.k.visualize_distribution(exp_data_name=None)
+    Opt.visualize_distribution(exp_data_path=None)
