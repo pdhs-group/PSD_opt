@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-Created on Wed Nov 15 14:38:56 2023
+Created on Mon Dec 11 09:05:42 2023
 
 @author: px2030
 """
+
 import os
 import warnings
 import numpy as np
@@ -24,19 +25,24 @@ import plotter.plotter as pt
 # from plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
 
 class kernel_opt():
-    def __init__(self, add_noise=True, smoothing=True, dim=1, delta_flag=1, 
+    def __init__(self, add_noise=True, smoothing=True, dim=1, disc='geo', 
                  noise_type='Gaussian', noise_strength=0.01, t_vec=None):
         # delta_flag = 1: use q3
         # delta_flag = 2: use Q3
         # delta_flag = 3: use x_50
-        self.delta_flag = delta_flag        
+        self.delta_flag = 1         
         self.add_noise = add_noise
         self.smoothing = smoothing
         self.noise_type = noise_type    # Gaussian, Uniform, Poisson, Multiplicative
         self.noise_strength = noise_strength
         self.t_vec = t_vec
         self.num_t_steps = len(t_vec)
-        self.p = population(dim=dim, disc='geo')
+        self.Multi_Opt = False
+        if not self.Multi_Opt:
+            self.p = population(dim=dim, disc=disc)
+        else:
+            self.create_all_pop(disc)
+        
         # Set the base path for exp_data_path
         self.base_path = os.path.join(self.p.pth, "data\\")
 
@@ -190,19 +196,50 @@ class kernel_opt():
         return 
         
     def cal_pop(self, corr_beta, alpha_prim):
-        self.p.COLEVAL = 2
-        self.p.EFFEVAL = 2
-        self.p.CORR_BETA = corr_beta
-        if self.p.dim == 1:
-            alpha_prim_temp = alpha_prim
-        elif self.p.dim == 2:
+        if not self.Multi_Opt:
+            self.p.COLEVAL = 2
+            self.p.EFFEVAL = 2
+            self.p.CORR_BETA = corr_beta
+            if self.p.dim == 1:
+                alpha_prim_temp = alpha_prim
+            elif self.p.dim == 2:
+                alpha_prim_temp = np.zeros(4)
+                alpha_prim_temp[0] = alpha_prim[0]
+                alpha_prim_temp[1] = alpha_prim_temp[2] = alpha_prim[1]
+                alpha_prim_temp[3] = alpha_prim[2]
+            self.p.alpha_prim = alpha_prim_temp
+            self.p.full_init(calc_alpha=False)
+            self.p.solve_PBE(t_vec=self.t_vec)
+        
+        else:
+            self.p_N.COLEVAL = 2
+            self.p_N.EFFEVAL = 2
+            self.p_N.CORR_BETA = corr_beta
+            alpha_prim_temp = alpha_prim[0]
+            self.p_N.alpha_prim = alpha_prim_temp
+            self.p_N.full_init(calc_alpha=False)
+            self.p_N.solve_PBE(t_vec=self.t_vec)
+            
+            self.p_M.COLEVAL = 2
+            self.p_M.EFFEVAL = 2
+            self.p_M.CORR_BETA = corr_beta
+            alpha_prim_temp = alpha_prim[2]
+            self.p_M.alpha_prim = alpha_prim_temp
+            self.p_M.full_init(calc_alpha=False)
+            self.p_M.solve_PBE(t_vec=self.t_vec)
+            
+            self.p_mix.COLEVAL = 2
+            self.p_mix.EFFEVAL = 2
+            self.p_mix.CORR_BETA = corr_beta
             alpha_prim_temp = np.zeros(4)
             alpha_prim_temp[0] = alpha_prim[0]
             alpha_prim_temp[1] = alpha_prim_temp[2] = alpha_prim[1]
             alpha_prim_temp[3] = alpha_prim[2]
-        self.p.alpha_prim = alpha_prim_temp
-        self.p.full_init(calc_alpha=False)
-        self.p.solve_PBE(t_vec=self.t_vec)                
+            self.p_mix.alpha_prim = alpha_prim_temp
+            self.p_mix.full_init(calc_alpha=False)
+            self.p_mix.solve_PBE(t_vec=self.t_vec)
+            
+            
     
     # Read the experimental data and re-interpolate the particle distribution 
     # of the experimental data according to the simulation results.
@@ -512,3 +549,21 @@ class kernel_opt():
             self.exp_data_path = self.exp_data_path.replace(".xlsx", f"_{label}.xlsx")
         else:
             self.exp_data_path = self.exp_data_path.replace(f"_{label-1}.xlsx", f"_{label}.xlsx")
+        
+    def create_all_pop(self, disc):
+        self.p_N = population(1,disc=disc)
+        self.p_M = population(1,disc=disc)
+        self.p_mix = population(2,disc=disc)
+        
+        # parameter for particle component 1 - NM
+        self.p_N.R01 = 2.9e-7 
+        self.p_N.DIST1 = os.path.join(self.p_N.pth,"data\\PSD_data\\")+'PSD_x50_1.0E-6_r01_2.9E-7.npy'
+        
+        # parameter for particle component 2 - M
+        self.p_M.R01 = 2.9e-7 
+        self.p_M.DIST1 = os.path.join(self.p_M.pth,"data\\PSD_data\\")+'PSD_x50_1.0E-6_r01_2.9E-7.npy'
+        # Pass parameters from 1D simulations to 2D
+        self.p_mix.R01 = self.p_N.R01
+        self.p_mix.R03 = self.p_M.R01
+        self.p_mix.DIST1 = self.p_N.DIST1
+        self.p_mix.DIST3 = self.p_M.DIST1

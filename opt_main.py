@@ -8,11 +8,11 @@ import opt_method as opt
 import numpy as np
 
 if __name__ == '__main__':
-    dim = 1
+    dim = 2
     # The search range for corr_beta is [0, 50], see optimierer() in kern_opt.py
     corr_beta = 25
-    alpha_prim = 0.5
-    # alpha_prim = np.array([0.8, 0.5, 0.2])
+    #alpha_prim = 0.5
+    alpha_prim = np.array([0.8, 0.5, 0.2])
     # t=0 is initial conditions which should be excluded
     t_vec = np.arange(1, 602, 60, dtype=float)
     
@@ -27,10 +27,9 @@ if __name__ == '__main__':
     noise_strength = 0.005
     
     sample_num = 5
-    Multi_Opt = False
     
     Opt = opt.opt_method(add_noise, smoothing, corr_beta, alpha_prim, dim,
-                         t_vec, noise_type, noise_strength, Multi_Opt)
+                        delta_flag, noise_type, noise_strength, t_vec)
 
     # Optimize method: 
     #   'BO': Bayesian Optimization with package BayesianOptimization
@@ -58,6 +57,6 @@ if __name__ == '__main__':
     # method = 'delta': Using the t_vec time step of each dataset,
     #                   use the average error(delta) with all data as the optimization goal to find the optimal kernels
     corr_beta_opt, alpha_prim_opt, para_opt, para_diff, delta_opt = \
-        Opt.mean_kernels(sample_num=sample_num, method='kernels', data_name=data_name)
+        Opt.mean_kernels(sample_num=sample_num, method='delta', data_name=data_name)
     
     Opt.k.visualize_distribution(exp_data_name=None)

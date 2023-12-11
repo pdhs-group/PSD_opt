@@ -13,15 +13,13 @@ from kernel_opt import kernel_opt
 class opt_method():
     def __init__(self, add_noise, smoothing, corr_beta, alpha_prim, dim=1,
                  delta_flag=1, noise_type='Gaussian', noise_strength=0.01, 
-                 t_vec=None, Multi_Opt=False):
+                 t_vec=None):
         self.algo='BO'   
         self.k = kernel_opt(add_noise, smoothing, 
-                            dim, t_vec, noise_type, 
-                            noise_strength, Multi_Opt)
-        self.k.delta_flag = delta_flag
+                            dim, delta_flag, noise_type, 
+                            noise_strength, t_vec)
         self.k.corr_beta = corr_beta
         self.k.alpha_prim = alpha_prim
-        self.k.Multi_Opt = Multi_Opt
 
     def generate_synth_data(self, sample_num=1):
         self.k.cal_pop(self.k.corr_beta, self.k.alpha_prim)
