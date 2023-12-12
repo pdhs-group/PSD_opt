@@ -1,7 +1,7 @@
 # ignore file
 .log
 CED_focus_Sim*
-.png
+*.png
 
 # ignore ordner
 __pycache__
