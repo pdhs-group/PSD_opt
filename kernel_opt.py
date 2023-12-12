@@ -96,7 +96,10 @@ class kernel_opt():
             # Calculate the error between experimental data and simulation results
             delta = self.cost_fun(data_exp[self.delta_flag], data_mod[self.delta_flag])
             
-            return (delta * scale)
+            # Because the number of x_uni is different in different pop equations, 
+            # the average value needs to be used instead of the sum.
+            x_uni_num = len(data_exp[0])
+            return (delta * scale) / x_uni_num
         else:
             delta_sum = 0           
             for i in range (0, sample_num):
@@ -114,8 +117,10 @@ class kernel_opt():
                 delta_sum +=delta
             # Restore the original name of the file to prepare for the next step of training
             delta_sum /= sample_num
-                
-            return (delta_sum * scale)
+            # Because the number of x_uni is different in different pop equations, 
+            # the average value needs to be used instead of the sum.
+            x_uni_num = len(data_exp[0])    
+            return (delta_sum * scale) / x_uni_num
         
     def cal_pop(self, pop, corr_beta, alpha_prim):
         pop.COLEVAL = 2
@@ -208,12 +213,12 @@ class kernel_opt():
             
         if algo == 'gp_minimize':
             if self.p.dim == 1:
-                space = [Real(0, 100), Real(0, 1)]
+                space = [Real(0, 50), Real(0, 1)]
                 objective = lambda params: self.cal_delta(corr_beta=params[0], alpha_prim=np.array([params[1]]), 
                                                           scale=1, Q3_exp=Q3_exp, x_50_exp=x_50_exp, 
                                                           sample_num=sample_num, exp_data_path=exp_data_path)
             elif self.p.dim == 2:
-                space = [Real(0, 100), Real(0, 1), Real(0, 1), Real(0, 1)]
+                space = [Real(0, 50), Real(0, 1), Real(0, 1), Real(0, 1)]
                 objective = lambda params: self.cal_delta(
                     corr_beta=params[0], 
                     alpha_prim=np.array([params[1], params[2], params[3]]), 
@@ -351,11 +356,15 @@ class kernel_opt():
         return (6*v_uni/np.pi)**(1/3)*1e6
 
     def traverse_path(self, label, path_ori):
-        if label ==0:
-            path_trav = path_ori.replace(".xlsx", f"_{label}.xlsx")
+        def update_path(path, label):
+            if label == 0:
+                return path.replace(".xlsx", f"_{label}.xlsx")
+            else:
+                return path.replace(f"_{label-1}.xlsx", f"_{label}.xlsx")
+    
+        if isinstance(path_ori, list):
+            return [update_path(path, label) for path in path_ori]
         else:
-            path_trav = path_ori.replace(f"_{label-1}.xlsx", f"_{label}.xlsx")
-            
-        return path_trav
+            return update_path(path_ori, label)
     
     

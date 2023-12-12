@@ -56,7 +56,8 @@ class opt_method():
             self.k.cal_pop(self.k.p, self.k.corr_beta, self.k.alpha_prim)
             
             for i in range(0, sample_num):
-                exp_data_path=self.k.traverse_path(i, exp_data_path)
+                if sample_num != 1:
+                    exp_data_path=self.k.traverse_path(i, exp_data_path)
                 # print(self.k.exp_data_path)
                 self.write_new_data(self.k.p, exp_data_path)
         else:
@@ -68,9 +69,11 @@ class opt_method():
             ]
             
             for i in range(0, sample_num):
-                for j, path in enumerate(exp_data_paths):
-                    exp_data_paths[j] = self.k.traverse_path(i, path)
-                    self.write_new_data(self.k.p, exp_data_paths[j])
+                if sample_num != 1:
+                    exp_data_paths = self.k.traverse_path(i, exp_data_paths)
+                    self.write_new_data(self.k.p, exp_data_paths[0])
+                    self.write_new_data(self.k.p_NM, exp_data_paths[1])
+                    self.write_new_data(self.k.p_M, exp_data_paths[2])
             
     def mean_kernels(self, sample_num, method='kernels', data_name=None):
         if data_name == None:
@@ -195,21 +198,13 @@ class opt_method():
         return 
     
     # Visualize only the last time step of the specified time vector and the last used experimental data
-    def visualize_distribution(self, exp_data_path=None,ax=None,fig=None,
+    def visualize_distribution(self, pop, corr_beta_ori, alpha_prim_ori, corr_beta_opt, 
+                               alpha_prim_opt, exp_data_path=None,ax=None,fig=None,
                                close_all=False,clr='k',scl_a4=1,figsze=[12.8,6.4*1.5]):
     # Recalculate PSD using original parameter
-        self.k.cal_pop(self.k.p, corr_beta=self.corr_beta, alpha_prim=self.alpha_prim)
-        '''if self.p.dim == 1:       
-            self.p.CORR_BETA = self.corr_beta
-            self.p.alpha_prim=self.corr_beta
-   
-        elif self.p.dim == 2:
-            self.p.CORR_BETA = self.corr_beta 
-            self.p.alpha_prim[:]=[self.corr_beta[0], self.corr_beta[1], self.corr_beta[2], self.corr_beta[3]]
+        self.k.cal_pop(pop, corr_beta=corr_beta_ori, alpha_prim=alpha_prim_ori)
 
-        self.p.full_init(calc_alpha=False)
-        self.p.solve_PBE(t_vec=self.t_vec)'''
-        x_uni_ori, q3_ori, Q3_ori, x_10_ori, x_50_ori, x_90_ori = self.k.p.return_num_distribution_fixed(t=len(self.k.p.t_vec)-1)
+        x_uni_ori, q3_ori, Q3_ori, x_10_ori, x_50_ori, x_90_ori = pop.return_num_distribution_fixed(t=len(pop.t_vec)-1)
         # Conversion unit
         x_uni_ori *= 1e6    
         x_10_ori *= 1e6   
@@ -220,13 +215,9 @@ class opt_method():
             sumN_uni = self.k.KDE_score(kde, x_uni_ori)
             _, q3_ori, Q3_ori, _, _,_ = self.k.re_cal_distribution(x_uni_ori, sumN_uni)
 
-        # Recalculate PSD using optimization results
-        if hasattr(self.k, 'corr_beta_opt') and hasattr(self.k, 'alpha_prim_opt'):
-            self.k.cal_pop(self.k.p, self.k.corr_beta_opt, self.k.alpha_prim_opt)
-        else:
-            print("Need to run the optimization process at least once！")    
+        self.k.cal_pop(pop, corr_beta_opt, alpha_prim_opt)  
             
-        x_uni, q3, Q3, x_10, x_50, x_90 = self.k.p.return_num_distribution_fixed(t=len(self.k.p.t_vec)-1)
+        x_uni, q3, Q3, x_10, x_50, x_90 = pop.return_num_distribution_fixed(t=len(pop.t_vec)-1)
         # Conversion unit
         x_uni *= 1e6    
         x_10 *= 1e6   

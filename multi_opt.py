@@ -7,7 +7,7 @@ Created on Mon Dec 11 09:05:42 2023
 
 import os
 from pop import population
-from kernel_opt import kernel_opt 
+from kernel_opt import kernel_opt        
 
 class multi_opt(kernel_opt):
     def __init__(self, *args, **kwargs):
@@ -15,14 +15,14 @@ class multi_opt(kernel_opt):
         self.create_1d_pop(disc='geo')
         
     def cal_delta(self, corr_beta=None, alpha_prim=None, scale=1, Q3_exp=None, 
-                        x_50_exp=None, sample_num=1, exp_data_path=None):
-        
+                        x_50_exp=None, sample_num=1, exp_data_path=None):       
         self.cal_all_pop(corr_beta, alpha_prim)
         
         delta = self.cal_delta_tem(sample_num, exp_data_path[0], scale, self.p)
         delta_NM = self.cal_delta_tem(sample_num, exp_data_path[1], scale, self.p_NM)
         delta_M = self.cal_delta_tem(sample_num, exp_data_path[2], scale, self.p_M)
-        delta_sum = delta + delta_NM + delta_M
+        # increase the weight of the 2D case
+        delta_sum = delta * 10 + delta_NM + delta_M
             
         return delta_sum
         
@@ -43,3 +43,4 @@ class multi_opt(kernel_opt):
         # parameter for particle component 2 - M
         self.p_M.R01 = self.p.R03
         self.p_M.DIST1 = os.path.join(self.p.pth,"data\\PSD_data\\")+'PSD_x50_1.0E-6_r01_2.9E-7.npy'
+        
