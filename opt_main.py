@@ -13,19 +13,21 @@ if __name__ == '__main__':
     # The search range for corr_beta is [0, 50], see optimierer() in kern_opt.py
     corr_beta = 25
     #alpha_prim = 0.5
-    alpha_prim = np.array([0.5, 0.5, 0.01])
+    alpha_prim = np.array([0.8, 0.5, 0.2])
     # t=0 is initial conditions which should be excluded
     t_vec = np.arange(1, 602, 60, dtype=float)
     
     # delta_flag = 1: use q3
     # delta_flag = 2: use Q3
-    # delta_flag = 3: use x_50
+    # delta_flag = 3: use x_10
+    # delta_flag = 4: use x_50
+    # delta_flag = 5: use x_90
     delta_flag = 1
     # noise_type: Gaussian, Uniform, Poisson, Multiplicative
     add_noise = True
     smoothing = True
-    noise_type='Gaussian'
-    noise_strength = 0.005
+    noise_type='Multiplicative'
+    noise_strength = 0.1
     
     sample_num = 5
     multi_flag = True
@@ -33,10 +35,25 @@ if __name__ == '__main__':
     Opt = opt.opt_method(add_noise, smoothing, corr_beta, alpha_prim, dim,
                         delta_flag, noise_type, noise_strength, t_vec, multi_flag)
 
+    # parameter for particle component NM and M
+    Opt.k.set_comp_para(R_NM=2.9e-7, R_M=2.9e-7)
     # Optimize method: 
     #   'BO': Bayesian Optimization with package BayesianOptimization
     #   'gp_minimize': Bayesian Optimization with package skopt.gp_minimize
     Opt.algo='BO'
+    
+    # Type of cost function to use
+    #   'MSE': Mean Squared Error
+    #   'RMSE': Root Mean Squared Error
+    #   'MAE': Mean Absolute Error
+    #   'KL': Kullback–Leibler divergence
+    Opt.k.cost_func_type = 'KL'
+    
+    # Iteration steps for optimierer
+    Opt.k.n_iter = 200
+    
+    # The error of 2d pop may be more important, so weights need to be added
+    Opt.k.weight_2d = 5
     
     # If other data are used, you need to specify the file name without a numerical label.
     # For example: 'CED_focus_Sim_Gaussian_0.01.xlsx' instead of CED_focus_Sim_Gaussian_0.01_0.xlsx
@@ -57,6 +74,16 @@ if __name__ == '__main__':
     delta_opt = np.zeros(test_num)
     elapsed_time = np.zeros(test_num)
     
+    # Using to observe the results
+    # corr_beta_opt=25
+    # alpha_prim_opt=([1, 0.5, 0.2])
+    # Opt.visualize_distribution(Opt.k.p, corr_beta, alpha_prim, 
+    #                             corr_beta_opt, alpha_prim_opt, exp_data_path=None)
+    # Opt.visualize_distribution(Opt.k.p_NM, corr_beta, alpha_prim[0], 
+    #                             corr_beta_opt, alpha_prim_opt[0], exp_data_path=None)
+    # Opt.visualize_distribution(Opt.k.p_M, corr_beta, alpha_prim[2], 
+    #                             corr_beta_opt, alpha_prim_opt[2], exp_data_path=None)
+    
     for i in range(test_num):
         # Generate synthetic Data
         # The file name is automatically generated from the content specified when initializing Opt_method
@@ -75,9 +102,10 @@ if __name__ == '__main__':
         end_time = time.time()
         elapsed_time[i] = end_time - start_time
         print(f"The execution of optimierer takes：{elapsed_time} seconds")
-        Opt.visualize_distribution(Opt.k.p, corr_beta, Opt.alpha_prim, 
-                                   corr_beta_opt[i], alpha_prim_opt[i, :], exp_data_path=None)
+        Opt.visualize_distribution(Opt.k.p, corr_beta, alpha_prim, 
+                                    corr_beta_opt[i], alpha_prim_opt[i, :], exp_data_path=None)
         Opt.visualize_distribution(Opt.k.p_NM, corr_beta, alpha_prim[0], 
-                                   corr_beta_opt[i], alpha_prim_opt[i, 0], exp_data_path=None)
+                                    corr_beta_opt[i], alpha_prim_opt[i, 0], exp_data_path=None)
         Opt.visualize_distribution(Opt.k.p_M, corr_beta, alpha_prim[2], 
-                                   corr_beta_opt[i], alpha_prim_opt[i, 2], exp_data_path=None)
+                                    corr_beta_opt[i], alpha_prim_opt[i, 2], exp_data_path=None)
+    mean_diff=para_diff.mean(axis=1)

@@ -13,6 +13,7 @@ class multi_opt(kernel_opt):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.create_1d_pop(disc='geo')
+        self.weight_2d = 1
         
     def cal_delta(self, corr_beta=None, alpha_prim=None, scale=1, Q3_exp=None, 
                         x_50_exp=None, sample_num=1, exp_data_path=None):       
@@ -22,7 +23,7 @@ class multi_opt(kernel_opt):
         delta_NM = self.cal_delta_tem(sample_num, exp_data_path[1], scale, self.p_NM)
         delta_M = self.cal_delta_tem(sample_num, exp_data_path[2], scale, self.p_M)
         # increase the weight of the 2D case
-        delta_sum = delta * 10 + delta_NM + delta_M
+        delta_sum = delta * self.weight_2d + delta_NM + delta_M
             
         return delta_sum
         
@@ -35,7 +36,12 @@ class multi_opt(kernel_opt):
         
         self.p_NM = population(dim=1,disc=disc)
         self.p_M = population(dim=1,disc=disc)
+        self.set_comp_para()
         
+    def set_comp_para(self, R_NM=None, R_M=None):
+        if R_NM!=None and R_M!=None:
+            self.p.R01 = R_NM
+            self.p.R03 = R_M
         # parameter for particle component 1 - NM
         self.p_NM.R01 = self.p.R01
         self.p_NM.DIST1 = os.path.join(self.p.pth,"data\\PSD_data\\")+'PSD_x50_1.0E-6_r01_2.9E-7.npy'
@@ -43,4 +49,3 @@ class multi_opt(kernel_opt):
         # parameter for particle component 2 - M
         self.p_M.R01 = self.p.R03
         self.p_M.DIST1 = os.path.join(self.p.pth,"data\\PSD_data\\")+'PSD_x50_1.0E-6_r01_2.9E-7.npy'
-        

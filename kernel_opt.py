@@ -10,9 +10,10 @@ from pop import population
 from bayes_opt import BayesianOptimization
 from skopt import gp_minimize
 from skopt.space import Real
-# from scipy.stats import gaussian_kde
+from scipy.stats import entropy
 # import statsmodels.api as sm
 from sklearn.neighbors import KernelDensity
+from sklearn.metrics import mean_squared_error, mean_absolute_error
 # from functools import partial
 from PSD_Exp import write_read_exp
 
@@ -23,7 +24,9 @@ class kernel_opt():
         # delta_flag = 1: use q3
         # delta_flag = 2: use Q3
         # delta_flag = 3: use x_50
-        self.delta_flag = delta_flag        
+        self.delta_flag = delta_flag     
+        self.cost_func_type = 'MSE'
+        self.n_iter = 100
         self.add_noise = add_noise
         self.smoothing = smoothing
         self.noise_type = noise_type    # Gaussian, Uniform, Poisson, Multiplicative
@@ -165,7 +168,17 @@ class kernel_opt():
             return self.re_cal_distribution(x_uni_exp, q3_exp)
     
     def cost_fun(self, data_exp, data_mod):
-        return ((data_mod*100-data_exp*100)**2).sum()
+        if self.cost_func_type == 'MSE':
+            return mean_squared_error(data_mod, data_exp)
+        elif self.cost_func_type == 'RMSE':
+            mse = mean_squared_error(data_mod, data_exp)
+            return np.sqrt(mse)
+        elif self.cost_func_type == 'MAE':
+            return mean_absolute_error(data_mod, data_exp)
+        elif (self.delta_flag == 1 or self.delta_flag == 2) and self.cost_func_type == 'KL':
+            return entropy(data_mod, data_exp).mean()
+        else:
+            raise Exception("Current cost function type is not supported")
     
     def optimierer(self, algo='BO', init_points=4, Q3_exp=None, x_50_exp=None,
                    sample_num=1, hyperparameter=None, exp_data_path=None):
@@ -193,7 +206,7 @@ class kernel_opt():
             
             opt.maximize(
                 init_points=init_points,
-                n_iter=100,
+                n_iter=self.n_iter,
             )   
             if self.p.dim == 1:
                 para_opt = opt.max['params']['corr_beta'] * opt.max['params']['alpha_prim']
@@ -228,7 +241,7 @@ class kernel_opt():
             opt = gp_minimize(
                 objective,
                 space,
-                n_calls=100,
+                n_calls=self.n_iter,
                 n_initial_points=init_points,
                 random_state=0
             )

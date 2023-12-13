@@ -240,7 +240,7 @@ class opt_method():
         
         axq3, fig = pt.plot_data(x_uni, q3, fig=fig, ax=axq3,
                                xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
-                               ylbl='volume distribution of agglomerates $q3$ / $-$',
+                               ylbl='number distribution of agglomerates $q3$ / $-$',
                                lbl='q3_mod',clr='b',mrk='o')
         
 
@@ -249,7 +249,7 @@ class opt_method():
         
         axQ3, fig = pt.plot_data(x_uni, Q3, fig=fig, ax=axQ3,
                                xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
-                               ylbl='volume distribution of agglomerates $Q3$ / $-$',
+                               ylbl='number distribution of agglomerates $Q3$ / $-$',
                                lbl='Q3_mod',clr='b',mrk='o')
 
         axQ3, fig = pt.plot_data(x_uni_ori, Q3_ori, fig=fig, ax=axQ3,
