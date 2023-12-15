@@ -270,4 +270,9 @@ class opt_method():
         axQ3.grid('minor')
         plt.tight_layout()   
         
-        return axq3, axQ3, fig
+        return fig
+    
+    def save_as_png(self, fig, file_name):
+        file_path = os.path.join(self.base_path, file_name)
+        fig.savefig(file_path, dpi=150)
+        return 0

@@ -380,4 +380,7 @@ class kernel_opt():
         else:
             return update_path(path_ori, label)
     
-    
+    def set_comp_para(self, R_NM=None, R_M=None):
+        if R_NM!=None and R_M!=None:
+            self.p.R01 = R_NM
+            self.p.R03 = R_M

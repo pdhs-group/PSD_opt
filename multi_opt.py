@@ -39,9 +39,7 @@ class multi_opt(kernel_opt):
         self.set_comp_para()
         
     def set_comp_para(self, R_NM=None, R_M=None):
-        if R_NM!=None and R_M!=None:
-            self.p.R01 = R_NM
-            self.p.R03 = R_M
+        super().set_comp_para(R_NM, R_M)
         # parameter for particle component 1 - NM
         self.p_NM.R01 = self.p.R01
         self.p_NM.DIST1 = os.path.join(self.p.pth,"data\\PSD_data\\")+'PSD_x50_1.0E-6_r01_2.9E-7.npy'
