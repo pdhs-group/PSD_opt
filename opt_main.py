@@ -80,7 +80,7 @@ if __name__ == '__main__':
     # delta_flag = 3: use x_10
     # delta_flag = 4: use x_50
     # delta_flag = 5: use x_90
-    delta_flag = 1
+    delta_flag = 4
     # noise_type: Gaussian, Uniform, Poisson, Multiplicative
     add_noise = True
     smoothing = True
@@ -105,7 +105,7 @@ if __name__ == '__main__':
     #   'RMSE': Root Mean Squared Error
     #   'MAE': Mean Absolute Error
     #   'KL': Kullback–Leibler divergence
-    Opt.k.cost_func_type = 'KL'
+    Opt.k.cost_func_type = 'MSE'
     
     # Iteration steps for optimierer
     Opt.k.n_iter = 1600
@@ -117,7 +117,7 @@ if __name__ == '__main__':
     # The file name is automatically generated from the content specified when initializing Opt_method
     # in form "CED_focus_Sim_{noise_type}_{noise_strength}_{label}.xlsx". 
     # PS: There is no label when sample_num = 1.
-    # Opt.generate_synth_data(sample_num=sample_num)
+    Opt.generate_synth_data(sample_num=sample_num)
     
     # If other data are used, you need to specify the file name without a numerical label.
     # For example: 'CED_focus_Sim_Gaussian_0.01.xlsx' instead of CED_focus_Sim_Gaussian_0.01_0.xlsx
@@ -144,25 +144,25 @@ if __name__ == '__main__':
     # repeat_tests(Opt, sample_num, data_name, gruppe_num=100, test_num=3)
     
     # Run the test with same experimental data and increased iteration number
-    # n_iter = np.array([25, 50, 100, 200, 400, 800])
-    # iter_num = len(n_iter)
-    # corr_beta_opt = np.zeros(iter_num)
-    # alpha_prim_opt = np.zeros((iter_num, 3))
-    # para_opt = np.zeros(iter_num)
-    # para_diff = np.zeros((iter_num, 4))
-    # delta_opt = np.zeros(iter_num)
-    # elapsed_time = np.zeros(iter_num)
-    # for i, num in enumerate(n_iter):
-    #     Opt.k.n_iter = num
-    #     gruppe_num = 35 + i
-    #     corr_beta_opt[i], alpha_prim_opt[i, :], para_opt[i], para_diff[i, :], \
-    #         delta_opt[i], elapsed_time[i]= normal_test(
-    #             Opt, sample_num, data_name, gruppe_num)
-    # mean_diff=para_diff.mean(axis=1)
-    
-    
-    corr_beta_opt, alpha_prim_opt, para_opt, para_diff, \
-        delta_opt, elapsed_time= normal_test(
-            Opt, sample_num, data_name, gruppe_num=41)
-        
+    n_iter = np.array([25, 50, 100, 200, 400, 800])
+    iter_num = len(n_iter)
+    corr_beta_opt = np.zeros(iter_num)
+    alpha_prim_opt = np.zeros((iter_num, 3))
+    para_opt = np.zeros(iter_num)
+    para_diff = np.zeros((iter_num, 4))
+    delta_opt = np.zeros(iter_num)
+    elapsed_time = np.zeros(iter_num)
+    for i, num in enumerate(n_iter):
+        Opt.k.n_iter = num
+        gruppe_num = 66 + i
+        corr_beta_opt[i], alpha_prim_opt[i, :], para_opt[i], para_diff[i, :], \
+            delta_opt[i], elapsed_time[i]= normal_test(
+                Opt, sample_num, data_name, gruppe_num)
     mean_diff=para_diff.mean(axis=1)
+    
+    
+    # corr_beta_opt, alpha_prim_opt, para_opt, para_diff, \
+    #     delta_opt, elapsed_time= normal_test(
+    #         Opt, sample_num, data_name, gruppe_num=41)
+        
+    # mean_diff=para_diff.mean()
