@@ -40,7 +40,7 @@ class opt_method():
         self.filename_kernels = os.path.join(self.base_path, "kernels.txt")
         
     def generate_synth_data(self, sample_num=1):
-        self.write_kernels()
+        # self.write_kernels()
         # Check if noise should be added
         if self.k.add_noise:
             # Modify the file name to include noise type and strength
@@ -89,23 +89,23 @@ class opt_method():
                 # Rename just to make it easy for subsequent code
                 exp_data_path = exp_data_paths
             
-        # read the kernels of original data
-        if not os.path.exists(self.filename_kernels):
-            warnings.warn("file does not exist: {}".format(self.filename_kernels))
+        # # read the kernels of original data
+        # if not os.path.exists(self.filename_kernels):
+        #     warnings.warn("file does not exist: {}".format(self.filename_kernels))
             
-        else:
-            with open(self.filename_kernels, 'r') as file:
-                lines = file.readlines()  
+        # else:
+        #     with open(self.filename_kernels, 'r') as file:
+        #         lines = file.readlines()  
                 
-                # self.corr_beta = None
-                # self.alpha_prim = None
-                for line in lines:
-                    if 'CORR_BETA:' in line:
-                        self.corr_beta = float(line.split(':')[1].strip())
-                    elif 'alpha_prim:' in line:
-                        array_str = line.split(':')[1].strip()
-                        # array_str = array_str.replace(" ", ", ")
-                        self.alpha_prim = np.array(ast.literal_eval(array_str))
+        #         # self.corr_beta = None
+        #         # self.alpha_prim = None
+        #         for line in lines:
+        #             if 'CORR_BETA:' in line:
+        #                 self.corr_beta = float(line.split(':')[1].strip())
+        #             elif 'alpha_prim:' in line:
+        #                 array_str = line.split(':')[1].strip()
+        #                 # array_str = array_str.replace(" ", ", ")
+        #                 self.alpha_prim = np.array(ast.literal_eval(array_str))
             
             if method == 'kernels':
                 para_opt_sample = np.zeros(sample_num)
@@ -161,17 +161,17 @@ class opt_method():
             return self.k.corr_beta_opt, self.k.alpha_prim_opt, para_opt, para_diff, delta_opt
         
                 
-    def write_kernels(self):
-        # save the kernels
-        if self.k.p.dim == 1:
-            with open(self.filename_kernels, 'w') as file:
-                file.write('CORR_BETA: {}\n'.format(self.k.corr_beta))
-                file.write('alpha_prim: {}\n'.format(self.k.alpha_prim))
-        else:
-            alpha_prim_str = ', '.join([str(x) for x in self.k.alpha_prim])
-            with open(self.filename_kernels, 'w') as file:
-                file.write('CORR_BETA: {}\n'.format(self.k.corr_beta))
-                file.write('alpha_prim: {}\n'.format(alpha_prim_str))
+    # def write_kernels(self):
+    #     # save the kernels
+    #     if self.k.p.dim == 1:
+    #         with open(self.filename_kernels, 'w') as file:
+    #             file.write('CORR_BETA: {}\n'.format(self.k.corr_beta))
+    #             file.write('alpha_prim: {}\n'.format(self.k.alpha_prim))
+    #     else:
+    #         alpha_prim_str = ', '.join([str(x) for x in self.k.alpha_prim])
+    #         with open(self.filename_kernels, 'w') as file:
+    #             file.write('CORR_BETA: {}\n'.format(self.k.corr_beta))
+    #             file.write('alpha_prim: {}\n'.format(alpha_prim_str))
         
     def write_new_data(self, pop, exp_data_path):
         # save the calculation result in experimental data form
@@ -249,7 +249,7 @@ class opt_method():
         
         axQ3, fig = pt.plot_data(x_uni, Q3, fig=fig, ax=axQ3,
                                xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
-                               ylbl='number distribution of agglomerates $Q3$ / $-$',
+                               ylbl='accumulated number distribution of agglomerates $Q3$ / $-$',
                                lbl='Q3_mod',clr='b',mrk='o')
 
         axQ3, fig = pt.plot_data(x_uni_ori, Q3_ori, fig=fig, ax=axQ3,

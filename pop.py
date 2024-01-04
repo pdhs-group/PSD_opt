@@ -1435,6 +1435,94 @@ class population():
         
         return n   
 
+    ## Initialize PSD
+    @staticmethod
+    def new_initialize_psd(r,psd_data,v0,x_init=None,Q_init=None):
+        
+        from scipy.interpolate import interp1d
+        import sys
+        
+        ## OUTPUT-parameters:
+        # n: NUMBER concentration vector corresponding to r (for direct usage in N
+        # vector of population balance calculation
+        
+        ## INPUT-parameters:
+        # r: Particle size grid on which the PSD should be initialized. NOTE: This
+        #    vector contains RADII (and NOT diameters)
+        # PSD_data: Complete path (including filename) to datafile in which the PSD is saved. 
+        #           This file should only contain 2 variables: Q_PSD and x_PSD.
+        #           Here, x_PSD contains diameters (standard format of PSD)
+        # v0: Total VOLUME the distribution should be scaled to
+                
+        
+        # If x and Q are not directly given import from file
+        if x_init is None and Q_init is None:
+            # Import x values from dictionary save in psd_data
+            psd_dict = np.load(psd_data,allow_pickle=True).item()
+            x = psd_dict['x_PSD']
+            
+            ## Initializing the variables
+            n = np.zeros(len(r)) 
+            q = np.zeros(len(x)) 
+            
+            if 'Q_PSD' not in psd_dict and 'q_PSD' not in psd_dict:
+                sys.exit("ERROR: Neither Q_PSD nor q_PSD given in distribution file. Exiting..")
+            
+            if 'Q_PSD' in psd_dict:
+                # Load Q if given
+                Q = psd_dict['Q_PSD']
+            if 'q_PSD' in psd_dict:
+                # Load q if given
+                q = psd_dict['q_PSD']
+            else:
+                # If q is not given: Calculate from Q. Note that q[0] will always be zero
+                for i in range(1,len(x)):
+                    q[i] = (Q[i]-Q[i-1])/(x[i]-x[i-1]) 
+                    
+        else:
+            ## Initializing the variables
+            n = np.zeros(len(r)) 
+            q = np.zeros(len(x_init)) 
+            
+            x = x_init
+            
+            for i in range(1,len(x)):
+                q[i] = (Q_init[i]-Q_init[i-1])/(x[i]-x[i-1])
+            
+        # Transform x from diameter to radius information. Also transform q
+        x = x/2
+        #q = q/2
+        
+        # Interpolate q on r grid and normalize it to 1 (account for numerical error)
+        # If the ranges don't match well, insert 0. This is legit since it is the density
+        # distribution
+        f_q = interp1d(x,q,bounds_error=False,fill_value=0)
+        q_r = f_q(r)
+                
+        #q_r(math.isnan(q_r)) = 0
+        q_r = q_r/np.trapz(q_r,r)
+        
+        # Temporary r vector. Add lower and upper boarder (given by x_PSD) 
+        # This allows calculation of the first and last entry of q / r.
+        rt = np.zeros(len(r)+2) 
+        qt = np.zeros(len(r)+2)  
+        rt[0] = min(min(x),min(r))
+        rt[-1] = max(max(x),max(r))
+        rt[1:-1] = r 
+        qt[1:-1] = q_r;
+        
+        # Calculate concentration vector
+        for i in range(1,len(rt)-1):
+            v_total_tmp = v0*qt[i]*((rt[i+1]-rt[i])/2+(rt[i]-rt[i-1])/2) # Calculated with DIFFERENCE (i+1), (i-1)
+            #v_one_tmp = (4/3)*pi*((rt[i+1]+rt[i-1])*1e-6/2)^3; # Calculated with MEAN (i+1), (i-1) 
+            v_one_tmp = (4/3)*np.pi*r[i-1]**3; # Calculated with MEAN (i+1), (i-1) 
+            n[i-1] = v_total_tmp/v_one_tmp;
+        
+        # Eliminate sub and near zero values (sub-thrshold)
+        thr = 1e-5
+        n[n<thr*np.mean(n)] = 0
+        
+        return n   
     ## Plot 2D-distribution:
     @staticmethod
     def plot_N2D(N,V,V0_tot,ax=None,fig=None,close_all=False,scl_a4=1,figsze=[12.8*1.05,12.8],THR_N=1e-4,

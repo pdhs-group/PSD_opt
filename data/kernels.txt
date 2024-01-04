@@ -1,2 +1,2 @@
-CORR_BETA: 25
+CORR_BETA: 0.1
 alpha_prim: 0.8, 0.5, 0.2

@@ -184,14 +184,14 @@ class kernel_opt():
                    sample_num=1, hyperparameter=None, exp_data_path=None):
         if algo == 'BO':
             if self.p.dim == 1:
-                pbounds = {'corr_beta': (0, 50), 'alpha_prim': (0, 1)}
+                pbounds = {'corr_beta': (0, 100), 'alpha_prim': (0, 1)}
                 objective = lambda corr_beta, alpha_prim: self.cal_delta(
                     corr_beta=corr_beta, alpha_prim=np.array([alpha_prim]),
                     scale=-1, Q3_exp=Q3_exp, x_50_exp=x_50_exp, 
                     sample_num=sample_num, exp_data_path=exp_data_path)
                 
             elif self.p.dim == 2:
-                pbounds = {'corr_beta': (0, 50), 'alpha_prim_0': (0, 1), 'alpha_prim_1': (0, 1), 'alpha_prim_2': (0, 1)}
+                pbounds = {'corr_beta': (0, 100), 'alpha_prim_0': (0, 1), 'alpha_prim_1': (0, 1), 'alpha_prim_2': (0, 1)}
                 objective = lambda corr_beta, alpha_prim_0, alpha_prim_1, alpha_prim_2: self.cal_delta(
                     corr_beta=corr_beta, 
                     alpha_prim=np.array([alpha_prim_0, alpha_prim_1, alpha_prim_2]), 
@@ -202,6 +202,7 @@ class kernel_opt():
                 f=objective, 
                 pbounds=pbounds,
                 random_state=1,
+                allow_duplicate_points=True
             )
             
             opt.maximize(
