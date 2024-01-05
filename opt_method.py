@@ -19,8 +19,8 @@ import plotter.plotter as pt
 # from plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
 
 class opt_method():
-    def __init__(self, add_noise, smoothing, corr_beta, alpha_prim, dim=1,
-                 delta_flag=1, noise_type='Gaussian', noise_strength=0.01, 
+    def __init__(self, add_noise, smoothing, dim=1,
+                 delta_flag=1, noise_type='Gaus', noise_strength=0.01, 
                  t_vec=None, multi_flag=False):
         self.algo='BO'  
         self.multi_flag=multi_flag
@@ -31,23 +31,21 @@ class opt_method():
         else:
             self.k = multi_opt(add_noise, smoothing, 
                                 dim, delta_flag, noise_type, 
-                                noise_strength, t_vec)
-        self.k.corr_beta = corr_beta
-        self.k.alpha_prim = alpha_prim   
+                                noise_strength, t_vec)  
         
         # Set the base path for exp_data_path
         self.base_path = os.path.join(self.k.p.pth, "data\\")
         self.filename_kernels = os.path.join(self.base_path, "kernels.txt")
         
-    def generate_synth_data(self, sample_num=1):
+    def generate_synth_data(self, sample_num=1, add_info=""):
         # self.write_kernels()
         # Check if noise should be added
         if self.k.add_noise:
             # Modify the file name to include noise type and strength
-            filename = f"CED_focus_Sim_{self.k.noise_type}_{self.k.noise_strength}.xlsx"
+            filename = f"Sim_{self.k.noise_type}_{self.k.noise_strength}"+add_info+".xlsx"
         else:
             # Use the default file name
-            filename = "CED_focus_Sim.xlsx"
+            filename = "Sim"+add_info+".xlsx"
 
         # Combine the base path with the modified file name
         exp_data_path = os.path.join(self.base_path, filename)

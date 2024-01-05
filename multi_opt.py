@@ -38,12 +38,12 @@ class multi_opt(kernel_opt):
         self.p_M = population(dim=1,disc=disc)
         self.set_comp_para()
         
-    def set_comp_para(self, R_NM=None, R_M=None):
-        super().set_comp_para(R_NM, R_M)
+    def set_comp_para(self, R01_0='r0_005', R03_0='r0_005', dist_path_NM=None, dist_path_M=None):
+        super().set_comp_para(R01_0, R03_0, dist_path_NM, dist_path_M)
         # parameter for particle component 1 - NM
         self.p_NM.R01 = self.p.R01
-        self.p_NM.DIST1 = os.path.join(self.p.pth,"data\\PSD_data\\")+'PSD_x50_1.0E-6_r01_2.9E-7.npy'
+        self.p_NM.DIST1 = self.p.DIST1
         
         # parameter for particle component 2 - M
         self.p_M.R01 = self.p.R03
-        self.p_M.DIST1 = os.path.join(self.p.pth,"data\\PSD_data\\")+'PSD_x50_1.0E-6_r01_2.9E-7.npy'
+        self.p_M.DIST1 = self.p.DIST3

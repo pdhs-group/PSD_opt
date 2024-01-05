@@ -13,6 +13,7 @@ from skopt.space import Real
 from scipy.stats import entropy
 # import statsmodels.api as sm
 from sklearn.neighbors import KernelDensity
+from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 # from functools import partial
 from PSD_Exp import write_read_exp
@@ -266,25 +267,25 @@ class kernel_opt():
     def function_noise(self, ori_data):
         rows, cols = ori_data.shape
         noise = np.zeros((rows, cols))
-        if self.noise_type == 'Gaussian':
+        if self.noise_type == 'Gaus':
             # The first parameter 0 represents the mean value of the noise, 
             # the second parameter is the standard deviation of the noise,
             for i in range(cols):
                 noise[:, i] = np.random.normal(0, self.noise_strength, rows)              
             noised_data = ori_data + noise
             
-        elif self.noise_type == 'Uniform':
+        elif self.noise_type == 'Uni':
             # Noises are uniformly distributed over the half-open interval [low, high)
             for i in range(cols):
                 noise[:, i] = np.random.uniform(low=-self.noise_strength/2, high=self.noise_strength/2, size=rows)
             noised_data = ori_data + noise
             
-        elif self.noise_type == 'Poisson':
+        elif self.noise_type == 'Po':
             for i in range(cols):
                 noise[:, i] = np.random.poisson(self.noise_strength, rows)
             noised_data = ori_data + noise
             
-        elif self.noise_type == 'Multiplicative':
+        elif self.noise_type == 'Mul':
             for i in range(cols):
                 noise[:, i] = np.random.normal(1, self.noise_strength, rows)
             noised_data = ori_data * noise
@@ -297,7 +298,7 @@ class kernel_opt():
 
     ## Kernel density estimation
     ## data_ori must be a quantity rather than a relative value!
-    def KDE_fit(self, x_uni_ori, data_ori, bandwidth='scott', kernel_func='gaussian'):
+    def KDE_fit(self, x_uni_ori, data_ori, bandwidth='scott', kernel_func='epanechnikov'):
         '''
         # estimate the value of bandwidth
         # Bootstrapping method is used 
@@ -319,8 +320,7 @@ class kernel_opt():
         # So x_uni_re must be reshaped
         x_uni_ori_re = x_uni_ori.reshape(-1, 1)
         # Avoid divide-by-zero warnings when calculating KDE
-        data_ori_adjested = np.where(data_ori == 0, 1e-20, data_ori)
-        
+        data_ori_adjested = np.where(data_ori == 0, 1e-20, data_ori)      
         kde = KernelDensity(kernel=kernel_func, bandwidth=bandwidth)
         kde.fit(x_uni_ori_re, sample_weight=data_ori_adjested)
         
@@ -381,7 +381,11 @@ class kernel_opt():
         else:
             return update_path(path_ori, label)
     
-    def set_comp_para(self, R_NM=None, R_M=None):
-        if R_NM!=None and R_M!=None:
-            self.p.R01 = R_NM
-            self.p.R03 = R_M
+    def set_comp_para(self, R01_0='r0_005', R03_0='r0_005', dist_path_NM=None, dist_path_M=None):
+        if  not (dist_path_NM is None or dist_path_M is None):
+            psd_dict_NM = np.load(dist_path_NM,allow_pickle=True).item()
+            psd_dict_M = np.load(dist_path_M,allow_pickle=True).item()
+            self.p.DIST1 = dist_path_NM
+            self.p.DIST3 = dist_path_M
+            self.p.R01 = psd_dict_NM[R01_0]
+            self.p.R03 = psd_dict_M[R03_0]
