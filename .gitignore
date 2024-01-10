@@ -1,6 +1,6 @@
 # ignore file
 .log
-CED_focus_Sim*
+*.xlsx
 *.png
 
 # ignore ordner

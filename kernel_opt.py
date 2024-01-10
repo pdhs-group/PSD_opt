@@ -13,7 +13,6 @@ from skopt.space import Real
 from scipy.stats import entropy
 # import statsmodels.api as sm
 from sklearn.neighbors import KernelDensity
-from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 # from functools import partial
 from PSD_Exp import write_read_exp
@@ -35,6 +34,7 @@ class kernel_opt():
         self.t_vec = t_vec
         self.num_t_steps = len(t_vec)
         self.p = population(dim=dim, disc='geo')
+        self.volume_dist = True
         
     def cal_delta(self, corr_beta=None, alpha_prim=None, scale=1, Q3_exp=None,
                   x_50_exp=None, sample_num=1, exp_data_path=None):
@@ -42,61 +42,24 @@ class kernel_opt():
         # x_uni = self.cal_x_uni(self.p)
         self.cal_pop(self.p, corr_beta, alpha_prim)
 
-        if not self.smoothing:
-            '''
-            data = self.p.return_num_distribution_fixed(t=t_step)
-            # Conversion unit
-            indexes = [0, 3, 4, 5]
-            x_uni, x_10, x_50, x_90 = [data[i] for i in indexes]
-
-            x_uni *= 1e6    
-            x_10 *= 1e6   
-            x_50 *= 1e6   
-            x_90 *= 1e6
-
-            # read and calculate the experimental data
-            t = self.p.t_vec[t_step]
-            delta_sum = 0
-            
-            if sample_num == 1:
-                data_exp = self.read_exp(x_uni, t) 
-                delta = self.cost_fun(data_exp[self.delta_flag], data[self.delta_flag])
-                
-                return (delta * scale)
-            else:
-                for i in range (0, sample_num):
-                    if i ==0:
-                        self.exp_data_path = self.exp_data_path.replace(".xlsx", f"_{i}.xlsx")
-                    else:
-                        self.exp_data_path = self.exp_data_path.replace(f"_{i-1}.xlsx", f"_{i}.xlsx")
-                    data_exp = self.read_exp(x_uni, t) 
-                    # Calculate the error between experimental data and simulation results
-                    delta = self.cost_fun(data_exp[self.delta_flag], data[self.delta_flag])
-                    delta_sum +=delta
-                # Restore the original name of the file to prepare for the next step of training
-                self.exp_data_path = self.exp_data_path.replace(f"_{sample_num-1}.xlsx", ".xlsx")
-                delta_sum /= sample_num
-            '''
-            
-        else:
-            return self.cal_delta_tem(sample_num, exp_data_path, scale, self.p)
+        return self.cal_delta_tem(sample_num, exp_data_path, scale, self.p)
 
     def cal_delta_tem(self, sample_num, exp_data_path, scale, pop):
         kde_list = []
         x_uni = self.cal_x_uni(pop)
+        # x_uni = self.cal_x_uni(pop)
         for idt in range(self.num_t_steps):
-            _, q3, Q3, x_10, x_50, x_90 = pop.return_num_distribution_fixed(t=idt)
-            
+            _, q3, Q3, x_10, x_50, x_90 = pop.return_distribution(t=idt)
             kde = self.KDE_fit(x_uni, q3)
             kde_list.append(kde)
         
         if sample_num == 1:
-            data_exp = self.read_exp(x_uni, exp_data_path) 
-            sumN_uni = np.zeros((len(data_exp[0]), self.num_t_steps))
+            data_exp = self.read_exp(exp_data_path) 
+            sumV_uni = np.zeros((len(data_exp[0]), self.num_t_steps))
             for idt in range(self.num_t_steps):
-                sumN_uni_tem = self.KDE_score(kde_list[idt], data_exp[0])
-                sumN_uni[:, idt] = sumN_uni_tem
-            data_mod = self.re_cal_distribution(data_exp[0], sumN_uni)
+                sumV_uni_tem = self.KDE_score(kde_list[idt], data_exp[0])
+                sumV_uni[:, idt] = sumV_uni_tem
+            data_mod = self.re_cal_distribution(data_exp[0], sumV_uni)
             # Calculate the error between experimental data and simulation results
             delta = self.cost_fun(data_exp[self.delta_flag], data_mod[self.delta_flag])
             
@@ -108,14 +71,14 @@ class kernel_opt():
             delta_sum = 0           
             for i in range (0, sample_num):
                 exp_data_path = self.traverse_path(i, exp_data_path)
-                data_exp = self.read_exp(x_uni, exp_data_path) 
-                sumN_uni = np.zeros((len(data_exp[0]), self.num_t_steps))
+                data_exp = self.read_exp(exp_data_path) 
+                sumV_uni = np.zeros((len(data_exp[0]), self.num_t_steps))
                 
                 for idt in range(self.num_t_steps):
-                    sumN_uni_tem = self.KDE_score(kde_list[idt], data_exp[0])
-                    sumN_uni[:, idt] = sumN_uni_tem
+                    sumV_uni_tem = self.KDE_score(kde_list[idt], data_exp[0])
+                    sumV_uni[:, idt] = sumV_uni_tem
                     
-                data_mod = self.re_cal_distribution(data_exp[0], sumN_uni)
+                data_mod = self.re_cal_distribution(data_exp[0], sumV_uni)
                 # Calculate the error between experimental data and simulation results
                 delta = self.cost_fun(data_exp[self.delta_flag], data_mod[self.delta_flag])
                 delta_sum +=delta
@@ -143,30 +106,20 @@ class kernel_opt():
     
     # Read the experimental data and re-interpolate the particle distribution 
     # of the experimental data according to the simulation results.
-    def read_exp(self, x_uni, exp_data_path):      
-        compare = write_read_exp(exp_data_path, read=True)
-        df = compare.get_exp_data(self.t_vec)
+    def read_exp(self, exp_data_path):      
+        exp_data = write_read_exp(exp_data_path, read=True)
+        df = exp_data.get_exp_data(self.t_vec)
         x_uni_exp = df.index.to_numpy()
         q3_exp = df.to_numpy()
-        if not self.smoothing:
-            # If the experimental data has a different particle size scale than the simulations, 
-            # interpolation is required
-            q3_exp_interpolated = np.interp(x_uni, x_uni_exp, q3_exp)
-            q3_exp_interpolated_clipped = np.clip(q3_exp_interpolated, 0, 1)
-            q3_exp_interpolated = q3_exp_interpolated_clipped / np.sum(q3_exp_interpolated_clipped)
-            q3_exp = pd.Series(q3_exp_interpolated, index=x_uni)
-            Q3_exp = q3_exp.cumsum()
-            x_10_exp = np.interp(0.1, Q3_exp, x_uni)
-            x_50_exp = np.interp(0.5, Q3_exp, x_uni)
-            x_90_exp = np.interp(0.9, Q3_exp, x_uni)
         
-            # q3_exp has been redistributed according to x_uni, so actually x_uni rather than x_uni_exp is returned
-            return x_uni, q3_exp, Q3_exp, x_10_exp, x_50_exp, x_90_exp
-        
-        # Smoothing can return the value of the simulation result at any x, 
-        # so there is no need to process the experimental data.
-        else:
-            return self.re_cal_distribution(x_uni_exp, q3_exp)
+        # The experimental data is the number distribution of particles,
+        # which needs to be converted into a volume distribution to compare 
+        # with the simulation results.
+        v_uni_exp = np.pi*x_uni_exp**3/6
+        sumvol_uni = v_uni_exp * q3_exp
+        q3_exp = sumvol_uni / np.sum(sumvol_uni)
+        q3_exp = q3_exp / np.sum(q3_exp)
+        return self.re_cal_distribution(x_uni_exp, q3_exp)
     
     def cost_fun(self, data_exp, data_mod):
         if self.cost_func_type == 'MSE':
@@ -211,14 +164,11 @@ class kernel_opt():
                 n_iter=self.n_iter,
             )   
             if self.p.dim == 1:
-                para_opt = opt.max['params']['corr_beta'] * opt.max['params']['alpha_prim']
                 self.corr_beta_opt = opt.max['params']['corr_beta']
                 self.alpha_prim_opt = opt.max['params']['alpha_prim']
                 
             elif self.p.dim == 2:
                 self.alpha_prim_opt = np.zeros(3)
-                para_opt = opt.max['params']['corr_beta'] *\
-                (opt.max['params']['alpha_prim_0'] + opt.max['params']['alpha_prim_1'] + opt.max['params']['alpha_prim_2'])
                 self.corr_beta_opt = opt.max['params']['corr_beta']
                 self.alpha_prim_opt[0] = opt.max['params']['alpha_prim_0']
                 self.alpha_prim_opt[1] = opt.max['params']['alpha_prim_1']
@@ -249,12 +199,10 @@ class kernel_opt():
             )
 
             if self.p.dim == 1:
-                para_opt = opt.x[0] * opt.x[1]
                 self.corr_beta_opt = opt.x[0]
                 self.alpha_prim_opt = opt.x[1]
             elif self.p.dim == 2:
                 self.alpha_prim_opt = np.zeros(3)
-                para_opt = opt.x[0] * sum(opt.x[1:])
                 self.corr_beta_opt = opt.x[0]
                 self.alpha_prim_opt[0] = opt.x[1]
                 self.alpha_prim_opt[1] = opt.x[2]
@@ -262,7 +210,7 @@ class kernel_opt():
 
             delta_opt = opt.fun
             
-        return para_opt, delta_opt
+        return delta_opt
     
     def function_noise(self, ori_data):
         rows, cols = ori_data.shape
@@ -315,7 +263,10 @@ class kernel_opt():
             # bandwidth = np.median(estimated_bandwidth)
             bandwidth = np.mean(estimated_bandwidth)
         '''
-        
+        # if self.volume_dist:
+        #     v_uni_ori = np.pi*x_uni_ori**3/6
+        #     x_uni_ori = v_uni_ori
+            
         # KernelDensity requires input to be a column vector
         # So x_uni_re must be reshaped
         x_uni_ori_re = x_uni_ori.reshape(-1, 1)
@@ -327,6 +278,9 @@ class kernel_opt():
         return kde
     
     def KDE_score(self, kde, x_uni_new):
+        # if self.volume_dist:
+        #     v_uni_new = np.pi*x_uni_new**3/6
+        #     x_uni_new = v_uni_new
         
         x_uni_new_re = x_uni_new.reshape(-1, 1) 
         data_smoothing = np.exp(kde.score_samples(x_uni_new_re))
@@ -336,21 +290,21 @@ class kernel_opt():
         
         return data_smoothing
             
-    def re_cal_distribution(self, x_uni, sumN_uni):
-        if sumN_uni.ndim == 1:
-            sumN = np.sum(sumN_uni)
+    def re_cal_distribution(self, x_uni, sumV_uni):
+        if sumV_uni.ndim == 1:
+            sumV = np.sum(sumV_uni)
             
-            Q3 = np.cumsum(sumN_uni)/sumN
-            q3 = sumN_uni/sumN
+            Q3 = np.cumsum(sumV_uni)/sumV
+            q3 = sumV_uni/sumV
 
             x_10 = np.interp(0.1, Q3, x_uni)
             x_50 = np.interp(0.5, Q3, x_uni)
             x_90 = np.interp(0.9, Q3, x_uni)
         else:
-            sumN = np.sum(sumN_uni, axis=0)
+            sumV = np.sum(sumV_uni, axis=0)
             
-            Q3 = np.cumsum(sumN_uni, axis=0)/sumN
-            q3 = sumN_uni/sumN
+            Q3 = np.cumsum(sumV_uni, axis=0)/sumV
+            q3 = sumV_uni/sumV
             
             x_10 = np.zeros(self.num_t_steps)
             x_50 = np.zeros(self.num_t_steps)
@@ -362,8 +316,11 @@ class kernel_opt():
         
         return x_uni, q3, Q3, x_10, x_50, x_90
     
+    def cal_v_uni(self, pop):
+        return np.setdiff1d(pop.V, [-1, 0])
+    
     def cal_x_uni(self, pop):
-        v_uni = np.setdiff1d(pop.V, [-1, 0])
+        v_uni = self.cal_v_uni(pop)
         # Because the length unit in the experimental data is millimeters 
         # and in the simulation it is meters, so it needs to be converted 
         # before use.

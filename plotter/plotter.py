@@ -5,7 +5,9 @@ Created on Tue Sep 14 07:05:56 2021
 @author: Frank Rhein
 """
 import matplotlib.pyplot as plt
-    
+
+print('Imported correct plotter module (08.01.2024)') 
+   
 # ----------------------------------
 # Define Plot defaults
 # ----------------------------------
@@ -19,7 +21,7 @@ import matplotlib.pyplot as plt
 # frac_lnewdth: Additional scaling option to width = frac_lnewith*document_linewidth
 # mrksze: Markersize
 # lnewdth: Linewidth (of lines used in plot)
-# use_locale: If True use local number formatLa
+# use_locale: If True use local number format
 def plot_init(scl_a4=1,page_lnewdth_cm=16.5,scl=1,fnt='Arial',figsze=[6.4,4.8],
               frac_lnewdth=0.6,mrksze=6,lnewdth=1.5,use_locale=False, fontsize = 10,
               labelfontsize=9, tickfontsize=8):
@@ -103,8 +105,8 @@ def plot_init(scl_a4=1,page_lnewdth_cm=16.5,scl=1,fnt='Arial',figsze=[6.4,4.8],
 def plot_data(x,y,err=None,fig=None,ax=None,plt_type=None,lbl=None,xlbl=None,ylbl=None,
               mrk='o',lnstyle='-',clr='k',tit=None,grd='major',grd_ax='both',leg=True,
               leg_points_only=False,barwidth=0.5,hatch=None,alpha=1,err_clr=None,zorder=None,
-              mrkedgecolor=None,mrkedgewidth=0.5):
-    
+              mrkedgecolor=None,mrkedgewidth=0.5, err_ax='y'):
+
     # --- If fig is not given by user: create new figure --- 
     if fig == None:
         fig=plt.figure()
@@ -135,24 +137,30 @@ def plot_data(x,y,err=None,fig=None,ax=None,plt_type=None,lbl=None,xlbl=None,ylb
         # --- Plot scatter first to show up in legend ---
         if leg_points_only: 
             if mrkedgecolor == None:
-                ax.scatter(x,y,label=lbl,marker=mrk,color=clr,zorder=zorder)
-                ax.plot(x,y,marker=mrk,linestyle=lnstyle,color=clr,zorder=zorder)
+                ax.scatter(x,y,label=lbl,marker=mrk,color=clr,zorder=zorder,alpha=alpha)
+                ax.plot(x,y,marker=mrk,linestyle=lnstyle,color=clr,zorder=zorder,alpha=alpha)
             else:
-                ax.scatter(x,y,label=lbl,marker=mrk,color=clr,zorder=zorder,edgecolor=mrkedgecolor,linewidths=mrkedgewidth)
-                ax.plot(x,y,marker=mrk,linestyle=lnstyle,color=clr,zorder=zorder,mec=mrkedgecolor,mew=mrkedgewidth)
+                ax.scatter(x,y,label=lbl,marker=mrk,color=clr,zorder=zorder,edgecolor=mrkedgecolor,linewidths=mrkedgewidth,alpha=alpha)
+                ax.plot(x,y,marker=mrk,linestyle=lnstyle,color=clr,zorder=zorder,mec=mrkedgecolor,mew=mrkedgewidth,alpha=alpha)
         else:
             if mrkedgecolor == None:
-                ax.plot(x,y,label=lbl,marker=mrk,linestyle=lnstyle,color=clr,zorder=zorder)
+                ax.plot(x,y,label=lbl,marker=mrk,linestyle=lnstyle,color=clr,zorder=zorder,alpha=alpha)
             else:
-                ax.plot(x,y,label=lbl,marker=mrk,linestyle=lnstyle,color=clr,zorder=zorder,mec=mrkedgecolor,mew=mrkedgewidth)
-    
+                ax.plot(x,y,label=lbl,marker=mrk,linestyle=lnstyle,color=clr,zorder=zorder,mec=mrkedgecolor,mew=mrkedgewidth,alpha=alpha)
+
     # --- Plot errorbars if error is given, if no err_color is given use plot color ---
     if err_clr == None: err_clr=clr
     if err is not None:
-        if plt_type == 'bar':  
-            ax.errorbar(x,y,yerr=err,fmt='none',color=err_clr,capsize=plt.rcParams['lines.markersize']-2,alpha=0.5,zorder=99)
+        if err_ax =='y':
+            if plt_type == 'bar':  
+                ax.errorbar(x,y,yerr=err,fmt='none',color=err_clr,capsize=plt.rcParams['lines.markersize']-2,alpha=0.5,zorder=99)
+            else:
+                ax.errorbar(x,y,yerr=err,fmt='none',color=err_clr,capsize=plt.rcParams['lines.markersize']-2,alpha=0.5,zorder=0)
         else:
-            ax.errorbar(x,y,yerr=err,fmt='none',color=err_clr,capsize=plt.rcParams['lines.markersize']-2,alpha=0.5,zorder=0)
+            if plt_type == 'bar':  
+                ax.errorbar(x,y,xerr=err,fmt='none',color=err_clr,capsize=plt.rcParams['lines.markersize']-2,alpha=0.5,zorder=99)
+            else:
+                ax.errorbar(x,y,xerr=err,fmt='none',color=err_clr,capsize=plt.rcParams['lines.markersize']-2,alpha=0.5,zorder=0)
         
     # --- Set labels, title and grid if given ---
     if xlbl != None: ax.set_xlabel(xlbl)

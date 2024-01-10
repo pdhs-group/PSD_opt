@@ -23,7 +23,7 @@ if __name__ == '__main__':
     sample_num = 5
     multi_flag = True
     
-    generate_new_psd = True
+    generate_new_psd = False
     
     if generate_new_psd:
         ## Input for generating psd-data
@@ -32,42 +32,47 @@ if __name__ == '__main__':
         minscale = 1e-3
         maxscale = 1e3
         dist_path_1 = full_psd(x50, resigma, minscale=minscale, maxscale=maxscale, plot_psd=False)
+        dist_path_5 = full_psd(x50*5, resigma, minscale=minscale, maxscale=maxscale, plot_psd=False)
         dist_path_10 = full_psd(x50*10, resigma, minscale=minscale, maxscale=maxscale, plot_psd=False)
     else:
         pth = os.path.dirname( __file__ )
-        dist_path_1 = os.path.join(pth, "..", "\\data\\PSD_data\\")+'PSD_x50_1.0E-6_v50_5.2E-19_RelSigmaV_1.0E+0.npy'
-        dist_path_10 = os.path.join(pth, "..", "\\data\\PSD_data\\")+'PSD_x50_1.0E-5_v50_5.2E-16_RelSigmaV_1.0E+0.npy'
+        dist_path_1 = os.path.join(pth, "..", "data\\PSD_data\\")+'PSD_x50_1.0E-6_v50_5.2E-19_RelSigmaV_1.0E+0.npy'
+        dist_path_5 = os.path.join(pth, "..", "data\\PSD_data\\")+'PSD_x50_5.0E-6_v50_6.5E-17_RelSigmaV_1.0E+0.npy'
+        dist_path_10 = os.path.join(pth, "..", "data\\PSD_data\\")+'PSD_x50_1.0E-5_v50_5.2E-16_RelSigmaV_1.0E+0.npy'
     
     ## define the range of corr_beta
-    corr_beta = [1e-2, 1e-1, 1e0, 1e1, 1e2]
+    var_corr_beta = np.array([1e-2, 1e-1, 1e0, 1e1, 1e2])
     
-    ## define the range of alpha_prim 64x3
-    values = [0, 0.33, 0.67, 1]
+    ## define the range of alpha_prim 27x3
+    values = np.array([0, 0.5, 1])
     a1, a2, a3 = np.meshgrid(values, values, values, indexing='ij')
-    alpha_prim = np.column_stack((a1.flatten(), a2.flatten(), a3.flatten()))
+    var_alpha_prim = np.column_stack((a1.flatten(), a2.flatten(), a3.flatten()))
 
+    ## define the range of particle size scale and minimal size
+    dist_path = [dist_path_1, dist_path_10]
+    size_scale = np.array([1, 10])
+    R01_0 = 'r0_005'
+    R03_0 = 'r0_005'
     ## Instantiate Opt
     Opt = opt.opt_method(add_noise, smoothing, dim, delta_flag, noise_type, 
                          noise_strength, t_vec, multi_flag)
 
-    ## Reinitialization of pop equations using psd data  
-    dist_path_NM = dist_path_1
-    dist_path_M = dist_path_1
-    R01_0 = 'r0_005'
-    R03_0 = 'r0_005'
-    Opt.k.set_comp_para(R01_0, R03_0, dist_path_NM, dist_path_M)
-    
-    ## Set α and β_corr
-    Opt.k.corr_beta = corr_beta[2]
-    Opt.k.alpha_prim = alpha_prim[31, :]
-    
-    add_info = f"_para_{Opt.k.corr_beta}_{Opt.k.alpha_prim[0]}_{Opt.k.alpha_prim[1]}_{Opt.k.alpha_prim[2]}_1"
-    # Generate synthetic Data
-    Opt.generate_synth_data(sample_num=sample_num, add_info=add_info)
-    
-    
-    
-    
+    for i, dist in enumerate(dist_path):
+        ## Reinitialization of pop equations using psd data  
+        dist_path_NM = dist_path[0]
+        dist_path_M = dist
+        scale = size_scale[i]
+        Opt.k.set_comp_para(R01_0, R03_0, dist_path_NM, dist_path_M)
+        
+        for corr_beta in var_corr_beta:
+            for alpha_prim in var_alpha_prim:
+                ## Set α and β_corr
+                Opt.k.corr_beta = corr_beta
+                Opt.k.alpha_prim = alpha_prim
+                add_info = f"_para_{Opt.k.corr_beta}_{Opt.k.alpha_prim[0]}_{Opt.k.alpha_prim[1]}_{Opt.k.alpha_prim[2]}_{scale}"
+                # Generate synthetic Data
+                Opt.generate_synth_data(sample_num=sample_num, add_info=add_info)
+                   
     # Optimize method: 
     #   'BO': Bayesian Optimization with package BayesianOptimization
     #   'gp_minimize': Bayesian Optimization with package skopt.gp_minimize

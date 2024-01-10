@@ -913,7 +913,7 @@ class population():
         return axq3, axQ3, fig
     
     ## Return particle size distribution on fixed grid 
-    def return_distribution_fixed(self, comp='all', t=0, N=None):
+    def return_distribution(self, comp='all', t=0, N=None):
         
         # If no N is provided use the one from the class instance
         if N is None:
@@ -944,7 +944,7 @@ class population():
                                 sumvol_uni[v_uni == self.V[i,j,k]] += self.V[i,j,k]*N[i,j,k,t]
                                 
             # Sort v_uni in ascending order and keep track in sumvol_uni
-            v_uni = v_uni[np.argsort(v_uni)]
+            # v_uni = v_uni[np.argsort(v_uni)]
             sumvol_uni = sumvol_uni[np.argsort(v_uni)]
             
             # Calculate diameter array
@@ -958,15 +958,14 @@ class population():
             # Retrieve x10, x50 and x90 through interpolation
             x_10=np.interp(0.1, Q3, x_uni)
             x_50=np.interp(0.5, Q3, x_uni)
-            x_90=np.interp(0.9, Q3, x_uni)
-            
+            x_90=np.interp(0.9, Q3, x_uni)   
         else:
             print('Case for comp not coded yet. Exiting')
             return
     
         return x_uni, q3, Q3, x_10, x_50, x_90
     
-    def return_num_distribution_fixed(self, comp='all', t=0, N=None):
+    def return_num_distribution(self, comp='all', t=0, N=None):
         # If no N is provided use the one from the class instance
         if N is None:
             N = self.N
