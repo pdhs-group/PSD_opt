@@ -12,11 +12,14 @@ from kernel_opt import kernel_opt
 class multi_opt(kernel_opt):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.create_1d_pop(disc='geo')
         self.weight_2d = 1
         
+        
     def cal_delta(self, corr_beta=None, alpha_prim=None, scale=1, Q3_exp=None, 
-                        x_50_exp=None, sample_num=1, exp_data_path=None):       
+                        x_50_exp=None, sample_num=1, exp_data_path=None):  
+        if self.calc_init_N:
+            self.calc_all_R()
+            self.set_init_N(sample_num, exp_data_path, init_flag='mean')
         self.cal_all_pop(corr_beta, alpha_prim)
         
         delta = self.cal_delta_tem(sample_num, exp_data_path[0], scale, self.p)
@@ -31,19 +34,4 @@ class multi_opt(kernel_opt):
         self.cal_pop(self.p_NM, corr_beta, alpha_prim[0])
         self.cal_pop(self.p_M, corr_beta, alpha_prim[2])
         self.cal_pop(self.p, corr_beta, alpha_prim)       
-    
-    def create_1d_pop(self, disc='geo'):
         
-        self.p_NM = population(dim=1,disc=disc)
-        self.p_M = population(dim=1,disc=disc)
-        self.set_comp_para()
-        
-    def set_comp_para(self, R01_0='r0_005', R03_0='r0_005', dist_path_NM=None, dist_path_M=None):
-        super().set_comp_para(R01_0, R03_0, dist_path_NM, dist_path_M)
-        # parameter for particle component 1 - NM
-        self.p_NM.R01 = self.p.R01
-        self.p_NM.DIST1 = self.p.DIST1
-        
-        # parameter for particle component 2 - M
-        self.p_M.R01 = self.p.R03
-        self.p_M.DIST1 = self.p.DIST3

@@ -17,7 +17,7 @@ import opt_method as opt
 if __name__ == '__main__':
     ## Input for Opt
     dim = 2
-    t_vec = np.arange(1, 602, 60, dtype=float)
+    t_vec = np.concatenate(([0.1, 0.3, 0.6, 0.9], np.arange(1, 602, 60, dtype=float)))
     delta_flag = 1
     add_noise = True
     smoothing = True
@@ -52,12 +52,12 @@ if __name__ == '__main__':
     var_corr_beta = [1e-2, 1e-1, 1e0, 1e1, 1e2]
     
     ## define the range of alpha_prim 64x3
-    values = [0, 0.33, 0.67, 1]
+    values = [0, 0.5, 1]
     a1, a2, a3 = np.meshgrid(values, values, values, indexing='ij')
     var_alpha_prim = np.column_stack((a1.flatten(), a2.flatten(), a3.flatten()))
 
     ## define the range of particle size scale
-    size_scale = [1, 5, 10]
+    size_scale = [1, 10]
 
     ## get the initial condition for particle size number distribution
     # Opt.get_init_N()

@@ -36,10 +36,20 @@ class kernel_opt():
         self.p = population(dim=dim, disc='geo')
         self.volume_dist = True
         
+        self.create_1d_pop(disc='geo')
+        
     def cal_delta(self, corr_beta=None, alpha_prim=None, scale=1, Q3_exp=None,
                   x_50_exp=None, sample_num=1, exp_data_path=None):
         
         # x_uni = self.cal_x_uni(self.p)
+        if self.calc_init_N:
+            exp_data_paths = [
+                exp_data_path,
+                exp_data_path.replace(".xlsx", "_NM.xlsx"),
+                exp_data_path.replace(".xlsx", "_M.xlsx")
+            ]
+            self.calc_all_R()
+            self.set_init_N(sample_num, exp_data_paths, init_flag='mean')
         self.cal_pop(self.p, corr_beta, alpha_prim)
 
         return self.cal_delta_tem(sample_num, exp_data_path, scale, self.p)
@@ -101,7 +111,11 @@ class kernel_opt():
             alpha_prim_temp[1] = alpha_prim_temp[2] = alpha_prim[1]
             alpha_prim_temp[3] = alpha_prim[2]
         pop.alpha_prim = alpha_prim_temp
-        pop.full_init(calc_alpha=False)
+        if not self.calc_init_N:
+            pop.full_init(calc_alpha=False)
+        else:
+            pop.calc_F_M()
+            if pop.dim == 1: pop.calc_B_M()
         pop.solve_PBE(t_vec=self.t_vec)                
     
     # Read the experimental data and re-interpolate the particle distribution 
@@ -115,11 +129,15 @@ class kernel_opt():
         # The experimental data is the number distribution of particles,
         # which needs to be converted into a volume distribution to compare 
         # with the simulation results.
-        v_uni_exp = np.pi*x_uni_exp**3/6
-        sumvol_uni = v_uni_exp * q3_exp
-        q3_exp = sumvol_uni / np.sum(sumvol_uni)
-        q3_exp = q3_exp / np.sum(q3_exp)
+        q3_exp = self.convert_dist_num_to_vol(x_uni_exp, q3_exp)
         return self.re_cal_distribution(x_uni_exp, q3_exp)
+    
+    def convert_dist_num_to_vol(self, x_uni, q3_num):
+        v_uni = np.pi*x_uni**3/6
+        sumvol_uni = v_uni[:, np.newaxis] * q3_num
+        q3 = sumvol_uni / np.sum(sumvol_uni, axis=0)
+        q3 = q3 / np.sum(q3)
+        return q3
     
     def cost_fun(self, data_exp, data_mod):
         if self.cost_func_type == 'MSE':
@@ -271,7 +289,7 @@ class kernel_opt():
         # So x_uni_re must be reshaped
         x_uni_ori_re = x_uni_ori.reshape(-1, 1)
         # Avoid divide-by-zero warnings when calculating KDE
-        data_ori_adjested = np.where(data_ori == 0, 1e-20, data_ori)      
+        data_ori_adjested = np.where(data_ori <= 0, 1e-20, data_ori)      
         kde = KernelDensity(kernel=kernel_func, bandwidth=bandwidth)
         kde.fit(x_uni_ori_re, sample_weight=data_ori_adjested)
         
@@ -337,12 +355,77 @@ class kernel_opt():
             return [update_path(path, label) for path in path_ori]
         else:
             return update_path(path_ori, label)
-    
-    def set_comp_para(self, R01_0='r0_005', R03_0='r0_005', dist_path_NM=None, dist_path_M=None):
+        
+    def create_1d_pop(self, disc='geo'):
+        
+        self.p_NM = population(dim=1,disc=disc)
+        self.p_M = population(dim=1,disc=disc)
+            
+    def set_comp_para(self, R01_0='r0_005', R03_0='r0_005', dist_path_NM=None, dist_path_M=None,
+                      R_NM=2.9e-7, R_M=2.9e-7):
         if  not (dist_path_NM is None or dist_path_M is None):
+            self.calc_init_N = False
+            self.p.USE_PSD = True
             psd_dict_NM = np.load(dist_path_NM,allow_pickle=True).item()
             psd_dict_M = np.load(dist_path_M,allow_pickle=True).item()
             self.p.DIST1 = dist_path_NM
             self.p.DIST3 = dist_path_M
             self.p.R01 = psd_dict_NM[R01_0]
             self.p.R03 = psd_dict_M[R03_0]
+        else:
+            self.p.USE_PSD = False
+            self.calc_init_N = True
+            self.p.R01 = R_NM
+            self.p.R03 = R_M
+        ## Set particle parameter for 1D PBE
+        self.p_NM.USE_PSD = self.p_M.USE_PSD = self.p.USE_PSD
+        # parameter for particle component 1 - NM
+        self.p_NM.R01 = self.p.R01
+        self.p_NM.DIST1 = self.p.DIST1
+        
+        # parameter for particle component 2 - M
+        self.p_M.R01 = self.p.R03
+        self.p_M.DIST1 = self.p.DIST3
+        
+    def calc_all_R(self):
+        self.p.calc_R()
+        self.p_NM.calc_R()
+        self.p_M.calc_R()
+    
+    ## only for 1D-pop, 
+    def set_init_N(self, sample_num, exp_data_paths, init_flag):
+        self.set_init_N_1D(self.p_NM, sample_num, exp_data_paths[1], init_flag)
+        self.set_init_N_1D(self.p_M, sample_num, exp_data_paths[2], init_flag)
+        self.p.N = np.zeros((self.p.NS+3, self.p.NS+3, len(self.p.t_vec)))
+        self.p.N[2:, 1, 0] = self.p_NM.N[2:, 0]
+        self.p.N[1, 2:, 0] = self.p_M.N[2:, 0]
+    
+    def set_init_N_1D(self, pop, sample_num, exp_data_path, init_flag, datasets=3):
+        x_uni = self.cal_x_uni(pop)
+        if sample_num == 1:
+            init_q3_sets = np.zeros((len(x_uni), datasets))
+            x_uni_exp, q3_exp, _, _ ,_, _ = self.read_exp(exp_data_path)
+            q3_exp = self.convert_dist_num_to_vol(x_uni_exp, q3_exp)
+            # calculate with the first three time point
+            init_q3_raw = q3_exp[:,:datasets]
+            for i in range(datasets):
+                kde = self.KDE_fit(x_uni_exp, init_q3_raw[:, i])
+                init_q3_sets[:, i] = self.KDE_score(kde, x_uni)
+                
+            if init_flag == 'mean':
+                init_q3 = init_q3_sets.mean(axis=1)
+        else:
+            init_q3_sets = np.zeros((len(x_uni), datasets, sample_num))
+            for i in range(0, sample_num):
+                exp_data_path=self.traverse_path(i, exp_data_path)
+                x_uni_exp, q3_exp, _, _ ,_, _ = self.read_exp(exp_data_path)
+                q3_exp = self.convert_dist_num_to_vol(x_uni_exp, q3_exp)
+                init_q3_raw = q3_exp[:,:datasets]
+                for j in range(datasets):
+                    kde = self.KDE_fit(x_uni_exp, init_q3_raw[:, j])
+                    init_q3_sets[:, j, i] = self.KDE_score(kde, x_uni)
+            if init_flag == 'mean':
+                init_q3 = init_q3_sets.mean(axis=1).mean(axis=1)
+                   
+        pop.N = np.zeros((pop.NS+3, len(pop.t_vec)))
+        pop.N[2:, 0]=init_q3 * pop.N01

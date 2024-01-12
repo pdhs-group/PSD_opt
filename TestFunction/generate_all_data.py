@@ -9,12 +9,12 @@ import os
 sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),".."))
 import opt_method as opt
 import numpy as np
-from generate_psd import full_psd
+from general_scripts.generate_psd import full_psd
 
 if __name__ == '__main__':
     ## Input for Opt
     dim = 2
-    t_vec = np.arange(1, 602, 60, dtype=float)
+    t_vec = np.concatenate(([0, 0.1, 0.3, 0.6, 0.9], np.arange(1, 602, 60, dtype=float)))
     delta_flag = 1
     add_noise = True
     smoothing = True

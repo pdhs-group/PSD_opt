@@ -267,7 +267,7 @@ def calculate_case(CASE, PBE=True, MC=True):
             p.COLEVAL = 4                           # Sum kernel
             p.EFFEVAL = 2                           # Case for calculation of alpha
             p.CORR_BETA = beta0/v0
-            p.SIZEEVAL = 2
+            p.SIZEEVAL = 1
             p.R01, p.R03 = x/2, x/2
             p.USE_PSD = False                  
             p.P1=0                                  # No breakage     
@@ -714,7 +714,7 @@ if __name__ == "__main__":
     #CASE = '2D_ortho_mono_ccm'
     
     ### General parameters
-    t = np.linspace(0,800,20)      # Time array [s]
+    t = np.linspace(0,600,20)      # Time array [s]
     c = 0.1e-2*1e-2                 # Volume concentration [-]
     x = 1e-6                        # Particle diameter [m]
     beta0 = 1e-16                   # Collision frequency parameter [m^3/s]
@@ -725,7 +725,7 @@ if __name__ == "__main__":
     ### PBE Parameters
     grid = 'geo'
     NS = 8
-    NS2 = 15
+    NS2 = 12
     #NS2 = 50
     
     S = 2

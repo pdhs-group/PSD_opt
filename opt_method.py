@@ -35,7 +35,6 @@ class opt_method():
         
         # Set the base path for exp_data_path
         self.base_path = os.path.join(self.k.p.pth, "data\\")
-        self.filename_kernels = os.path.join(self.base_path, "kernels.txt")
         
     def generate_synth_data(self, sample_num=1, add_info=""):
         # self.write_kernels()
@@ -86,6 +85,7 @@ class opt_method():
                 ]
                 # Rename just to make it easy for subsequent code
                 exp_data_path = exp_data_paths
+            
             
             if method == 'kernels':
                 delta_opt_sample = np.zeros(sample_num)
@@ -138,13 +138,14 @@ class opt_method():
                 para_diff_i[0] = abs(self.k.corr_beta_opt- self.k.corr_beta) / self.k.corr_beta
                 para_diff_i[1:] = abs(self.k.alpha_prim_opt - self.k.alpha_prim)
                 
-            para_diff=para_diff_i.mean(axis=1)
+            para_diff=para_diff_i.mean
             
             return self.k.corr_beta_opt, self.k.alpha_prim_opt, para_diff, delta_opt
         
     def write_new_data(self, pop, exp_data_path):
         # save the calculation result in experimental data form
         x_uni = self.k.cal_x_uni(pop)
+        v_uni = self.k.cal_v_uni(pop)
         formatted_times = write_read_exp.convert_seconds_to_time(pop.t_vec)
         sumV_uni = np.zeros((len(x_uni), self.k.num_t_steps))
         
@@ -152,16 +153,22 @@ class opt_method():
             _, q3, _, _, _, _ = pop.return_distribution(t=idt)
             kde = self.k.KDE_fit(x_uni, q3)
             sumV_uni[:, idt] = self.k.KDE_score(kde, x_uni)
-                
+            # The experimental data is the number distribution of particles, need a conversion
+            sumvol = np.sum(v_uni * sumV_uni[:, idt])
+            sumV_uni[:, idt] = sumV_uni[:, idt] * sumvol / v_uni
+             
         _, q3, _, _, _,_ = self.k.re_cal_distribution(x_uni, sumV_uni)
+        
+        # # Sum each column of q3 and then multiply by v_uni to get the total volume 
+        # # at each time step (theoretically constant)
+        # sumvol = np.sum(v_uni[:, np.newaxis] * q3, axis=0)
+        # q3 = q3 * sumvol / v_uni[:, np.newaxis]
+        
+        # _, q3, _, _, _,_ = self.k.re_cal_distribution(x_uni, q3)
         # add noise to the original data
         if self.k.add_noise:
             q3 = self.k.function_noise(q3)
-        # The experimental data is the number distribution of particles
-        v_uni = self.k.cal_v_uni(pop)
-        sumvol = np.sum(v_uni * q3) 
-        q3 = 
-        
+
         df = pd.DataFrame(data=q3, index=x_uni, columns=formatted_times)
         df.index.name = 'Circular Equivalent Diameter'
         # save DataFrame as Excel file
@@ -248,24 +255,4 @@ class opt_method():
         fig.savefig(file_path, dpi=150)
         return 0
     
-    def set_init_N(self):
         
-        return
-    
-    ## only for 1D-pop, 
-    def set_init_N(self, pop, sample_num, exp_data_path, init_flag):
-        x_uni = self.k.cal_x_uni(pop)
-        v_uni = np.pi*x_uni**3/6
-        if sample_num == 1:
-            exp_data = write_read_exp(exp_data_path, read=True)
-            x_uni_exp, q3_exp, _, _ ,_, _ = self.k.read_exp(exp_data_path)
-            if init_flag == 'mean':
-                # calculate with the first three time point
-                init_q3_raw = q3_exp[:,:3].mean(x=1)
-                kde = self.k.KDE_fit(x_uni_exp, init_q3_raw)
-                init_q3 = self.k.KDE_score(kde, x_uni)
-            self.k.pop.N = np.zeros((self.k.pop.NS, len(self.k.pop.t_vec)))
-            for i in range(2,self.k.pop.NS+3):
-                self.k.pop.N[i, 0]=init_q3[i] * self.k.pop.N01
-            
-            

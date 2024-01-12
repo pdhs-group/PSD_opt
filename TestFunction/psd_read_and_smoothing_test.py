@@ -95,7 +95,7 @@ if __name__ == '__main__':
     dim = 2
     corr_beta = 10
     alpha_prim = np.array([0.8, 0.5, 0.2])
-    t_vec = np.arange(1, 602, 60, dtype=float)
+    t_vec = np.concatenate(([0.1, 0.3, 0.6, 0.9], np.arange(1, 602, 60, dtype=float)))
     delta_flag = 1
     add_noise = True
     smoothing = True
