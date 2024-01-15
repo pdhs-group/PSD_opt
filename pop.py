@@ -913,7 +913,7 @@ class population():
         return axq3, axQ3, fig
     
     ## Return particle size distribution on fixed grid 
-    def return_distribution(self, comp='all', t=0, N=None):
+    def return_distribution(self, comp='all', t=0, N=None, flag='all'):
         
         # If no N is provided use the one from the class instance
         if N is None:
@@ -927,21 +927,21 @@ class population():
             # Loop through all entries in V and add volume concentration to specific entry in sumvol_uni
             if self.dim == 1:
                 for i in range(1,self.NS+3):
-                    if self.V[i] in v_uni:
-                        sumvol_uni[v_uni == self.V[i]] += self.V[i]*N[i,t] 
+                    # if self.V[i] in v_uni:
+                    sumvol_uni[v_uni == self.V[i]] += self.V[i]*N[i,t] 
                         
             if self.dim == 2:
                 for i in range(1,self.NS+3):
                     for j in range(1,self.NS+3):
-                        if self.V[i,j] in v_uni:
-                            sumvol_uni[v_uni == self.V[i,j]] += self.V[i,j]*N[i,j,t]
+                        # if self.V[i,j] in v_uni:
+                        sumvol_uni[v_uni == self.V[i,j]] += self.V[i,j]*N[i,j,t]
 
             if self.dim == 3:
                 for i in range(1,self.NS+3):
                     for j in range(1,self.NS+3):
                         for k in range(1,self.NS+3):
-                            if self.V[i,j,k] in v_uni:
-                                sumvol_uni[v_uni == self.V[i,j,k]] += self.V[i,j,k]*N[i,j,k,t]
+                            # if self.V[i,j,k] in v_uni:
+                            sumvol_uni[v_uni == self.V[i,j,k]] += self.V[i,j,k]*N[i,j,k,t]
                                 
             # Sort v_uni in ascending order and keep track in sumvol_uni
             # v_uni = v_uni[np.argsort(v_uni)]
@@ -962,10 +962,23 @@ class population():
         else:
             print('Case for comp not coded yet. Exiting')
             return
+        
+        outputs = {
+        'x_uni': x_uni,
+        'q3': q3,
+        'Q3': Q3,
+        'x_10': x_10,
+        'x_50': x_50,
+        'x_90': x_90
+        }
+        
+        if flag == 'all':
+            return outputs.values()
+        else:
+            flags = flag.split(',')
+            return tuple(outputs[f.strip()] for f in flags if f.strip() in outputs)
     
-        return x_uni, q3, Q3, x_10, x_50, x_90
-    
-    def return_num_distribution(self, comp='all', t=0, N=None):
+    def return_num_distribution(self, comp='all', t=0, N=None, flag='all'):
         # If no N is provided use the one from the class instance
         if N is None:
             N = self.N
@@ -1017,7 +1030,20 @@ class population():
             print('Case for comp not coded yet. Exiting')
             return
     
-        return x_uni, q3, Q3, x_10, x_50, x_90
+        outputs = {
+        'x_uni': x_uni,
+        'q3': q3,
+        'Q3': Q3,
+        'x_10': x_10,
+        'x_50': x_50,
+        'x_90': x_90
+        }
+        
+        if flag == 'all':
+            return outputs.values()
+        else:
+            flags = flag.split(',')
+            return tuple(outputs[f.strip()] for f in flags if f.strip() in outputs)
         
     ## Return total number. For t=None return full array, else return total number at time index t 
     def return_N_t(self,t=None):

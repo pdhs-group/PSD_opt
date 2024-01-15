@@ -17,9 +17,6 @@ class multi_opt(kernel_opt):
         
     def cal_delta(self, corr_beta=None, alpha_prim=None, scale=1, Q3_exp=None, 
                         x_50_exp=None, sample_num=1, exp_data_path=None):  
-        if self.calc_init_N:
-            self.calc_all_R()
-            self.set_init_N(sample_num, exp_data_path, init_flag='mean')
         self.cal_all_pop(corr_beta, alpha_prim)
         
         delta = self.cal_delta_tem(sample_num, exp_data_path[0], scale, self.p)

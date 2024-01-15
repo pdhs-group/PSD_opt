@@ -66,7 +66,7 @@ def normal_test(Opt, sample_num, data_name):
     Opt.save_as_png(fig_NM, "PSD-NM")
     Opt.save_as_png(fig_M, "PSD-M")
     
-    return corr_beta_opt, alpha_prim_opt, para_opt, para_diff, delta_opt, elapsed_time
+    return corr_beta_opt, alpha_prim_opt, para_diff, delta_opt, elapsed_time
 
 
 if __name__ == '__main__':
@@ -102,6 +102,8 @@ if __name__ == '__main__':
     # R01_0 = 'r0_005'
     # R03_0 = 'r0_005'
     # Opt.k.set_comp_para(R01_0, R03_0, dist_path_1, dist_path_1)
+    ## Set initial conditions to be calculated from experimental data, or use PSD data
+    Opt.k.calc_init_N = True
     Opt.k.set_comp_para(R_NM=2.9e-7, R_M=2.9e-7)
     # Optimize method: 
     #   'BO': Bayesian Optimization with package BayesianOptimization
@@ -135,7 +137,7 @@ if __name__ == '__main__':
         data_name = "Sim_para_0.1_1.0_1.0_0.5_1.xlsx"
     
     Opt.k.corr_beta = 0.1
-    Opt.k.alpha_prim = np.array([0.8, 0.5, 0.2])
+    Opt.k.alpha_prim = np.array([1.0, 1.0, 0.5])
     
     # use real experimental data, currently unavailable, missing underlying data
     # data_name = "CED_focus.xlsx"
@@ -172,8 +174,8 @@ if __name__ == '__main__':
     # mean_diff=para_diff.mean(axis=1)
     
     
-    corr_beta_opt, alpha_prim_opt, para_opt, para_diff, \
+    corr_beta_opt, alpha_prim_opt, para_diff, \
         delta_opt, elapsed_time= normal_test(
             Opt, sample_num, data_name)
         
-    mean_diff=para_diff.mean()
+    # mean_diff=para_diff.mean()

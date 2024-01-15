@@ -77,16 +77,25 @@ class opt_method():
             warnings.warn("Please specify the name of the training data without labels!")
         else:
             exp_data_path = os.path.join(self.base_path, data_name)
+
+            exp_data_paths = [
+                exp_data_path,
+                exp_data_path.replace(".xlsx", "_NM.xlsx"),
+                exp_data_path.replace(".xlsx", "_M.xlsx")
+            ]
+            
             if self.multi_flag:
-                exp_data_paths = [
-                    exp_data_path,
-                    exp_data_path.replace(".xlsx", "_NM.xlsx"),
-                    exp_data_path.replace(".xlsx", "_M.xlsx")
-                ]
-                # Rename just to make it easy for subsequent code
+                # Because manual initialization N always requires 1D data(use exp_data_paths), 
+                # and only multi-optimization process requires 1D data.
                 exp_data_path = exp_data_paths
             
-            
+            if not self.k.calc_init_N:
+                self.k.p.full_init(calc_alpha=False)
+                self.k.p_NM.full_init(calc_alpha=False)
+                self.k.p_M.full_init(calc_alpha=False)
+            else:
+                self.k.set_init_N(sample_num, exp_data_paths, init_flag='mean')
+                
             if method == 'kernels':
                 delta_opt_sample = np.zeros(sample_num)
                 corr_beta_sample = np.zeros(sample_num)
@@ -138,7 +147,7 @@ class opt_method():
                 para_diff_i[0] = abs(self.k.corr_beta_opt- self.k.corr_beta) / self.k.corr_beta
                 para_diff_i[1:] = abs(self.k.alpha_prim_opt - self.k.alpha_prim)
                 
-            para_diff=para_diff_i.mean
+            para_diff=para_diff_i.mean()
             
             return self.k.corr_beta_opt, self.k.alpha_prim_opt, para_diff, delta_opt
         
@@ -150,7 +159,7 @@ class opt_method():
         sumV_uni = np.zeros((len(x_uni), self.k.num_t_steps))
         
         for idt in range(self.k.num_t_steps):
-            _, q3, _, _, _, _ = pop.return_distribution(t=idt)
+            q3 = pop.return_distribution(t=idt, flag='q3')
             kde = self.k.KDE_fit(x_uni, q3)
             sumV_uni[:, idt] = self.k.KDE_score(kde, x_uni)
             # The experimental data is the number distribution of particles, need a conversion
@@ -183,7 +192,7 @@ class opt_method():
     # Recalculate PSD using original parameter
         self.k.cal_pop(pop, corr_beta=corr_beta_ori, alpha_prim=alpha_prim_ori)
 
-        x_uni_ori, q3_ori, Q3_ori, x_10_ori, x_50_ori, x_90_ori = pop.return_distribution(t=len(pop.t_vec)-1)
+        x_uni_ori, q3_ori, Q3_ori, x_10_ori, x_50_ori, x_90_ori = pop.return_distribution(t=len(pop.t_vec)-1, flag='all')
         # Conversion unit
         x_uni_ori *= 1e6    
         x_10_ori *= 1e6   
@@ -196,7 +205,7 @@ class opt_method():
 
         self.k.cal_pop(pop, corr_beta_opt, alpha_prim_opt)  
             
-        x_uni, q3, Q3, x_10, x_50, x_90 = pop.return_distribution(t=len(pop.t_vec)-1)
+        x_uni, q3, Q3, x_10, x_50, x_90 = pop.return_distribution(t=len(pop.t_vec)-1, flag='all')
         # Conversion unit
         x_uni *= 1e6    
         x_10 *= 1e6   

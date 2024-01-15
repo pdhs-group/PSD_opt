@@ -40,16 +40,7 @@ class kernel_opt():
         
     def cal_delta(self, corr_beta=None, alpha_prim=None, scale=1, Q3_exp=None,
                   x_50_exp=None, sample_num=1, exp_data_path=None):
-        
         # x_uni = self.cal_x_uni(self.p)
-        if self.calc_init_N:
-            exp_data_paths = [
-                exp_data_path,
-                exp_data_path.replace(".xlsx", "_NM.xlsx"),
-                exp_data_path.replace(".xlsx", "_M.xlsx")
-            ]
-            self.calc_all_R()
-            self.set_init_N(sample_num, exp_data_paths, init_flag='mean')
         self.cal_pop(self.p, corr_beta, alpha_prim)
 
         return self.cal_delta_tem(sample_num, exp_data_path, scale, self.p)
@@ -59,7 +50,7 @@ class kernel_opt():
         x_uni = self.cal_x_uni(pop)
         # x_uni = self.cal_x_uni(pop)
         for idt in range(self.num_t_steps):
-            _, q3, Q3, x_10, x_50, x_90 = pop.return_distribution(t=idt)
+            _, q3, Q3, x_10, x_50, x_90 = pop.return_distribution(t=idt, flag='all')
             kde = self.KDE_fit(x_uni, q3)
             kde_list.append(kde)
         
@@ -111,11 +102,11 @@ class kernel_opt():
             alpha_prim_temp[1] = alpha_prim_temp[2] = alpha_prim[1]
             alpha_prim_temp[3] = alpha_prim[2]
         pop.alpha_prim = alpha_prim_temp
-        if not self.calc_init_N:
-            pop.full_init(calc_alpha=False)
-        else:
-            pop.calc_F_M()
-            if pop.dim == 1: pop.calc_B_M()
+        # if not self.calc_init_N:
+        #     pop.full_init(calc_alpha=False)
+        # else:
+        pop.calc_F_M()
+        if pop.dim == 1: pop.calc_B_M()
         pop.solve_PBE(t_vec=self.t_vec)                
     
     # Read the experimental data and re-interpolate the particle distribution 
@@ -156,16 +147,16 @@ class kernel_opt():
                    sample_num=1, hyperparameter=None, exp_data_path=None):
         if algo == 'BO':
             if self.p.dim == 1:
-                pbounds = {'corr_beta': (0, 100), 'alpha_prim': (0, 1)}
-                objective = lambda corr_beta, alpha_prim: self.cal_delta(
-                    corr_beta=corr_beta, alpha_prim=np.array([alpha_prim]),
+                pbounds = {'corr_beta_log': (-3, 3), 'alpha_prim': (0, 1)}
+                objective = lambda corr_beta_log, alpha_prim: self.cal_delta(
+                    corr_beta=10**corr_beta_log, alpha_prim=np.array([alpha_prim]),
                     scale=-1, Q3_exp=Q3_exp, x_50_exp=x_50_exp, 
                     sample_num=sample_num, exp_data_path=exp_data_path)
                 
             elif self.p.dim == 2:
-                pbounds = {'corr_beta': (0, 100), 'alpha_prim_0': (0, 1), 'alpha_prim_1': (0, 1), 'alpha_prim_2': (0, 1)}
-                objective = lambda corr_beta, alpha_prim_0, alpha_prim_1, alpha_prim_2: self.cal_delta(
-                    corr_beta=corr_beta, 
+                pbounds = {'corr_beta_log': (-3, 3), 'alpha_prim_0': (0, 1), 'alpha_prim_1': (0, 1), 'alpha_prim_2': (0, 1)}
+                objective = lambda corr_beta_log, alpha_prim_0, alpha_prim_1, alpha_prim_2: self.cal_delta(
+                    corr_beta=10**corr_beta_log, 
                     alpha_prim=np.array([alpha_prim_0, alpha_prim_1, alpha_prim_2]), 
                     scale=-1, Q3_exp=Q3_exp, x_50_exp=x_50_exp, 
                     sample_num=sample_num, exp_data_path=exp_data_path)
@@ -182,51 +173,51 @@ class kernel_opt():
                 n_iter=self.n_iter,
             )   
             if self.p.dim == 1:
-                self.corr_beta_opt = opt.max['params']['corr_beta']
+                self.corr_beta_opt = 10**opt.max['params']['corr_beta_log']
                 self.alpha_prim_opt = opt.max['params']['alpha_prim']
                 
             elif self.p.dim == 2:
                 self.alpha_prim_opt = np.zeros(3)
-                self.corr_beta_opt = opt.max['params']['corr_beta']
+                self.corr_beta_opt = 10**opt.max['params']['corr_beta_log']
                 self.alpha_prim_opt[0] = opt.max['params']['alpha_prim_0']
                 self.alpha_prim_opt[1] = opt.max['params']['alpha_prim_1']
                 self.alpha_prim_opt[2] = opt.max['params']['alpha_prim_2']
             
             delta_opt = -opt.max['target']
             
-        if algo == 'gp_minimize':
-            if self.p.dim == 1:
-                space = [Real(0, 50), Real(0, 1)]
-                objective = lambda params: self.cal_delta(corr_beta=params[0], alpha_prim=np.array([params[1]]), 
-                                                          scale=1, Q3_exp=Q3_exp, x_50_exp=x_50_exp, 
-                                                          sample_num=sample_num, exp_data_path=exp_data_path)
-            elif self.p.dim == 2:
-                space = [Real(0, 50), Real(0, 1), Real(0, 1), Real(0, 1)]
-                objective = lambda params: self.cal_delta(
-                    corr_beta=params[0], 
-                    alpha_prim=np.array([params[1], params[2], params[3]]), 
-                    scale=1, Q3_exp=Q3_exp, x_50_exp=x_50_exp, sample_num=sample_num,
-                    exp_data_path=exp_data_path)
+        # if algo == 'gp_minimize':
+        #     if self.p.dim == 1:
+        #         space = [Real(0, 50), Real(0, 1)]
+        #         objective = lambda params: self.cal_delta(corr_beta=params[0], alpha_prim=np.array([params[1]]), 
+        #                                                   scale=1, Q3_exp=Q3_exp, x_50_exp=x_50_exp, 
+        #                                                   sample_num=sample_num, exp_data_path=exp_data_path)
+        #     elif self.p.dim == 2:
+        #         space = [Real(0, 50), Real(0, 1), Real(0, 1), Real(0, 1)]
+        #         objective = lambda params: self.cal_delta(
+        #             corr_beta=params[0], 
+        #             alpha_prim=np.array([params[1], params[2], params[3]]), 
+        #             scale=1, Q3_exp=Q3_exp, x_50_exp=x_50_exp, sample_num=sample_num,
+        #             exp_data_path=exp_data_path)
 
-            opt = gp_minimize(
-                objective,
-                space,
-                n_calls=self.n_iter,
-                n_initial_points=init_points,
-                random_state=0
-            )
+        #     opt = gp_minimize(
+        #         objective,
+        #         space,
+        #         n_calls=self.n_iter,
+        #         n_initial_points=init_points,
+        #         random_state=0
+        #     )
 
-            if self.p.dim == 1:
-                self.corr_beta_opt = opt.x[0]
-                self.alpha_prim_opt = opt.x[1]
-            elif self.p.dim == 2:
-                self.alpha_prim_opt = np.zeros(3)
-                self.corr_beta_opt = opt.x[0]
-                self.alpha_prim_opt[0] = opt.x[1]
-                self.alpha_prim_opt[1] = opt.x[2]
-                self.alpha_prim_opt[2] = opt.x[3]
+        #     if self.p.dim == 1:
+        #         self.corr_beta_opt = opt.x[0]
+        #         self.alpha_prim_opt = opt.x[1]
+        #     elif self.p.dim == 2:
+        #         self.alpha_prim_opt = np.zeros(3)
+        #         self.corr_beta_opt = opt.x[0]
+        #         self.alpha_prim_opt[0] = opt.x[1]
+        #         self.alpha_prim_opt[1] = opt.x[2]
+        #         self.alpha_prim_opt[2] = opt.x[3]
 
-            delta_opt = opt.fun
+        #     delta_opt = opt.fun
             
         return delta_opt
     
@@ -363,8 +354,7 @@ class kernel_opt():
             
     def set_comp_para(self, R01_0='r0_005', R03_0='r0_005', dist_path_NM=None, dist_path_M=None,
                       R_NM=2.9e-7, R_M=2.9e-7):
-        if  not (dist_path_NM is None or dist_path_M is None):
-            self.calc_init_N = False
+        if (not self.calc_init_N) and (dist_path_NM is not None and dist_path_M is not None):
             self.p.USE_PSD = True
             psd_dict_NM = np.load(dist_path_NM,allow_pickle=True).item()
             psd_dict_M = np.load(dist_path_M,allow_pickle=True).item()
@@ -374,7 +364,6 @@ class kernel_opt():
             self.p.R03 = psd_dict_M[R03_0]
         else:
             self.p.USE_PSD = False
-            self.calc_init_N = True
             self.p.R01 = R_NM
             self.p.R03 = R_M
         ## Set particle parameter for 1D PBE
@@ -394,6 +383,8 @@ class kernel_opt():
     
     ## only for 1D-pop, 
     def set_init_N(self, sample_num, exp_data_paths, init_flag):
+        self.calc_all_R()
+        
         self.set_init_N_1D(self.p_NM, sample_num, exp_data_paths[1], init_flag)
         self.set_init_N_1D(self.p_M, sample_num, exp_data_paths[2], init_flag)
         self.p.N = np.zeros((self.p.NS+3, self.p.NS+3, len(self.p.t_vec)))
