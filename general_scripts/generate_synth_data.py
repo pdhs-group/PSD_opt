@@ -7,9 +7,9 @@ Created on Thu Jan  4 16:14:15 2024
 import sys
 import os
 sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),".."))
-import opt_method as opt
+import opt_find as opt
 import numpy as np
-from general_scripts.generate_psd import full_psd
+from generate_psd import full_psd
 
 if __name__ == '__main__':
     ## Input for Opt
@@ -54,39 +54,22 @@ if __name__ == '__main__':
     R01_0 = 'r0_005'
     R03_0 = 'r0_005'
     ## Instantiate Opt
-    Opt = opt.opt_method(add_noise, smoothing, dim, delta_flag, noise_type, 
-                         noise_strength, t_vec, multi_flag)
+    find = opt.opt_find()
+    find.init_opt_algo(dim, t_vec, add_noise, noise_type, noise_strength, smoothing)
 
     for i, dist in enumerate(dist_path):
         ## Reinitialization of pop equations using psd data  
         dist_path_NM = dist_path[0]
         dist_path_M = dist
         scale = size_scale[i]
-        Opt.k.set_comp_para(R01_0, R03_0, dist_path_NM, dist_path_M)
+        find.algo.set_comp_para(R01_0, R03_0, dist_path_NM, dist_path_M)
         
         for corr_beta in var_corr_beta:
             for alpha_prim in var_alpha_prim:
                 ## Set α and β_corr
-                Opt.k.corr_beta = corr_beta
-                Opt.k.alpha_prim = alpha_prim
-                add_info = f"_para_{Opt.k.corr_beta}_{Opt.k.alpha_prim[0]}_{Opt.k.alpha_prim[1]}_{Opt.k.alpha_prim[2]}_{scale}"
+                find.algo.corr_beta = corr_beta
+                find.algo.alpha_prim = alpha_prim
+                add_info = f"_para_{find.algo.corr_beta}_{find.algo.alpha_prim[0]}_{find.algo.alpha_prim[1]}_{find.algo.alpha_prim[2]}_{scale}"
                 # Generate synthetic Data
-                Opt.generate_synth_data(sample_num=sample_num, add_info=add_info)
+                find.generate_data(sample_num=sample_num, add_info=add_info)
                    
-    # Optimize method: 
-    #   'BO': Bayesian Optimization with package BayesianOptimization
-    #   'gp_minimize': Bayesian Optimization with package skopt.gp_minimize
-    Opt.algo='BO'
-    
-    # Type of cost function to use
-    #   'MSE': Mean Squared Error
-    #   'RMSE': Root Mean Squared Error
-    #   'MAE': Mean Absolute Error
-    #   'KL': Kullback–Leibler divergence
-    Opt.k.cost_func_type = 'KL'
-    
-    # Iteration steps for optimierer
-    Opt.k.n_iter = 800
-    
-    # The error of 2d pop may be more important, so weights need to be added
-    Opt.k.weight_2d = 1

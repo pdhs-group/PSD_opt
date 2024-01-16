@@ -5,42 +5,38 @@ Created on Wed Nov 15 14:38:56 2023
 @author: px2030
 """
 import numpy as np
-import pandas as pd
 from pop import population
 from bayes_opt import BayesianOptimization
-from skopt import gp_minimize
-from skopt.space import Real
 from scipy.stats import entropy
-# import statsmodels.api as sm
 from sklearn.neighbors import KernelDensity
 from sklearn.metrics import mean_squared_error, mean_absolute_error
-# from functools import partial
-from PSD_Exp import write_read_exp
+from func.func_read_exp import write_read_exp
 
-
-class kernel_opt():
-    def __init__(self, add_noise=True, smoothing=True, dim=1, delta_flag=1, 
-                 noise_type='Gaussian', noise_strength=0.01, t_vec=None):
-        # delta_flag = 1: use q3
-        # delta_flag = 2: use Q3
-        # delta_flag = 3: use x_50
-        self.delta_flag = delta_flag     
-        self.cost_func_type = 'MSE'
+class opt_algo():
+    def __init__(self):
+        self.smoothing = False
+        self.add_noise = False
+        self.noise_type = 'Gaus'    # Gaus, Uni, Po, Mul
+        self.noise_strength = 0.01
+        
         self.n_iter = 100
-        self.add_noise = add_noise
-        self.smoothing = smoothing
-        self.noise_type = noise_type    # Gaussian, Uniform, Poisson, Multiplicative
-        self.noise_strength = noise_strength
-        self.t_vec = t_vec
-        self.num_t_steps = len(t_vec)
-        self.p = population(dim=dim, disc='geo')
-        self.volume_dist = True
-        
-        self.create_1d_pop(disc='geo')
-        
-    def cal_delta(self, corr_beta=None, alpha_prim=None, scale=1, Q3_exp=None,
-                  x_50_exp=None, sample_num=1, exp_data_path=None):
-        # x_uni = self.cal_x_uni(self.p)
+        ## delta_flag = 1: use q3
+        ## delta_flag = 2: use Q3
+        ## delta_flag = 3: use x_10
+        ## delta_flag = 4: use x_50
+        ## delta_flag = 5: use x_90
+        self.delta_flag = 1     
+        ## 'MSE': Mean Squared Error
+        ## 'RMSE': Root Mean Squared Error
+        ## 'MAE': Mean Absolute Error
+        ## 'KL': Kullback–Leibler divergence(Only q3 and Q3 are compatible with KL) 
+        self.cost_func_type = 'MSE'
+
+        self.t_vec = np.arange(0, 601, 20, dtype=float)
+        self.num_t_steps = len(self.t_vec)
+        self.calc_init_N = False
+    #%%  Optimierer    
+    def cal_delta(self, corr_beta=None, alpha_prim=None, scale=1, sample_num=1, exp_data_path=None):
         self.cal_pop(self.p, corr_beta, alpha_prim)
 
         return self.cal_delta_tem(sample_num, exp_data_path, scale, self.p)
@@ -48,7 +44,6 @@ class kernel_opt():
     def cal_delta_tem(self, sample_num, exp_data_path, scale, pop):
         kde_list = []
         x_uni = self.cal_x_uni(pop)
-        # x_uni = self.cal_x_uni(pop)
         for idt in range(self.num_t_steps):
             _, q3, Q3, x_10, x_50, x_90 = pop.return_distribution(t=idt, flag='all')
             kde = self.KDE_fit(x_uni, q3)
@@ -89,77 +84,21 @@ class kernel_opt():
             # the average value needs to be used instead of the sum.
             x_uni_num = len(data_exp[0])    
             return (delta_sum * scale) / x_uni_num
-        
-    def cal_pop(self, pop, corr_beta, alpha_prim):
-        pop.COLEVAL = 2
-        pop.EFFEVAL = 2
-        pop.CORR_BETA = corr_beta
-        if pop.dim == 1:
-            alpha_prim_temp = alpha_prim
-        elif pop.dim == 2:
-            alpha_prim_temp = np.zeros(4)
-            alpha_prim_temp[0] = alpha_prim[0]
-            alpha_prim_temp[1] = alpha_prim_temp[2] = alpha_prim[1]
-            alpha_prim_temp[3] = alpha_prim[2]
-        pop.alpha_prim = alpha_prim_temp
-        # if not self.calc_init_N:
-        #     pop.full_init(calc_alpha=False)
-        # else:
-        pop.calc_F_M()
-        if pop.dim == 1: pop.calc_B_M()
-        pop.solve_PBE(t_vec=self.t_vec)                
     
-    # Read the experimental data and re-interpolate the particle distribution 
-    # of the experimental data according to the simulation results.
-    def read_exp(self, exp_data_path):      
-        exp_data = write_read_exp(exp_data_path, read=True)
-        df = exp_data.get_exp_data(self.t_vec)
-        x_uni_exp = df.index.to_numpy()
-        q3_exp = df.to_numpy()
-        
-        # The experimental data is the number distribution of particles,
-        # which needs to be converted into a volume distribution to compare 
-        # with the simulation results.
-        q3_exp = self.convert_dist_num_to_vol(x_uni_exp, q3_exp)
-        return self.re_cal_distribution(x_uni_exp, q3_exp)
-    
-    def convert_dist_num_to_vol(self, x_uni, q3_num):
-        v_uni = np.pi*x_uni**3/6
-        sumvol_uni = v_uni[:, np.newaxis] * q3_num
-        q3 = sumvol_uni / np.sum(sumvol_uni, axis=0)
-        q3 = q3 / np.sum(q3)
-        return q3
-    
-    def cost_fun(self, data_exp, data_mod):
-        if self.cost_func_type == 'MSE':
-            return mean_squared_error(data_mod, data_exp)
-        elif self.cost_func_type == 'RMSE':
-            mse = mean_squared_error(data_mod, data_exp)
-            return np.sqrt(mse)
-        elif self.cost_func_type == 'MAE':
-            return mean_absolute_error(data_mod, data_exp)
-        elif (self.delta_flag == 1 or self.delta_flag == 2) and self.cost_func_type == 'KL':
-            return entropy(data_mod, data_exp).mean()
-        else:
-            raise Exception("Current cost function type is not supported")
-    
-    def optimierer(self, algo='BO', init_points=4, Q3_exp=None, x_50_exp=None,
-                   sample_num=1, hyperparameter=None, exp_data_path=None):
-        if algo == 'BO':
+    def optimierer(self, method='BO', init_points=4, sample_num=1, hyperparameter=None, exp_data_path=None):
+        if method == 'BO':
             if self.p.dim == 1:
                 pbounds = {'corr_beta_log': (-3, 3), 'alpha_prim': (0, 1)}
                 objective = lambda corr_beta_log, alpha_prim: self.cal_delta(
                     corr_beta=10**corr_beta_log, alpha_prim=np.array([alpha_prim]),
-                    scale=-1, Q3_exp=Q3_exp, x_50_exp=x_50_exp, 
-                    sample_num=sample_num, exp_data_path=exp_data_path)
+                    scale=-1, sample_num=sample_num, exp_data_path=exp_data_path)
                 
             elif self.p.dim == 2:
                 pbounds = {'corr_beta_log': (-3, 3), 'alpha_prim_0': (0, 1), 'alpha_prim_1': (0, 1), 'alpha_prim_2': (0, 1)}
                 objective = lambda corr_beta_log, alpha_prim_0, alpha_prim_1, alpha_prim_2: self.cal_delta(
                     corr_beta=10**corr_beta_log, 
                     alpha_prim=np.array([alpha_prim_0, alpha_prim_1, alpha_prim_2]), 
-                    scale=-1, Q3_exp=Q3_exp, x_50_exp=x_50_exp, 
-                    sample_num=sample_num, exp_data_path=exp_data_path)
+                    scale=-1, sample_num=sample_num, exp_data_path=exp_data_path)
                 
             opt = BayesianOptimization(
                 f=objective, 
@@ -183,43 +122,43 @@ class kernel_opt():
                 self.alpha_prim_opt[1] = opt.max['params']['alpha_prim_1']
                 self.alpha_prim_opt[2] = opt.max['params']['alpha_prim_2']
             
-            delta_opt = -opt.max['target']
+            delta_opt = -opt.max['target']           
             
-        # if algo == 'gp_minimize':
-        #     if self.p.dim == 1:
-        #         space = [Real(0, 50), Real(0, 1)]
-        #         objective = lambda params: self.cal_delta(corr_beta=params[0], alpha_prim=np.array([params[1]]), 
-        #                                                   scale=1, Q3_exp=Q3_exp, x_50_exp=x_50_exp, 
-        #                                                   sample_num=sample_num, exp_data_path=exp_data_path)
-        #     elif self.p.dim == 2:
-        #         space = [Real(0, 50), Real(0, 1), Real(0, 1), Real(0, 1)]
-        #         objective = lambda params: self.cal_delta(
-        #             corr_beta=params[0], 
-        #             alpha_prim=np.array([params[1], params[2], params[3]]), 
-        #             scale=1, Q3_exp=Q3_exp, x_50_exp=x_50_exp, sample_num=sample_num,
-        #             exp_data_path=exp_data_path)
-
-        #     opt = gp_minimize(
-        #         objective,
-        #         space,
-        #         n_calls=self.n_iter,
-        #         n_initial_points=init_points,
-        #         random_state=0
-        #     )
-
-        #     if self.p.dim == 1:
-        #         self.corr_beta_opt = opt.x[0]
-        #         self.alpha_prim_opt = opt.x[1]
-        #     elif self.p.dim == 2:
-        #         self.alpha_prim_opt = np.zeros(3)
-        #         self.corr_beta_opt = opt.x[0]
-        #         self.alpha_prim_opt[0] = opt.x[1]
-        #         self.alpha_prim_opt[1] = opt.x[2]
-        #         self.alpha_prim_opt[2] = opt.x[3]
-
-        #     delta_opt = opt.fun
-            
-        return delta_opt
+        return delta_opt  
+    
+    def cost_fun(self, data_exp, data_mod):
+        if self.cost_func_type == 'MSE':
+            return mean_squared_error(data_mod, data_exp)
+        elif self.cost_func_type == 'RMSE':
+            mse = mean_squared_error(data_mod, data_exp)
+            return np.sqrt(mse)
+        elif self.cost_func_type == 'MAE':
+            return mean_absolute_error(data_mod, data_exp)
+        elif (self.delta_flag == 1 or self.delta_flag == 2) and self.cost_func_type == 'KL':
+            return entropy(data_mod, data_exp).mean()
+        else:
+            raise Exception("Current cost function type is not supported")
+    #%% Data Process  
+    ## Read the experimental data and re-interpolate the particle distribution 
+    ## of the experimental data according to the simulation results.
+    def read_exp(self, exp_data_path):      
+        exp_data = write_read_exp(exp_data_path, read=True)
+        df = exp_data.get_exp_data(self.t_vec)
+        x_uni_exp = df.index.to_numpy()
+        q3_exp = df.to_numpy()
+        
+        # The experimental data is the number distribution of particles,
+        # which needs to be converted into a volume distribution to compare 
+        # with the simulation results.
+        q3_exp = self.convert_dist_num_to_vol(x_uni_exp, q3_exp)
+        return self.re_cal_distribution(x_uni_exp, q3_exp)
+    
+    def convert_dist_num_to_vol(self, x_uni, q3_num):
+        v_uni = np.pi*x_uni**3/6
+        sumvol_uni = v_uni[:, np.newaxis] * q3_num
+        q3 = sumvol_uni / np.sum(sumvol_uni, axis=0)
+        q3 = q3 / np.sum(q3)
+        return q3
     
     def function_noise(self, ori_data):
         rows, cols = ori_data.shape
@@ -249,32 +188,12 @@ class kernel_opt():
         # Cliping the data out of range and rescale the data    
         noised_data_clipped = np.clip(noised_data, 0, 1)
         cols_sums = np.sum(noised_data_clipped, axis=0, keepdims=True)
-        noised_data = noised_data_clipped /cols_sums
-        
+        noised_data = noised_data_clipped /cols_sums      
         return noised_data
 
     ## Kernel density estimation
     ## data_ori must be a quantity rather than a relative value!
     def KDE_fit(self, x_uni_ori, data_ori, bandwidth='scott', kernel_func='epanechnikov'):
-        '''
-        # estimate the value of bandwidth
-        # Bootstrapping method is used 
-        # Because the original data may not conform to the normal distribution
-        if bandwidth == None:
-            n_bootstrap = 100
-            estimated_bandwidth = np.zeros(n_bootstrap)
-            
-            for i in range(n_bootstrap):
-                sample_indices = np.random.choice(len(x_uni_ori), size=len(x_uni_ori), p=data_ori)
-                sample = x_uni_ori[sample_indices]
-                kde = gaussian_kde(sample)
-                estimated_bandwidth[i] = kde.factor * np.std(sample, ddof=1)
-            # bandwidth = np.median(estimated_bandwidth)
-            bandwidth = np.mean(estimated_bandwidth)
-        '''
-        # if self.volume_dist:
-        #     v_uni_ori = np.pi*x_uni_ori**3/6
-        #     x_uni_ori = v_uni_ori
             
         # KernelDensity requires input to be a column vector
         # So x_uni_re must be reshaped
@@ -282,59 +201,17 @@ class kernel_opt():
         # Avoid divide-by-zero warnings when calculating KDE
         data_ori_adjested = np.where(data_ori <= 0, 1e-20, data_ori)      
         kde = KernelDensity(kernel=kernel_func, bandwidth=bandwidth)
-        kde.fit(x_uni_ori_re, sample_weight=data_ori_adjested)
-        
+        kde.fit(x_uni_ori_re, sample_weight=data_ori_adjested)  
         return kde
     
     def KDE_score(self, kde, x_uni_new):
-        # if self.volume_dist:
-        #     v_uni_new = np.pi*x_uni_new**3/6
-        #     x_uni_new = v_uni_new
-        
         x_uni_new_re = x_uni_new.reshape(-1, 1) 
         data_smoothing = np.exp(kde.score_samples(x_uni_new_re))
         
         # Flatten a column vector into a one-dimensional array
-        data_smoothing = data_smoothing.ravel()
-        
+        data_smoothing = data_smoothing.ravel()  
         return data_smoothing
-            
-    def re_cal_distribution(self, x_uni, sumV_uni):
-        if sumV_uni.ndim == 1:
-            sumV = np.sum(sumV_uni)
-            
-            Q3 = np.cumsum(sumV_uni)/sumV
-            q3 = sumV_uni/sumV
-
-            x_10 = np.interp(0.1, Q3, x_uni)
-            x_50 = np.interp(0.5, Q3, x_uni)
-            x_90 = np.interp(0.9, Q3, x_uni)
-        else:
-            sumV = np.sum(sumV_uni, axis=0)
-            
-            Q3 = np.cumsum(sumV_uni, axis=0)/sumV
-            q3 = sumV_uni/sumV
-            
-            x_10 = np.zeros(self.num_t_steps)
-            x_50 = np.zeros(self.num_t_steps)
-            x_90 = np.zeros(self.num_t_steps)
-            for idt in range(self.num_t_steps):
-                x_10[idt] = np.interp(0.1, Q3[:, idt], x_uni)
-                x_50[idt] = np.interp(0.5, Q3[:, idt], x_uni)
-                x_90[idt] = np.interp(0.9, Q3[:, idt], x_uni)
-        
-        return x_uni, q3, Q3, x_10, x_50, x_90
     
-    def cal_v_uni(self, pop):
-        return np.setdiff1d(pop.V, [-1, 0])
-    
-    def cal_x_uni(self, pop):
-        v_uni = self.cal_v_uni(pop)
-        # Because the length unit in the experimental data is millimeters 
-        # and in the simulation it is meters, so it needs to be converted 
-        # before use.
-        return (6*v_uni/np.pi)**(1/3)*1e6
-
     def traverse_path(self, label, path_ori):
         def update_path(path, label):
             if label == 0:
@@ -345,13 +222,32 @@ class kernel_opt():
         if isinstance(path_ori, list):
             return [update_path(path, label) for path in path_ori]
         else:
-            return update_path(path_ori, label)
-        
+            return update_path(path_ori, label)        
+    #%% PBE    
     def create_1d_pop(self, disc='geo'):
         
         self.p_NM = population(dim=1,disc=disc)
         self.p_M = population(dim=1,disc=disc)
             
+    def cal_pop(self, pop, corr_beta, alpha_prim):
+        pop.COLEVAL = 2
+        pop.EFFEVAL = 2
+        pop.CORR_BETA = corr_beta
+        if pop.dim == 1:
+            alpha_prim_temp = alpha_prim
+        elif pop.dim == 2:
+            alpha_prim_temp = np.zeros(4)
+            alpha_prim_temp[0] = alpha_prim[0]
+            alpha_prim_temp[1] = alpha_prim_temp[2] = alpha_prim[1]
+            alpha_prim_temp[3] = alpha_prim[2]
+        pop.alpha_prim = alpha_prim_temp
+        if not self.calc_init_N:
+            pop.full_init(calc_alpha=False)
+        else:
+            pop.calc_F_M()
+        if pop.dim == 1: pop.calc_B_M()
+        pop.solve_PBE(t_vec=self.t_vec)                
+        
     def set_comp_para(self, R01_0='r0_005', R03_0='r0_005', dist_path_NM=None, dist_path_M=None,
                       R_NM=2.9e-7, R_M=2.9e-7):
         if (not self.calc_init_N) and (dist_path_NM is not None and dist_path_M is not None):
@@ -384,7 +280,6 @@ class kernel_opt():
     ## only for 1D-pop, 
     def set_init_N(self, sample_num, exp_data_paths, init_flag):
         self.calc_all_R()
-        
         self.set_init_N_1D(self.p_NM, sample_num, exp_data_paths[1], init_flag)
         self.set_init_N_1D(self.p_M, sample_num, exp_data_paths[2], init_flag)
         self.p.N = np.zeros((self.p.NS+3, self.p.NS+3, len(self.p.t_vec)))
@@ -420,3 +315,37 @@ class kernel_opt():
                    
         pop.N = np.zeros((pop.NS+3, len(pop.t_vec)))
         pop.N[2:, 0]=init_q3 * pop.N01
+            
+    def cal_v_uni(self, pop):
+        return np.setdiff1d(pop.V, [-1, 0])
+    
+    def cal_x_uni(self, pop):
+        v_uni = self.cal_v_uni(pop)
+        # Because the length unit in the experimental data is millimeters 
+        # and in the simulation it is meters, so it needs to be converted 
+        # before use.
+        return (6*v_uni/np.pi)**(1/3)*1e6
+        
+    def re_cal_distribution(self, x_uni, sumV_uni):
+        if sumV_uni.ndim == 1:
+            sumV = np.sum(sumV_uni)
+            Q3 = np.cumsum(sumV_uni)/sumV
+            q3 = sumV_uni/sumV
+
+            x_10 = np.interp(0.1, Q3, x_uni)
+            x_50 = np.interp(0.5, Q3, x_uni)
+            x_90 = np.interp(0.9, Q3, x_uni)
+        else:
+            sumV = np.sum(sumV_uni, axis=0) 
+            Q3 = np.cumsum(sumV_uni, axis=0)/sumV
+            q3 = sumV_uni/sumV
+            
+            x_10 = np.zeros(self.num_t_steps)
+            x_50 = np.zeros(self.num_t_steps)
+            x_90 = np.zeros(self.num_t_steps)
+            for idt in range(self.num_t_steps):
+                x_10[idt] = np.interp(0.1, Q3[:, idt], x_uni)
+                x_50[idt] = np.interp(0.5, Q3[:, idt], x_uni)
+                x_90[idt] = np.interp(0.9, Q3[:, idt], x_uni)
+        
+        return x_uni, q3, Q3, x_10, x_50, x_90

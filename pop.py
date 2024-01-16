@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import plotter.plotter as pt          
 from plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
 ## For math
-from kernel_math import float_in_list, float_equal, isZero
+from func.func_math import float_in_list, float_equal, isZero
 
 ### ------ POPULATION CLASS DEFINITION ------ ###
 class population():

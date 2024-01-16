@@ -5,11 +5,9 @@ Created on Mon Dec 11 09:05:42 2023
 @author: px2030
 """
 
-import os
-from pop import population
-from kernel_opt import kernel_opt        
+from opt_algo import opt_algo        
 
-class multi_opt(kernel_opt):
+class opt_algo_multi(opt_algo):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.weight_2d = 1

@@ -8,7 +8,6 @@ Read or interpolate experimental data based on the time step of the simulated da
 """
 
 import pandas as pd
-import numpy as np
 from datetime import datetime, timedelta
 from scipy.interpolate import interp1d
 

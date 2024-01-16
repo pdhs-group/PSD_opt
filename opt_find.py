@@ -8,40 +8,47 @@ Created on Tue Dec  5 09:22:00 2023
 import numpy as np
 import os
 import warnings
-import ast
 import pandas as pd
-from kernel_opt import kernel_opt 
-from multi_opt import multi_opt
-from PSD_Exp import write_read_exp
+from pop import population
+from opt_algo import opt_algo 
+from opt_algo_multi import opt_algo_multi
+from func.func_read_exp import write_read_exp
 ## For plots
 import matplotlib.pyplot as plt
 import plotter.plotter as pt          
-# from plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
 
-class opt_method():
-    def __init__(self, add_noise, smoothing, dim=1,
-                 delta_flag=1, noise_type='Gaus', noise_strength=0.01, 
-                 t_vec=None, multi_flag=False):
-        self.algo='BO'  
-        self.multi_flag=multi_flag
+class opt_find():
+    def __init__(self):
+        self.method='BO'  
+        self.multi_flag=False
+        
+    def init_opt_algo(self, dim=1, t_vec=None, add_noise=False, noise_type='Gaus',
+                      noise_strength=0.01,smoothing=False):
         if not self.multi_flag:
-            self.k = kernel_opt(add_noise, smoothing, 
-                                dim, delta_flag, noise_type, 
-                                noise_strength, t_vec)
+            self.algo = opt_algo()
         else:
-            self.k = multi_opt(add_noise, smoothing, 
-                                dim, delta_flag, noise_type, 
-                                noise_strength, t_vec)  
+            if dim == 1:
+                warnings.warn("The multi algorithm does not support 1-D pop!")
+            self.algo = opt_algo_multi()  
+        self.algo.add_noise = add_noise
+        self.algo.smoothing = smoothing
+        self.algo.dim = dim
+        self.algo.noise_type = noise_type
+        self.algo.noise_strength = noise_strength
+        self.algo.t_vec = t_vec
+        self.algo.num_t_steps = len(t_vec)
         
+        self.algo.p = population(dim=dim, disc='geo')
+        ## The 1D-pop data is also used when calculating the initial N of 2/3D-pop.
+        if dim >= 2:
+            self.algo.create_1d_pop(disc='geo')
         # Set the base path for exp_data_path
-        self.base_path = os.path.join(self.k.p.pth, "data")
+        self.base_path = os.path.join(self.algo.p.pth, "data")
         
-    def generate_synth_data(self, sample_num=1, add_info=""):
-        # self.write_kernels()
-        # Check if noise should be added
-        if self.k.add_noise:
+    def generate_data(self, sample_num=1, add_info=""):
+        if self.algo.add_noise:
             # Modify the file name to include noise type and strength
-            filename = f"Sim_{self.k.noise_type}_{self.k.noise_strength}"+add_info+".xlsx"
+            filename = f"Sim_{self.algo.noise_type}_{self.algo.noise_strength}"+add_info+".xlsx"
         else:
             # Use the default file name
             filename = "Sim"+add_info+".xlsx"
@@ -50,15 +57,15 @@ class opt_method():
         exp_data_path = os.path.join(self.base_path, filename)
         
         if not self.multi_flag:
-            self.k.cal_pop(self.k.p, self.k.corr_beta, self.k.alpha_prim)
+            self.algo.cal_pop(self.algo.p, self.algo.corr_beta, self.algo.alpha_prim)
             
             for i in range(0, sample_num):
                 if sample_num != 1:
-                    exp_data_path=self.k.traverse_path(i, exp_data_path)
-                # print(self.k.exp_data_path)
-                self.write_new_data(self.k.p, exp_data_path)
+                    exp_data_path=self.algo.traverse_path(i, exp_data_path)
+                # print(self.algo.exp_data_path)
+                self.write_new_data(self.algo.p, exp_data_path)
         else:
-            self.k.cal_all_pop(self.k.corr_beta, self.k.alpha_prim)
+            self.algo.cal_all_pop(self.algo.corr_beta, self.algo.alpha_prim)
             exp_data_paths = [
                 exp_data_path,
                 exp_data_path.replace(".xlsx", "_NM.xlsx"),
@@ -67,10 +74,10 @@ class opt_method():
             
             for i in range(0, sample_num):
                 if sample_num != 1:
-                    exp_data_paths = self.k.traverse_path(i, exp_data_paths)
-                    self.write_new_data(self.k.p, exp_data_paths[0])
-                    self.write_new_data(self.k.p_NM, exp_data_paths[1])
-                    self.write_new_data(self.k.p_M, exp_data_paths[2])
+                    exp_data_paths = self.algo.traverse_path(i, exp_data_paths)
+                    self.write_new_data(self.algo.p, exp_data_paths[0])
+                    self.write_new_data(self.algo.p_NM, exp_data_paths[1])
+                    self.write_new_data(self.algo.p_M, exp_data_paths[2])
             
     def find_opt_kernels(self, sample_num, method='kernels', data_name=None):
         if data_name == None:
@@ -89,94 +96,83 @@ class opt_method():
                 # and only multi-optimization process requires 1D data.
                 exp_data_path = exp_data_paths
             
-            if not self.k.calc_init_N:
-                self.k.p.full_init(calc_alpha=False)
-                self.k.p_NM.full_init(calc_alpha=False)
-                self.k.p_M.full_init(calc_alpha=False)
-            else:
-                self.k.set_init_N(sample_num, exp_data_paths, init_flag='mean')
+            if self.algo.calc_init_N:
+                self.algo.set_init_N(sample_num, exp_data_paths, init_flag='mean')
                 
             if method == 'kernels':
                 delta_opt_sample = np.zeros(sample_num)
                 corr_beta_sample = np.zeros(sample_num)
-                if self.k.p.dim == 1:
+                if self.algo.p.dim == 1:
                     alpha_prim_sample = np.zeros(sample_num)
                     
-                elif self.k.p.dim == 2:
+                elif self.algo.p.dim == 2:
                     alpha_prim_sample = np.zeros((3, sample_num))
                 
                 if sample_num == 1:
-                    delta_opt = self.k.optimierer(algo=self.algo,
+                    delta_opt = self.algo.optimierer(method=self.method,
                                                   exp_data_path=exp_data_path)
-                    corr_beta = self.k.corr_beta_opt
-                    alpha_prim = self.k.alpha_prim_opt
+                    corr_beta = self.algo.corr_beta_opt
+                    alpha_prim = self.algo.alpha_prim_opt
                     
                 else:
                     for i in range(0, sample_num):
-                        exp_data_path=self.k.traverse_path(i, exp_data_path)
+                        exp_data_path=self.algo.traverse_path(i, exp_data_path)
                         delta_opt_sample[i] = \
-                            self.k.optimierer(algo=self.algo, 
+                            self.algo.optimierer(method=self.method, 
                                               exp_data_path=exp_data_path)
                             
-                        corr_beta_sample[i] = self.k.corr_beta_opt
-                        if self.k.p.dim == 1:
-                            alpha_prim_sample[i] = self.k.alpha_prim_opt
+                        corr_beta_sample[i] = self.algo.corr_beta_opt
+                        if self.algo.p.dim == 1:
+                            alpha_prim_sample[i] = self.algo.alpha_prim_opt
                             
-                        elif self.k.p.dim == 2:
-                            alpha_prim_sample[:, i] = self.k.alpha_prim_opt
+                        elif self.algo.p.dim == 2:
+                            alpha_prim_sample[:, i] = self.algo.alpha_prim_opt
 
                 if not sample_num == 1:
                     delta_opt = np.mean(delta_opt_sample)
                     corr_beta = np.mean(corr_beta_sample)
-                    alpha_prim = np.mean(alpha_prim_sample, axis=self.k.p.dim-1)
-                    self.k.corr_beta_opt = corr_beta
-                    self.k.alpha_prim_opt = alpha_prim
+                    alpha_prim = np.mean(alpha_prim_sample, axis=self.algo.p.dim-1)
+                    self.algo.corr_beta_opt = corr_beta
+                    self.algo.alpha_prim_opt = alpha_prim
                 
             elif method == 'delta':
                 delta_opt = \
-                    self.k.optimierer(algo=self.algo, sample_num=sample_num, 
+                    self.algo.optimierer(method=self.method, sample_num=sample_num, 
                                       exp_data_path=exp_data_path)
                 
                 
-            if self.k.p.dim == 1:
+            if self.algo.p.dim == 1:
                 para_diff_i = np.zeros(2)
-                para_diff_i[0] = abs(self.k.corr_beta_opt- self.k.corr_beta) / self.k.corr_beta
-                para_diff_i[1] = abs(self.k.alpha_prim_opt - self.k.alpha_prim)
-            elif self.k.p.dim == 2:
+                para_diff_i[0] = abs(self.algo.corr_beta_opt- self.algo.corr_beta) / self.algo.corr_beta
+                para_diff_i[1] = abs(self.algo.alpha_prim_opt - self.algo.alpha_prim)
+            elif self.algo.p.dim == 2:
                 para_diff_i = np.zeros(4)
-                para_diff_i[0] = abs(self.k.corr_beta_opt- self.k.corr_beta) / self.k.corr_beta
-                para_diff_i[1:] = abs(self.k.alpha_prim_opt - self.k.alpha_prim)
+                para_diff_i[0] = abs(self.algo.corr_beta_opt- self.algo.corr_beta) / self.algo.corr_beta
+                para_diff_i[1:] = abs(self.algo.alpha_prim_opt - self.algo.alpha_prim)
                 
             para_diff=para_diff_i.mean()
             
-            return self.k.corr_beta_opt, self.k.alpha_prim_opt, para_diff, delta_opt
+            return self.algo.corr_beta_opt, self.algo.alpha_prim_opt, para_diff, delta_opt
         
     def write_new_data(self, pop, exp_data_path):
         # save the calculation result in experimental data form
-        x_uni = self.k.cal_x_uni(pop)
-        v_uni = self.k.cal_v_uni(pop)
+        x_uni = self.algo.cal_x_uni(pop)
+        v_uni = self.algo.cal_v_uni(pop)
         formatted_times = write_read_exp.convert_seconds_to_time(pop.t_vec)
-        sumV_uni = np.zeros((len(x_uni), self.k.num_t_steps))
+        sumV_uni = np.zeros((len(x_uni), self.algo.num_t_steps))
         
-        for idt in range(self.k.num_t_steps):
-            q3 = pop.return_distribution(t=idt, flag='q3')
-            kde = self.k.KDE_fit(x_uni, q3)
-            sumV_uni[:, idt] = self.k.KDE_score(kde, x_uni)
+        for idt in range(self.algo.num_t_steps):
+            q3 = pop.return_distribution(t=idt, flag='q3')[0]
+            kde = self.algo.KDE_fit(x_uni, q3)
+            sumV_uni[:, idt] = self.algo.KDE_score(kde, x_uni)
             # The experimental data is the number distribution of particles, need a conversion
             sumvol = np.sum(v_uni * sumV_uni[:, idt])
             sumV_uni[:, idt] = sumV_uni[:, idt] * sumvol / v_uni
              
-        _, q3, _, _, _,_ = self.k.re_cal_distribution(x_uni, sumV_uni)
+        _, q3, _, _, _,_ = self.algo.re_cal_distribution(x_uni, sumV_uni)
         
-        # # Sum each column of q3 and then multiply by v_uni to get the total volume 
-        # # at each time step (theoretically constant)
-        # sumvol = np.sum(v_uni[:, np.newaxis] * q3, axis=0)
-        # q3 = q3 * sumvol / v_uni[:, np.newaxis]
-        
-        # _, q3, _, _, _,_ = self.k.re_cal_distribution(x_uni, q3)
-        # add noise to the original data
-        if self.k.add_noise:
-            q3 = self.k.function_noise(q3)
+        if self.algo.add_noise:
+            q3 = self.algo.function_noise(q3)
 
         df = pd.DataFrame(data=q3, index=x_uni, columns=formatted_times)
         df.index.name = 'Circular Equivalent Diameter'
@@ -190,7 +186,7 @@ class opt_method():
                                alpha_prim_opt, exp_data_path=None,ax=None,fig=None,
                                close_all=False,clr='k',scl_a4=1,figsze=[12.8,6.4*1.5]):
     # Recalculate PSD using original parameter
-        self.k.cal_pop(pop, corr_beta=corr_beta_ori, alpha_prim=alpha_prim_ori)
+        self.algo.cal_pop(pop, corr_beta=corr_beta_ori, alpha_prim=alpha_prim_ori)
 
         x_uni_ori, q3_ori, Q3_ori, x_10_ori, x_50_ori, x_90_ori = pop.return_distribution(t=len(pop.t_vec)-1, flag='all')
         # Conversion unit
@@ -198,12 +194,12 @@ class opt_method():
         x_10_ori *= 1e6   
         x_50_ori *= 1e6   
         x_90_ori *= 1e6  
-        if self.k.smoothing:
-            kde = self.k.KDE_fit(x_uni_ori, q3_ori)
-            sumN_uni = self.k.KDE_score(kde, x_uni_ori)
-            _, q3_ori, Q3_ori, _, _,_ = self.k.re_cal_distribution(x_uni_ori, sumN_uni)
+        if self.algo.smoothing:
+            kde = self.algo.KDE_fit(x_uni_ori, q3_ori)
+            sumN_uni = self.algo.KDE_score(kde, x_uni_ori)
+            _, q3_ori, Q3_ori, _, _,_ = self.algo.re_cal_distribution(x_uni_ori, sumN_uni)
 
-        self.k.cal_pop(pop, corr_beta_opt, alpha_prim_opt)  
+        self.algo.cal_pop(pop, corr_beta_opt, alpha_prim_opt)  
             
         x_uni, q3, Q3, x_10, x_50, x_90 = pop.return_distribution(t=len(pop.t_vec)-1, flag='all')
         # Conversion unit
@@ -211,10 +207,10 @@ class opt_method():
         x_10 *= 1e6   
         x_50 *= 1e6   
         x_90 *= 1e6  
-        if self.k.smoothing:
-            kde = self.k.KDE_fit(x_uni, q3)
-            sumN_uni = self.k.KDE_score(kde, x_uni)
-            _, q3, Q3, _, _,_ = self.k.re_cal_distribution(x_uni, sumN_uni)
+        if self.algo.smoothing:
+            kde = self.algo.KDE_fit(x_uni, q3)
+            sumN_uni = self.algo.KDE_score(kde, x_uni)
+            _, q3, Q3, _, _,_ = self.algo.re_cal_distribution(x_uni, sumN_uni)
         
         pt.plot_init(scl_a4=scl_a4,figsze=figsze,lnewdth=0.8,mrksze=5,use_locale=True,scl=1.2)
         if close_all:
@@ -241,17 +237,6 @@ class opt_method():
 
         axQ3, fig = pt.plot_data(x_uni_ori, Q3_ori, fig=fig, ax=axQ3,
                                lbl='Q3_ori',clr='r',mrk='v')
-
-        if not exp_data_path == None:
-            # read and calculate the experimental data
-            t = max(self.p.t_vec)
-    
-            x_uni_exp, q3_exp, Q3_exp, x_10_exp, x_50_exp, x_90_exp = self.k.read_exp(x_uni, exp_data_path)
-            
-            axq3, fig = pt.plot_data(x_uni_exp, q3_exp, fig=fig, ax=axq3,
-                                   lbl='q3_exp',clr='g',mrk='^')
-            axQ3, fig = pt.plot_data(x_uni_exp, Q3_exp, fig=fig, ax=axQ3,
-                                   lbl='Q3_exp',clr='g',mrk='^')
         
         axq3.grid('minor')
         axQ3.grid('minor')

@@ -6,12 +6,7 @@ Created on Tue Dec  5 10:58:09 2023
 """
 import numpy as np
 import time
-import opt_method as opt
-# from generate_psd import full_psd
-# from pop import population
-## For plots
-# import matplotlib.pyplot as plt
-# import plotter.plotter as pt   
+import opt_find as opt
 
 if __name__ == '__main__':
     #%%  Input for Opt
@@ -23,43 +18,47 @@ if __name__ == '__main__':
     noise_strength = 0.1
     sample_num = 5
     
+    ## Instantiate find and algo.
+    ## The find class determines how the experimental 
+    ## data is used, while algo determines the optimization process.
+    find = opt.opt_find()
+    find.init_opt_algo(dim, t_vec, add_noise, noise_type, noise_strength, smoothing)
+     
+    ## Set the R0 particle radius and 
+    ## whether to calculate the initial conditions from experimental data
+    find.algo.calc_init_N = True
+    find.algo.set_comp_para(R_NM=2.9e-7, R_M=2.9e-7)
+    
+    # Iteration steps for optimierer
+    find.algo.n_iter = 800
+    
     #%% Variable parameters
-    ## 1. Criteria of optimization target
+    ## 1. Use only 2D Data or 1D+2D
+    multi_flag = True
+    
+    ## 2. Criteria of optimization target
     ## delta_flag = 1: use q3
     ## delta_flag = 2: use Q3
     ## delta_flag = 3: use x_10
     ## delta_flag = 4: use x_50
     ## delta_flag = 5: use x_90
-    delta_flag = 1
+    find.algo.delta_flag = 1
     delta_flag_target = ['','q3','Q3','x_10','x_50','x_90']
-    ## 2. Use only 2D Data or 1D+2D
-    multi_flag = True
-    
-    ## Instantiate Opt
-    Opt = opt.opt_method(add_noise, smoothing, dim, delta_flag, noise_type, 
-                         noise_strength, t_vec, multi_flag)
-    ## Set the R0 particle radius and 
-    ## whether to calculate the initial conditions from experimental data
-    Opt.k.calc_init_N = True
-    Opt.k.set_comp_para(R_NM=2.9e-7, R_M=2.9e-7)
     
     ## 3. Optimize method: 
     ##   'BO': Bayesian Optimization with package BayesianOptimization
-    Opt.algo='BO'
+    find.method='BO'
     
     ## 4. Type of cost function to use
     ##   'MSE': Mean Squared Error
     ##   'RMSE': Root Mean Squared Error
     ##   'MAE': Mean Absolute Error
     ##   'KL': Kullback–Leibler divergence(Only q3 and Q3 are compatible with KL) 
-    Opt.k.cost_func_type = 'KL'
-    
-    # Iteration steps for optimierer
-    Opt.k.n_iter = 800
+    find.algo.cost_func_type = 'KL'
     
     ## 5. Weight of 2D data
     ## The error of 2d pop may be more important, so weight needs to be added
-    Opt.k.weight_2d = 1
+    find.algo.weight_2d = 1
     
     #%% Perform calculations on a data set
     ## define the range of corr_beta
@@ -96,16 +95,16 @@ if __name__ == '__main__':
     # for k, scale in enumerate(size_scale):
     for i, corr_beta in enumerate(var_corr_beta):
         for j, alpha_prim in enumerate(var_alpha_prim):
-            Opt.k.corr_beta = corr_beta
-            Opt.k.alpha_prim = alpha_prim
+            find.algo.corr_beta = corr_beta
+            find.algo.alpha_prim = alpha_prim
             # data_name = f"Sim_{noise_type}_{noise_strength}_para_{corr_beta}_{alpha_prim[0]}_{alpha_prim[1]}_{alpha_prim[2]}_{scale}.xlsx"
             data_name = f"Sim_{noise_type}_{noise_strength}_para_{corr_beta}_{alpha_prim[0]}_{alpha_prim[1]}_{alpha_prim[2]}_1.xlsx"
             print(f"optimize for data sets {data_name}")
             start_time = time.time()
             # corr_beta_opt[k,i,j], alpha_prim_opt[k,i,j,:], para_diff[k,i,j], delta_opt[k,i,j] = \
-                # Opt.find_opt_kernels(sample_num=sample_num, method='delta', data_name=data_name)
+                # find.find_opt_kernels(sample_num=sample_num, method='delta', data_name=data_name)
             corr_beta_opt[i,j], alpha_prim_opt[i,j,:], para_diff[i,j], delta_opt[i,j] = \
-                Opt.find_opt_kernels(sample_num=sample_num, method='delta', data_name=data_name)
+                find.find_opt_kernels(sample_num=sample_num, method='delta', data_name=data_name)
             end_time = time.time()
             # elapsed_time[k,i,j] = end_time - start_time
             elapsed_time[i,j] = end_time - start_time
@@ -120,9 +119,9 @@ if __name__ == '__main__':
     
     ## save the results in npz
     if multi_flag:
-        result = f'multi_{delta_flag_target[delta_flag]}_{Opt.algo}_{Opt.k.cost_func_type}_wight_{Opt.k.weight_2d}'
+        result = f'multi_{delta_flag_target[delta_flag]}_{find.method}_{find.algo.cost_func_type}_wight_{find.algo.weight_2d}'
     else:
-        result =  f'{delta_flag_target[delta_flag]}_{Opt.algo}_{Opt.k.cost_func_type}_wight_{Opt.k.weight_2d}'
+        result =  f'{delta_flag_target[delta_flag]}_{find.method}_{find.algo.cost_func_type}_wight_{find.algo.weight_2d}'
     np.savez(f'{result}.npz', 
          corr_beta_opt=corr_beta_opt, 
          alpha_prim_opt=alpha_prim_opt, 
