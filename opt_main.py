@@ -104,8 +104,8 @@ if __name__ == '__main__':
             start_time = time.time()
             # corr_beta_opt[k,i,j], alpha_prim_opt[k,i,j,:], para_diff[k,i,j], delta_opt[k,i,j] = \
                 # Opt.find_opt_kernels(sample_num=sample_num, method='delta', data_name=data_name)
-            corr_beta_opt[i,j], alpha_prim_opt[i,j,:], para_diff[i,j], delta_opt[i,j] = 1,1,1,1
-                # Opt.find_opt_kernels(sample_num=sample_num, method='delta', data_name=data_name)
+            corr_beta_opt[i,j], alpha_prim_opt[i,j,:], para_diff[i,j], delta_opt[i,j] = \
+                Opt.find_opt_kernels(sample_num=sample_num, method='delta', data_name=data_name)
             end_time = time.time()
             # elapsed_time[k,i,j] = end_time - start_time
             elapsed_time[i,j] = end_time - start_time
@@ -121,6 +121,8 @@ if __name__ == '__main__':
     ## save the results in npz
     if multi_flag:
         result = f'multi_{delta_flag_target[delta_flag]}_{Opt.algo}_{Opt.k.cost_func_type}_wight_{Opt.k.weight_2d}'
+    else:
+        result =  f'{delta_flag_target[delta_flag]}_{Opt.algo}_{Opt.k.cost_func_type}_wight_{Opt.k.weight_2d}'
     np.savez(f'{result}.npz', 
          corr_beta_opt=corr_beta_opt, 
          alpha_prim_opt=alpha_prim_opt, 

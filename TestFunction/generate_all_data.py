@@ -36,9 +36,9 @@ if __name__ == '__main__':
         dist_path_10 = full_psd(x50*10, resigma, minscale=minscale, maxscale=maxscale, plot_psd=False)
     else:
         pth = os.path.dirname( __file__ )
-        dist_path_1 = os.path.join(pth, "..", "data\\PSD_data\\")+'PSD_x50_1.0E-6_v50_5.2E-19_RelSigmaV_1.0E+0.npy'
-        dist_path_5 = os.path.join(pth, "..", "data\\PSD_data\\")+'PSD_x50_5.0E-6_v50_6.5E-17_RelSigmaV_1.0E+0.npy'
-        dist_path_10 = os.path.join(pth, "..", "data\\PSD_data\\")+'PSD_x50_1.0E-5_v50_5.2E-16_RelSigmaV_1.0E+0.npy'
+        dist_path_1 = os.path.join(pth, "..", "data", "PSD_data", "PSD_x50_1.0E-6_v50_5.2E-19_RelSigmaV_1.0E+0.npy")
+        dist_path_5 = os.path.join(pth, "..", "data", "PSD_data", "PSD_x50_5.0E-6_v50_6.5E-17_RelSigmaV_1.0E+0.npy")
+        dist_path_10 = os.path.join(pth, "..","data", "PSD_data", "PSD_x50_1.0E-5_v50_5.2E-16_RelSigmaV_1.0E+0.npy")
     
     ## define the range of corr_beta
     var_corr_beta = np.array([1e-2, 1e-1, 1e0, 1e1, 1e2])

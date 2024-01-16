@@ -34,7 +34,7 @@ class opt_method():
                                 noise_strength, t_vec)  
         
         # Set the base path for exp_data_path
-        self.base_path = os.path.join(self.k.p.pth, "data\\")
+        self.base_path = os.path.join(self.k.p.pth, "data")
         
     def generate_synth_data(self, sample_num=1, add_info=""):
         # self.write_kernels()
