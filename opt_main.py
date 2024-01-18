@@ -98,6 +98,8 @@ if __name__ == '__main__':
     values = [0, 0.5, 1]
     a1, a2, a3 = np.meshgrid(values, values, values, indexing='ij')
     var_alpha_prim = np.column_stack((a1.flatten(), a2.flatten(), a3.flatten()))
+    ## remove element [0, 0, 0]
+    var_alpha_prim = var_alpha_prim[~np.all(var_alpha_prim == 0, axis=1)]
     
     ## For cases where R01 and R03 have the same size, the elements of alpha_prim mirror symmetry 
     ## are equivalent and can be removed to simplify the calculation.
