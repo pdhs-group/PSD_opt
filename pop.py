@@ -322,7 +322,7 @@ class population():
                     beta_ai = self.CORR_BETA*2*self.KT*(self.R[a]+self.R[i])**2/(3*self.MU_W*(self.R[a]*self.R[i])) #[m^3/s]
                 elif self.COLEVAL == 3:
                     # Use a constant collision frequency given by CORR_BETA
-                    beta_ai = self.CORR_BETA*1e-17
+                    beta_ai = self.CORR_BETA
                 elif self.COLEVAL == 4:
                     # Sum-Kernal (for validation) scaled by CORR_BETA
                     beta_ai = self.CORR_BETA*4*math.pi*(self.R[a]**3+self.R[i]**3)/3
@@ -397,7 +397,7 @@ class population():
                         beta_ai = self.CORR_BETA*2*self.KT*(self.R[a,b]+self.R[i,j])**2/(3*self.MU_W*(self.R[a,b]*self.R[i,j])) #[m^3/s]
                     if self.COLEVAL == 3:
                         # Use a constant collision frequency given by CORR_BETA
-                        beta_ai = self.CORR_BETA*1e-17
+                        beta_ai = self.CORR_BETA
                     if self.COLEVAL == 4:
                         # Sum-Kernal (for validation) scaled by CORR_BETA
                         beta_ai = self.CORR_BETA*4*math.pi*(self.R[a,b]**3+self.R[i,j]**3)/3
@@ -488,7 +488,7 @@ class population():
                         beta_ai = self.CORR_BETA*2*self.KT*(self.R[a,b,c]+self.R[i,j,k])**2/(3*self.MU_W*(self.R[a,b,c]*self.R[i,j,k])) #[m^3/s]
                     if self.COLEVAL == 3:
                         # Use a constant collision frequency given by CORR_BETA
-                        beta_ai = self.CORR_BETA*1e-17
+                        beta_ai = self.CORR_BETA
                     if self.COLEVAL == 4:
                         # Sum-Kernal (for validation) scaled by CORR_BETA
                         beta_ai = self.CORR_BETA*4*math.pi*(self.R[a,b,c]**3+self.R[i,j,k]**3)/3

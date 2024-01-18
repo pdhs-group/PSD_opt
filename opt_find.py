@@ -109,7 +109,7 @@ class opt_find():
                     alpha_prim_sample = np.zeros((3, sample_num))
                 
                 if sample_num == 1:
-                    delta_opt = self.algo.optimierer(method=self.method,
+                    delta_opt = self.algo.optimierer_agg(method=self.method,
                                                   exp_data_path=exp_data_path)
                     corr_beta = self.algo.corr_beta_opt
                     alpha_prim = self.algo.alpha_prim_opt
@@ -118,7 +118,7 @@ class opt_find():
                     for i in range(0, sample_num):
                         exp_data_path=self.algo.traverse_path(i, exp_data_path)
                         delta_opt_sample[i] = \
-                            self.algo.optimierer(method=self.method, 
+                            self.algo.optimierer_agg(method=self.method, 
                                               exp_data_path=exp_data_path)
                             
                         corr_beta_sample[i] = self.algo.corr_beta_opt
@@ -136,23 +136,31 @@ class opt_find():
                     self.algo.alpha_prim_opt = alpha_prim
                 
             elif method == 'delta':
-                delta_opt = \
-                    self.algo.optimierer(method=self.method, sample_num=sample_num, 
+                delta_opt = self.algo.optimierer_agg(method=self.method, sample_num=sample_num, 
                                       exp_data_path=exp_data_path)
+                # delta_opt = self.algo.optimierer(method=self.method, sample_num=sample_num, 
+                #                       exp_data_path=exp_data_path)
                 
                 
             if self.algo.p.dim == 1:
                 para_diff_i = np.zeros(2)
                 para_diff_i[0] = abs(self.algo.corr_beta_opt- self.algo.corr_beta) / self.algo.corr_beta
                 para_diff_i[1] = abs(self.algo.alpha_prim_opt - self.algo.alpha_prim)
+                
             elif self.algo.p.dim == 2:
                 para_diff_i = np.zeros(4)
                 para_diff_i[0] = abs(self.algo.corr_beta_opt- self.algo.corr_beta) / self.algo.corr_beta
                 para_diff_i[1:] = abs(self.algo.alpha_prim_opt - self.algo.alpha_prim)
-                
-            para_diff=para_diff_i.mean()
             
-            return self.algo.corr_beta_opt, self.algo.alpha_prim_opt, para_diff, delta_opt
+            corr_agg = self.algo.corr_beta * self.algo.alpha_prim
+            corr_agg_opt = self.algo.corr_beta_opt * self.algo.alpha_prim_opt
+            corr_agg_diff = abs(corr_agg_opt - corr_agg) / corr_agg
+            para_diff=para_diff_i.mean()
+            return self.algo.corr_beta_opt, self.algo.alpha_prim_opt, para_diff, delta_opt, \
+                corr_agg, corr_agg_opt, corr_agg_diff
+                
+            # return self.algo.corr_beta_opt, self.algo.alpha_prim_opt, para_diff, delta_opt
+        
         
     def write_new_data(self, pop, exp_data_path):
         # save the calculation result in experimental data form
@@ -160,6 +168,7 @@ class opt_find():
         v_uni = self.algo.cal_v_uni(pop)
         formatted_times = write_read_exp.convert_seconds_to_time(pop.t_vec)
         sumV_uni = np.zeros((len(x_uni), self.algo.num_t_steps))
+        sumN_uni = np.zeros(sumV_uni.shape)
         
         for idt in range(self.algo.num_t_steps):
             q3 = pop.return_distribution(t=idt, flag='q3')[0]
@@ -167,9 +176,9 @@ class opt_find():
             sumV_uni[:, idt] = self.algo.KDE_score(kde, x_uni)
             # The experimental data is the number distribution of particles, need a conversion
             sumvol = np.sum(v_uni * sumV_uni[:, idt])
-            sumV_uni[:, idt] = sumV_uni[:, idt] * sumvol / v_uni
+            sumN_uni[:, idt] = sumV_uni[:, idt] * sumvol / v_uni
              
-        _, q3, _, _, _,_ = self.algo.re_cal_distribution(x_uni, sumV_uni)
+        _, q3, _, _, _,_ = self.algo.re_cal_distribution(x_uni, sumN_uni)
         
         if self.algo.add_noise:
             q3 = self.algo.function_noise(q3)
@@ -196,8 +205,8 @@ class opt_find():
         x_90_ori *= 1e6  
         if self.algo.smoothing:
             kde = self.algo.KDE_fit(x_uni_ori, q3_ori)
-            sumN_uni = self.algo.KDE_score(kde, x_uni_ori)
-            _, q3_ori, Q3_ori, _, _,_ = self.algo.re_cal_distribution(x_uni_ori, sumN_uni)
+            sumV_uni = self.algo.KDE_score(kde, x_uni_ori)
+            _, q3_ori, Q3_ori, _, _,_ = self.algo.re_cal_distribution(x_uni_ori, sumV_uni)
 
         self.algo.cal_pop(pop, corr_beta_opt, alpha_prim_opt)  
             
@@ -209,8 +218,8 @@ class opt_find():
         x_90 *= 1e6  
         if self.algo.smoothing:
             kde = self.algo.KDE_fit(x_uni, q3)
-            sumN_uni = self.algo.KDE_score(kde, x_uni)
-            _, q3, Q3, _, _,_ = self.algo.re_cal_distribution(x_uni, sumN_uni)
+            sumV_uni = self.algo.KDE_score(kde, x_uni)
+            _, q3, Q3, _, _,_ = self.algo.re_cal_distribution(x_uni, sumV_uni)
         
         pt.plot_init(scl_a4=scl_a4,figsze=figsze,lnewdth=0.8,mrksze=5,use_locale=True,scl=1.2)
         if close_all:

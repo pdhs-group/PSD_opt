@@ -40,6 +40,14 @@ class opt_algo():
         self.cal_pop(self.p, corr_beta, alpha_prim)
 
         return self.cal_delta_tem(sample_num, exp_data_path, scale, self.p)
+    
+    def cal_delta_agg(self, corr_agg=None, scale=1, sample_num=1, exp_data_path=None):
+        corr_beta = self.return_syth_beta(corr_agg)
+        alpha_prim = corr_agg / corr_beta
+
+        self.cal_pop(self.p, corr_beta, alpha_prim)
+
+        return self.cal_delta_tem(sample_num, exp_data_path, scale, self.p)
 
     def cal_delta_tem(self, sample_num, exp_data_path, scale, pop):
         kde_list = []
@@ -126,6 +134,54 @@ class opt_algo():
             
         return delta_opt  
     
+    def optimierer_agg(self, method='BO', init_points=4, sample_num=1, hyperparameter=None, exp_data_path=None):
+        if method == 'BO':
+            if self.p.dim == 1:
+                pbounds = {'corr_agg_log': (-3, 3)}
+                objective = lambda corr_agg_log: self.cal_delta_agg(
+                    corr_agg=10**corr_agg_log, scale=-1, sample_num=sample_num, 
+                    exp_data_path=exp_data_path)
+                
+            elif self.p.dim == 2:
+                pbounds = {'corr_agg_log_0': (-3, 3), 'corr_agg_log_1': (-3, 3), 'corr_agg_log_2': (-3, 3)}
+                objective = lambda corr_agg_log_0, corr_agg_log_1, corr_agg_log_2: self.cal_delta_agg(
+                    corr_agg=10**np.array([corr_agg_log_0, corr_agg_log_1, corr_agg_log_2]), 
+                    scale=-1, sample_num=sample_num, exp_data_path=exp_data_path)
+                
+            opt = BayesianOptimization(
+                f=objective, 
+                pbounds=pbounds,
+                random_state=1,
+                allow_duplicate_points=True
+            )
+            
+            opt.maximize(
+                init_points=init_points,
+                n_iter=self.n_iter,
+            )
+            
+            if self.p.dim == 1:
+                corr_agg_opt = 10**opt.max['params']['corr_agg_log']
+                self.corr_beta_opt = self.return_syth_beta(corr_agg_opt)
+                self.alpha_prim_opt = corr_agg_opt / self.corr_beta_opt
+                
+            elif self.p.dim == 2:
+                corr_agg_opt = np.zeros(3)
+                corr_agg_opt[0] = 10**opt.max['params']['corr_agg_log_0']
+                corr_agg_opt[1] = 10**opt.max['params']['corr_agg_log_1']
+                corr_agg_opt[2] = 10**opt.max['params']['corr_agg_log_2']
+                self.corr_beta_opt = self.return_syth_beta(corr_agg_opt)
+                self.alpha_prim_opt = corr_agg_opt / self.corr_beta_opt
+            
+            delta_opt = -opt.max['target']           
+            
+        return delta_opt  
+    
+    def return_syth_beta(self,corr_agg):
+        max_val = max(corr_agg)
+        power = np.log10(max_val).round()
+        return 10**power
+    
     def cost_fun(self, data_exp, data_mod):
         if self.cost_func_type == 'MSE':
             return mean_squared_error(data_mod, data_exp)
@@ -157,7 +213,7 @@ class opt_algo():
         v_uni = np.pi*x_uni**3/6
         sumvol_uni = v_uni[:, np.newaxis] * q3_num
         q3 = sumvol_uni / np.sum(sumvol_uni, axis=0)
-        q3 = q3 / np.sum(q3)
+        q3 = q3 / np.sum(q3, axis=0)
         return q3
     
     def function_noise(self, ori_data):

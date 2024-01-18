@@ -691,9 +691,9 @@ if __name__ == "__main__":
     ### Plot parameters
     EXP = True
     #EXPPTH = 'export/'
-    EXPPTH = 'C:/Users/px2030/Code/PSD_opt/TestFunction/temp/'
+    EXPPTH = 'C:/Users/px2030/Code/PSD_opt/general_scripts/temp/'
     EXPRAW = False
-    REL = False
+    REL = True
     
     ### Define calculation case
     # '1D_const_mono': 1D, constant kernel, monodisperse initial conditions
@@ -707,14 +707,14 @@ if __name__ == "__main__":
     #CASE = '1D_const_mono'
     #CASE = '2D_const_mono'
     #CASE = '3D_const_mono'
-    #CASE = '1D_sum_mono'
-    CASE = '2D_sum_mono'
+    CASE = '1D_sum_mono'
+    #CASE = '2D_sum_mono'
     #CASE = '2D_sum_mono_ccm'
     #CASE = '2D_ortho_mono'
     #CASE = '2D_ortho_mono_ccm'
     
     ### General parameters
-    t = np.linspace(0,600,20)      # Time array [s]
+    t = np.linspace(0,2000,20)      # Time array [s]
     c = 0.1e-2*1e-2                 # Volume concentration [-]
     x = 1e-6                        # Particle diameter [m]
     beta0 = 1e-16                   # Collision frequency parameter [m^3/s]
@@ -725,10 +725,10 @@ if __name__ == "__main__":
     ### PBE Parameters
     grid = 'geo'
     NS = 8
-    NS2 = 12
+    NS2 = 15
     #NS2 = 50
     
-    S = 2
+    S = 1.2
     # alpha_pbe = np.array([1,0.2,0.2,0])
     alpha_pbe = np.array([1,1,1,1])
     # alpha_pbe = np.array([1,0,0,0])
@@ -775,11 +775,11 @@ if __name__ == "__main__":
     ax5.legend().remove()
     
     if EXP:
-        fig1.savefig(EXPPTH+f'{CASE}_MU00.png',dpi=150)
-        fig2.savefig(EXPPTH+f'{CASE}_MU10.png',dpi=150)
-        fig4.savefig(EXPPTH+f'{CASE}_MU20.png',dpi=150)
+        fig1.savefig(EXPPTH+f'{CASE}_MU00.png',dpi=300)
+        fig2.savefig(EXPPTH+f'{CASE}_MU10.png',dpi=300)
+        fig4.savefig(EXPPTH+f'{CASE}_MU20.png',dpi=300)
         if p.dim == 2:
-            fig3.savefig(EXPPTH+f'{CASE}_MU11.png',dpi=150)   
+            fig3.savefig(EXPPTH+f'{CASE}_MU11.png',dpi=300)   
         fig5.savefig(EXPPTH+f'{CASE}_Q3.pdf')
             
     if EXPRAW:
