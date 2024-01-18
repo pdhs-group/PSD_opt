@@ -7,36 +7,38 @@ Created on Tue Dec  5 10:58:09 2023
 import numpy as np
 import time
 import opt_find as opt
+import multiprocessing
+import opt_config as conf
 
-if __name__ == '__main__':
+def optimization_process(args):
+    i, j, corr_beta, alpha_prim, data_name = args
+    
     #%%  Input for Opt
-    dim = 2
-    t_vec = np.concatenate(([0.0, 0.1, 0.3, 0.6, 0.9], np.arange(1, 602, 60, dtype=float)))
-    add_noise = True
-    smoothing = True
-    noise_type='Mul'
-    noise_strength = 0.1
-    sample_num = 5
+    dim = conf.config['dim']
+    t_vec = conf.config['t_vec']
+    add_noise = conf.config['add_noise']
+    smoothing = conf.config['smoothing']
+    noise_type= conf.config['noise_type']
+    noise_strength = conf.config['noise_strength']
+    sample_num = conf.config['sample_num']
     
     ## Instantiate find and algo.
     ## The find class determines how the experimental 
     ## data is used, while algo determines the optimization process.
     find = opt.opt_find()
-    find.init_opt_algo(dim, t_vec, add_noise, noise_type, noise_strength, smoothing)
      
-    
-    # Iteration steps for optimierer
-    find.algo.n_iter = 800
-    
     #%% Variable parameters
     ## Set the R0 particle radius and 
     ## whether to calculate the initial conditions from experimental data
-    ## 0. The diameter ratio of the primary particles can also be used as a variable
+    ## 0. Use only 2D Data or 1D+2D
+    find.multi_flag = True
+    find.init_opt_algo(dim, t_vec, add_noise, noise_type, noise_strength, smoothing)
+    ## Iteration steps for optimierer
+    find.algo.n_iter = 800
+    
+    ## 1. The diameter ratio of the primary particles can also be used as a variable
     find.algo.calc_init_N = True
     find.algo.set_comp_para(R_NM=2.9e-7, R_M=2.9e-7)
-    
-    ## 1. Use only 2D Data or 1D+2D
-    multi_flag = True
     
     ## 2. Criteria of optimization target
     ## delta_flag = 1: use q3
@@ -45,7 +47,6 @@ if __name__ == '__main__':
     ## delta_flag = 4: use x_50
     ## delta_flag = 5: use x_90
     find.algo.delta_flag = 1
-    delta_flag_target = ['','q3','Q3','x_10','x_50','x_90']
     
     ## 3. Optimize method: 
     ##   'BO': Bayesian Optimization with package BayesianOptimization
@@ -67,7 +68,29 @@ if __name__ == '__main__':
     ## delta: Read all input directly and use all data to find the kernel once
     ## wait to write hier 
     
-    #%% Perform calculations on a data set
+    #%% Perform optimization
+    find.algo.corr_beta = corr_beta
+    find.algo.alpha_prim = alpha_prim
+
+    start_time = time.time()
+    results = \
+        find.find_opt_kernels(sample_num=sample_num, method='delta', data_name=data_name)
+    end_time = time.time()
+    elapsed_time[i,j] = end_time - start_time
+    
+    return i, j, results, elapsed_time
+
+if __name__ == '__main__':
+    noise_type = conf.config['noise_type']
+    noise_strength = conf.config['noise_strength']
+    multi_flag = conf.config['multi_flag']
+    delta_flag = conf.config['delta_flag']
+    method = conf.config['method']
+    cost_func_type = conf.config['cost_func_type']
+    weight_2d = conf.config['weight_2d']
+    
+    delta_flag_target = ['','q3','Q3','x_10','x_50','x_90']
+    #%% Prepare test data set
     ## define the range of corr_beta
     var_corr_beta = [1e-2, 1e-1, 1e0, 1e1, 1e2]
     
@@ -86,10 +109,17 @@ if __name__ == '__main__':
             
     var_alpha_prim = np.array(unique_alpha_prim)
     
-    ## Traverse all combinations of physical parameters
+    pool = multiprocessing.Pool(processes=4)
+    tasks = []
+    for i, corr_beta in enumerate(var_corr_beta):
+        for j, alpha_prim in enumerate(var_alpha_prim):
+            data_name = f"Sim_{noise_type}_{noise_strength}_para_{corr_beta}_{alpha_prim[0]}_{alpha_prim[1]}_{alpha_prim[2]}_1.xlsx"
+            tasks.append((i, j, corr_beta, alpha_prim, data_name))
+    
+    results = pool.map(optimization_process, tasks)
+    
     data_size = np.array([len(var_corr_beta), len(var_alpha_prim)])
     corr_beta_opt = np.zeros(data_size)
-    
     # The asterisk (*) is used in a function call to indicate an "unpacking" operation, 
     # which means that it expands the elements of 'data_size' into individual arguments
     alpha_prim_opt = np.zeros((*data_size, 3))
@@ -99,33 +129,26 @@ if __name__ == '__main__':
     corr_agg = np.zeros((*data_size, 3))
     corr_agg_opt = np.zeros((*data_size, 3))
     corr_agg_diff = np.zeros((*data_size, 3))
-    for i, corr_beta in enumerate(var_corr_beta):
-        for j, alpha_prim in enumerate(var_alpha_prim):
-            find.algo.corr_beta = corr_beta
-            find.algo.alpha_prim = alpha_prim
-            data_name = f"Sim_{noise_type}_{noise_strength}_para_{corr_beta}_{alpha_prim[0]}_{alpha_prim[1]}_{alpha_prim[2]}_1.xlsx"
-            print(f"optimize for data sets {data_name}")
-            start_time = time.time()
-            corr_beta_opt[i,j], alpha_prim_opt[i,j,:], para_diff[i,j], delta_opt[i,j], \
-                corr_agg[i,j,:], corr_agg_opt[i,j,:], corr_agg_diff[i,j,:] = \
-                find.find_opt_kernels(sample_num=sample_num, method='delta', data_name=data_name)
-            end_time = time.time()
-            elapsed_time[i,j] = end_time - start_time
-                
-    ## save the results in excel            
-    # with pd.ExcelWriter('result.xlsx', engine='openpyxl') as writer:
-    #     pd.DataFrame(corr_beta_opt.reshape(-1, corr_beta_opt.shape[-1])).to_excel(writer, sheet_name='corr_beta_opt')
-    #     pd.DataFrame(alpha_prim_opt.reshape(-1, alpha_prim_opt.shape[-1])).to_excel(writer, sheet_name='alpha_prim_opt')
-    #     pd.DataFrame(para_diff.reshape(-1, para_diff.shape[-1])).to_excel(writer, sheet_name='para_diff')
-    #     pd.DataFrame(delta_opt.reshape(-1, delta_opt.shape[-1])).to_excel(writer, sheet_name='delta_opt')
-    #     pd.DataFrame(elapsed_time.reshape(-1, elapsed_time.shape[-1])).to_excel(writer, sheet_name='elapsed_time')
     
+    for result in results:
+        i, j, (corr_beta_opt_res, alpha_prim_opt_res, para_diff_res, delta_opt_res, \
+               corr_agg_res, corr_agg_opt_res, corr_agg_diff_res), elapsed = result
+        corr_beta_opt[i,j] = corr_beta_opt_res
+        alpha_prim_opt[i,j,:] = alpha_prim_opt_res
+        para_diff[i,j] = para_diff_res
+        delta_opt[i,j] = delta_opt_res
+        elapsed_time[i,j] = elapsed
+        corr_agg[i,j,:] = corr_agg_res
+        corr_agg_opt[i,j,:] = corr_agg_opt_res
+        corr_agg_diff[i,j,:] = corr_agg_diff_res
+            
     ## save the results in npz
     if multi_flag:
-        result = f'multi_{delta_flag_target[find.algo.delta_flag]}_{find.method}_{find.algo.cost_func_type}_wight_{find.algo.weight_2d}'
+        result_name = f'multi_{delta_flag_target[delta_flag]}_{method}_{cost_func_type}_wight_{weight_2d}'
     else:
-        result =  f'{delta_flag_target[find.algo.delta_flag]}_{find.method}_{find.algo.cost_func_type}_wight_{find.algo.weight_2d}'
-    np.savez(f'{result}.npz', 
+        result_name =  f'{delta_flag_target[delta_flag]}_{method}_{cost_func_type}_wight_{weight_2d}'
+        
+    np.savez(f'{result_name}.npz', 
          corr_beta_opt=corr_beta_opt, 
          alpha_prim_opt=alpha_prim_opt, 
          para_diff=para_diff, 

@@ -53,7 +53,7 @@ class opt_algo():
         kde_list = []
         x_uni = self.cal_x_uni(pop)
         for idt in range(self.num_t_steps):
-            _, q3, Q3, x_10, x_50, x_90 = pop.return_distribution(t=idt, flag='all')
+            _, q3, Q3, x_10, x_50, x_90 = pop.return_num_distribution(t=idt, flag='all')
             kde = self.KDE_fit(x_uni, q3)
             kde_list.append(kde)
         
@@ -203,18 +203,7 @@ class opt_algo():
         x_uni_exp = df.index.to_numpy()
         q3_exp = df.to_numpy()
         
-        # The experimental data is the number distribution of particles,
-        # which needs to be converted into a volume distribution to compare 
-        # with the simulation results.
-        q3_exp = self.convert_dist_num_to_vol(x_uni_exp, q3_exp)
         return self.re_cal_distribution(x_uni_exp, q3_exp)
-    
-    def convert_dist_num_to_vol(self, x_uni, q3_num):
-        v_uni = np.pi*x_uni**3/6
-        sumvol_uni = v_uni[:, np.newaxis] * q3_num
-        q3 = sumvol_uni / np.sum(sumvol_uni, axis=0)
-        q3 = q3 / np.sum(q3, axis=0)
-        return q3
     
     def function_noise(self, ori_data):
         rows, cols = ori_data.shape
@@ -342,28 +331,26 @@ class opt_algo():
         self.p.N[2:, 1, 0] = self.p_NM.N[2:, 0]
         self.p.N[1, 2:, 0] = self.p_M.N[2:, 0]
     
-    def set_init_N_1D(self, pop, sample_num, exp_data_path, init_flag, datasets=3):
+    def set_init_N_1D(self, pop, sample_num, exp_data_path, init_flag, timepoints=3):
         x_uni = self.cal_x_uni(pop)
         if sample_num == 1:
-            init_q3_sets = np.zeros((len(x_uni), datasets))
+            init_q3_sets = np.zeros((len(x_uni), timepoints))
             x_uni_exp, q3_exp, _, _ ,_, _ = self.read_exp(exp_data_path)
-            q3_exp = self.convert_dist_num_to_vol(x_uni_exp, q3_exp)
             # calculate with the first three time point
-            init_q3_raw = q3_exp[:,:datasets]
-            for i in range(datasets):
+            init_q3_raw = q3_exp[:,:timepoints]
+            for i in range(timepoints):
                 kde = self.KDE_fit(x_uni_exp, init_q3_raw[:, i])
                 init_q3_sets[:, i] = self.KDE_score(kde, x_uni)
                 
             if init_flag == 'mean':
                 init_q3 = init_q3_sets.mean(axis=1)
         else:
-            init_q3_sets = np.zeros((len(x_uni), datasets, sample_num))
+            init_q3_sets = np.zeros((len(x_uni), timepoints, sample_num))
             for i in range(0, sample_num):
                 exp_data_path=self.traverse_path(i, exp_data_path)
                 x_uni_exp, q3_exp, _, _ ,_, _ = self.read_exp(exp_data_path)
-                q3_exp = self.convert_dist_num_to_vol(x_uni_exp, q3_exp)
-                init_q3_raw = q3_exp[:,:datasets]
-                for j in range(datasets):
+                init_q3_raw = q3_exp[:,:timepoints]
+                for j in range(timepoints):
                     kde = self.KDE_fit(x_uni_exp, init_q3_raw[:, j])
                     init_q3_sets[:, j, i] = self.KDE_score(kde, x_uni)
             if init_flag == 'mean':
@@ -371,7 +358,7 @@ class opt_algo():
                    
         pop.N = np.zeros((pop.NS+3, len(pop.t_vec)))
         pop.N[2:, 0]=init_q3 * pop.N01
-            
+        
     def cal_v_uni(self, pop):
         return np.setdiff1d(pop.V, [-1, 0])
     

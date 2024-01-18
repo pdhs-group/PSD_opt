@@ -65,12 +65,12 @@ class opt_find():
                 # print(self.algo.exp_data_path)
                 self.write_new_data(self.algo.p, exp_data_path)
         else:
-            self.algo.cal_all_pop(self.algo.corr_beta, self.algo.alpha_prim)
             exp_data_paths = [
                 exp_data_path,
                 exp_data_path.replace(".xlsx", "_NM.xlsx"),
                 exp_data_path.replace(".xlsx", "_M.xlsx")
             ]
+            self.algo.cal_all_pop(self.algo.corr_beta, self.algo.alpha_prim)
             
             for i in range(0, sample_num):
                 if sample_num != 1:
@@ -165,20 +165,15 @@ class opt_find():
     def write_new_data(self, pop, exp_data_path):
         # save the calculation result in experimental data form
         x_uni = self.algo.cal_x_uni(pop)
-        v_uni = self.algo.cal_v_uni(pop)
         formatted_times = write_read_exp.convert_seconds_to_time(pop.t_vec)
         sumV_uni = np.zeros((len(x_uni), self.algo.num_t_steps))
-        sumN_uni = np.zeros(sumV_uni.shape)
         
         for idt in range(self.algo.num_t_steps):
-            q3 = pop.return_distribution(t=idt, flag='q3')[0]
+            q3 = pop.return_num_distribution(t=idt, flag='q3')[0]
             kde = self.algo.KDE_fit(x_uni, q3)
             sumV_uni[:, idt] = self.algo.KDE_score(kde, x_uni)
-            # The experimental data is the number distribution of particles, need a conversion
-            sumvol = np.sum(v_uni * sumV_uni[:, idt])
-            sumN_uni[:, idt] = sumV_uni[:, idt] * sumvol / v_uni
              
-        _, q3, _, _, _,_ = self.algo.re_cal_distribution(x_uni, sumN_uni)
+        _, q3, _, _, _,_ = self.algo.re_cal_distribution(x_uni, sumV_uni)
         
         if self.algo.add_noise:
             q3 = self.algo.function_noise(q3)

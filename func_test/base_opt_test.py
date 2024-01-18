@@ -37,7 +37,7 @@ def normal_test():
     find.save_as_png(fig_M, "PSD-M")
     
     return corr_beta_opt, alpha_prim_opt, para_diff, delta_opt, elapsed_time,corr_agg, corr_agg_opt, corr_agg_diff
-
+    
 def distribution_test(ax=None,fig=None,close_all=False,clr='k',scl_a4=1,figsze=[12.8,6.4*1.5]):
     pop = find.algo.p
     pop.calc_R()
@@ -58,9 +58,7 @@ def distribution_test(ax=None,fig=None,close_all=False,clr='k',scl_a4=1,figsze=[
     kde = find.algo.KDE_fit(x_uni, q3_num_pop)
     sumN_uni = find.algo.KDE_score(kde, x_uni)
     _, q3_num_pop, _, _, _,_ = find.algo.re_cal_distribution(x_uni, sumN_uni)
-    
-    q3_re = find.algo.convert_dist_num_to_vol(x_uni, q3_num)
-    
+        
     plt.close('all')
     fig=plt.figure()    
     axq3=fig.add_subplot(1,1,1)   
@@ -80,7 +78,7 @@ def distribution_test(ax=None,fig=None,close_all=False,clr='k',scl_a4=1,figsze=[
                            lbl='q3_re',clr='r',mrk='o')
     
     return q3, q3_num, q3_re[:, idt]
-    
+
 if __name__ == '__main__':
     #%%  Input for Opt
     dim = 2
@@ -95,21 +93,19 @@ if __name__ == '__main__':
     ## The find class determines how the experimental 
     ## data is used, while algo determines the optimization process.
     find = opt.opt_find()
-    find.init_opt_algo(dim, t_vec, add_noise, noise_type, noise_strength, smoothing)
      
-    
-    # Iteration steps for optimierer
-    find.algo.n_iter = 10
-    
     #%% Variable parameters
     ## Set the R0 particle radius and 
     ## whether to calculate the initial conditions from experimental data
-    ## 0. The diameter ratio of the primary particles can also be used as a variable
+    ## 0. Use only 2D Data or 1D+2D
+    find.multi_flag = True
+    find.init_opt_algo(dim, t_vec, add_noise, noise_type, noise_strength, smoothing)
+    ## Iteration steps for optimierer
+    find.algo.n_iter = 800
+    
+    ## 1. The diameter ratio of the primary particles can also be used as a variable
     find.algo.calc_init_N = True
     find.algo.set_comp_para(R_NM=2.9e-7, R_M=2.9e-7)
-    
-    ## 1. Use only 2D Data or 1D+2D
-    multi_flag = True
     
     ## 2. Criteria of optimization target
     ## delta_flag = 1: use q3
@@ -147,7 +143,13 @@ if __name__ == '__main__':
     find.algo.corr_beta = 10
     find.algo.alpha_prim = np.array([1.0, 1.0, 0.5])
     
-    # corr_beta_opt, alpha_prim_opt, para_diff, delta_opt, elapsed_time,corr_agg, \
-    #     corr_agg_opt, corr_agg_diff = normal_test()
+    # find.algo.calc_init_N = False
+    # pth = os.path.dirname( __file__ )
+    # dist_path_1 = os.path.join(pth, "..", "data", "PSD_data", "PSD_x50_1.0E-6_v50_5.2E-19_RelSigmaV_1.0E+0.npy")
+    # find.algo.set_comp_para('r0_005', 'r0_005', dist_path_1, dist_path_1)
+    # find.generate_data(sample_num, add_info='_para_10.0_1.0_1.0_0.5_1')
     
-    q3, q3_num, q3_re = distribution_test()
+    corr_beta_opt, alpha_prim_opt, para_diff, delta_opt, elapsed_time,corr_agg, \
+        corr_agg_opt, corr_agg_diff = normal_test()
+        
+    # distribution_test()
