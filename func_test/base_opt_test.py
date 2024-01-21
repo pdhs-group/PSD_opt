@@ -39,45 +39,48 @@ def normal_test():
     return corr_beta_opt, alpha_prim_opt, para_diff, delta_opt, elapsed_time,corr_agg, corr_agg_opt, corr_agg_diff
     
 def distribution_test(ax=None,fig=None,close_all=False,clr='k',scl_a4=1,figsze=[12.8,6.4*1.5]):
-    pop = find.algo.p
-    pop.calc_R()
-    pop.init_N()
-    find.algo.cal_pop(pop, find.algo.corr_beta, find.algo.alpha_prim)
-    x_uni = find.algo.cal_x_uni(pop)
-    v_uni = find.algo.cal_v_uni(pop)
+    find.algo.calc_init_N = False
+    pth = os.path.dirname( __file__ )
+    dist_path_1 = os.path.join(pth, "..", "data", "PSD_data", "PSD_x50_1.0E-6_v50_5.2E-19_RelSigmaV_1.0E+0.npy")
+    find.algo.set_comp_para('r0_005', 'r0_005', dist_path_1, dist_path_1)
+    
+    ## Calculate PBE direkt with psd-data, result is raw exp-data
+    find.algo.cal_all_pop(find.algo.corr_beta, find.algo.alpha_prim)
+    return_pop_distribution(find.algo.p)
+    return_pop_distribution(find.algo.p_NM)
+    return_pop_distribution(find.algo.p_M)
+    N_exp = find.algo.p.N
+    N_exp_1D = find.algo.p_NM.N
+    ## Calculate PBE with exp-data
+    find.algo.calc_init_N = True
+    find.algo.set_init_N(sample_num, exp_data_paths, 'mean')
+    find.algo.cal_all_pop(find.algo.corr_beta, find.algo.alpha_prim)
+    return_pop_distribution(find.algo.p)
+    return_pop_distribution(find.algo.p_NM)
+    return_pop_distribution(find.algo.p_M)   
+    N_cal = find.algo.p.N
+    N_cal_1D = find.algo.p_NM.N
+    
+    return N_exp, N_cal, N_exp_1D, N_cal_1D
+    
+
+def return_pop_distribution(pop, ax=None,fig=None,close_all=False,
+                            clr='k',scl_a4=1,figsze=[12.8,6.4*1.5]):
+
     idt=len(pop.t_vec)-1
+    x_uni = find.algo.cal_x_uni(pop)
     q3 = pop.return_distribution(t=idt, flag='q3')[0]
     kde = find.algo.KDE_fit(x_uni, q3)
     sumV_uni = find.algo.KDE_score(kde, x_uni)
     _, q3, _, _, _,_ = find.algo.re_cal_distribution(x_uni, sumV_uni)
-    sumvol = np.sum(v_uni * sumV_uni)
-    sumN_uni = sumV_uni * sumvol / v_uni
-    _, q3_num, _, _, _,_ = find.algo.re_cal_distribution(x_uni, sumN_uni)
     
-    q3_num_pop = pop.return_num_distribution(t=idt, flag='q3')[0]
-    kde = find.algo.KDE_fit(x_uni, q3_num_pop)
-    sumN_uni = find.algo.KDE_score(kde, x_uni)
-    _, q3_num_pop, _, _, _,_ = find.algo.re_cal_distribution(x_uni, sumN_uni)
-        
-    plt.close('all')
     fig=plt.figure()    
-    axq3=fig.add_subplot(1,1,1)   
+    axq3=fig.add_subplot(1,1,1)  
     
     axq3, fig = pt.plot_data(x_uni, q3, fig=fig, ax=axq3,
                            xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
                            ylbl='number distribution of agglomerates $q3$ / $-$',
                            lbl='q3',clr='b',mrk='o')
-    
-    axq3, fig = pt.plot_data(x_uni, q3_num, fig=fig, ax=axq3,
-                           lbl='q3_num',clr='g',mrk='^')
-    
-    axq3, fig = pt.plot_data(x_uni, q3_num_pop, fig=fig, ax=axq3,
-                           lbl='q3_num_pop',clr='k',mrk='^')
-    
-    axq3, fig = pt.plot_data(x_uni, q3_re[:, idt], fig=fig, ax=axq3,
-                           lbl='q3_re',clr='r',mrk='o')
-    
-    return q3, q3_num, q3_re[:, idt]
 
 if __name__ == '__main__':
     #%%  Input for Opt
@@ -139,9 +142,17 @@ if __name__ == '__main__':
         data_name = f"Sim_{noise_type}_{noise_strength}_para_10.0_1.0_1.0_0.5_1.xlsx"
     else:
         data_name = "Sim_para_10_1.0_1.0_0.5_1.xlsx"
+        
+    base_path = os.path.join(find.algo.p.pth, "data")
     
     find.algo.corr_beta = 10
     find.algo.alpha_prim = np.array([1.0, 1.0, 0.5])
+    exp_data_path = os.path.join(base_path, data_name)
+    exp_data_paths = [
+        exp_data_path,
+        exp_data_path.replace(".xlsx", "_NM.xlsx"),
+        exp_data_path.replace(".xlsx", "_M.xlsx")
+    ]
     
     # find.algo.calc_init_N = False
     # pth = os.path.dirname( __file__ )
@@ -149,7 +160,7 @@ if __name__ == '__main__':
     # find.algo.set_comp_para('r0_005', 'r0_005', dist_path_1, dist_path_1)
     # find.generate_data(sample_num, add_info='_para_10.0_1.0_1.0_0.5_1')
     
-    corr_beta_opt, alpha_prim_opt, para_diff, delta_opt, elapsed_time,corr_agg, \
-        corr_agg_opt, corr_agg_diff = normal_test()
+    # corr_beta_opt, alpha_prim_opt, para_diff, delta_opt, elapsed_time,corr_agg, \
+    #     corr_agg_opt, corr_agg_diff = normal_test()
         
-    # distribution_test()
+    N_exp, N_cal, N_exp_1D, N_cal_1D = distribution_test()
