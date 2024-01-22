@@ -10,6 +10,7 @@ sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),".."))
 import opt_find as opt
 import numpy as np
 from generate_psd import full_psd
+import opt_config as conf
 
 if __name__ == '__main__':
     ## Input for Opt
@@ -23,22 +24,22 @@ if __name__ == '__main__':
     sample_num = 5
     multi_flag = True
     
-    generate_new_psd = False
+    generate_new_psd = True
     
     if generate_new_psd:
         ## Input for generating psd-data
-        x50 = 1   # /mm
-        resigma = 1
-        minscale = 1e-3
-        maxscale = 1e3
+        x50 = 2   # /mm
+        resigma = 0.15
+        minscale = 0.5
+        maxscale = 2
         dist_path_1 = full_psd(x50, resigma, minscale=minscale, maxscale=maxscale, plot_psd=False)
         dist_path_5 = full_psd(x50*5, resigma, minscale=minscale, maxscale=maxscale, plot_psd=False)
         dist_path_10 = full_psd(x50*10, resigma, minscale=minscale, maxscale=maxscale, plot_psd=False)
     else:
         pth = os.path.dirname( __file__ )
-        dist_path_1 = os.path.join(pth, "..", "data", "PSD_data", "PSD_x50_1.0E-6_v50_5.2E-19_RelSigmaV_1.0E+0.npy")
-        dist_path_5 = os.path.join(pth, "..", "data", "PSD_data", "PSD_x50_5.0E-6_v50_6.5E-17_RelSigmaV_1.0E+0.npy")
-        dist_path_10 = os.path.join(pth, "..","data", "PSD_data", "PSD_x50_1.0E-5_v50_5.2E-16_RelSigmaV_1.0E+0.npy")
+        dist_path_1 = os.path.join(pth, "..", "data", "PSD_data", conf.config['dist_scale_1'])
+        dist_path_5 = os.path.join(pth, "..", "data", "PSD_data", conf.config['dist_scale_5'])
+        dist_path_10 = os.path.join(pth, "..","data", "PSD_data", conf.config['dist_scale_10'])
     
     ## define the range of corr_beta
     var_corr_beta = np.array([1e-2, 1e-1, 1e0, 1e1, 1e2])
@@ -57,19 +58,19 @@ if __name__ == '__main__':
     find = opt.opt_find()
     find.init_opt_algo(dim, t_vec, add_noise, noise_type, noise_strength, smoothing)
 
-    for i, dist in enumerate(dist_path):
-        ## Reinitialization of pop equations using psd data  
-        dist_path_NM = dist_path[0]
-        dist_path_M = dist
-        scale = size_scale[i]
-        find.algo.set_comp_para(R01_0, R03_0, dist_path_NM, dist_path_M)
+    # for i, dist in enumerate(dist_path):
+    #     ## Reinitialization of pop equations using psd data  
+    #     dist_path_NM = dist_path[0]
+    #     dist_path_M = dist
+    #     scale = size_scale[i]
+    #     find.algo.set_comp_para(R01_0, R03_0, dist_path_NM, dist_path_M)
         
-        for corr_beta in var_corr_beta:
-            for alpha_prim in var_alpha_prim:
-                ## Set α and β_corr
-                find.algo.corr_beta = corr_beta
-                find.algo.alpha_prim = alpha_prim
-                add_info = f"_para_{find.algo.corr_beta}_{find.algo.alpha_prim[0]}_{find.algo.alpha_prim[1]}_{find.algo.alpha_prim[2]}_{scale}"
-                # Generate synthetic Data
-                find.generate_data(sample_num=sample_num, add_info=add_info)
+    #     for corr_beta in var_corr_beta:
+    #         for alpha_prim in var_alpha_prim:
+    #             ## Set α and β_corr
+    #             find.algo.corr_beta = corr_beta
+    #             find.algo.alpha_prim = alpha_prim
+    #             add_info = f"_para_{find.algo.corr_beta}_{find.algo.alpha_prim[0]}_{find.algo.alpha_prim[1]}_{find.algo.alpha_prim[2]}_{scale}"
+    #             # Generate synthetic Data
+    #             find.generate_data(sample_num=sample_num, add_info=add_info)
                    

@@ -79,7 +79,8 @@ class write_read_exp():
             time_points = self.exp_data.columns[:]  
             
             # make sure that t_exp not out of the range
-            if t_exp < min(time_points) or t_exp > max(time_points):
+            # if t_exp < min(time_points) or t_exp > max(time_points):
+            if t_exp < 0 or t_exp > max(time_points):
                 raise ValueError("The experimental time is out of the range of the data table.")
             
             # interpolation

@@ -26,4 +26,8 @@ config = {
     'delta_flag': 1,
     'cost_func_type': 'KL',
     'weight_2d': 1,
+    
+    'dist_scale_1': "PSD_x50_2.0E-6_v50_4.2E-18_RelSigmaV_5.0E-1.npy",
+    'dist_scale_5': "PSD_x50_1.0E-5_v50_5.2E-16_RelSigmaV_1.5E-1.npy",
+    'dist_scale_10': "PSD_x50_2.0E-5_v50_4.2E-15_RelSigmaV_1.5E-1.npy",
 }

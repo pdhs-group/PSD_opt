@@ -10,6 +10,7 @@ sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),".."))
 import numpy as np
 from general_scripts.generate_psd import full_psd
 import opt_find as opt
+import opt_config as conf
 ## For plots
 import matplotlib.pyplot as plt
 import plotter.plotter as pt   
@@ -94,7 +95,7 @@ if __name__ == '__main__':
     #%%  Input for Opt
     dim = 2
     t_vec = np.concatenate(([0.0, 0.1, 0.3, 0.6, 0.9], np.arange(1, 602, 60, dtype=float)))
-    add_noise = True
+    add_noise = False
     smoothing = True
     noise_type='Mul'
     noise_strength = 0.1
@@ -158,10 +159,10 @@ if __name__ == '__main__':
     ## Reinitialization of pop equations using psd data  
     find.algo.calc_init_N = False
     pth = os.path.dirname( __file__ )
-    dist_path_1 = os.path.join(pth, "..", "data", "PSD_data", "PSD_x50_1.0E-6_v50_5.2E-19_RelSigmaV_1.0E+0.npy")
-    find.algo.set_comp_para('r0_005', 'r0_005', dist_path_1, dist_path_1)
-    find.algo.corr_beta = 10
-    find.algo.alpha_prim = np.array([1.0, 1.0, 0.5])
+    dist_path_1 = os.path.join(pth, "..", "data", "PSD_data", conf.config['dist_scale_1'])
+    find.algo.set_comp_para('r0_001', 'r0_001', dist_path_1, dist_path_1)
+    find.algo.corr_beta = 15
+    find.algo.alpha_prim = np.array([0.2, 0.6, 0.8])
     ## Calculate PBE direkt with psd-data, result is raw exp-data
     find.algo.cal_all_pop(find.algo.corr_beta, find.algo.alpha_prim)
     
