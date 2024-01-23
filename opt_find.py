@@ -19,10 +19,9 @@ import plotter.plotter as pt
 
 class opt_find():
     def __init__(self):
-        self.method='BO'  
-        self.multi_flag=False
+        self.multi_flag=True
         
-    def init_opt_algo(self, dim=1, t_vec=None, add_noise=False, noise_type='Gaus',
+    def init_opt_algo(self, dim=1, t_init= None, t_vec=None, add_noise=False, noise_type='Gaus',
                       noise_strength=0.01,smoothing=False):
         if not self.multi_flag:
             self.algo = opt_algo()
@@ -35,8 +34,17 @@ class opt_find():
         self.algo.dim = dim
         self.algo.noise_type = noise_type
         self.algo.noise_strength = noise_strength
+        self.algo.t_init = t_init
+        self.algo.num_t_init = len(t_init)
         self.algo.t_vec = t_vec
         self.algo.num_t_steps = len(t_vec)
+        ## Get the complete simulation time and get the indices corresponding 
+        ## to the vec and init time vectors
+        self.algo.t_all = np.sort(np.concatenate((self.algo.t_init, self.algo.t_vec)))
+        self.algo.idt_vec = [np.where(self.algo.t_all == t_time)[0][0] for t_time in self.algo.t_vec]
+        self.algo.idt_init = [np.where(self.algo.t_all == t_time)[0][0] for t_time in self.algo.t_init]
+        
+        self.algo.method='BO'
         
         self.algo.p = population(dim=dim, disc='geo')
         ## The 1D-pop data is also used when calculating the initial N of 2/3D-pop.
@@ -57,7 +65,7 @@ class opt_find():
         exp_data_path = os.path.join(self.base_path, filename)
         
         if not self.multi_flag:
-            self.algo.cal_pop(self.algo.p, self.algo.corr_beta, self.algo.alpha_prim)
+            self.algo.cal_pop(self.algo.p, self.algo.corr_beta, self.algo.alpha_prim, self.algo.t_all)
             
             for i in range(0, sample_num):
                 if sample_num != 1:
@@ -70,7 +78,7 @@ class opt_find():
                 exp_data_path.replace(".xlsx", "_NM.xlsx"),
                 exp_data_path.replace(".xlsx", "_M.xlsx")
             ]
-            self.algo.cal_all_pop(self.algo.corr_beta, self.algo.alpha_prim)
+            self.algo.cal_all_pop(self.algo.corr_beta, self.algo.alpha_prim, self.algo.t_all)
             
             for i in range(0, sample_num):
                 if sample_num != 1:
@@ -109,8 +117,7 @@ class opt_find():
                     alpha_prim_sample = np.zeros((3, sample_num))
                 
                 if sample_num == 1:
-                    delta_opt = self.algo.optimierer_agg(method=self.method,
-                                                  exp_data_path=exp_data_path)
+                    delta_opt = self.algo.optimierer_agg(exp_data_path=exp_data_path)
                     corr_beta = self.algo.corr_beta_opt
                     alpha_prim = self.algo.alpha_prim_opt
                     
@@ -118,8 +125,7 @@ class opt_find():
                     for i in range(0, sample_num):
                         exp_data_path=self.algo.traverse_path(i, exp_data_path)
                         delta_opt_sample[i] = \
-                            self.algo.optimierer_agg(method=self.method, 
-                                              exp_data_path=exp_data_path)
+                            self.algo.optimierer_agg(exp_data_path=exp_data_path)
                             
                         corr_beta_sample[i] = self.algo.corr_beta_opt
                         if self.algo.p.dim == 1:
@@ -136,9 +142,9 @@ class opt_find():
                     self.algo.alpha_prim_opt = alpha_prim
                 
             elif method == 'delta':
-                delta_opt = self.algo.optimierer_agg(method=self.method, sample_num=sample_num, 
+                delta_opt = self.algo.optimierer_agg(sample_num=sample_num, 
                                       exp_data_path=exp_data_path)
-                # delta_opt = self.algo.optimierer(method=self.method, sample_num=sample_num, 
+                # delta_opt = self.algo.optimierer(sample_num=sample_num, 
                 #                       exp_data_path=exp_data_path)
                 
                 
@@ -165,15 +171,18 @@ class opt_find():
     def write_new_data(self, pop, exp_data_path):
         # save the calculation result in experimental data form
         x_uni = self.algo.cal_x_uni(pop)
-        formatted_times = write_read_exp.convert_seconds_to_time(pop.t_vec)
-        sumV_uni = np.zeros((len(x_uni), self.algo.num_t_steps))
+        formatted_times = write_read_exp.convert_seconds_to_time(self.algo.t_all)
+        q3 = np.zeros((len(x_uni), len(self.algo.t_all)))
         
-        for idt in range(self.algo.num_t_steps):
-            q3 = pop.return_num_distribution(t=idt, flag='q3')[0]
-            kde = self.algo.KDE_fit(x_uni, q3)
-            sumV_uni[:, idt] = self.algo.KDE_score(kde, x_uni)
-             
-        _, q3, _, _, _,_ = self.algo.re_cal_distribution(x_uni, sumV_uni)
+        for idt in self.algo.idt_vec:
+            q3_tem = pop.return_num_distribution(t=idt, flag='q3')[0]
+            kde = self.algo.KDE_fit(x_uni, q3_tem)
+            sumV_uni = self.algo.KDE_score(kde, x_uni)
+            _, q3_tem, _, _, _,_ = self.algo.re_cal_distribution(x_uni, sumV_uni)
+            q3[:, idt] = q3_tem
+        ## Data used for initialization should not be smoothed
+        for idt in self.algo.idt_init:
+            q3[:, idt] = pop.return_num_distribution(t=idt, flag='q3')[0]
         
         if self.algo.add_noise:
             q3 = self.algo.function_noise(q3)

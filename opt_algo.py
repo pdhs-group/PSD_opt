@@ -11,14 +11,10 @@ from scipy.stats import entropy
 from sklearn.neighbors import KernelDensity
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 from func.func_read_exp import write_read_exp
+from scipy.interpolate import interp1d
 
 class opt_algo():
     def __init__(self):
-        self.smoothing = False
-        self.add_noise = False
-        self.noise_type = 'Gaus'    # Gaus, Uni, Po, Mul
-        self.noise_strength = 0.01
-        
         self.n_iter = 100
         ## delta_flag = 1: use q3
         ## delta_flag = 2: use Q3
@@ -32,8 +28,6 @@ class opt_algo():
         ## 'KL': Kullback–Leibler divergence(Only q3 and Q3 are compatible with KL) 
         self.cost_func_type = 'MSE'
 
-        self.t_vec = np.arange(0, 601, 20, dtype=float)
-        self.num_t_steps = len(self.t_vec)
         self.calc_init_N = False
     #%%  Optimierer    
     def cal_delta(self, corr_beta=None, alpha_prim=None, scale=1, sample_num=1, exp_data_path=None):
@@ -93,8 +87,8 @@ class opt_algo():
             x_uni_num = len(data_exp[0])    
             return (delta_sum * scale) / x_uni_num
     
-    def optimierer(self, method='BO', init_points=4, sample_num=1, hyperparameter=None, exp_data_path=None):
-        if method == 'BO':
+    def optimierer(self, init_points=4, sample_num=1, hyperparameter=None, exp_data_path=None):
+        if self.method == 'BO':
             if self.p.dim == 1:
                 pbounds = {'corr_beta_log': (-3, 3), 'alpha_prim': (0, 1)}
                 objective = lambda corr_beta_log, alpha_prim: self.cal_delta(
@@ -197,14 +191,12 @@ class opt_algo():
     #%% Data Process  
     ## Read the experimental data and re-interpolate the particle distribution 
     ## of the experimental data according to the simulation results.
-    def read_exp(self, exp_data_path, t_points=None):      
+    def read_exp(self, exp_data_path):      
         exp_data = write_read_exp(exp_data_path, read=True)
-        if t_points is None:
-            t_points = self.t_vec
-        df = exp_data.get_exp_data(t_points)
+        df = exp_data.get_exp_data(self.t_all)
         x_uni_exp = df.index.to_numpy()
         q3_exp = df.to_numpy()
-        return self.re_cal_distribution(x_uni_exp, q3_exp, ndim=len(t_points))
+        return self.re_cal_distribution(x_uni_exp, q3_exp, ndim=len(self.t_all))
     
     def function_noise(self, ori_data):
         rows, cols = ori_data.shape
@@ -275,7 +267,7 @@ class opt_algo():
         self.p_NM = population(dim=1,disc=disc)
         self.p_M = population(dim=1,disc=disc)
             
-    def cal_pop(self, pop, corr_beta, alpha_prim):
+    def cal_pop(self, pop, corr_beta, alpha_prim, t_vec=None):
         pop.COLEVAL = 2
         pop.EFFEVAL = 2
         pop.CORR_BETA = corr_beta
@@ -292,7 +284,9 @@ class opt_algo():
         else:
             pop.calc_F_M()
         if pop.dim == 1: pop.calc_B_M()
-        pop.solve_PBE(t_vec=self.t_vec)                
+        
+        if t_vec is None: pop.solve_PBE(t_vec=self.t_vec)      
+        else: pop.solve_PBE(t_vec=t_vec)  
         
     def set_comp_para(self, R01_0='r0_005', R03_0='r0_005', dist_path_NM=None, dist_path_M=None,
                       R_NM=2.9e-7, R_M=2.9e-7):
@@ -332,63 +326,43 @@ class opt_algo():
         self.p.N[2:, 1, 0] = self.p_NM.N[2:, 0]
         self.p.N[1, 2:, 0] = self.p_M.N[2:, 0]
     
-    def set_init_N_1D(self, pop, sample_num, exp_data_path, init_flag, timepoints=5):
+    def set_init_N_1D(self, pop, sample_num, exp_data_path, init_flag):
         x_uni = self.cal_x_uni(pop)
         if sample_num == 1:
-            if init_flag == 'int':
-                x_uni_exp, init_q3_raw, _, _ ,_, _ = self.read_exp(exp_data_path, t_points=[0])
-                init_q3_raw = np.array(init_q3_raw).flatten()
-                kde = self.KDE_fit(x_uni_exp, init_q3_raw)
-                sumV_uni = self.KDE_score(kde, x_uni)
-                _, init_q3, _, _, _,_ = self.re_cal_distribution(x_uni, sumV_uni)
-            if init_flag == 'mean':
-                sumV_uni = np.zeros((len(x_uni), timepoints))
-                x_uni_exp, q3_exp, _, _ ,_, _ = self.read_exp(exp_data_path)
-                
-                # calculate with the first three time point 
-                init_q3_raw = q3_exp[:,:timepoints]
-                for i in range(timepoints):
-                    kde = self.KDE_fit(x_uni_exp, init_q3_raw[:, i])
-                    sumV_uni[:, i] = self.KDE_score(kde, x_uni)
-                sumV_uni = sumV_uni.mean(axis=1)
-                _, init_q3, _, _, _,_ = self.re_cal_distribution(x_uni, sumV_uni)
+            x_uni_exp, q3_all, _, _ ,_, _ = self.read_exp(exp_data_path)
         else:
-            if init_flag == 'int':
-                sumV_uni = np.zeros((len(x_uni), sample_num))
-                for i in range(0, sample_num):
-                    exp_data_path=self.traverse_path(i, exp_data_path)
-                    x_uni_exp, init_q3_raw, _, _ ,_, _ = self.read_exp(exp_data_path, t_points=[0])
-                    init_q3_raw = np.array(init_q3_raw).flatten()
-                    kde = self.KDE_fit(x_uni_exp, init_q3_raw)
-                    sumV_uni[:,i] = self.KDE_score(kde, x_uni)
-                _, init_q3_sets, _, _, _,_ = self.re_cal_distribution(x_uni, sumV_uni, sample_num)
-                init_q3 = init_q3_sets.mean(axis=1)
-            if init_flag == 'mean':
-                init_q3_sets = np.zeros((len(x_uni), timepoints, sample_num))
-                sumV_uni = np.zeros((len(x_uni), timepoints, sample_num))
-                for i in range(0, sample_num):
-                    exp_data_path=self.traverse_path(i, exp_data_path)
-                    x_uni_exp, q3_exp, _, _ ,_, _ = self.read_exp(exp_data_path)
-                    init_q3_raw = q3_exp[:,:timepoints]
-                    for j in range(timepoints):
-                        kde = self.KDE_fit(x_uni_exp, init_q3_raw[:, j])
-                        sumV_uni[:,j,i] = self.KDE_score(kde, x_uni)
-                sumV_uni = sumV_uni.mean(axis=1).mean(axis=1)
-                _, init_q3, _, _, _,_ = self.re_cal_distribution(x_uni, sumV_uni)
-            else:
-                init_q3_sets = np.zeros((len(x_uni), sample_num))
-                for i in range(0, sample_num):
-                    exp_data_path=self.traverse_path(i, exp_data_path)
-                    x_uni_exp, init_q3_raw, _, _ ,_, _ = self.read_exp(exp_data_path, t_points=[0])
-                    init_q3_raw = np.array(init_q3_raw).flatten()
-                    init_q3_sets[:,i] = init_q3_raw
-                init_q3 = init_q3_sets.mean(axis=1)
+            exp_data_path=self.traverse_path(0, exp_data_path)
+            x_uni_exp, q3_all_tem, _, _ ,_, _ = self.read_exp(exp_data_path)
+            q3_all_samples = np.zeros((len(x_uni_exp), len(self.t_all), sample_num))
+            q3_all_samples[:, :, 0] = q3_all_tem
+            for i in range(1, sample_num):
+                exp_data_path=self.traverse_path(i, exp_data_path)
+                _, q3_all_tem, _, _ ,_, _ = self.read_exp(exp_data_path)
+                q3_all_samples[:, :, i] = q3_all_tem
+            q3_all = q3_all_samples.mean(axis=2)
+            
+        q3_init_sets = q3_all[:, self.idt_init]
+        q3_init = np.zeros(len(x_uni))
+            
+        if init_flag == 'int':
+            for idx in range(len(x_uni_exp)):
+                interp_q3 = interp1d(self.t_init, q3_init_sets[idx, :], kind='linear', fill_value="extrapolate")
+                q3_init[idx] = interp_q3(0.0)
+
+        if init_flag == 'mean':
+            q3_init = q3_init_sets.mean(axis=1)
                 
-        thr = 1e-5
-        init_q3[init_q3 < (thr * init_q3.mean())]=0     
-        init_q3 = init_q3 / init_q3.sum()
+        q3_init = q3_init / q3_init.sum()
+        # ## Remap q3 corresponding to the x value of the experimental data to x of the PBE
+        # kde = self.KDE_fit(x_uni_exp, q3_init)
+        # sumV_uni = self.KDE_score(kde, x_uni)
+        # q3_init = sumV_uni / sumV_uni.sum()
+                
+        thr = 1e-1
+        q3_init[q3_init < (thr * q3_init.max())]=0     
+        q3_init = q3_init / q3_init.sum()
         pop.N = np.zeros((pop.NS+3, len(pop.t_vec)))
-        pop.N[2:, 0]=init_q3 * pop.N01
+        pop.N[2:, 0]=q3_init * pop.N01*100
         
     def cal_v_uni(self, pop):
         return np.setdiff1d(pop.V, [-1, 0])

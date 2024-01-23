@@ -9,8 +9,9 @@ import numpy as np
 
 config = {
     'dim': 2,
-    't_vec' : np.concatenate(([0.0, 0.1, 0.3, 0.6, 0.9], np.arange(1, 602, 60, dtype=float))),
-    'add_noise': True,
+    't_init' : np.array([0.1, 0.3, 0.6, 0.9]),
+    't_vec' : np.arange(0, 601, 60, dtype=float),
+    'add_noise': False,
     'smoothing': True,
     'noise_type': 'Mul',
     'noise_strength': 0.1,
@@ -27,7 +28,7 @@ config = {
     'cost_func_type': 'KL',
     'weight_2d': 1,
     
-    'dist_scale_1': "PSD_x50_2.0E-6_v50_4.2E-18_RelSigmaV_5.0E-1.npy",
+    'dist_scale_1': "PSD_x50_2.0E-6_v50_4.2E-18_RelSigmaV_1.5E-1.npy",
     'dist_scale_5': "PSD_x50_1.0E-5_v50_5.2E-16_RelSigmaV_1.5E-1.npy",
     'dist_scale_10': "PSD_x50_2.0E-5_v50_4.2E-15_RelSigmaV_1.5E-1.npy",
 }

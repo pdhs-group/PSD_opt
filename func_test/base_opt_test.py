@@ -62,7 +62,7 @@ def calc_N_test():
     N_exp_1D = find.algo.p_NM.N
     ## Calculate PBE with exp-data
     find.algo.calc_init_N = True
-    find.algo.set_init_N(sample_num, exp_data_paths, 'ohter')
+    find.algo.set_init_N(sample_num, exp_data_paths, 'int')
     find.algo.cal_all_pop(find.algo.corr_beta, find.algo.alpha_prim)
     return_pop_num_distribution(find.algo.p, axq3, fig, clr='r', q3lbl='q3_exp')
     q3_exp = return_pop_num_distribution(find.algo.p_NM, axq3_NM, fig_NM, clr='r', q3lbl='q3_exp')
@@ -75,7 +75,7 @@ def calc_N_test():
 def return_pop_num_distribution(pop, axq3=None,fig=None, clr='b', q3lbl='q3'):
 
     x_uni = find.algo.cal_x_uni(pop)
-    q3 = pop.return_num_distribution(t=0, flag='q3')[0]
+    q3 = pop.return_num_distribution(t=-1, flag='q3')[0]
     kde = find.algo.KDE_fit(x_uni, q3)
     sumV_uni = find.algo.KDE_score(kde, x_uni)
     _, q3_sm, _, _, _,_ = find.algo.re_cal_distribution(x_uni, sumV_uni)
@@ -93,13 +93,14 @@ def return_pop_num_distribution(pop, axq3=None,fig=None, clr='b', q3lbl='q3'):
 
 if __name__ == '__main__':
     #%%  Input for Opt
-    dim = 2
-    t_vec = np.concatenate(([0.0, 0.1, 0.3, 0.6, 0.9], np.arange(1, 602, 60, dtype=float)))
-    add_noise = False
-    smoothing = True
-    noise_type='Mul'
-    noise_strength = 0.1
-    sample_num = 5
+    dim = conf.config['dim']
+    t_init = conf.config['t_init']
+    t_vec = conf.config['t_vec']
+    add_noise = conf.config['add_noise']
+    smoothing = conf.config['smoothing']
+    noise_type=conf.config['noise_type']
+    noise_strength = conf.config['noise_strength']
+    sample_num = conf.config['sample_num']
     
     ## Instantiate find and algo.
     ## The find class determines how the experimental 
@@ -110,13 +111,13 @@ if __name__ == '__main__':
     ## Set the R0 particle radius and 
     ## whether to calculate the initial conditions from experimental data
     ## 0. Use only 2D Data or 1D+2D
-    find.multi_flag = True
-    find.init_opt_algo(dim, t_vec, add_noise, noise_type, noise_strength, smoothing)
+    find.multi_flag = conf.config['multi_flag']
+    find.init_opt_algo(dim, t_init, t_vec, add_noise, noise_type, noise_strength, smoothing)
     ## Iteration steps for optimierer
-    find.algo.n_iter = 100
+    find.algo.n_iter = conf.config['n_iter']
     
     ## 1. The diameter ratio of the primary particles can also be used as a variable
-    find.algo.calc_init_N = True
+    find.algo.calc_init_N = conf.config['calc_init_N']
     find.algo.set_comp_para(R_NM=2.9e-7, R_M=2.9e-7)
     
     ## 2. Criteria of optimization target
@@ -125,23 +126,23 @@ if __name__ == '__main__':
     ## delta_flag = 3: use x_10
     ## delta_flag = 4: use x_50
     ## delta_flag = 5: use x_90
-    find.algo.delta_flag = 1
+    find.algo.delta_flag = conf.config['multi_flag']
     delta_flag_target = ['','q3','Q3','x_10','x_50','x_90']
     
     ## 3. Optimize method: 
     ##   'BO': Bayesian Optimization with package BayesianOptimization
-    find.method='BO'
+    find.algo.method= conf.config['method']
     
     ## 4. Type of cost function to use
     ##   'MSE': Mean Squared Error
     ##   'RMSE': Root Mean Squared Error
     ##   'MAE': Mean Absolute Error
     ##   'KL': Kullback–Leibler divergence(Only q3 and Q3 are compatible with KL) 
-    find.algo.cost_func_type = 'KL'
+    find.algo.cost_func_type = conf.config['cost_func_type']
     
     ## 5. Weight of 2D data
     ## The error of 2d pop may be more important, so weight needs to be added
-    find.algo.weight_2d = 1
+    find.algo.weight_2d = conf.config['weight_2d']
     
     ## 6. Method how to use the datasets, kernels or delta
     ## kernels: Find the kernel for each set of data, and then average these kernels.

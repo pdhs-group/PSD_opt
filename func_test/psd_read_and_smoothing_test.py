@@ -93,13 +93,14 @@ def visualize_distribution_smoothing_v(Opt, pop, v_uni, q3, Q3, ax=None,fig=None
     
 if __name__ == '__main__':
     #%%  Input for Opt
-    dim = 2
-    t_vec = np.concatenate(([0.0, 0.1, 0.3, 0.6, 0.9], np.arange(1, 602, 60, dtype=float)))
-    add_noise = False
-    smoothing = True
-    noise_type='Mul'
-    noise_strength = 0.1
-    sample_num = 5
+    dim = conf.config['dim']
+    t_init = conf.config['t_init']
+    t_vec = conf.config['t_vec']
+    add_noise = conf.config['add_noise']
+    smoothing = conf.config['smoothing']
+    noise_type=conf.config['noise_type']
+    noise_strength = conf.config['noise_strength']
+    sample_num = conf.config['sample_num']
     
     ## Instantiate find and algo.
     ## The find class determines how the experimental 
@@ -110,13 +111,13 @@ if __name__ == '__main__':
     ## Set the R0 particle radius and 
     ## whether to calculate the initial conditions from experimental data
     ## 0. Use only 2D Data or 1D+2D
-    find.multi_flag = True
-    find.init_opt_algo(dim, t_vec, add_noise, noise_type, noise_strength, smoothing)
+    find.multi_flag = conf.config['multi_flag']
+    find.init_opt_algo(dim, t_init, t_vec, add_noise, noise_type, noise_strength, smoothing)
     ## Iteration steps for optimierer
-    find.algo.n_iter = 800
+    find.algo.n_iter = conf.config['n_iter']
     
     ## 1. The diameter ratio of the primary particles can also be used as a variable
-    find.algo.calc_init_N = True
+    find.algo.calc_init_N = conf.config['calc_init_N']
     find.algo.set_comp_para(R_NM=2.9e-7, R_M=2.9e-7)
     
     ## 2. Criteria of optimization target
@@ -125,12 +126,12 @@ if __name__ == '__main__':
     ## delta_flag = 3: use x_10
     ## delta_flag = 4: use x_50
     ## delta_flag = 5: use x_90
-    find.algo.delta_flag = 1
+    find.algo.delta_flag = conf.config['multi_flag']
     delta_flag_target = ['','q3','Q3','x_10','x_50','x_90']
     
     ## 3. Optimize method: 
     ##   'BO': Bayesian Optimization with package BayesianOptimization
-    find.method='BO'
+    find.algo.method='BO'
     
     ## 4. Type of cost function to use
     ##   'MSE': Mean Squared Error
@@ -162,9 +163,13 @@ if __name__ == '__main__':
     dist_path_1 = os.path.join(pth, "..", "data", "PSD_data", conf.config['dist_scale_1'])
     find.algo.set_comp_para('r0_001', 'r0_001', dist_path_1, dist_path_1)
     find.algo.corr_beta = 15
-    find.algo.alpha_prim = np.array([0.2, 0.6, 0.8])
+    find.algo.alpha_prim = np.array([0.5, 1, 0.5])
     ## Calculate PBE direkt with psd-data, result is raw exp-data
     find.algo.cal_all_pop(find.algo.corr_beta, find.algo.alpha_prim)
+    
+    ## Test the influence of Total number concentration to q3
+    find.algo.p_M.V01 *= 10
+    find.algo.cal_pop(find.algo.p_M, find.algo.corr_beta, find.algo.alpha_prim[0])
     
     x_uni, q3, Q3, _, _, _ = find.algo.p.return_num_distribution(t=-1)
     x_uni_NM, q3_NM, Q3_NM, _, _, _ = find.algo.p_NM.return_num_distribution(t=-1)
