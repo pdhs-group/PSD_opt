@@ -15,7 +15,7 @@ class opt_algo_multi(opt_algo):
         
     def cal_delta(self, corr_beta=None, alpha_prim=None, scale=1, Q3_exp=None, 
                         sample_num=1, exp_data_path=None):  
-        self.cal_all_pop(corr_beta, alpha_prim)
+        self.cal_all_pop(corr_beta, alpha_prim, self.t_vec)
         
         delta = self.cal_delta_tem(sample_num, exp_data_path[0], scale, self.p)
         delta_NM = self.cal_delta_tem(sample_num, exp_data_path[1], scale, self.p_NM)
@@ -30,7 +30,7 @@ class opt_algo_multi(opt_algo):
         corr_beta = self.return_syth_beta(corr_agg)
         alpha_prim = corr_agg / corr_beta
         
-        self.cal_all_pop(corr_beta, alpha_prim)
+        self.cal_all_pop(corr_beta, alpha_prim, self.t_vec)
         
         delta = self.cal_delta_tem(sample_num, exp_data_path[0], scale, self.p)
         delta_NM = self.cal_delta_tem(sample_num, exp_data_path[1], scale, self.p_NM)

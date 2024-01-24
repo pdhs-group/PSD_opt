@@ -54,7 +54,7 @@ def calc_N_test():
     axq3_M=fig_M.add_subplot(1,1,1)
     
     ## Calculate PBE direkt with psd-data, result is raw exp-data
-    find.algo.cal_all_pop(find.algo.corr_beta, find.algo.alpha_prim)
+    find.algo.cal_all_pop(find.algo.corr_beta, find.algo.alpha_prim, find.algo.t_all)
     return_pop_num_distribution(find.algo.p, axq3, fig, clr='b', q3lbl='q3_psd')
     q3_psd = return_pop_num_distribution(find.algo.p_NM, axq3_NM, fig_NM, clr='b', q3lbl='q3_psd')
     return_pop_num_distribution(find.algo.p_M, axq3_M, fig_M, clr='b', q3lbl='q3_psd')
@@ -62,8 +62,9 @@ def calc_N_test():
     N_exp_1D = find.algo.p_NM.N
     ## Calculate PBE with exp-data
     find.algo.calc_init_N = True
-    find.algo.set_init_N(sample_num, exp_data_paths, 'int')
-    find.algo.cal_all_pop(find.algo.corr_beta, find.algo.alpha_prim)
+    find.algo.set_comp_para(R_NM=2.9e-7, R_M=2.9e-7)
+    find.algo.set_init_N(sample_num, exp_data_paths, 'mean')
+    find.algo.cal_all_pop(find.algo.corr_beta, find.algo.alpha_prim, find.algo.t_all)
     return_pop_num_distribution(find.algo.p, axq3, fig, clr='r', q3lbl='q3_exp')
     q3_exp = return_pop_num_distribution(find.algo.p_NM, axq3_NM, fig_NM, clr='r', q3lbl='q3_exp')
     return_pop_num_distribution(find.algo.p_M, axq3_M, fig_M, clr='r', q3lbl='q3_exp')   
@@ -77,8 +78,7 @@ def return_pop_num_distribution(pop, axq3=None,fig=None, clr='b', q3lbl='q3'):
     x_uni = find.algo.cal_x_uni(pop)
     q3 = pop.return_num_distribution(t=-1, flag='q3')[0]
     kde = find.algo.KDE_fit(x_uni, q3)
-    sumV_uni = find.algo.KDE_score(kde, x_uni)
-    _, q3_sm, _, _, _,_ = find.algo.re_cal_distribution(x_uni, sumV_uni)
+    q3_sm = find.algo.KDE_score(kde, x_uni)
     
     axq3, fig = pt.plot_data(x_uni, q3, fig=fig, ax=axq3,
                            xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
@@ -164,11 +164,11 @@ if __name__ == '__main__':
         exp_data_path.replace(".xlsx", "_M.xlsx")
     ]
     
-    find.algo.calc_init_N = False
-    pth = os.path.dirname( __file__ )
-    dist_path_1 = os.path.join(pth, "..", "data", "PSD_data", conf.config['dist_scale_1'])
-    find.algo.set_comp_para('r0_001', 'r0_001', dist_path_1, dist_path_1)
-    find.generate_data(sample_num, add_info='_para_15.0_0.2_0.6_0.8_1')
+    # find.algo.calc_init_N = False
+    # pth = os.path.dirname( __file__ )
+    # dist_path_1 = os.path.join(pth, "..", "data", "PSD_data", conf.config['dist_scale_1'])
+    # find.algo.set_comp_para('r0_001', 'r0_001', dist_path_1, dist_path_1)
+    # find.generate_data(sample_num, add_info='_para_15.0_0.2_0.6_0.8_1')
     
     # corr_beta_opt, alpha_prim_opt, para_diff, delta_opt, elapsed_time,corr_agg, \
     #     corr_agg_opt, corr_agg_diff = normal_test()

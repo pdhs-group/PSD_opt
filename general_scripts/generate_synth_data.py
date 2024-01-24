@@ -48,6 +48,8 @@ if __name__ == '__main__':
     values = np.array([0, 0.5, 1])
     a1, a2, a3 = np.meshgrid(values, values, values, indexing='ij')
     var_alpha_prim = np.column_stack((a1.flatten(), a2.flatten(), a3.flatten()))
+    ## The case of all zero α is meaningless, that means no Agglomeration occurs
+    var_alpha_prim = var_alpha_prim[~np.all(var_alpha_prim == 0, axis=1)]
 
     ## define the range of particle size scale and minimal size
     dist_path = [dist_path_1, dist_path_10]

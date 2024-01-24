@@ -110,6 +110,8 @@ if __name__ == '__main__':
             unique_alpha_prim.append(comp)
             
     var_alpha_prim = np.array(unique_alpha_prim)
+    ## The case of all zero α is meaningless, that means no Agglomeration occurs
+    var_alpha_prim = var_alpha_prim[~np.all(var_alpha_prim == 0, axis=1)]
     
     pool = multiprocessing.Pool(processes=4)
     tasks = []

@@ -9,9 +9,9 @@ import numpy as np
 
 config = {
     'dim': 2,
-    't_init' : np.array([0.1, 0.3, 0.6, 0.9]),
+    't_init' : np.array([3, 15, 22, 40]),
     't_vec' : np.arange(0, 601, 60, dtype=float),
-    'add_noise': False,
+    'add_noise': True,
     'smoothing': True,
     'noise_type': 'Mul',
     'noise_strength': 0.1,
@@ -20,7 +20,7 @@ config = {
     'delta_flag': 1,
     
     'multi_flag': True,
-    'n_iter': 800,
+    'n_iter': 400,
     'calc_init_N': True,
     'R_NM': 2.9e-7,
     'R_M': 2.9e-7,

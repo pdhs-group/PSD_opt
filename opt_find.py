@@ -201,7 +201,7 @@ class opt_find():
     # Recalculate PSD using original parameter
         self.algo.cal_pop(pop, corr_beta=corr_beta_ori, alpha_prim=alpha_prim_ori)
 
-        x_uni_ori, q3_ori, Q3_ori, x_10_ori, x_50_ori, x_90_ori = pop.return_distribution(t=len(pop.t_vec)-1, flag='all')
+        x_uni_ori, q3_ori, Q3_ori, x_10_ori, x_50_ori, x_90_ori = pop.return_distribution(t=-1, flag='all')
         # Conversion unit
         x_uni_ori *= 1e6    
         x_10_ori *= 1e6   
@@ -214,7 +214,7 @@ class opt_find():
 
         self.algo.cal_pop(pop, corr_beta_opt, alpha_prim_opt)  
             
-        x_uni, q3, Q3, x_10, x_50, x_90 = pop.return_distribution(t=len(pop.t_vec)-1, flag='all')
+        x_uni, q3, Q3, x_10, x_50, x_90 = pop.return_distribution(t=-1, flag='all')
         # Conversion unit
         x_uni *= 1e6    
         x_10 *= 1e6   

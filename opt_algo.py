@@ -5,6 +5,7 @@ Created on Wed Nov 15 14:38:56 2023
 @author: px2030
 """
 import numpy as np
+import math
 from pop import population
 from bayes_opt import BayesianOptimization
 from scipy.stats import entropy
@@ -31,7 +32,7 @@ class opt_algo():
         self.calc_init_N = False
     #%%  Optimierer    
     def cal_delta(self, corr_beta=None, alpha_prim=None, scale=1, sample_num=1, exp_data_path=None):
-        self.cal_pop(self.p, corr_beta, alpha_prim)
+        self.cal_pop(self.p, corr_beta, alpha_prim, self.t_vec)
 
         return self.cal_delta_tem(sample_num, exp_data_path, scale, self.p)
     
@@ -39,7 +40,7 @@ class opt_algo():
         corr_beta = self.return_syth_beta(corr_agg)
         alpha_prim = corr_agg / corr_beta
 
-        self.cal_pop(self.p, corr_beta, alpha_prim)
+        self.cal_pop(self.p, corr_beta, alpha_prim, self.t_vec)
 
         return self.cal_delta_tem(sample_num, exp_data_path, scale, self.p)
 
@@ -52,7 +53,13 @@ class opt_algo():
             kde_list.append(kde)
         
         if sample_num == 1:
-            data_exp = self.read_exp(exp_data_path) 
+            data_exp_raw = self.read_exp(exp_data_path) 
+            data_exp = (data_exp_raw[0], 
+                data_exp_raw[1][:, self.idt_vec], 
+                data_exp_raw[2][:, self.idt_vec], 
+                data_exp_raw[3][self.idt_vec], 
+                data_exp_raw[4][self.idt_vec], 
+                data_exp_raw[5][self.idt_vec])
             sumV_uni = np.zeros((len(data_exp[0]), self.num_t_steps))
             for idt in range(self.num_t_steps):
                 sumV_uni_tem = self.KDE_score(kde_list[idt], data_exp[0])
@@ -69,7 +76,13 @@ class opt_algo():
             delta_sum = 0           
             for i in range (0, sample_num):
                 exp_data_path = self.traverse_path(i, exp_data_path)
-                data_exp = self.read_exp(exp_data_path) 
+                data_exp_raw = self.read_exp(exp_data_path) 
+                data_exp = (data_exp_raw[0], 
+                    data_exp_raw[1][:, self.idt_vec], 
+                    data_exp_raw[2][:, self.idt_vec], 
+                    data_exp_raw[3][self.idt_vec], 
+                    data_exp_raw[4][self.idt_vec], 
+                    data_exp_raw[5][self.idt_vec])
                 sumV_uni = np.zeros((len(data_exp[0]), self.num_t_steps))
                 
                 for idt in range(self.num_t_steps):
@@ -244,10 +257,14 @@ class opt_algo():
     
     def KDE_score(self, kde, x_uni_new):
         x_uni_new_re = x_uni_new.reshape(-1, 1) 
-        data_smoothing = np.exp(kde.score_samples(x_uni_new_re))
+        density = np.exp(kde.score_samples(x_uni_new_re))
         
         # Flatten a column vector into a one-dimensional array
-        data_smoothing = data_smoothing.ravel()  
+        density = density.ravel()
+        data_smoothing = np.zeros(len(x_uni_new)+1)
+        for i in range(1, len(x_uni_new)):
+            data_smoothing[i] = np.trapz(density, x_uni_new[:i])
+        
         return data_smoothing
     
     def traverse_path(self, label, path_ori):
@@ -353,16 +370,21 @@ class opt_algo():
             q3_init = q3_init_sets.mean(axis=1)
                 
         q3_init = q3_init / q3_init.sum()
-        # ## Remap q3 corresponding to the x value of the experimental data to x of the PBE
+        ## Remap q3 corresponding to the x value of the experimental data to x of the PBE
         # kde = self.KDE_fit(x_uni_exp, q3_init)
         # sumV_uni = self.KDE_score(kde, x_uni)
         # q3_init = sumV_uni / sumV_uni.sum()
-                
-        thr = 1e-1
-        q3_init[q3_init < (thr * q3_init.max())]=0     
+        inter_function = interp1d(x_uni_exp, q3_init, kind='linear', fill_value="extrapolate")
+        q3_init = inter_function(x_uni)
         q3_init = q3_init / q3_init.sum()
+                
         pop.N = np.zeros((pop.NS+3, len(pop.t_vec)))
-        pop.N[2:, 0]=q3_init * pop.N01*100
+        ## convert particle number density distribution into volume distribution
+        q3_vol = q3_init * pop.V[2:] / (q3_init * pop.V[2:]).sum()
+        v_total_uni = pop.V01 * q3_vol
+        pop.N[2:, 0]=v_total_uni / pop.V[2:]
+        thr = 1e-2
+        pop.N[pop.N < (thr * pop.N[2:, 0].max())]=0     
         
     def cal_v_uni(self, pop):
         return np.setdiff1d(pop.V, [-1, 0])

@@ -167,13 +167,13 @@ if __name__ == '__main__':
     ## Calculate PBE direkt with psd-data, result is raw exp-data
     find.algo.cal_all_pop(find.algo.corr_beta, find.algo.alpha_prim)
     
-    ## Test the influence of Total number concentration to q3
-    find.algo.p_M.V01 *= 10
-    find.algo.cal_pop(find.algo.p_M, find.algo.corr_beta, find.algo.alpha_prim[0])
+    # ## Test the influence of Total number concentration to q3
+    # find.algo.p_M.V01 *= 10
+    # find.algo.cal_pop(find.algo.p_M, find.algo.corr_beta, find.algo.alpha_prim[0])
     
-    x_uni, q3, Q3, _, _, _ = find.algo.p.return_num_distribution(t=-1)
-    x_uni_NM, q3_NM, Q3_NM, _, _, _ = find.algo.p_NM.return_num_distribution(t=-1)
-    x_uni_M, q3_M, Q3_M, _, _, _ = find.algo.p_M.return_num_distribution(t=-1)
+    x_uni, q3, Q3, _, _, _ = find.algo.p.return_num_distribution(t=2)
+    x_uni_NM, q3_NM, Q3_NM, _, _, _ = find.algo.p_NM.return_num_distribution(t=2)
+    x_uni_M, q3_M, Q3_M, _, _, _ = find.algo.p_M.return_num_distribution(t=2)
     v_uni = find.algo.cal_v_uni(find.algo.p)
     v_uni_NM = find.algo.cal_v_uni(find.algo.p_NM)
     v_uni_M = find.algo.cal_v_uni(find.algo.p_M)
