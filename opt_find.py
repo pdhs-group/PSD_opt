@@ -172,22 +172,22 @@ class opt_find():
         # save the calculation result in experimental data form
         x_uni = self.algo.cal_x_uni(pop)
         formatted_times = write_read_exp.convert_seconds_to_time(self.algo.t_all)
-        q3 = np.zeros((len(x_uni), len(self.algo.t_all)))
+        sumN_uni = np.zeros((len(x_uni), len(self.algo.t_all)))
         
         for idt in self.algo.idt_vec:
-            q3_tem = pop.return_num_distribution(t=idt, flag='q3')[0]
-            kde = self.algo.KDE_fit(x_uni, q3_tem)
-            sumV_uni = self.algo.KDE_score(kde, x_uni)
-            _, q3_tem, _, _, _,_ = self.algo.re_cal_distribution(x_uni, sumV_uni)
-            q3[:, idt] = q3_tem
+            sumN_uni_sm_tem = pop.return_num_distribution(t=idt, flag='sumN_uni')[0]
+            kde = self.algo.KDE_fit(x_uni,  sumN_uni_sm_tem)
+            q3_sm = self.algo.KDE_score(kde, x_uni)
+            sumN_uni_sm_tem= self.algo.re_cal_distribution(x_uni, q3_sm,  sumN_uni_sm_tem.sum(), 'sumN_uni')[0]
+            sumN_uni[:, idt] = sumN_uni_sm_tem
         ## Data used for initialization should not be smoothed
         for idt in self.algo.idt_init:
-            q3[:, idt] = pop.return_num_distribution(t=idt, flag='q3')[0]
+            sumN_uni[:, idt] = pop.return_num_distribution(t=idt, flag='sumN_uni')[0]
         
         if self.algo.add_noise:
-            q3 = self.algo.function_noise(q3)
+            sumN_uni = self.algo.function_noise(sumN_uni)
 
-        df = pd.DataFrame(data=q3, index=x_uni, columns=formatted_times)
+        df = pd.DataFrame(data=sumN_uni, index=x_uni, columns=formatted_times)
         df.index.name = 'Circular Equivalent Diameter'
         # save DataFrame as Excel file
         df.to_excel(exp_data_path)

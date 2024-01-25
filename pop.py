@@ -259,7 +259,7 @@ class population():
         if self.dim == 1:
             self.N = np.zeros((self.NS+3,self.NUM_T+1))
             if self.USE_PSD:
-                self.N[2:,0] = self.initialize_psd(self.R[2:],self.DIST1,self.V01)
+                self.N[2:,0] = self.new_initialize_psd(2*self.R[2:],self.DIST1,self.V01)
             else:
                 self.N[2,0] = self.N01
         
@@ -267,8 +267,8 @@ class population():
         elif self.dim == 2:
             self.N = np.zeros((self.NS+3,self.NS+3,self.NUM_T+1))
             if self.USE_PSD:
-                self.N[2:-1,1,0] = self.initialize_psd(self.R[2:-1,1],self.DIST1,self.V01)
-                self.N[1,2:-1,0] = self.initialize_psd(self.R[1,2:-1],self.DIST3,self.V03)
+                self.N[2:-1,1,0] = self.new_initialize_psd(2*self.R[2:-1,1],self.DIST1,self.V01)
+                self.N[1,2:-1,0] = self.new_initialize_psd(2*self.R[1,2:-1],self.DIST3,self.V03)
             else:
                 self.N[2,1,0] = self.N01
                 self.N[1,2,0] = self.N03
@@ -277,9 +277,9 @@ class population():
         elif self.dim == 3:
             self.N = np.zeros((self.NS+3,self.NS+3,self.NS+3,self.NUM_T+1))
             if self.USE_PSD:
-                self.N[2:-1,1,1,0] = self.initialize_psd(self.R[2:-1,1,1],self.DIST1,self.V01)
-                self.N[1,2:-1,1,0] = self.initialize_psd(self.R[1,2:-1,1],self.DIST2,self.V02)
-                self.N[1,1,2:-1,0] = self.initialize_psd(self.R[1,1,2:-1],self.DIST3,self.V03)
+                self.N[2:-1,1,1,0] = self.new_initialize_psd(2*self.R[2:-1,1,1],self.DIST1,self.V01)
+                self.N[1,2:-1,1,0] = self.new_initialize_psd(2*self.R[1,2:-1,1],self.DIST2,self.V02)
+                self.N[1,1,2:-1,0] = self.new_initialize_psd(2*self.R[1,1,2:-1],self.DIST3,self.V03)
             else:
                 self.N[2,1,1,0] = self.N01
                 self.N[1,2,1,0] = self.N02
@@ -986,40 +986,43 @@ class population():
         # Extract unique values that are NOT -1 or 0 (border)
         # At the same time, v_uni will be rearranged according to size.
         v_uni = np.setdiff1d(self.V,[-1,0])
-        sumN_uni = np.zeros(v_uni.shape)
+
+        q3 = np.zeros(len(v_uni)+1)
+        x_uni = np.zeros(len(v_uni)+1)
+        sumN_uni = np.zeros(len(v_uni)+1)
+        sumN_uni_tem = np.zeros(len(v_uni))
         
         if comp == 'all':
             # Loop through all entries in V and add volume concentration to specific entry in sumN_uni
             if self.dim == 1:
                 for i in range(1,self.NS+3):
                     if float_in_list(self.V[i], v_uni) and (not N[i,t] < 0):
-                        sumN_uni[v_uni == self.V[i]] += N[i,t] 
+                        sumN_uni_tem[v_uni == self.V[i]] += N[i,t] 
                         
             if self.dim == 2:
                 for i in range(1,self.NS+3):
                     for j in range(1,self.NS+3):
                         if float_in_list(self.V[i,j], v_uni) and (not N[i,j,t] < 0):
-                            sumN_uni[v_uni == self.V[i,j]] += N[i,j,t]
+                            sumN_uni_tem[v_uni == self.V[i,j]] += N[i,j,t]
 
             if self.dim == 3:
                 for i in range(1,self.NS+3):
                     for j in range(1,self.NS+3):
                         for k in range(1,self.NS+3):
                             if float_in_list(self.V[i,j,k], v_uni) and (not N[i,j,t] < 0):
-                                sumN_uni[v_uni == self.V[i,j,k]] += N[i,j,k,t]
+                                sumN_uni_tem[v_uni == self.V[i,j,k]] += N[i,j,k,t]
                                 
-            # Sort v_uni in ascending order and keep track in sumN_uni
-            # v_uni = v_uni[np.argsort(v_uni)]
-            # sumN_uni = sumN_uni[np.argsort(v_uni)]
-            sumN = np.sum(sumN_uni)
+
+            sumN = np.sum(sumN_uni_tem)
             
-            # Calculate diameter array
-            x_uni=(6*v_uni/np.pi)**(1/3)
+            sumN_uni[1:] = sumN_uni_tem
+            # Calculate diameter array and convert into mm
+            x_uni[1:]=(6*v_uni/np.pi)**(1/3)*1e6
             
             # Calculate sum and density distribution
-            Q3 = np.zeros(len(v_uni))
             Q3 = np.cumsum(sumN_uni)/sumN
-            q3 = sumN_uni/np.sum(sumN_uni)
+            for i in range(1,len(x_uni)):
+                q3[i] = (Q3[i] - Q3[i-1]) / (x_uni[i]-x_uni[i-1])
             
             # Retrieve x10, x50 and x90 through interpolation
             x_10=np.interp(0.1, Q3, x_uni)
@@ -1036,7 +1039,8 @@ class population():
         'Q3': Q3,
         'x_10': x_10,
         'x_50': x_50,
-        'x_90': x_90
+        'x_90': x_90,
+        'sumN_uni': sumN_uni,
         }
         
         if flag == 'all':
@@ -1462,18 +1466,18 @@ class population():
 
     ## Initialize PSD
     @staticmethod
-    def new_initialize_psd(r,psd_data,v0,x_init=None,Q_init=None):
-        
+    def new_initialize_psd(d,psd_data,v0,x_init=None,Q_init=None):
+            
         from scipy.interpolate import interp1d
         import sys
         
         ## OUTPUT-parameters:
-        # n: NUMBER concentration vector corresponding to r (for direct usage in N
+        # n: NUMBER concentration vector corresponding to 2*r (for direct usage in N
         # vector of population balance calculation
         
         ## INPUT-parameters:
-        # r: Particle size grid on which the PSD should be initialized. NOTE: This
-        #    vector contains RADII (and NOT diameters)
+        # d: Particle size grid on which the PSD should be initialized. NOTE: This
+        #    vector contains diameters
         # PSD_data: Complete path (including filename) to datafile in which the PSD is saved. 
         #           This file should only contain 2 variables: Q_PSD and x_PSD.
         #           Here, x_PSD contains diameters (standard format of PSD)
@@ -1487,8 +1491,7 @@ class population():
             x = psd_dict['x_PSD']
             
             ## Initializing the variables
-            n = np.zeros(len(r)) 
-            q = np.zeros(len(x)) 
+            n = np.zeros(len(d)) 
             
             if 'Q_PSD' not in psd_dict and 'q_PSD' not in psd_dict:
                 sys.exit("ERROR: Neither Q_PSD nor q_PSD given in distribution file. Exiting..")
@@ -1496,58 +1499,33 @@ class population():
             if 'Q_PSD' in psd_dict:
                 # Load Q if given
                 Q = psd_dict['Q_PSD']
-            if 'q_PSD' in psd_dict:
-                # Load q if given
-                q = psd_dict['q_PSD']
-            else:
-                # If q is not given: Calculate from Q. Note that q[0] will always be zero
-                for i in range(1,len(x)):
-                    q[i] = (Q[i]-Q[i-1])/(x[i]-x[i-1]) 
                     
         else:
             ## Initializing the variables
-            n = np.zeros(len(r)) 
-            q = np.zeros(len(x_init)) 
-            
+            n = np.zeros(len(d)) 
             x = x_init
-            
-            for i in range(1,len(x)):
-                q[i] = (Q_init[i]-Q_init[i-1])/(x[i]-x[i-1])
-            
-        # Transform x from diameter to radius information. Also transform q
-        x = x/2
-        #q = q/2
+            Q = Q_init
         
-        # Interpolate q on r grid and normalize it to 1 (account for numerical error)
+        # Interpolate Q on d grid and normalize it to 1 (account for numerical error)
         # If the ranges don't match well, insert 0. This is legit since it is the density
         # distribution
-        f_q = interp1d(x,q,bounds_error=False,fill_value=0)
-        q_r = f_q(r)
+        f_Q = interp1d(x,Q,bounds_error=False,fill_value=0)
+        Q_d = np.zeros(len(d)+1)
+        Q_d[1:] = f_Q(d)
                 
-        #q_r(math.isnan(q_r)) = 0
-        q_r = q_r/np.trapz(q_r,r)
+        #Q_d(math.isnan(Q_d)) = 0
+        Q_d = Q_d/Q_d.max()
         
-        # Temporary r vector. Add lower and upper boarder (given by x_PSD) 
-        # This allows calculation of the first and last entry of q / r.
-        rt = np.zeros(len(r)+2) 
-        qt = np.zeros(len(r)+2)  
-        rt[0] = min(min(x),min(r))
-        rt[-1] = max(max(x),max(r))
-        rt[1:-1] = r 
-        qt[1:-1] = q_r;
-        
-        # Calculate concentration vector
-        for i in range(1,len(rt)-1):
-            v_total_tmp = v0*qt[i]*((rt[i+1]-rt[i])/2+(rt[i]-rt[i-1])/2) # Calculated with DIFFERENCE (i+1), (i-1)
-            #v_one_tmp = (4/3)*pi*((rt[i+1]+rt[i-1])*1e-6/2)^3; # Calculated with MEAN (i+1), (i-1) 
-            v_one_tmp = (4/3)*np.pi*r[i-1]**3; # Calculated with MEAN (i+1), (i-1) 
-            n[i-1] = v_total_tmp/v_one_tmp;
+        for i in range(1, len(d)+1):
+            v_total_tmp = max(v0 * (Q_d[i] - Q_d[i-1]), 0)
+            v_one_tmp = (1/6)*np.pi*d[i-1]**3
+            n[i-1] = v_total_tmp/v_one_tmp
         
         # Eliminate sub and near zero values (sub-thrshold)
         thr = 1e-5
         n[n<thr*np.mean(n)] = 0
         
-        return n   
+        return n    
     ## Plot 2D-distribution:
     @staticmethod
     def plot_N2D(N,V,V0_tot,ax=None,fig=None,close_all=False,scl_a4=1,figsze=[12.8*1.05,12.8],THR_N=1e-4,

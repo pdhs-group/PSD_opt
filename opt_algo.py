@@ -257,14 +257,11 @@ class opt_algo():
     
     def KDE_score(self, kde, x_uni_new):
         x_uni_new_re = x_uni_new.reshape(-1, 1) 
-        density = np.exp(kde.score_samples(x_uni_new_re))
+        data_smoothing = np.exp(kde.score_samples(x_uni_new_re))
         
         # Flatten a column vector into a one-dimensional array
-        density = density.ravel()
-        data_smoothing = np.zeros(len(x_uni_new)+1)
-        for i in range(1, len(x_uni_new)):
-            data_smoothing[i] = np.trapz(density, x_uni_new[:i])
-        
+        data_smoothing = data_smoothing.ravel()
+        data_smoothing = data_smoothing/np.trapz(data_smoothing,x_uni_new)
         return data_smoothing
     
     def traverse_path(self, label, path_ori):
@@ -394,30 +391,51 @@ class opt_algo():
         # Because the length unit in the experimental data is millimeters 
         # and in the simulation it is meters, so it needs to be converted 
         # before use.
-        return (6*v_uni/np.pi)**(1/3)*1e6
+        x_uni = np.zeros(len(v_uni)+1)
+        x_uni[1:]=(6*v_uni/np.pi)**(1/3)
+        return x_uni*1e6
         
-    def re_cal_distribution(self, x_uni, sumV_uni, ndim=None):
-        if sumV_uni.ndim == 1:
-            sumV = np.sum(sumV_uni)
-            Q3 = np.cumsum(sumV_uni)/sumV
-            q3 = sumV_uni/sumV
-
+    def re_cal_distribution(self, x_uni, q3, sumN_total, flag='all', ndim=None):
+        if q3.ndim == 1:
+            Q3 = self.calc_Q3(q3, x_uni)
+            sumN_uni = self.calc_sumN_uni(Q3, sumN_total)
+            
             x_10 = np.interp(0.1, Q3, x_uni)
             x_50 = np.interp(0.5, Q3, x_uni)
             x_90 = np.interp(0.9, Q3, x_uni)
         else:
-            sumV = np.sum(sumV_uni, axis=0) 
-            Q3 = np.cumsum(sumV_uni, axis=0)/sumV
-            q3 = sumV_uni/sumV
-            
+            Q3 = np.apply_along_axis(lambda q3_slice: 
+                                     self.calc_Q3(q3_slice, x_uni), 1, q3)
+            sumN_uni = np.apply_along_axis(lambda Q3_slice: 
+                                           self.calc_sumN_uni(Q3_slice, sumN_total), 1, Q3)
             if ndim is None:
                 ndim = self.num_t_steps
-            x_10 = np.zeros(ndim)
-            x_50 = np.zeros(ndim)
-            x_90 = np.zeros(ndim)
             for idt in range(ndim):
                 x_10[idt] = np.interp(0.1, Q3[:, idt], x_uni)
                 x_50[idt] = np.interp(0.5, Q3[:, idt], x_uni)
                 x_90[idt] = np.interp(0.9, Q3[:, idt], x_uni)
+        outputs = {
+        'x_uni': x_uni,
+        'q3': q3,
+        'Q3': Q3,
+        'x_10': x_10,
+        'x_50': x_50,
+        'x_90': x_90,
+        'sumN_uni': sumN_uni,
+        }
         
-        return x_uni, q3, Q3, x_10, x_50, x_90
+        if flag == 'all':
+            return outputs.values()
+        else:
+            flags = flag.split(',')
+            return tuple(outputs[f.strip()] for f in flags if f.strip() in outputs)
+        
+    def calc_Q3(self, q3, x_uni):
+        Q3 = np.zeros_like(q3)
+        for i in range(1, len(Q3)):
+            Q3[i] = np.trapz(q3[:i+1], x_uni[:i+1])
+        return Q3
+    def calc_sumN_uni(self, Q3, sumN_total):
+        sumN_uni = np.zeros_like(Q3)
+        for i in range(1, len(Q3)):
+            sumN_uni[i] = sumN_total * max((Q3[i] -Q3[i-1] ), 0)
