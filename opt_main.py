@@ -31,37 +31,37 @@ def optimization_process(args):
     ## Set the R0 particle radius and 
     ## whether to calculate the initial conditions from experimental data
     ## 0. Use only 2D Data or 1D+2D
-    find.multi_flag = True
+    find.multi_flag = conf.config['multi_flag']
     find.init_opt_algo(dim, t_vec, add_noise, noise_type, noise_strength, smoothing)
     ## Iteration steps for optimierer
-    find.algo.n_iter = 800
+    find.algo.n_iter = conf.config['n_iter']
     
     ## 1. The diameter ratio of the primary particles can also be used as a variable
-    find.algo.calc_init_N = True
+    find.algo.calc_init_N = conf.config['calc_init_N']
     find.algo.set_comp_para(R_NM=2.9e-7, R_M=2.9e-7)
     
     ## 2. Criteria of optimization target
-    ## delta_flag = 1: use q3
-    ## delta_flag = 2: use Q3
-    ## delta_flag = 3: use x_10
-    ## delta_flag = 4: use x_50
-    ## delta_flag = 5: use x_90
-    find.algo.delta_flag = 1
+    ## delta_flag = q3: use q3
+    ## delta_flag = Q3: use Q3
+    ## delta_flag = x_10: use x_10
+    ## delta_flag = x_50: use x_50
+    ## delta_flag = x_90: use x_90
+    find.algo.delta_flag = conf.config['multi_flag']
     
     ## 3. Optimize method: 
     ##   'BO': Bayesian Optimization with package BayesianOptimization
-    find.method='BO'
+    find.method = conf.config['method']
     
     ## 4. Type of cost function to use
     ##   'MSE': Mean Squared Error
     ##   'RMSE': Root Mean Squared Error
     ##   'MAE': Mean Absolute Error
     ##   'KL': Kullback–Leibler divergence(Only q3 and Q3 are compatible with KL) 
-    find.algo.cost_func_type = 'KL'
+    find.algo.cost_func_type = conf.config['cost_func_type']
     
     ## 5. Weight of 2D data
     ## The error of 2d pop may be more important, so weight needs to be added
-    find.algo.weight_2d = 1
+    find.algo.weight_2d = conf.config['weight_2d']
     
     ## 6. Method how to use the datasets, kernels or delta
     ## kernels: Find the kernel for each set of data, and then average these kernels.
@@ -88,8 +88,7 @@ if __name__ == '__main__':
     method = conf.config['method']
     cost_func_type = conf.config['cost_func_type']
     weight_2d = conf.config['weight_2d']
-    
-    delta_flag_target = ['','q3','Q3','x_10','x_50','x_90']
+
     #%% Prepare test data set
     ## define the range of corr_beta
     var_corr_beta = [1e-2, 1e-1, 1e0, 1e1, 1e2]
@@ -148,9 +147,9 @@ if __name__ == '__main__':
             
     ## save the results in npz
     if multi_flag:
-        result_name = f'multi_{delta_flag_target[delta_flag]}_{method}_{cost_func_type}_wight_{weight_2d}'
+        result_name = f'multi_{delta_flag}_{method}_{cost_func_type}_wight_{weight_2d}'
     else:
-        result_name =  f'{delta_flag_target[delta_flag]}_{method}_{cost_func_type}_wight_{weight_2d}'
+        result_name =  f'{delta_flag}_{method}_{cost_func_type}_wight_{weight_2d}'
         
     np.savez(f'{result_name}.npz', 
          corr_beta_opt=corr_beta_opt, 

@@ -178,7 +178,8 @@ class opt_find():
             sumN_uni_sm_tem = pop.return_num_distribution(t=idt, flag='sumN_uni')[0]
             kde = self.algo.KDE_fit(x_uni,  sumN_uni_sm_tem)
             q3_sm = self.algo.KDE_score(kde, x_uni)
-            sumN_uni_sm_tem= self.algo.re_cal_distribution(x_uni, q3_sm,  sumN_uni_sm_tem.sum(), 'sumN_uni')[0]
+            sumN_uni_sm_tem= self.algo.re_cal_distribution(
+                x_uni, q3=q3_sm, sumN_uni=sumN_uni_sm_tem, flag='sumN_uni')[0]
             sumN_uni[:, idt] = sumN_uni_sm_tem
         ## Data used for initialization should not be smoothed
         for idt in self.algo.idt_init:

@@ -62,7 +62,7 @@ def calc_N_test():
     N_exp_1D = find.algo.p_NM.N
     ## Calculate PBE with exp-data
     find.algo.calc_init_N = True
-    find.algo.set_comp_para(R_NM=2.9e-7, R_M=2.9e-7)
+    find.algo.set_comp_para(R_NM=8.68e-7, R_M=8.68e-7)
     find.algo.set_init_N(sample_num, exp_data_paths, 'mean')
     find.algo.cal_all_pop(find.algo.corr_beta, find.algo.alpha_prim, find.algo.t_all)
     return_pop_num_distribution(find.algo.p, axq3, fig, clr='r', q3lbl='q3_exp')
@@ -92,20 +92,15 @@ def return_pop_num_distribution(pop, axq3=None,fig=None, clr='b', q3lbl='q3'):
                            ylbl='number distribution of agglomerates $q3$ / $-$',
                            lbl=q3lbl,clr=clr,mrk='o')
     
-    Q3_diff = Q3_sm - Q3
-    
-    # axq3, fig = pt.plot_data(x_uni, q3_sm, fig=fig, ax=axq3,
-    #                        lbl=q3lbl+'_sm',clr=clr,mrk='^')
+    axq3, fig = pt.plot_data(x_uni, q3_sm, fig=fig, ax=axq3,
+                            lbl=q3lbl+'_sm',clr=clr,mrk='^')
     
     # axq3, fig = pt.plot_data(x_uni, sumN_uni, fig=fig, ax=axq3,
     #                         xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
     #                         ylbl='number distribution of agglomerates $q3$ / $-$',
-    #                         lbl='sumN_uni',clr='r',mrk='o')
+    #                         lbl='sumN_uni',clr='r',mrk='o') 
     
-    axq3, fig = pt.plot_data(x_uni, q3_sm, fig=fig, ax=axq3,
-                           lbl='q3_sm',clr='r',mrk='^')
-    
-    df = pd.DataFrame(data=Q3_diff, index=x_uni)
+    df = pd.DataFrame(data=q3_sm, index=x_uni)
     return df
 
 if __name__ == '__main__':
@@ -135,16 +130,15 @@ if __name__ == '__main__':
     
     ## 1. The diameter ratio of the primary particles can also be used as a variable
     find.algo.calc_init_N = conf.config['calc_init_N']
-    find.algo.set_comp_para(R_NM=2.9e-7, R_M=2.9e-7)
+    find.algo.set_comp_para(R_NM=8.68e-7, R_M=8.68e-7)
     
     ## 2. Criteria of optimization target
-    ## delta_flag = 1: use q3
-    ## delta_flag = 2: use Q3
-    ## delta_flag = 3: use x_10
-    ## delta_flag = 4: use x_50
-    ## delta_flag = 5: use x_90
+    ## delta_flag = q3: use q3
+    ## delta_flag = Q3: use Q3
+    ## delta_flag = x_10: use x_10
+    ## delta_flag = x_50: use x_50
+    ## delta_flag = x_90: use x_90
     find.algo.delta_flag = conf.config['multi_flag']
-    delta_flag_target = ['','q3','Q3','x_10','x_50','x_90']
     
     ## 3. Optimize method: 
     ##   'BO': Bayesian Optimization with package BayesianOptimization
@@ -181,13 +175,13 @@ if __name__ == '__main__':
         exp_data_path.replace(".xlsx", "_M.xlsx")
     ]
     
-    find.algo.calc_init_N = False
-    pth = os.path.dirname( __file__ )
-    dist_path_1 = os.path.join(pth, "..", "data", "PSD_data", conf.config['dist_scale_1'])
-    find.algo.set_comp_para('r0_001', 'r0_001', dist_path_1, dist_path_1)
-    find.generate_data(sample_num, add_info='_para_15.0_0.2_0.6_0.8_1')
+    # find.algo.calc_init_N = False
+    # pth = os.path.dirname( __file__ )
+    # dist_path_1 = os.path.join(pth, "..", "data", "PSD_data", conf.config['dist_scale_1'])
+    # find.algo.set_comp_para('r0_001', 'r0_001', dist_path_1, dist_path_1)
+    # find.generate_data(sample_num, add_info='_para_15.0_0.2_0.6_0.8_1')
     
-    # corr_beta_opt, alpha_prim_opt, para_diff, delta_opt, elapsed_time,corr_agg, \
-    #     corr_agg_opt, corr_agg_diff = normal_test()
+    corr_beta_opt, alpha_prim_opt, para_diff, delta_opt, elapsed_time,corr_agg, \
+        corr_agg_opt, corr_agg_diff = normal_test()
         
-    N_exp, N_cal, N_exp_1D, N_cal_1D, q3_psd, q3_exp = calc_N_test()
+    # N_exp, N_cal, N_exp_1D, N_cal_1D, q3_psd, q3_exp = calc_N_test()

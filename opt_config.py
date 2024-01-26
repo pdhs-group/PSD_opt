@@ -17,14 +17,13 @@ config = {
     'noise_strength': 0.1,
     'sample_num': 5,
     'method': 'BO',
-    'delta_flag': 1,
     
     'multi_flag': True,
     'n_iter': 400,
     'calc_init_N': True,
     'R_NM': 2.9e-7,
     'R_M': 2.9e-7,
-    'delta_flag': 1,
+    'delta_flag': 'q3',
     'cost_func_type': 'KL',
     'weight_2d': 1,
     
