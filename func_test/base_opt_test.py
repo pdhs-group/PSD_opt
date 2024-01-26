@@ -54,28 +54,34 @@ def calc_N_test():
     axq3_M=fig_M.add_subplot(1,1,1)
     
     ## Calculate PBE direkt with psd-data, result is raw exp-data
-    find.algo.cal_all_pop(find.algo.corr_beta, find.algo.alpha_prim, find.algo.t_all)
+    find.algo.calc_all_pop(find.algo.corr_beta, find.algo.alpha_prim, find.algo.t_all)
     return_pop_num_distribution(find.algo.p, axq3, fig, clr='b', q3lbl='q3_psd')
     q3_psd = return_pop_num_distribution(find.algo.p_NM, axq3_NM, fig_NM, clr='b', q3lbl='q3_psd')
     return_pop_num_distribution(find.algo.p_M, axq3_M, fig_M, clr='b', q3lbl='q3_psd')
+    # return_pop_distribution(find.algo.p, axq3, fig, clr='b', q3lbl='q3_psd')
+    # q3_psd = return_pop_distribution(find.algo.p_NM, axq3_NM, fig_NM, clr='b', q3lbl='q3_psd')
+    # return_pop_distribution(find.algo.p_M, axq3_M, fig_M, clr='b', q3lbl='q3_psd')
     N_exp = find.algo.p.N
     N_exp_1D = find.algo.p_NM.N
     ## Calculate PBE with exp-data
     find.algo.calc_init_N = True
     find.algo.set_comp_para(R_NM=8.68e-7, R_M=8.68e-7)
     find.algo.set_init_N(sample_num, exp_data_paths, 'mean')
-    find.algo.cal_all_pop(find.algo.corr_beta, find.algo.alpha_prim, find.algo.t_all)
+    find.algo.calc_all_pop(find.algo.corr_beta, find.algo.alpha_prim, find.algo.t_all)
     return_pop_num_distribution(find.algo.p, axq3, fig, clr='r', q3lbl='q3_exp')
     q3_exp = return_pop_num_distribution(find.algo.p_NM, axq3_NM, fig_NM, clr='r', q3lbl='q3_exp')
     return_pop_num_distribution(find.algo.p_M, axq3_M, fig_M, clr='r', q3lbl='q3_exp')   
-    N_cal = find.algo.p.N
-    N_cal_1D = find.algo.p_NM.N
+    # return_pop_distribution(find.algo.p, axq3, fig, clr='r', q3lbl='q3_exp')
+    # q3_exp = return_pop_distribution(find.algo.p_NM, axq3_NM, fig_NM, clr='r', q3lbl='q3_exp')
+    # return_pop_distribution(find.algo.p_M, axq3_M, fig_M, clr='r', q3lbl='q3_exp')   
+    N_calc = find.algo.p.N
+    N_calc_1D = find.algo.p_NM.N
     
-    return N_exp, N_cal, N_exp_1D, N_cal_1D, q3_psd, q3_exp
+    return N_exp, N_calc, N_exp_1D, N_calc_1D, q3_psd, q3_exp
 
 def return_pop_num_distribution(pop, axq3=None,fig=None, clr='b', q3lbl='q3'):
 
-    x_uni = find.algo.cal_x_uni(pop)
+    x_uni = find.algo.calc_x_uni(pop)
     q3, Q3, sumN_uni = pop.return_num_distribution(t=-1, flag='q3, Q3, sumN_uni')
     # kde = find.algo.KDE_fit(x_uni, q3)
     # q3_sm = find.algo.KDE_score(kde, x_uni)
@@ -83,9 +89,31 @@ def return_pop_num_distribution(pop, axq3=None,fig=None, clr='b', q3lbl='q3'):
     kde = find.algo.KDE_fit(x_uni, sumN_uni)
     q3_sm = find.algo.KDE_score(kde, x_uni)
     
-    Q3_sm = np.zeros(np.shape(Q3))
-    for i in range(1, len(Q3_sm)):
-        Q3_sm[i] = np.trapz(q3_sm[:i+1], x_uni[:i+1])
+    axq3, fig = pt.plot_data(x_uni, q3, fig=fig, ax=axq3,
+                           xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
+                           ylbl='number distribution of agglomerates $q3$ / $-$',
+                           lbl=q3lbl,clr=clr,mrk='o')
+    
+    axq3, fig = pt.plot_data(x_uni, q3_sm, fig=fig, ax=axq3,
+                            lbl=q3lbl+'_sm',clr=clr,mrk='^')
+    
+    # axq3, fig = pt.plot_data(x_uni, sumN_uni, fig=fig, ax=axq3,
+    #                         xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
+    #                         ylbl='number distribution of agglomerates $q3$ / $-$',
+    #                         lbl='sumN_uni',clr='r',mrk='o') 
+    
+    df = pd.DataFrame(data=q3_sm, index=x_uni)
+    return df
+
+def return_pop_distribution(pop, axq3=None,fig=None, clr='b', q3lbl='q3'):
+
+    x_uni = find.algo.calc_x_uni(pop)
+    q3, Q3, sumvol_uni = pop.return_distribution(t=-1, flag='q3, Q3, sumvol_uni')
+    # kde = find.algo.KDE_fit(x_uni, q3)
+    # q3_sm = find.algo.KDE_score(kde, x_uni)
+
+    kde = find.algo.KDE_fit(x_uni, sumvol_uni)
+    q3_sm = find.algo.KDE_score(kde, x_uni)
     
     axq3, fig = pt.plot_data(x_uni, q3, fig=fig, ax=axq3,
                            xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
@@ -138,7 +166,7 @@ if __name__ == '__main__':
     ## delta_flag = x_10: use x_10
     ## delta_flag = x_50: use x_50
     ## delta_flag = x_90: use x_90
-    find.algo.delta_flag = conf.config['multi_flag']
+    find.algo.delta_flag = conf.config['delta_flag']
     
     ## 3. Optimize method: 
     ##   'BO': Bayesian Optimization with package BayesianOptimization
@@ -184,4 +212,4 @@ if __name__ == '__main__':
     corr_beta_opt, alpha_prim_opt, para_diff, delta_opt, elapsed_time,corr_agg, \
         corr_agg_opt, corr_agg_diff = normal_test()
         
-    # N_exp, N_cal, N_exp_1D, N_cal_1D, q3_psd, q3_exp = calc_N_test()
+    # N_exp, N_calc, N_exp_1D, N_calc_1D, q3_psd, q3_exp = calc_N_test()

@@ -31,22 +31,22 @@ class opt_algo():
 
         self.calc_init_N = False
     #%%  Optimierer    
-    def cal_delta(self, corr_beta=None, alpha_prim=None, scale=1, sample_num=1, exp_data_path=None):
-        self.cal_pop(self.p, corr_beta, alpha_prim, self.t_vec)
+    def calc_delta(self, corr_beta=None, alpha_prim=None, scale=1, sample_num=1, exp_data_path=None):
+        self.calc_pop(self.p, corr_beta, alpha_prim, self.t_vec)
 
-        return self.cal_delta_tem(sample_num, exp_data_path, scale, self.p)
+        return self.calc_delta_tem(sample_num, exp_data_path, scale, self.p)
     
-    def cal_delta_agg(self, corr_agg=None, scale=1, sample_num=1, exp_data_path=None):
+    def calc_delta_agg(self, corr_agg=None, scale=1, sample_num=1, exp_data_path=None):
         corr_beta = self.return_syth_beta(corr_agg)
         alpha_prim = corr_agg / corr_beta
 
-        self.cal_pop(self.p, corr_beta, alpha_prim, self.t_vec)
+        self.calc_pop(self.p, corr_beta, alpha_prim, self.t_vec)
 
-        return self.cal_delta_tem(sample_num, exp_data_path, scale, self.p)
+        return self.calc_delta_tem(sample_num, exp_data_path, scale, self.p)
 
-    def cal_delta_tem(self, sample_num, exp_data_path, scale, pop):
+    def calc_delta_tem(self, sample_num, exp_data_path, scale, pop):
         kde_list = []
-        x_uni = self.cal_x_uni(pop)
+        x_uni = self.calc_x_uni(pop)
         for idt in range(self.num_t_steps):
             sumN_uni = pop.return_num_distribution(t=idt, flag='sumN_uni')[0]
             kde = self.KDE_fit(x_uni, sumN_uni)
@@ -54,12 +54,13 @@ class opt_algo():
         
         if sample_num == 1:
             x_uni_exp, sumN_uni_exp = self.read_exp(exp_data_path) 
+            sumN_uni_exp = sumN_uni_exp[:, self.idt_vec]
             q3_mod = np.zeros((len(x_uni_exp), self.num_t_steps))
             for idt in range(self.num_t_steps):
                 q3_mod_tem = self.KDE_score(kde_list[idt], x_uni_exp)
                 q3_mod[:, idt] = q3_mod_tem
-            data_mod = self.re_cal_distribution(x_uni_exp, q3=q3_mod, flag=self.delta_flag)
-            data_exp = self.re_cal_distribution(x_uni_exp, sumN_uni=sumN_uni_exp, flag=self.delta_flag)
+            data_mod = self.re_calc_distribution(x_uni_exp, q3=q3_mod, flag=self.delta_flag)[0]
+            data_exp = self.re_calc_distribution(x_uni_exp, sum_uni=sumN_uni_exp, flag=self.delta_flag)[0]
             # Calculate the error between experimental data and simulation results
             delta = self.cost_fun(data_exp, data_mod)
             
@@ -72,15 +73,15 @@ class opt_algo():
             for i in range (0, sample_num):
                 exp_data_path = self.traverse_path(i, exp_data_path)
                 x_uni_exp, sumN_uni_exp = self.read_exp(exp_data_path) 
-
+                sumN_uni_exp = sumN_uni_exp[:, self.idt_vec]
                 q3_mod = np.zeros((len(x_uni_exp), self.num_t_steps))
                 
                 for idt in range(self.num_t_steps):
                     q3_mod_tem = self.KDE_score(kde_list[idt], x_uni_exp)
                     q3_mod[:, idt] = q3_mod_tem
                     
-                data_mod = self.re_cal_distribution(x_uni_exp, q3=q3_mod, flag=self.delta_flag)
-                data_exp = self.re_cal_distribution(x_uni_exp, sumN_uni=sumN_uni_exp, flag=self.delta_flag)
+                data_mod = self.re_calc_distribution(x_uni_exp, q3=q3_mod, flag=self.delta_flag)[0]
+                data_exp = self.re_calc_distribution(x_uni_exp, sum_uni=sumN_uni_exp, flag=self.delta_flag)[0]
                 # Calculate the error between experimental data and simulation results
                 delta = self.cost_fun(data_exp, data_mod)
                 delta_sum +=delta
@@ -88,20 +89,20 @@ class opt_algo():
             delta_sum /= sample_num
             # Because the number of x_uni is different in different pop equations, 
             # the average value needs to be used instead of the sum.
-            x_uni_num = len(data_exp[0])    
+            x_uni_num = len(x_uni_exp)  
             return (delta_sum * scale) / x_uni_num
     
     def optimierer(self, init_points=4, sample_num=1, hyperparameter=None, exp_data_path=None):
         if self.method == 'BO':
             if self.p.dim == 1:
                 pbounds = {'corr_beta_log': (-3, 3), 'alpha_prim': (0, 1)}
-                objective = lambda corr_beta_log, alpha_prim: self.cal_delta(
+                objective = lambda corr_beta_log, alpha_prim: self.calc_delta(
                     corr_beta=10**corr_beta_log, alpha_prim=np.array([alpha_prim]),
                     scale=-1, sample_num=sample_num, exp_data_path=exp_data_path)
                 
             elif self.p.dim == 2:
                 pbounds = {'corr_beta_log': (-3, 3), 'alpha_prim_0': (0, 1), 'alpha_prim_1': (0, 1), 'alpha_prim_2': (0, 1)}
-                objective = lambda corr_beta_log, alpha_prim_0, alpha_prim_1, alpha_prim_2: self.cal_delta(
+                objective = lambda corr_beta_log, alpha_prim_0, alpha_prim_1, alpha_prim_2: self.calc_delta(
                     corr_beta=10**corr_beta_log, 
                     alpha_prim=np.array([alpha_prim_0, alpha_prim_1, alpha_prim_2]), 
                     scale=-1, sample_num=sample_num, exp_data_path=exp_data_path)
@@ -136,13 +137,13 @@ class opt_algo():
         if method == 'BO':
             if self.p.dim == 1:
                 pbounds = {'corr_agg_log': (-3, 3)}
-                objective = lambda corr_agg_log: self.cal_delta_agg(
+                objective = lambda corr_agg_log: self.calc_delta_agg(
                     corr_agg=10**corr_agg_log, scale=-1, sample_num=sample_num, 
                     exp_data_path=exp_data_path)
                 
             elif self.p.dim == 2:
                 pbounds = {'corr_agg_log_0': (-3, 3), 'corr_agg_log_1': (-3, 3), 'corr_agg_log_2': (-3, 3)}
-                objective = lambda corr_agg_log_0, corr_agg_log_1, corr_agg_log_2: self.cal_delta_agg(
+                objective = lambda corr_agg_log_0, corr_agg_log_1, corr_agg_log_2: self.calc_delta_agg(
                     corr_agg=10**np.array([corr_agg_log_0, corr_agg_log_1, corr_agg_log_2]), 
                     scale=-1, sample_num=sample_num, exp_data_path=exp_data_path)
                 
@@ -188,7 +189,8 @@ class opt_algo():
             return np.sqrt(mse)
         elif self.cost_func_type == 'MAE':
             return mean_absolute_error(data_mod, data_exp)
-        elif (self.delta_flag == 1 or self.delta_flag == 2) and self.cost_func_type == 'KL':
+        elif (self.delta_flag == 'q3' or self.delta_flag == 'Q3') and self.cost_func_type == 'KL':
+            data_exp = np.where(data_exp == 0, 10e-20, data_exp)
             return entropy(data_mod, data_exp).mean()
         else:
             raise Exception("Current cost function type is not supported")
@@ -270,7 +272,7 @@ class opt_algo():
         self.p_NM = population(dim=1,disc=disc)
         self.p_M = population(dim=1,disc=disc)
             
-    def cal_pop(self, pop, corr_beta, alpha_prim, t_vec=None):
+    def calc_pop(self, pop, corr_beta, alpha_prim, t_vec=None):
         pop.COLEVAL = 2
         pop.EFFEVAL = 2
         pop.CORR_BETA = corr_beta
@@ -330,9 +332,9 @@ class opt_algo():
         self.p.N[1, 2:, 0] = self.p_M.N[2:, 0]
     
     def set_init_N_1D(self, pop, sample_num, exp_data_path, init_flag):
-        x_uni = self.cal_x_uni(pop)
+        x_uni = self.calc_x_uni(pop)
         if sample_num == 1:
-            x_uni_exp, sumN_uni_exp = self.read_exp(exp_data_path)
+            x_uni_exp, sumN_uni_init_sets = self.read_exp(exp_data_path)
         else:
             exp_data_path=self.traverse_path(0, exp_data_path)
             x_uni_exp, sumN_uni_tem = self.read_exp(exp_data_path)
@@ -352,7 +354,7 @@ class opt_algo():
                 interp_time = interp1d(self.t_init, sumN_uni_init_sets[idx, :], kind='linear', fill_value="extrapolate")
                 sumN_uni_init[idx] = interp_time(0.0)
 
-        if init_flag == 'mean':
+        elif init_flag == 'mean':
             sumN_uni_init = sumN_uni_init_sets.mean(axis=1)
                 
         ## Remap q3 corresponding to the x value of the experimental data to x of the PBE
@@ -368,60 +370,44 @@ class opt_algo():
         thr = 1e-5
         pop.N[pop.N < (thr * pop.N[2:, 0].max())]=0     
         
-    def cal_v_uni(self, pop):
-        return np.setdiff1d(pop.V, [-1, 0])
+    def calc_v_uni(self, pop):
+        return np.setdiff1d(pop.V, [-1, 0])*1e18
     
-    def cal_x_uni(self, pop):
-        v_uni = self.cal_v_uni(pop)
+    def calc_x_uni(self, pop):
+        v_uni = self.calc_v_uni(pop)
         # Because the length unit in the experimental data is millimeters 
         # and in the simulation it is meters, so it needs to be converted 
         # before use.
         x_uni = np.zeros(len(v_uni)+1)
         x_uni[1:]=(6*v_uni/np.pi)**(1/3)
-        return x_uni*1e6
+        return x_uni
         
-    def re_cal_distribution(self, x_uni, q3=None, sumN_uni=None, flag='all'):
-        ndim = np.ndim(q3) if q3 is not None else np.ndim(sumN_uni)
-        sumN_total = sumN_uni.sum()
-        q3_new = q3
-        if ndim == 1:
-            Q3_new = self.calc_Q3(x_uni, sumN_total, q3, sumN_uni)
-            sumN_uni_new = self.calc_sumN_uni(Q3_new, sumN_total)
-            if q3_new is None:
-                q3_new = self.calc_q3(Q3_new, x_uni)
-            
-            x_10_new = np.interp(0.1, Q3_new, x_uni)
-            x_50_new = np.interp(0.5, Q3_new, x_uni)
-            x_90_new = np.interp(0.9, Q3_new, x_uni)
+    def re_calc_distribution(self, x_uni, q3=None, sum_uni=None, flag='all'):
+        if q3 is not None:
+            q3_new = q3
+            Q3_new = np.apply_along_axis(lambda q3_slice: 
+                                     self.calc_Q3(x_uni, q3=q3_slice), 0, q3)
+
         else:
-            if sumN_uni is None:
-                Q3_new = np.apply_along_axis(lambda sumN_uni_slice: 
-                                         self.calc_Q3(x_uni, sumN_total, sumN_uni=sumN_uni_slice), 1, sumN_uni)
-            else:
-                Q3_new = np.apply_along_axis(lambda q3_slice: 
-                                         self.calc_Q3(x_uni, sumN_total, q3=q3_slice), 1, q3)
-            sumN_uni_new = np.apply_along_axis(lambda Q3_slice: 
-                                           self.calc_sumN_uni(Q3_slice, sumN_total), 1, Q3_new)
-                
-            if q3_new is None:
-               q3_new = np.apply_along_axis(lambda Q3_slice: 
-                                             self.calc_q3(Q3_slice, x_uni), 1, Q3_new)
-                   
-            dim = q3.shape[1] if q3 is not None else sumN_uni.shape[1]
-            x_10_new = np.zeros(dim)
-            x_50_new = np.zeros(dim)
-            x_90_new = np.zeros(dim)
-            for idx in range(dim):
-                x_10_new[idx] = np.interp(0.1, Q3_new[:, idx], x_uni)
-                x_50_new[idx] = np.interp(0.5, Q3_new[:, idx], x_uni)
-                x_90_new[idx] = np.interp(0.9, Q3_new[:, idx], x_uni)
+            Q3_new = np.apply_along_axis(lambda sum_uni_slice: 
+                                     self.calc_Q3(x_uni, sum_uni=sum_uni_slice), 0, sum_uni)
+            q3_new = np.apply_along_axis(lambda Q3_slice: 
+                                          self.calc_q3(Q3_slice, x_uni), 0, Q3_new)
+
+        dim = q3_new.shape[1]
+        x_10_new = np.zeros(dim)
+        x_50_new = np.zeros(dim)
+        x_90_new = np.zeros(dim)
+        for idx in range(dim):
+            x_10_new[idx] = np.interp(0.1, Q3_new[:, idx], x_uni)
+            x_50_new[idx] = np.interp(0.5, Q3_new[:, idx], x_uni)
+            x_90_new[idx] = np.interp(0.9, Q3_new[:, idx], x_uni)
         outputs = {
         'q3': q3_new,
         'Q3': Q3_new,
         'x_10': x_10_new,
         'x_50': x_50_new,
         'x_90': x_90_new,
-        'sumN_uni': sumN_uni_new,
         }
         
         if flag == 'all':
@@ -430,19 +416,19 @@ class opt_algo():
             flags = flag.split(',')
             return tuple(outputs[f.strip()] for f in flags if f.strip() in outputs)
         
-    def calc_Q3(self, x_uni, sumN_total, q3=None, sumN_uni=None):
-        Q3 = np.zeros_like(q3)
-        for i in range(1, len(Q3)):
-            if q3 is None:
-                Q3[i] = np.cumsum(sumN_uni)/sumN_total
-            else:
-                Q3[i] = np.trapz(q3[:i+1], x_uni[:i+1])
+    def calc_Q3(self, x_uni, q3=None, sum_uni=None):
+        Q3 = np.zeros_like(q3) if q3 is not None else np.zeros_like(sum_uni)
+        if q3 is None:
+            Q3 = np.cumsum(sum_uni)/sum_uni.sum()
+        else:
+            for i in range(1, len(Q3)):
+                    Q3[i] = np.trapz(q3[:i+1], x_uni[:i+1])
         return Q3
-    def calc_sumN_uni(self, Q3, sumN_total):
-        sumN_uni = np.zeros_like(Q3)
+    def calc_sum_uni(self, Q3, sum_total):
+        sum_uni = np.zeros_like(Q3)
         for i in range(1, len(Q3)):
-            sumN_uni[i] = sumN_total * max((Q3[i] -Q3[i-1] ), 0)
-        return sumN_uni
+            sum_uni[i] = sum_total * max((Q3[i] -Q3[i-1] ), 0)
+        return sum_uni
     def calc_q3(self, Q3, x_uni):
         q3 = np.zeros_like(Q3)
         for i in range(1,len(x_uni)):

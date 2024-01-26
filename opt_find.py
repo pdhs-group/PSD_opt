@@ -65,7 +65,7 @@ class opt_find():
         exp_data_path = os.path.join(self.base_path, filename)
         
         if not self.multi_flag:
-            self.algo.cal_pop(self.algo.p, self.algo.corr_beta, self.algo.alpha_prim, self.algo.t_all)
+            self.algo.calc_pop(self.algo.p, self.algo.corr_beta, self.algo.alpha_prim, self.algo.t_all)
             
             for i in range(0, sample_num):
                 if sample_num != 1:
@@ -78,7 +78,7 @@ class opt_find():
                 exp_data_path.replace(".xlsx", "_NM.xlsx"),
                 exp_data_path.replace(".xlsx", "_M.xlsx")
             ]
-            self.algo.cal_all_pop(self.algo.corr_beta, self.algo.alpha_prim, self.algo.t_all)
+            self.algo.calc_all_pop(self.algo.corr_beta, self.algo.alpha_prim, self.algo.t_all)
             
             for i in range(0, sample_num):
                 if sample_num != 1:
@@ -170,17 +170,20 @@ class opt_find():
         
     def write_new_data(self, pop, exp_data_path):
         # save the calculation result in experimental data form
-        x_uni = self.algo.cal_x_uni(pop)
+        x_uni = self.algo.calc_x_uni(pop)
+        v_uni = self.algo.calc_v_uni(pop)
         formatted_times = write_read_exp.convert_seconds_to_time(self.algo.t_all)
         sumN_uni = np.zeros((len(x_uni), len(self.algo.t_all)))
+        sumvol_uni = np.zeros(len(x_uni))
         
         for idt in self.algo.idt_vec:
-            sumN_uni_sm_tem = pop.return_num_distribution(t=idt, flag='sumN_uni')[0]
-            kde = self.algo.KDE_fit(x_uni,  sumN_uni_sm_tem)
-            q3_sm = self.algo.KDE_score(kde, x_uni)
-            sumN_uni_sm_tem= self.algo.re_cal_distribution(
-                x_uni, q3=q3_sm, sumN_uni=sumN_uni_sm_tem, flag='sumN_uni')[0]
-            sumN_uni[:, idt] = sumN_uni_sm_tem
+            sumvol_uni = pop.return_distribution(t=idt, flag='sumvol_uni')[0]
+            kde = self.algo.KDE_fit(x_uni,  sumvol_uni)
+            ## Recalculate the values of after smoothing
+            q3 = self.algo.KDE_score(kde, x_uni)
+            Q3 = self.algo.calc_Q3(x_uni, q3)
+            sumvol_uni = self.algo.calc_sum_uni(Q3, sumvol_uni.sum())
+            sumN_uni[1:, idt] = sumvol_uni[1:] / v_uni
         ## Data used for initialization should not be smoothed
         for idt in self.algo.idt_init:
             sumN_uni[:, idt] = pop.return_num_distribution(t=idt, flag='sumN_uni')[0]
@@ -200,7 +203,7 @@ class opt_find():
                                alpha_prim_opt, exp_data_path=None,ax=None,fig=None,
                                close_all=False,clr='k',scl_a4=1,figsze=[12.8,6.4*1.5]):
     # Recalculate PSD using original parameter
-        self.algo.cal_pop(pop, corr_beta=corr_beta_ori, alpha_prim=alpha_prim_ori)
+        self.algo.calc_pop(pop, corr_beta=corr_beta_ori, alpha_prim=alpha_prim_ori)
 
         x_uni_ori, q3_ori, Q3_ori, x_10_ori, x_50_ori, x_90_ori = pop.return_distribution(t=-1, flag='all')
         # Conversion unit
@@ -211,9 +214,9 @@ class opt_find():
         if self.algo.smoothing:
             kde = self.algo.KDE_fit(x_uni_ori, q3_ori)
             sumV_uni = self.algo.KDE_score(kde, x_uni_ori)
-            _, q3_ori, Q3_ori, _, _,_ = self.algo.re_cal_distribution(x_uni_ori, sumV_uni)
+            _, q3_ori, Q3_ori, _, _,_ = self.algo.re_calc_distribution(x_uni_ori, sumV_uni)
 
-        self.algo.cal_pop(pop, corr_beta_opt, alpha_prim_opt)  
+        self.algo.calc_pop(pop, corr_beta_opt, alpha_prim_opt)  
             
         x_uni, q3, Q3, x_10, x_50, x_90 = pop.return_distribution(t=-1, flag='all')
         # Conversion unit
@@ -224,7 +227,7 @@ class opt_find():
         if self.algo.smoothing:
             kde = self.algo.KDE_fit(x_uni, q3)
             sumV_uni = self.algo.KDE_score(kde, x_uni)
-            _, q3, Q3, _, _,_ = self.algo.re_cal_distribution(x_uni, sumV_uni)
+            _, q3, Q3, _, _,_ = self.algo.re_calc_distribution(x_uni, sumV_uni)
         
         pt.plot_init(scl_a4=scl_a4,figsze=figsze,lnewdth=0.8,mrksze=5,use_locale=True,scl=1.2)
         if close_all:

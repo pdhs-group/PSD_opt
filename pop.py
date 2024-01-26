@@ -921,39 +921,41 @@ class population():
         
         # Extract unique values that are NOT -1 or 0 (border)
         v_uni = np.setdiff1d(self.V,[-1,0])
-        sumvol_uni = np.zeros(v_uni.shape)
+        
+        q3 = np.zeros(len(v_uni)+1)
+        x_uni = np.zeros(len(v_uni)+1)
+        sumvol_uni = np.zeros(len(v_uni)+1)
+        sumvol_uni_tem = np.zeros(len(v_uni))
         
         if comp == 'all':
             # Loop through all entries in V and add volume concentration to specific entry in sumvol_uni
             if self.dim == 1:
                 for i in range(1,self.NS+3):
                     # if self.V[i] in v_uni:
-                    sumvol_uni[v_uni == self.V[i]] += self.V[i]*N[i,t] 
+                    sumvol_uni_tem[v_uni == self.V[i]] += self.V[i]*N[i,t] 
                         
             if self.dim == 2:
                 for i in range(1,self.NS+3):
                     for j in range(1,self.NS+3):
                         # if self.V[i,j] in v_uni:
-                        sumvol_uni[v_uni == self.V[i,j]] += self.V[i,j]*N[i,j,t]
+                        sumvol_uni_tem[v_uni == self.V[i,j]] += self.V[i,j]*N[i,j,t]
 
             if self.dim == 3:
                 for i in range(1,self.NS+3):
                     for j in range(1,self.NS+3):
                         for k in range(1,self.NS+3):
                             # if self.V[i,j,k] in v_uni:
-                            sumvol_uni[v_uni == self.V[i,j,k]] += self.V[i,j,k]*N[i,j,k,t]
-                                
-            # Sort v_uni in ascending order and keep track in sumvol_uni
-            # v_uni = v_uni[np.argsort(v_uni)]
-            sumvol_uni = sumvol_uni[np.argsort(v_uni)]
-            
+                            sumvol_uni_tem[v_uni == self.V[i,j,k]] += self.V[i,j,k]*N[i,j,k,t]
+            ## convert unit m into mm
+            sumV = np.sum(sumvol_uni_tem)*1e18
+            sumvol_uni[1:] = sumvol_uni_tem*1e18
             # Calculate diameter array
-            x_uni=(6*v_uni/np.pi)**(1/3)
+            x_uni[1:]=(6*v_uni/np.pi)**(1/3)*1e6
             
             # Calculate sum and density distribution
-            Q3 = np.zeros(len(v_uni))
-            Q3 = np.cumsum(sumvol_uni)/np.sum(sumvol_uni)
-            q3 = sumvol_uni/np.sum(sumvol_uni)
+            Q3 = np.cumsum(sumvol_uni)/sumV
+            for i in range(1,len(x_uni)):
+                q3[i] = (Q3[i] - Q3[i-1]) / (x_uni[i]-x_uni[i-1])
             
             # Retrieve x10, x50 and x90 through interpolation
             x_10=np.interp(0.1, Q3, x_uni)
@@ -969,7 +971,8 @@ class population():
         'Q3': Q3,
         'x_10': x_10,
         'x_50': x_50,
-        'x_90': x_90
+        'x_90': x_90,
+        'sumvol_uni': sumvol_uni,
         }
         
         if flag == 'all':
@@ -1012,9 +1015,7 @@ class population():
                             if float_in_list(self.V[i,j,k], v_uni) and (not N[i,j,t] < 0):
                                 sumN_uni_tem[v_uni == self.V[i,j,k]] += N[i,j,k,t]
                                 
-
             sumN = np.sum(sumN_uni_tem)
-            
             sumN_uni[1:] = sumN_uni_tem
             # Calculate diameter array and convert into mm
             x_uni[1:]=(6*v_uni/np.pi)**(1/3)*1e6

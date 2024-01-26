@@ -46,7 +46,7 @@ def optimization_process(args):
     ## delta_flag = x_10: use x_10
     ## delta_flag = x_50: use x_50
     ## delta_flag = x_90: use x_90
-    find.algo.delta_flag = conf.config['multi_flag']
+    find.algo.delta_flag = conf.config['delta_flag']
     
     ## 3. Optimize method: 
     ##   'BO': Bayesian Optimization with package BayesianOptimization
