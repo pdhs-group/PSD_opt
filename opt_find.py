@@ -202,32 +202,24 @@ class opt_find():
     def visualize_distribution(self, pop, corr_beta_ori, alpha_prim_ori, corr_beta_opt, 
                                alpha_prim_opt, exp_data_path=None,ax=None,fig=None,
                                close_all=False,clr='k',scl_a4=1,figsze=[12.8,6.4*1.5]):
-    # Recalculate PSD using original parameter
+        ## Recalculate PSD using original parameter
+        ## Todo: set_comp_para with original parameter
         self.algo.calc_pop(pop, corr_beta=corr_beta_ori, alpha_prim=alpha_prim_ori)
 
-        x_uni_ori, q3_ori, Q3_ori, x_10_ori, x_50_ori, x_90_ori = pop.return_distribution(t=-1, flag='all')
-        # Conversion unit
-        x_uni_ori *= 1e6    
-        x_10_ori *= 1e6   
-        x_50_ori *= 1e6   
-        x_90_ori *= 1e6  
+        x_uni_ori, sumvol_uni_ori = pop.return_distribution(t=-1, flag='x_uni, sumvol_uni')
+
         if self.algo.smoothing:
-            kde = self.algo.KDE_fit(x_uni_ori, q3_ori)
-            sumV_uni = self.algo.KDE_score(kde, x_uni_ori)
-            _, q3_ori, Q3_ori, _, _,_ = self.algo.re_calc_distribution(x_uni_ori, sumV_uni)
+            kde = self.algo.KDE_fit(x_uni_ori, sumvol_uni_ori)
+            q3_ori = self.algo.KDE_score(kde, x_uni_ori)
+            Q3_ori = self.algo.calc_Q3(x_uni_ori, q3_ori)
 
         self.algo.calc_pop(pop, corr_beta_opt, alpha_prim_opt)  
             
-        x_uni, q3, Q3, x_10, x_50, x_90 = pop.return_distribution(t=-1, flag='all')
-        # Conversion unit
-        x_uni *= 1e6    
-        x_10 *= 1e6   
-        x_50 *= 1e6   
-        x_90 *= 1e6  
+        x_uni, sumvol_uni= pop.return_distribution(t=-1, flag='x_uni, sumvol_uni')
         if self.algo.smoothing:
-            kde = self.algo.KDE_fit(x_uni, q3)
-            sumV_uni = self.algo.KDE_score(kde, x_uni)
-            _, q3, Q3, _, _,_ = self.algo.re_calc_distribution(x_uni, sumV_uni)
+            kde = self.algo.KDE_fit(x_uni, sumvol_uni)
+            q3 = self.algo.KDE_score(kde, x_uni)
+            Q3 = self.algo.calc_Q3(x_uni, q3)
         
         pt.plot_init(scl_a4=scl_a4,figsze=figsze,lnewdth=0.8,mrksze=5,use_locale=True,scl=1.2)
         if close_all:

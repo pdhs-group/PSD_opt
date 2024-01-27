@@ -82,11 +82,11 @@ def calc_N_test():
 def return_pop_num_distribution(pop, axq3=None,fig=None, clr='b', q3lbl='q3'):
 
     x_uni = find.algo.calc_x_uni(pop)
-    q3, Q3, sumN_uni = pop.return_num_distribution(t=-1, flag='q3, Q3, sumN_uni')
+    q3, Q3, sumvol_uni = pop.return_distribution(t=-1, flag='q3, Q3, sumvol_uni')
     # kde = find.algo.KDE_fit(x_uni, q3)
     # q3_sm = find.algo.KDE_score(kde, x_uni)
 
-    kde = find.algo.KDE_fit(x_uni, sumN_uni)
+    kde = find.algo.KDE_fit(x_uni, sumvol_uni)
     q3_sm = find.algo.KDE_score(kde, x_uni)
     
     axq3, fig = pt.plot_data(x_uni, q3, fig=fig, ax=axq3,
@@ -158,7 +158,7 @@ if __name__ == '__main__':
     
     ## 1. The diameter ratio of the primary particles can also be used as a variable
     find.algo.calc_init_N = conf.config['calc_init_N']
-    find.algo.set_comp_para(R_NM=8.68e-7, R_M=8.68e-7)
+    find.algo.set_comp_para(R_NM=conf.config['R_NM'], R_M=conf.config['R_M'])
     
     ## 2. Criteria of optimization target
     ## delta_flag = q3: use q3

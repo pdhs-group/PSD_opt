@@ -178,7 +178,8 @@ class opt_algo():
     
     def return_syth_beta(self,corr_agg):
         max_val = max(corr_agg)
-        power = np.log10(max_val).round()
+        power = np.log10(max_val)
+        power = np.ceil(power)
         return 10**power
     
     def cost_fun(self, data_exp, data_mod):
@@ -190,7 +191,8 @@ class opt_algo():
         elif self.cost_func_type == 'MAE':
             return mean_absolute_error(data_mod, data_exp)
         elif (self.delta_flag == 'q3' or self.delta_flag == 'Q3') and self.cost_func_type == 'KL':
-            data_exp = np.where(data_exp == 0, 10e-20, data_exp)
+            data_mod = np.where(data_mod <= 10e-20, 10e-20, data_mod)
+            data_exp = np.where(data_exp <= 10e-20, 10e-20, data_exp)
             return entropy(data_mod, data_exp).mean()
         else:
             raise Exception("Current cost function type is not supported")

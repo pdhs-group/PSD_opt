@@ -19,11 +19,11 @@ config = {
     'method': 'BO',
     
     'multi_flag': True,
-    'n_iter': 400,
+    'n_iter': 10,
     'calc_init_N': True,
-    'R_NM': 2.9e-7,
-    'R_M': 2.9e-7,
-    'delta_flag': 'q3',
+    'R_NM': 8.68e-7,
+    'R_M': 8.68e-7,
+    'delta_flag': 'Q3',
     'cost_func_type': 'KL',
     'weight_2d': 1,
     
