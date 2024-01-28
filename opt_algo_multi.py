@@ -13,8 +13,7 @@ class opt_algo_multi(opt_algo):
         self.weight_2d = 1
         
         
-    def calc_delta(self, corr_beta=None, alpha_prim=None, scale=1, Q3_exp=None, 
-                        sample_num=1, exp_data_path=None):  
+    def calc_delta(self, corr_beta=None, alpha_prim=None, scale=1, sample_num=1, exp_data_path=None):  
         self.calc_all_pop(corr_beta, alpha_prim, self.t_vec)
         
         delta = self.calc_delta_tem(sample_num, exp_data_path[0], scale, self.p)
@@ -25,8 +24,7 @@ class opt_algo_multi(opt_algo):
             
         return delta_sum
     
-    def calc_delta_agg(self, corr_agg=None, scale=1, Q3_exp=None, 
-                        sample_num=1, exp_data_path=None): 
+    def calc_delta_agg(self, corr_agg=None, scale=1, sample_num=1, exp_data_path=None): 
         corr_beta = self.return_syth_beta(corr_agg)
         alpha_prim = corr_agg / corr_beta
         

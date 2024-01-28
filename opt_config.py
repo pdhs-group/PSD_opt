@@ -11,7 +11,7 @@ config = {
     'dim': 2,
     't_init' : np.array([3, 15, 22, 40]),
     't_vec' : np.arange(0, 601, 60, dtype=float),
-    'add_noise': True,
+    'add_noise': False,
     'smoothing': True,
     'noise_type': 'Mul',
     'noise_strength': 0.1,
@@ -23,7 +23,7 @@ config = {
     'calc_init_N': True,
     'R_NM': 8.68e-7,
     'R_M': 8.68e-7,
-    'delta_flag': 'Q3',
+    'delta_flag': 'q3',
     'cost_func_type': 'KL',
     'weight_2d': 1,
     

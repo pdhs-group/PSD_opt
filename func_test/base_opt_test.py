@@ -131,6 +131,12 @@ def return_pop_distribution(pop, axq3=None,fig=None, clr='b', q3lbl='q3'):
     df = pd.DataFrame(data=q3_sm, index=x_uni)
     return df
 
+def calc_delta_test():
+    find.algo.set_init_N(sample_num, exp_data_paths, 'mean')
+    corr_agg = find.algo.corr_beta * find.algo.alpha_prim
+    delta = find.algo.calc_delta_agg(corr_agg, -1, sample_num, exp_data_paths)
+    return delta
+
 if __name__ == '__main__':
     #%%  Input for Opt
     dim = conf.config['dim']
@@ -209,7 +215,9 @@ if __name__ == '__main__':
     # find.algo.set_comp_para('r0_001', 'r0_001', dist_path_1, dist_path_1)
     # find.generate_data(sample_num, add_info='_para_15.0_0.2_0.6_0.8_1')
     
-    corr_beta_opt, alpha_prim_opt, para_diff, delta_opt, elapsed_time,corr_agg, \
-        corr_agg_opt, corr_agg_diff = normal_test()
+    # corr_beta_opt, alpha_prim_opt, para_diff, delta_opt, elapsed_time,corr_agg, \
+    #     corr_agg_opt, corr_agg_diff = normal_test()
         
     # N_exp, N_calc, N_exp_1D, N_calc_1D, q3_psd, q3_exp = calc_N_test()
+    
+    delta = calc_delta_test()

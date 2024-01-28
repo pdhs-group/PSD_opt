@@ -48,19 +48,21 @@ class opt_algo():
         kde_list = []
         x_uni = self.calc_x_uni(pop)
         for idt in range(self.num_t_steps):
-            sumN_uni = pop.return_num_distribution(t=idt, flag='sumN_uni')[0]
-            kde = self.KDE_fit(x_uni, sumN_uni)
+            sumvol_uni = pop.return_distribution(t=idt, flag='sumvol_uni')[0]
+            kde = self.KDE_fit(x_uni, sumvol_uni)
             kde_list.append(kde)
         
         if sample_num == 1:
             x_uni_exp, sumN_uni_exp = self.read_exp(exp_data_path) 
             sumN_uni_exp = sumN_uni_exp[:, self.idt_vec]
+            vol_uni = np.tile((1/6)*np.pi*x_uni_exp**3, (len(self.idt_vec), 1)).T
+            sumvol_uni_exp = sumN_uni_exp * vol_uni
             q3_mod = np.zeros((len(x_uni_exp), self.num_t_steps))
             for idt in range(self.num_t_steps):
                 q3_mod_tem = self.KDE_score(kde_list[idt], x_uni_exp)
                 q3_mod[:, idt] = q3_mod_tem
             data_mod = self.re_calc_distribution(x_uni_exp, q3=q3_mod, flag=self.delta_flag)[0]
-            data_exp = self.re_calc_distribution(x_uni_exp, sum_uni=sumN_uni_exp, flag=self.delta_flag)[0]
+            data_exp = self.re_calc_distribution(x_uni_exp, sum_uni=sumvol_uni_exp, flag=self.delta_flag)[0]
             # Calculate the error between experimental data and simulation results
             delta = self.cost_fun(data_exp, data_mod)
             
@@ -74,6 +76,8 @@ class opt_algo():
                 exp_data_path = self.traverse_path(i, exp_data_path)
                 x_uni_exp, sumN_uni_exp = self.read_exp(exp_data_path) 
                 sumN_uni_exp = sumN_uni_exp[:, self.idt_vec]
+                vol_uni = np.tile((1/6)*np.pi*x_uni_exp**3, (len(self.idt_vec), 1)).T
+                sumvol_uni_exp = sumN_uni_exp * vol_uni
                 q3_mod = np.zeros((len(x_uni_exp), self.num_t_steps))
                 
                 for idt in range(self.num_t_steps):
@@ -81,7 +85,7 @@ class opt_algo():
                     q3_mod[:, idt] = q3_mod_tem
                     
                 data_mod = self.re_calc_distribution(x_uni_exp, q3=q3_mod, flag=self.delta_flag)[0]
-                data_exp = self.re_calc_distribution(x_uni_exp, sum_uni=sumN_uni_exp, flag=self.delta_flag)[0]
+                data_exp = self.re_calc_distribution(x_uni_exp, sum_uni=sumvol_uni_exp, flag=self.delta_flag)[0]
                 # Calculate the error between experimental data and simulation results
                 delta = self.cost_fun(data_exp, data_mod)
                 delta_sum +=delta
