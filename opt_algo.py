@@ -258,7 +258,10 @@ class opt_algo():
         
         # Flatten a column vector into a one-dimensional array
         data_smoothing = data_smoothing.ravel()
-        data_smoothing = data_smoothing/np.trapz(data_smoothing,x_uni_new)
+        ## normalize the data for value range after smoothing
+        # data_smoothing = data_smoothing/np.trapz(data_smoothing,x_uni_new)
+        Q3 = self.calc_Q3(x_uni_new, data_smoothing)
+        data_smoothing = data_smoothing / Q3[-1]
         return data_smoothing
     
     def traverse_path(self, label, path_ori):
@@ -428,7 +431,9 @@ class opt_algo():
             Q3 = np.cumsum(sum_uni)/sum_uni.sum()
         else:
             for i in range(1, len(Q3)):
-                    Q3[i] = np.trapz(q3[:i+1], x_uni[:i+1])
+                    # Q3[i] = np.trapz(q3[:i+1], x_uni[:i+1])
+                    ## Euler backward
+                    Q3[i] = Q3[i-1] + q3[i] * (x_uni[i] - x_uni[i-1])
         return Q3
     def calc_sum_uni(self, Q3, sum_total):
         sum_uni = np.zeros_like(Q3)
@@ -437,6 +442,5 @@ class opt_algo():
         return sum_uni
     def calc_q3(self, Q3, x_uni):
         q3 = np.zeros_like(Q3)
-        for i in range(1,len(x_uni)):
-            q3[i] = (Q3[i] - Q3[i-1]) / (x_uni[i]-x_uni[i-1])
+        q3[1:] = np.diff(Q3) / np.diff(x_uni)
         return q3

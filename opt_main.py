@@ -15,6 +15,7 @@ def optimization_process(args):
     
     #%%  Input for Opt
     dim = conf.config['dim']
+    t_init = conf.config['t_init']
     t_vec = conf.config['t_vec']
     add_noise = conf.config['add_noise']
     smoothing = conf.config['smoothing']
@@ -32,13 +33,13 @@ def optimization_process(args):
     ## whether to calculate the initial conditions from experimental data
     ## 0. Use only 2D Data or 1D+2D
     find.multi_flag = conf.config['multi_flag']
-    find.init_opt_algo(dim, t_vec, add_noise, noise_type, noise_strength, smoothing)
+    find.init_opt_algo(dim, t_init, t_vec, add_noise, noise_type, noise_strength, smoothing)
     ## Iteration steps for optimierer
     find.algo.n_iter = conf.config['n_iter']
     
     ## 1. The diameter ratio of the primary particles can also be used as a variable
     find.algo.calc_init_N = conf.config['calc_init_N']
-    find.algo.set_comp_para(R_NM=2.9e-7, R_M=2.9e-7)
+    find.algo.set_comp_para(R_NM=conf.config['R_NM'], R_M=conf.config['R_M'])
     
     ## 2. Criteria of optimization target
     ## delta_flag = q3: use q3
