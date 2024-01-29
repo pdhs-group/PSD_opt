@@ -647,7 +647,7 @@ def plot_Q3(m_save, p, p2=None, alpha=1, label=None, Q3_grid=np.linspace(0,1,21)
     x_mc = np.mean(x_mc_full, axis=1)
     x_mc_std = np.std(x_mc_full, axis=1)
     
-    x_pbe, _, Q3_pbe, _, _, _ = p.return_distribution(t=-1)
+    x_pbe, Q3_pbe= p.return_distribution(t=-1,flag='x_uni,q3')
 
     fig=plt.figure()    
     ax=fig.add_subplot(1,1,1)   
@@ -665,7 +665,7 @@ def plot_Q3(m_save, p, p2=None, alpha=1, label=None, Q3_grid=np.linspace(0,1,21)
                            lbl='dPBE, $N_{\mathrm{S}}='+str(p.NS)+'$')
     
     if p2 is not None:
-        x_pbe2, _, Q3_pbe2, _, _, _ = p2.return_distribution(t=-1)
+        x_pbe2, Q3_pbe2 = p2.return_distribution(t=-1,flag='x_uni,q3')
         ax, fig = pt.plot_data(x_pbe2, Q3_pbe2, fig=fig, ax=ax,
                                xlbl='Equivalent Diameter $d$ / $\mathrm{\mu m}$',
                                ylbl='Cumulative Distribution $Q_3$ / $-$', alpha=alpha,
@@ -704,11 +704,11 @@ if __name__ == "__main__":
     # '2D_sum_mono_ccm': 2D, sum kernel, monodisperse initial conditions, aplha from CCM
     # '2D_ortho_mono': 2D, ortho kernel, monodisperse initial conditions, alpha = 1
     # '2D_ortho_mono': 2D, ortho kernel, monodisperse initial conditions, alpha from CCM
-    #CASE = '1D_const_mono'
-    #CASE = '2D_const_mono'
+    CASE = '1D_const_mono'
+    # CASE = '2D_const_mono'
     #CASE = '3D_const_mono'
-    CASE = '1D_sum_mono'
-    #CASE = '2D_sum_mono'
+    # CASE = '1D_sum_mono'
+    # CASE = '2D_sum_mono'
     #CASE = '2D_sum_mono_ccm'
     #CASE = '2D_ortho_mono'
     #CASE = '2D_ortho_mono_ccm'
@@ -728,7 +728,7 @@ if __name__ == "__main__":
     NS2 = 15
     #NS2 = 50
     
-    S = 1.2
+    S = 1.5
     # alpha_pbe = np.array([1,0.2,0.2,0])
     alpha_pbe = np.array([1,1,1,1])
     # alpha_pbe = np.array([1,0,0,0])
@@ -745,7 +745,7 @@ if __name__ == "__main__":
     mu_as, mu_pbe, mu_mc, std_mu_mc, p, m, mu_mc_reps, m_save  = calculate_case(CASE,MC=True)
     
     #%% PLOTS
-    pt.close()
+    # pt.close()
     init_plot(size = 'half', extra = True, mrksize=4)
     
     ALPHA = 0.7

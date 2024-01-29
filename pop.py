@@ -37,6 +37,7 @@ class population():
             # Define right-hand-side function depending on discretization
             if self.disc == 'geo':
                 rhs = get_dNdt_1d_geo_jit
+                # rhs = get_dNdt_1d_geo_jit_new
             elif self.disc == 'uni':
                 rhs = get_dNdt_1d_uni_jit                
             
@@ -643,8 +644,8 @@ class population():
             
             self.B_M = np.zeros(len(self.V))
             # Power Law Pandy and Spielmann --> See Jeldres2018 (28)
-            for i in range(2,len(self.V)):
-                self.B_M[i] = self.P1*self.G*(self.V[i]/self.V[2])**self.P2
+            # for i in range(2,len(self.V)):
+            #     self.B_M[i] = self.P1*self.G*(self.V[i]/self.V[2])**self.P2
             
         else:
             print('Only 1-D case currently coded.')
@@ -1651,6 +1652,93 @@ def get_dNdt_1d_geo_jit(t,N,V,F_M,B_M,NS,THR):
                         D_1D[a] = D_1D[a]+F*N[a]*N[b]/(2*zeta)
                         D_1D[b] = D_1D[b]+F*N[a]*N[b]/(2*zeta) 
                         
+            # Calculate breakage if current index is larger than 2 (primary particles cannot break)
+            # ATTENTION: This is only valid for binary breakage and s=2! (Test purposes)
+            if i > 2:
+                BD_br_1D[i] = BD_br_1D[i] - B_M[i]*N[i]
+                BD_br_1D[i-1] = BD_br_1D[i-1] + 2*B_M[i]*N[i]
+                    
+    # Modification of the birth term. Currently mass conservation is not given. 
+    # The generated agglomerate mass needs to be distributed to neighboring nodes.
+    # Loop: All indices of B_1D need to be modified + get all combinations of p
+    # element of  [0,1]: 
+    for i in range(1,NS+2):
+        for p in range(2):
+                    
+            # Actual modification calculation
+            Bmod_1D[i] = Bmod_1D[i] \
+                + B_1D[i-p] \
+                    *get_lam_1d_jit(xx_1D[i-p],V,i,"-") \
+                    *np.heaviside((-1)**p*(V[i-p]-xx_1D[i-p]),0.5) \
+                + B_1D[i+p] \
+                    *get_lam_1d_jit(xx_1D[i+p],V,i,"+") \
+                    *np.heaviside((-1)**(p+1)*(V[i+p]-xx_1D[i+p]),0.5)      
+            
+    # Calculate final result and return 
+    DN = Bmod_1D-D_1D+BD_br_1D
+        
+    # Due to numerical issues it is necessary to define a threshold for DN
+    for i in range(NS+3): 
+        if abs(DN[i])<THR: DN[i] = 0
+    
+    return DN
+
+@jit(nopython=True)
+def get_dNdt_1d_geo_jit_new(t,N,V,F_M,B_M,NS,THR):       
+
+    # Initialize DN with zeros
+    DN_shape = [dim - 1 for dim in N.shape]
+    DN = np.zeros(DN_shape)
+    V_cell = np.zeros(DN_shape)
+    for i in range(len(V_cell)):
+        V_cell[i] = (V[i+1] + V[i]) /2
+        
+    # Initialize other temporary variables
+    B_1D = np.copy(DN); D_1D = np.copy(DN); Bmod_1D = np.copy(DN) 
+    Mx_1D = np.copy(DN)
+    xx_1D = np.copy(DN)
+    BD_br_1D = np.copy(DN)
+    
+    # Go through all possible combinations to calculate B, M and D matrix
+    # First loop: All indices of DN to sum and reference actual concentration change
+    for i in range(1,NS+1):
+            
+            # Second loop: All agglomeration partners 1 [a] and 2 [b] 
+            # with index (<=i,<=j)
+            for a in range(1,i+1):
+                for b in range(1,i+1):              
+                                        
+                    # Only calculate if result of (a)+(b) yields agglomerate in 
+                    # range(i-1:i+1) with respect to total volume
+                    if V[i]<V_cell[a]+V_cell[b]<V[i+1]:
+                                               
+                        # When birth exactly collides with [i] set zeta to 1, otherwise
+                        # set zeta to 2 (zeta defines whether B needs further distribution)
+                        #if V[a]+V[b]==V[i]:
+                        if abs(V[a]+V[b]-V[i]) < 1e-5*V[2]:
+                            zeta = 1
+                        else:
+                            zeta = 2
+                    
+                        # Get corresponding F from F_M. Attention: F_M is defined without -1 borders
+                        # and is a (NS+1)^2 matrix. a and b represent "real" indices of the N or V
+                        # matrix --> It is necessary to subtract 1 in order to get the right entry
+                        F = F_M[a-1,b-1]
+                        
+                        # Calculate raw birth term as well as volumetric fluxes M.
+                        # Division by 2 resulting from loop definition (don't count processes double)
+                        B_1D[i] = B_1D[i]+F*N[a]*N[b]/(2*zeta)
+                        Mx_1D[i] = Mx_1D[i]+F*N[a]*N[b]*(V[a]+V[b])/(2*zeta)
+                        
+                        # Average volume of all newborn agglomerates in the [i]th cell
+                        if not B_1D[i]==0:
+                            xx_1D[i] = Mx_1D[i]/B_1D[i]
+                            
+                        # Calculate death term of [a] and [b]. 
+                        # D_1D is defined positively (addition) and subtracted later
+                        D_1D[a] = D_1D[a]+F*N[a]*N[b]/(2*zeta)
+                        D_1D[b] = D_1D[b]+F*N[a]*N[b]/(2*zeta) 
+                    
             # Calculate breakage if current index is larger than 2 (primary particles cannot break)
             # ATTENTION: This is only valid for binary breakage and s=2! (Test purposes)
             if i > 2:
