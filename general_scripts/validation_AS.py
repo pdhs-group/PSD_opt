@@ -15,6 +15,7 @@ import plotter.plotter as pt
 from plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
 
 from pop import population as pop_disc
+from pop import get_dNdt_2d_geo_jit as dNdt_2d
 from pop_MC import population_MC as pop_mc 
 
 #%% CASES
@@ -108,7 +109,9 @@ def calculate_case(CASE, PBE=True, MC=True):
         
             p.solve_PBE(t_vec = t)
             mu_pbe = p.calc_mom_t()
-        
+            print('### Initial dNdt..')
+            # dNdt0=dNdt_2d(0,p.N[:,:,0].reshape(-1),p.V,p.V1_e,p.V3_e,p.F_M,NS, 0).reshape(NS,NS)
+            # print(dNdt0)
         if MC:
             # Calculate multiple times (stochastic process)
             mu_tmp = []
@@ -194,7 +197,7 @@ def calculate_case(CASE, PBE=True, MC=True):
             if N_MC > 1: std_mu_mc = np.std(mu_tmp,ddof=1,axis=0)
         
         ### ANALYTICAL SOLUTION ADAPTED FROM KUMAR 2008: Eq. (40), (A.11)-(A.12) 
-        n0_tot = 3*n0
+        n0_tot = 2*n0
         mu_as[0,0,:] = 2*n0_tot/(2+beta0*n0_tot*t)
         mu_as[1,0,:] = np.ones(t.shape)*c     
         mu_as[0,1,:] = np.ones(t.shape)*c  
@@ -704,17 +707,17 @@ if __name__ == "__main__":
     # '2D_sum_mono_ccm': 2D, sum kernel, monodisperse initial conditions, aplha from CCM
     # '2D_ortho_mono': 2D, ortho kernel, monodisperse initial conditions, alpha = 1
     # '2D_ortho_mono': 2D, ortho kernel, monodisperse initial conditions, alpha from CCM
-    CASE = '1D_const_mono'
+    # CASE = '1D_const_mono'
     # CASE = '2D_const_mono'
     #CASE = '3D_const_mono'
     # CASE = '1D_sum_mono'
-    # CASE = '2D_sum_mono'
+    CASE = '2D_sum_mono'
     #CASE = '2D_sum_mono_ccm'
     #CASE = '2D_ortho_mono'
     #CASE = '2D_ortho_mono_ccm'
     
     ### General parameters
-    t = np.linspace(0,2000,20)      # Time array [s]
+    t = np.arange(0, 601, 60, dtype=float)     # Time array [s]
     c = 0.1e-2*1e-2                 # Volume concentration [-]
     x = 1e-6                        # Particle diameter [m]
     beta0 = 1e-16                   # Collision frequency parameter [m^3/s]
@@ -724,7 +727,7 @@ if __name__ == "__main__":
     
     ### PBE Parameters
     grid = 'geo'
-    NS = 8
+    NS = 5
     NS2 = 15
     #NS2 = 50
     

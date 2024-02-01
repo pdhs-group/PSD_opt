@@ -37,14 +37,14 @@ class population():
             # Define right-hand-side function depending on discretization
             if self.disc == 'geo':
                 rhs = get_dNdt_1d_geo_jit
-                # rhs = get_dNdt_1d_geo_jit_new
+                args=(self.V,self.V_e,self.F_M,self.B_M,self.NS,self.THR_DN)
             elif self.disc == 'uni':
                 rhs = get_dNdt_1d_uni_jit                
-            
+                args=(self.V,self.F_M,self.B_M,self.NS,self.THR_DN)
             self.RES = integrate.solve_ivp(rhs, 
                                            [0, t_max], 
                                            self.N[:,0], t_eval=t_vec,
-                                           args=(self.V,self.F_M,self.B_M,self.NS,self.THR_DN),
+                                           args=args,
                                            method='LSODA',first_step=0.1,rtol=1e-1)
             
             # Reshape and save result to N and t_vec
@@ -55,17 +55,18 @@ class population():
             # Define right-hand-side function depending on discretization
             if self.disc == 'geo':
                 rhs = get_dNdt_2d_geo_jit
+                args=(self.V,self.V1_e,self.V3_e,self.F_M,self.NS,self.THR_DN)
             elif self.disc == 'uni':
                 rhs = get_dNdt_2d_uni_jit   
-                
+                args=(self.V,self.V1,self.V3,self.F_M,self.NS,self.THR_DN)
             self.RES = integrate.solve_ivp(rhs, 
                                            [0, t_max], 
                                            np.reshape(self.N[:,:,0],-1), t_eval=t_vec,
-                                           args=(self.V,self.V1,self.V3,self.F_M,self.NS,self.THR_DN),
+                                           args=args,
                                            method='RK23',first_step=0.1,rtol=1e-1)
             
             # Reshape and save result to N and t_vec
-            self.N = self.RES.y.reshape((self.NS+3,self.NS+3,len(self.RES.t)))
+            self.N = self.RES.y.reshape((self.NS,self.NS,len(self.RES.t)))
             self.t_vec = self.RES.t
         
         elif self.dim == 3:
@@ -116,11 +117,12 @@ class population():
     ##        calc_F_M, calc_B_M)
     def full_init(self, calc_alpha=True):
         self.calc_R()
+        # self.calc_R_new()
         self.init_N()        
         if calc_alpha: self.calc_alpha_prim()
         self.calc_F_M()
         if self.dim == 1: self.calc_B_M()
-        
+     
     ## Calculate R, V and X matrices (radii, total and partial volumes and volume fractions)
     def calc_R(self):
             
@@ -128,62 +130,69 @@ class population():
         if self.dim == 1:
             
             # Initialize V and R
-            self.V = np.zeros(self.NS+3)-1
-            self.R = np.zeros(self.NS+3)
+            self.V = np.zeros(self.NS)
+            self.R = np.zeros(self.NS)
             
-            for i in range(0,self.NS+1): #range(0,self.NS):
-                # Geometric grid
-                if self.disc == 'geo':                
-                    self.V[i+2] = self.S**(i)*4*math.pi*self.R01**3/3
+            if self.disc == 'uni':
+                for i in range(len(self.V)): #range(0,self.NS):
+                    self.V[i] = i*4*math.pi*self.R01**3/3
                 
-                # Uniform grid    
-                elif self.disc == 'uni':
-                    self.V[i+2] = (i+1)*4*math.pi*self.R01**3/3
+            if self.disc == 'geo':
+                self.V_e = np.zeros(self.NS+1)-1
+                for i in range(len(self.V)-1):         
+                    self.V[i+1] = self.S**(i)*4*math.pi*self.R01**3/3
+                    self.V_e[i+1] = (self.V[i] + self.V[i+1]) / 2
+                self.V_e[-1] = self.V[-1] * (1 + self.S) / 2 
                         
             # Initialize V, R and ratio matrices
-            self.R[2:] = (self.V[2:]*3/(4*math.pi))**(1/3)
-            self.X1_vol = np.ones(self.NS+3) 
-            self.X1_a = np.ones(self.NS+3) 
+            self.R[1:] = (self.V[1:]*3/(4*math.pi))**(1/3)
+            self.X1_vol = np.ones(self.NS) 
+            self.X1_a = np.ones(self.NS) 
                         
         # 2-D case
         elif self.dim == 2:
             
             # Initialize V1-V2 
-            self.V1 = np.zeros(self.NS+3)-1 
-            self.V1[1] = 0
+            self.V1 = np.zeros(self.NS)
+            # self.V1[1] = 0
             self.V3 = np.copy(self.V1) 
             
-            for i in range(0,self.NS+1): #range(0,self.NS):
-                # Geometric grid
-                if self.disc == 'geo': 
-                    self.V1[i+2] = self.S**(i)*4*math.pi*self.R01**3/3
-                    self.V3[i+2] = self.S**(i)*4*math.pi*self.R03**3/3
-                
-                # Uniform grid
-                elif self.disc == 'uni':
-                    self.V1[i+2] = (i+1)*4*math.pi*self.R01**3/3
-                    self.V3[i+2] = (i+1)*4*math.pi*self.R03**3/3
+            if self.disc == 'uni':
+                for i in range(len(self.V1)): #range(0,self.NS):
+                    self.V1[i] = i*4*math.pi*self.R01**3/3
+                    self.V3[i] = i*4*math.pi*self.R03**3/3
             
+            if self.disc == 'geo': 
+                self.V1_e = np.zeros(self.NS+1)-1
+                self.V3_e = np.zeros(self.NS+1)-1
+                for i in range(len(self.V1)-1):
+                    self.V1[i+1] = self.S**(i)*4*math.pi*self.R01**3/3
+                    self.V3[i+1] = self.S**(i)*4*math.pi*self.R03**3/3
+                    self.V1_e[i+1] = (self.V1[i] + self.V1[i+1]) / 2
+                    self.V3_e[i+1] = (self.V3[i] + self.V3[i+1]) / 2
+                self.V1_e[-1] = self.V1[-1] * (1 + self.S) / 2 
+                self.V3_e[-1] = self.V3[-1] * (1 + self.S) / 2 
+
             A1 = 3*self.V1/self.R01
             A3 = 3*self.V3/self.R03
             
             # Initialize V, R and ratio matrices
-            self.V = np.zeros((self.NS+3,self.NS+3))-1
+            self.V = np.zeros((self.NS,self.NS))
             self.R = np.copy(self.V)
             self.X1_vol = np.copy(self.V); self.X1_a=np.copy(self.V) 
             self.X3_vol = np.copy(self.V); self.X3_a=np.copy(self.V)
             
             # Write V1 and V3 in respective "column" of V
-            self.V[:,1] = self.V1 
-            self.V[1,:] = self.V3 
+            self.V[:,0] = self.V1 
+            self.V[0,:] = self.V3 
             
             # Calculate remaining entries of V and other matrices
             # range(1,X) excludes X itself -> self.NS+2
-            for i in range(1,self.NS+3):
-                for j in range(1,self.NS+3):
+            for i in range(len(self.V1)):
+                for j in range(len(self.V3)):
                     self.V[i,j] = self.V1[i]+self.V3[j]
                     self.R[i,j] = (self.V[i,j]*3/(4*math.pi))**(1/3)
-                    if i==1 and j==1:
+                    if i==0 and j==0:
                         self.X1_vol[i,j] = 0
                         self.X3_vol[i,j] = 0
                         self.X1_a[i,j] = 0
@@ -258,21 +267,21 @@ class population():
         
         # 1-D case
         if self.dim == 1:
-            self.N = np.zeros((self.NS+3,self.NUM_T+1))
+            self.N = np.zeros((self.NS,self.NUM_T+1))
             if self.USE_PSD:
-                self.N[2:,0] = self.new_initialize_psd(2*self.R[2:],self.DIST1,self.V01)
+                self.N[1:,0] = self.new_initialize_psd(2*self.R[1:],self.DIST1,self.V01)
             else:
-                self.N[2,0] = self.N01
+                self.N[1,0] = self.N01
         
         # 2-D case
         elif self.dim == 2:
-            self.N = np.zeros((self.NS+3,self.NS+3,self.NUM_T+1))
+            self.N = np.zeros((self.NS,self.NS,self.NUM_T+1))
             if self.USE_PSD:
-                self.N[2:-1,1,0] = self.new_initialize_psd(2*self.R[2:-1,1],self.DIST1,self.V01)
-                self.N[1,2:-1,0] = self.new_initialize_psd(2*self.R[1,2:-1],self.DIST3,self.V03)
+                self.N[1:,1,0] = self.new_initialize_psd(2*self.R[1:,0],self.DIST1,self.V01)
+                self.N[1,1:,0] = self.new_initialize_psd(2*self.R[0,1:],self.DIST3,self.V03)
             else:
-                self.N[2,1,0] = self.N01
-                self.N[1,2,0] = self.N03
+                self.N[1,0,0] = self.N01
+                self.N[0,1,0] = self.N03
         
         # 3-D case
         elif self.dim == 3:
@@ -295,7 +304,7 @@ class population():
             # Initialize F_M Matrix. NOTE: F_M is defined without the border around the calculation grid
             # as e.g. N or V are (saving memory and calculations). 
             # Thus, F_M is (NS+1)^2 instead of (NS+3)^2. As reference, V is (NS+3)^1.
-            self.F_M = np.zeros((self.NS+1,self.NS+1))
+            self.F_M = np.zeros((self.NS,self.NS))
             # self.alpha = np.zeros((self.NS+1,self.NS+1))
             # self.beta = np.zeros((self.NS+1,self.NS+1))
             
@@ -308,7 +317,7 @@ class population():
                 
                 # Calculate the corresponding agglomeration efficiency
                 # Add one to indices to account for borders
-                a = idx[0]+1 ; i = idx[1]+1
+                a = idx[0] ; i = idx[1]
                 
                 # Calculate collision frequency beta depending on COLEVAL
                 if self.COLEVAL == 1:
@@ -372,7 +381,7 @@ class population():
                 # Initialize F_M Matrix. NOTE: F_M is defined without the border around the calculation grid
                 # as e.g. N or V are (saving memory and calculations). 
                 # Thus, F_M is (NS+1)^4 instead of (NS+3)^4. As reference, V is (NS+3)^2.
-                self.F_M = np.zeros((self.NS+1,self.NS+1,self.NS+1,self.NS+1))
+                self.F_M = np.zeros((self.NS,self.NS,self.NS,self.NS))
                 
                 # Go through all agglomeration partners 1 [a,b] and 2 [i,j]
                 # The current index tuple idx stores them as (a,b,i,j)
@@ -383,7 +392,7 @@ class population():
                     
                     # Calculate the corresponding agglomeration efficiency
                     # Add one to indices to account for borders
-                    a = idx[0]+1; b = idx[1]+1; i = idx[2]+1; j = idx[3]+1
+                    a = idx[0]; b = idx[1]; i = idx[2]; j = idx[3]
                     
                     # Calculate collision frequency beta depending on COLEVAL
                     if self.COLEVAL == 1:
@@ -931,20 +940,20 @@ class population():
         if comp == 'all':
             # Loop through all entries in V and add volume concentration to specific entry in sumvol_uni
             if self.dim == 1:
-                for i in range(1,self.NS+3):
+                for i in range(1,self.NS):
                     # if self.V[i] in v_uni:
                     sumvol_uni_tem[v_uni == self.V[i]] += self.V[i]*N[i,t] 
                         
             if self.dim == 2:
-                for i in range(1,self.NS+3):
-                    for j in range(1,self.NS+3):
+                for i in range(1,self.NS):
+                    for j in range(1,self.NS):
                         # if self.V[i,j] in v_uni:
                         sumvol_uni_tem[v_uni == self.V[i,j]] += self.V[i,j]*N[i,j,t]
 
             if self.dim == 3:
-                for i in range(1,self.NS+3):
-                    for j in range(1,self.NS+3):
-                        for k in range(1,self.NS+3):
+                for i in range(1,self.NS):
+                    for j in range(1,self.NS):
+                        for k in range(1,self.NS):
                             # if self.V[i,j,k] in v_uni:
                             sumvol_uni_tem[v_uni == self.V[i,j,k]] += self.V[i,j,k]*N[i,j,k,t]
             ## convert unit m into mm
@@ -999,13 +1008,13 @@ class population():
         if comp == 'all':
             # Loop through all entries in V and add volume concentration to specific entry in sumN_uni
             if self.dim == 1:
-                for i in range(1,self.NS+3):
+                for i in range(1,self.NS):
                     if float_in_list(self.V[i], v_uni) and (not N[i,t] < 0):
                         sumN_uni_tem[v_uni == self.V[i]] += N[i,t] 
                         
             if self.dim == 2:
-                for i in range(1,self.NS+3):
-                    for j in range(1,self.NS+3):
+                for i in range(1,self.NS):
+                    for j in range(1,self.NS):
                         if float_in_list(self.V[i,j], v_uni) and (not N[i,j,t] < 0):
                             sumN_uni_tem[v_uni == self.V[i,j]] += N[i,j,t]
 
@@ -1269,7 +1278,7 @@ class population():
         # NOTE: The following two parameters define the magnetic separation step.
         self.TC1 = 1e-3                       # Separation efficiency of nonmagnetic particles. 0 and 1 not allowed!    
         self.TC2 = 1-1e-3                     # Separation efficiency of magnetic particles. 0 and 1 not allowed!
-        self.THR_DN = 1e-5                    # Threshold for concentration change matrix (DN[DN<THR]=0)
+        self.THR_DN = 1e-10                    # Threshold for concentration change matrix (DN[DN<THR]=0)
         self.CORR_PSI = 1                     # Correction factor for zeta potentials in general
         self.CORR_PSI_SIO2 = 1                # Correction factor for SiO2 zeta potential
         self.CORR_PSI_ZNO = 1                 # Correction factor for ZnO zeta potential
@@ -1587,291 +1596,169 @@ class population():
 ### ------ PRE-COMPILED FUNCTIONS (NUMBA JIT) ------ ### 
  
 # Define np.heaviside for JIT compilation
-@overload(np.heaviside)
-def np_heaviside(x1, x2):
-    @register_jitable
-    def heaviside_impl(x1, x2):
-        if x1 < 0:
-            return 0.0
-        elif x1 > 0:
-            return 1.0
-        else:
-            return x2
-
-    return heaviside_impl 
-
+    
 @jit(nopython=True)
-def get_dNdt_1d_geo_jit(t,N,V,F_M,B_M,NS,THR):       
-
-    # Initialize DN with zeros
-    DN = np.zeros(np.shape(N))
-        
-    # Initialize other temporary variables
-    B_1D = np.copy(DN); D_1D = np.copy(DN); Bmod_1D = np.copy(DN) 
-    Mx_1D = np.copy(DN)
-    xx_1D = np.copy(DN)
-    BD_br_1D = np.copy(DN)
-    
-    # Go through all possible combinations to calculate B, M and D matrix
-    # First loop: All indices of DN to sum and reference actual concentration change
-    for i in range(1,NS+2):
-            
-            # Second loop: All agglomeration partners 1 [a] and 2 [b] 
-            # with index (<=i,<=j)
-            for a in range(1,i+1):
-                for b in range(1,i+1):              
-                                        
-                    # Only calculate if result of (a)+(b) yields agglomerate in 
-                    # range(i-1:i+1) with respect to total volume
-                    if V[i-1]<V[a]+V[b]<V[i+1]:
-                                               
-                        # When birth exactly collides with [i] set zeta to 1, otherwise
-                        # set zeta to 2 (zeta defines whether B needs further distribution)
-                        #if V[a]+V[b]==V[i]:
-                        if abs(V[a]+V[b]-V[i]) < 1e-5*V[2]:
-                            zeta = 1
-                        else:
-                            zeta = 2
-                    
-                        # Get corresponding F from F_M. Attention: F_M is defined without -1 borders
-                        # and is a (NS+1)^2 matrix. a and b represent "real" indices of the N or V
-                        # matrix --> It is necessary to subtract 1 in order to get the right entry
-                        F = F_M[a-1,b-1]
-                        
-                        # Calculate raw birth term as well as volumetric fluxes M.
-                        # Division by 2 resulting from loop definition (don't count processes double)
-                        B_1D[i] = B_1D[i]+F*N[a]*N[b]/(2*zeta)
-                        Mx_1D[i] = Mx_1D[i]+F*N[a]*N[b]*(V[a]+V[b])/(2*zeta)
-                        
-                        # Average volume of all newborn agglomerates in the [i]th cell
-                        if not B_1D[i]==0:
-                            xx_1D[i] = Mx_1D[i]/B_1D[i]
-                            
-                        # Calculate death term of [a] and [b]. 
-                        # D_1D is defined positively (addition) and subtracted later
-                        D_1D[a] = D_1D[a]+F*N[a]*N[b]/(2*zeta)
-                        D_1D[b] = D_1D[b]+F*N[a]*N[b]/(2*zeta) 
-                        
-            # Calculate breakage if current index is larger than 2 (primary particles cannot break)
-            # ATTENTION: This is only valid for binary breakage and s=2! (Test purposes)
-            if i > 2:
-                BD_br_1D[i] = BD_br_1D[i] - B_M[i]*N[i]
-                BD_br_1D[i-1] = BD_br_1D[i-1] + 2*B_M[i]*N[i]
-                    
-    # Modification of the birth term. Currently mass conservation is not given. 
-    # The generated agglomerate mass needs to be distributed to neighboring nodes.
-    # Loop: All indices of B_1D need to be modified + get all combinations of p
-    # element of  [0,1]: 
-    for i in range(1,NS+2):
-        for p in range(2):
-                    
-            # Actual modification calculation
-            Bmod_1D[i] = Bmod_1D[i] \
-                + B_1D[i-p] \
-                    *get_lam_1d_jit(xx_1D[i-p],V,i,"-") \
-                    *np.heaviside((-1)**p*(V[i-p]-xx_1D[i-p]),0.5) \
-                + B_1D[i+p] \
-                    *get_lam_1d_jit(xx_1D[i+p],V,i,"+") \
-                    *np.heaviside((-1)**(p+1)*(V[i+p]-xx_1D[i+p]),0.5)      
-            
-    # Calculate final result and return 
-    DN = Bmod_1D-D_1D+BD_br_1D
-        
-    # Due to numerical issues it is necessary to define a threshold for DN
-    for i in range(NS+3): 
-        if abs(DN[i])<THR: DN[i] = 0
-    
-    return DN
-
-@jit(nopython=True)
-def get_dNdt_1d_geo_jit_new(t,N,V,F_M,B_M,NS,THR):       
-
-    # Initialize DN with zeros
-    DN_shape = [dim - 1 for dim in N.shape]
-    DN = np.zeros(DN_shape)
-    V_cell = np.zeros(DN_shape)
-    for i in range(len(V_cell)):
-        V_cell[i] = (V[i+1] + V[i]) /2
-        
-    # Initialize other temporary variables
-    B_1D = np.copy(DN); D_1D = np.copy(DN); Bmod_1D = np.copy(DN) 
-    Mx_1D = np.copy(DN)
-    xx_1D = np.copy(DN)
-    BD_br_1D = np.copy(DN)
-    
-    # Go through all possible combinations to calculate B, M and D matrix
-    # First loop: All indices of DN to sum and reference actual concentration change
-    for i in range(1,NS+1):
-            
-            # Second loop: All agglomeration partners 1 [a] and 2 [b] 
-            # with index (<=i,<=j)
-            for a in range(1,i+1):
-                for b in range(1,i+1):              
-                                        
-                    # Only calculate if result of (a)+(b) yields agglomerate in 
-                    # range(i-1:i+1) with respect to total volume
-                    if V[i]<V_cell[a]+V_cell[b]<V[i+1]:
-                                               
-                        # When birth exactly collides with [i] set zeta to 1, otherwise
-                        # set zeta to 2 (zeta defines whether B needs further distribution)
-                        #if V[a]+V[b]==V[i]:
-                        if abs(V[a]+V[b]-V[i]) < 1e-5*V[2]:
-                            zeta = 1
-                        else:
-                            zeta = 2
-                    
-                        # Get corresponding F from F_M. Attention: F_M is defined without -1 borders
-                        # and is a (NS+1)^2 matrix. a and b represent "real" indices of the N or V
-                        # matrix --> It is necessary to subtract 1 in order to get the right entry
-                        F = F_M[a-1,b-1]
-                        
-                        # Calculate raw birth term as well as volumetric fluxes M.
-                        # Division by 2 resulting from loop definition (don't count processes double)
-                        B_1D[i] = B_1D[i]+F*N[a]*N[b]/(2*zeta)
-                        Mx_1D[i] = Mx_1D[i]+F*N[a]*N[b]*(V[a]+V[b])/(2*zeta)
-                        
-                        # Average volume of all newborn agglomerates in the [i]th cell
-                        if not B_1D[i]==0:
-                            xx_1D[i] = Mx_1D[i]/B_1D[i]
-                            
-                        # Calculate death term of [a] and [b]. 
-                        # D_1D is defined positively (addition) and subtracted later
-                        D_1D[a] = D_1D[a]+F*N[a]*N[b]/(2*zeta)
-                        D_1D[b] = D_1D[b]+F*N[a]*N[b]/(2*zeta) 
-                    
-            # Calculate breakage if current index is larger than 2 (primary particles cannot break)
-            # ATTENTION: This is only valid for binary breakage and s=2! (Test purposes)
-            if i > 2:
-                BD_br_1D[i] = BD_br_1D[i] - B_M[i]*N[i]
-                BD_br_1D[i-1] = BD_br_1D[i-1] + 2*B_M[i]*N[i]
-                    
-    # Modification of the birth term. Currently mass conservation is not given. 
-    # The generated agglomerate mass needs to be distributed to neighboring nodes.
-    # Loop: All indices of B_1D need to be modified + get all combinations of p
-    # element of  [0,1]: 
-    for i in range(1,NS+2):
-        for p in range(2):
-                    
-            # Actual modification calculation
-            Bmod_1D[i] = Bmod_1D[i] \
-                + B_1D[i-p] \
-                    *get_lam_1d_jit(xx_1D[i-p],V,i,"-") \
-                    *np.heaviside((-1)**p*(V[i-p]-xx_1D[i-p]),0.5) \
-                + B_1D[i+p] \
-                    *get_lam_1d_jit(xx_1D[i+p],V,i,"+") \
-                    *np.heaviside((-1)**(p+1)*(V[i+p]-xx_1D[i+p]),0.5)      
-            
-    # Calculate final result and return 
-    DN = Bmod_1D-D_1D+BD_br_1D
-        
-    # Due to numerical issues it is necessary to define a threshold for DN
-    for i in range(NS+3): 
-        if abs(DN[i])<THR: DN[i] = 0
-    
-    return DN
-
-@jit(nopython=True)
-def get_dNdt_2d_geo_jit(t,NN,V,V1,V3,F_M,NS,THR):       
+def get_dNdt_1d_geo_jit(t,N,V_p,V_e, F_M,B_M,NS,THR):
   
-    N = NN.copy() 
-    N = N.reshape((NS+3,NS+3))
+    dNdt = np.zeros(N.shape)
+    B_c = np.zeros(N.shape)
+    M_c = np.zeros(N.shape)
+    v = np.zeros(N.shape)
+    D = np.zeros(N.shape)
+    B = np.zeros(N.shape)
     
-    # Initialize DN with zeros
-    DN = np.zeros(np.shape(N))
-    #NS = len(N[:,1])-3
-        
-    # Initialize other temporary variables
-    B_2D = np.copy(DN); D_2D = np.copy(DN); Bmod_2D = np.copy(DN) 
-    Mx_2D = np.copy(DN); My_2D = np.copy(DN)
-    xx_2D = np.copy(DN); yy_2D = np.copy(DN)
-    
-    # Go through all possible combinations to calculate B, M and D matrix
-    # First loop: All indices of DN to sum and reference actual concentration change
-    for i in range(1,NS+2):
-        for j in range(1,NS+2):
-            
-            # Second loop: All agglomeration partners 1 [a,c] and 2 [b,d] 
-            # with index (<=i,<=j)
-            for a in range(1,i+1):
-                for c in range(1,j+1):
-                    for b in range(1,i+1): 
-                        for d in range(1,j+1): 
-                                            
-                            # Only calculate if result of (a,c)+(b,d) yields agglomerate in 
-                            # range(i-1:i+1,j-1:j+1) with respect to total volume
-                            if V1[i-1]<V1[a]+V1[b]<V1[i+1] and V3[j-1]<V3[c]+V3[d]<V3[j+1]:
-                                
-                                # if i == 2 and j ==2:
-                                #     print(i,a,c,'|',j,b,d)
-                                # When birth exactly collides with [i,j] set zeta to 1, otherwise
-                                # set zeta to 2 (zeta defines whether B needs further distribution)
-                                #if V[a,c]+V[b,d]==V[i,j]:
-                                if abs(V[a,c]+V[b,d]-V[i,j]) < 1e-5*V[2,1]:
-                                    #print(i,a,c,'|',j,b,d)
-                                    zeta = 1
-                                else:
-                                    zeta = 2
-                            
-                                # Get corresponding F from F_M. Attention: F_M is defined without -1 borders
-                                # and is a (NS+1)^4 matrix. a-d represent "real" indices of the N or V
-                                # matrix --> It is necessary to subtract 1 in order to get the right entry
-                                F = F_M[a-1,c-1,b-1,d-1]
-                                
-                                # Calculate raw birth term as well as volumetric fluxes M.
-                                # Division by 2 resulting from loop definition (don't count processes double)
-                                B_2D[i,j] = B_2D[i,j]+F*N[a,c]*N[b,d]/(2*zeta)
-                                Mx_2D[i,j] = Mx_2D[i,j]+F*N[a,c]*N[b,d]*(V1[a]+V1[b])/(2*zeta)
-                                My_2D[i,j] = My_2D[i,j]+F*N[a,c]*N[b,d]*(V3[c]+V3[d])/(2*zeta)
-                                
-                                # Average volume of all newborn agglomerates in the [i,j]th cell
-                                if not B_2D[i,j]==0:
-                                    xx_2D[i,j] = Mx_2D[i,j]/B_2D[i,j]
-                                    yy_2D[i,j] = My_2D[i,j]/B_2D[i,j]
-                                    
-                                # Calculate death term of [a,c] and [b,d]. 
-                                # D_2D is defined positively (addition) and subtracted later
-                                D_2D[a,c] = D_2D[a,c]+F*N[a,c]*N[b,d]/(2*zeta)
-                                D_2D[b,d] = D_2D[b,d]+F*N[a,c]*N[b,d]/(2*zeta) 
+    # Loop through all edges
+    # -1 to make sure nothing overshoots (?) CHECK THIS
+    for e in range(1, len(V_p)-1):
+        # Loop through all pivots (twice)
+        for i in range(len(V_p)):
+            for j in range(len(V_p)):
+                # if abs(V_p[i]+V_p[j]-V_p[e]) < 1e-5*V_p[1]:
+                #     zeta = 1
+                # else:
+                #     zeta = 2
+                zeta = 2
+                # Check if the agglomeration of i and j produce an 
+                # agglomerate inside the current cell 
+                # Use upper edge as "reference point"
+                if V_e[e] <= V_p[i]+V_p[j] < V_e[e+1]:
                     
-    # Modification of the birth term. Currently mass conservation is not given. 
-    # The generated agglomerate mass needs to be distributed to neighboring nodes.
-    # Loop: All indices of B_2D need to be modified + get all combinations of p and q 
-    # element of  [0,1]: 
-    for i in range(1,NS+2):
-        for j in range(1,NS+2):
+                    F = F_M[i,j]
+                    
+                    # Total birthed agglomerates
+
+                    B_c[e] += F*N[i]*N[j]/zeta
+                    M_c[e] += F*N[i]*N[j]*(V_p[i]+V_p[j])/zeta
+                    
+                    # Track death 
+                    D[i] -= F*N[i]*N[j]/zeta
+                    D[j] -= F*N[i]*N[j]/zeta
+                
+    v[B_c != 0] = M_c[B_c != 0]/B_c[B_c != 0]
+    
+    # print(B_c)
+    
+    # Assign BIRTH on each pivot
+    for i in range(len(V_p)):            
+        # Add contribution from LEFT cell (if existent)
+        if i != 0:
+            # Same Cell, left half
+            B[i] += B_c[i]*lam(v[i], V_p, i, 'm')*heaviside_jit(V_p[i]-v[i],0.5)
+            # Left Cell, right half
+            B[i] += B_c[i-1]*lam(v[i-1], V_p, i, 'm')*heaviside_jit(v[i-1]-V_p[i-1],0.5)
+            
+        # Add contribution from RIGHT cell (if existent)
+        if i != len(V_p)-1:
+            # Same Cell, right half
+            B[i] += B_c[i]*lam(v[i], V_p, i, 'p')*heaviside_jit(v[i]-V_p[i],0.5)
+            # Right Cell, left half
+            B[i] += B_c[i+1]*lam(v[i+1], V_p, i, 'p')*heaviside_jit(V_p[i+1]-v[i+1],0.5)
+            
+    dNdt = B + D
+    
+    return dNdt   
+
+@jit(nopython=True)
+def get_dNdt_2d_geo_jit(t,NN,V_p,V1_e,V3_e,F_M,NS,THR):       
+  
+    N = np.copy(NN) 
+    N = np.reshape(N,(NS,NS))
+    dNdt = np.zeros(np.shape(N))
+    B_c = np.zeros(np.shape(N)) #np.shape(V_e) (old)
+    M1_c = np.zeros(np.shape(N))
+    M2_c = np.zeros(np.shape(N))
+    v1 = np.zeros(np.shape(N))
+    v2 = np.zeros(np.shape(N))
+    D = np.zeros(np.shape(N))
+    B = np.zeros(np.shape(N))
+    
+    # Loop through all edges
+    # Go from 2 till len()-1 to make sure nothing is collected in the BORDER
+    # This automatically solves border issues. If B_c is 0 in the border, nothing has to be distributed
+    for e1 in range(1, len(V_p[:,0])):
+        for e2 in range(1, len(V_p[0,:])):
+            # Loop through all pivots (twice)
+            for i in range(len(V_p[:,0])):
+                for j in range(len(V_p[0,:])):
+                    # a <= i and b <= j (equal is allowed!) 
+                    for a in range(len(V_p[:,0])): #i+1
+                        for b in range(len(V_p[:,0])): #j+1
+                            # Check if the agglomeration of ij and ab produce an 
+                            # agglomerate inside the current cell 
+                            # Use upper edge as "reference point"
+                            if (V1_e[e1-1] <= V_p[i,0]+V_p[a,0] < V1_e[e1]) and \
+                                (V3_e[e2-1] <= V_p[0,j]+V_p[0,b] < V3_e[e2]):
+                                # if abs(V_p[a,b]+V_p[i,j]-V_p[e1,e2]) < 1e-5*V_p[1,0]:
+                                #     #print(i,a,c,'|',j,b,d)
+                                #     zeta = 1
+                                # else:
+                                #     zeta = 2
+                                zeta = 2    
+                                F = F_M[i,j,a,b]
+                                # Total birthed agglomerates
+                                # e1 and e2 start at 1 (upper edge) --> corresponds to cell "below"
+                                # Use B_c[e1-1, e2-1] (e.g. e1=1, e2=1 corresponds to the first CELL [0,0])
+                                B_c[e1,e2] += F*N[i,j]*N[a,b]/zeta
+                                M1_c[e1,e2] += F*N[i,j]*N[a,b]*(V_p[i,0]+V_p[a,0])/zeta
+                                M2_c[e1,e2] += F*N[i,j]*N[a,b]*(V_p[0,j]+V_p[0,b])/zeta
+     
+                                # Track death 
+                                D[i,j] -= F*N[i,j]*N[a,b]
+                                # D[a,b] -= F*N[i,j]*N[a,b]/zeta
+                                #print(D)
+            # Average volume 
+            if B_c[e1,e2]!=0:
+                v1[e1,e2] = M1_c[e1,e2]/B_c[e1,e2]
+                v2[e1,e2] = M2_c[e1,e2]/B_c[e1,e2]
+                                
+    # 30.01.24 B_c, D and v1 seem correct (judging from first dNdt)
+    # print(B_c)
+    # print(D)
+    # print(v1)
+    
+    # # Assign BIRTH on each pivot
+    for i in range(len(V_p[:,0])):
+        for j in range(len(V_p[0,:])): 
             for p in range(2):
                 for q in range(2):
-                        
                     # Actual modification calculation
-                    Bmod_2D[i,j] = Bmod_2D[i,j] \
-                        + B_2D[i-p,j-q] \
-                            *get_lam_2d_jit(xx_2D[i-p,j-q],yy_2D[i-p,j-q],V1,V3,i,j,"-","-") \
-                            *np.heaviside((-1)**p*(V1[i-p]-xx_2D[i-p,j-q]),0.5) \
-                            *np.heaviside((-1)**q*(V3[j-q]-yy_2D[i-p,j-q]),0.5) \
-                        + B_2D[i-p,j+q] \
-                            *get_lam_2d_jit(xx_2D[i-p,j+q],yy_2D[i-p,j+q],V1,V3,i,j,"-","+") \
-                            *np.heaviside((-1)**p*(V1[i-p]-xx_2D[i-p,j+q]),0.5) \
-                            *np.heaviside((-1)**(q+1)*(V3[j+q]-yy_2D[i-p,j+q]),0.5) \
-                        + B_2D[i+p,j+q] \
-                            *get_lam_2d_jit(xx_2D[i+p,j+q],yy_2D[i+p,j+q],V1,V3,i,j,"+","+") \
-                            *np.heaviside((-1)**(p+1)*(V1[i+p]-xx_2D[i+p,j+q]),0.5) \
-                            *np.heaviside((-1)**(q+1)*(V3[j+q]-yy_2D[i+p,j+q]),0.5) \
-                        + B_2D[i+p,j-q] \
-                            *get_lam_2d_jit(xx_2D[i+p,j-q],yy_2D[i+p,j-q],V1,V3,i,j,"+","-") \
-                            *np.heaviside((-1)**(p+1)*(V1[i+p]-xx_2D[i+p,j-q]),0.5) \
-                            *np.heaviside((-1)**q*(V3[j-q]-yy_2D[i+p,j-q]),0.5)         
-            
-    # Calculate final result and return 
-    DN = Bmod_2D-D_2D
+                    if (i!=0) and (j!=0):
+                        B[i,j] += B_c[i-p,j-q] \
+                            *lam_2d(v1[i-p,j-q],v2[i-p,j-q],V_p[:,0],V_p[0,:],i,j,"-","-") \
+                            *heaviside_jit((-1)**p*(V_p[i-p,0]-v1[i-p,j-q]),0.5) \
+                            *heaviside_jit((-1)**q*(V_p[0,j-q]-v2[i-p,j-q]),0.5) 
+                        ## PRINTS FOR DEBUGGING / TESTING
+                        # if i==2 and j==0:
+                        #     print('B1', B[i,j])
+                    if (i!=0) and (j!=len(V_p[0,:])-1):                           
+                        B[i,j] += B_c[i-p,j+q] \
+                            *lam_2d(v1[i-p,j+q],v2[i-p,j+q],V_p[:,0],V_p[0,:],i,j,"-","+") \
+                            *heaviside_jit((-1)**p*(V_p[i-p,0]-v1[i-p,j+q]),0.5) \
+                            *heaviside_jit((-1)**(q+1)*(V_p[0,j+q]-v2[i-p,j+q]),0.5) 
+                        ## PRINTS FOR DEBUGGING / TESTING
+                        # if i==2 and j==0:
+                        #     print('B2', B[i,j])
+                    if (i!=len(V_p[:,0])-1) and (j!=0):
+                        B[i,j] += B_c[i+p,j-q] \
+                            *lam_2d(v1[i+p,j-q],v2[i+p,j-q],V_p[:,0],V_p[0,:],i,j,"+","-") \
+                            *heaviside_jit((-1)**(p+1)*(V_p[i+p,0]-v1[i+p,j-q]),0.5) \
+                            *heaviside_jit((-1)**q*(V_p[0,j-q]-v2[i+p,j-q]),0.5)
+                        ## PRINTS FOR DEBUGGING / TESTING
+                        # if i==2 and j==0:
+                        #     print('B3', B[i,j])
+                    if (i!=len(V_p[:,0])-1) and (j!=len(V_p[0,:])-1): 
+                        B[i,j] += B_c[i+p,j+q] \
+                            *lam_2d(v1[i+p,j+q],v2[i+p,j+q],V_p[:,0],V_p[0,:],i,j,"+","+") \
+                            *heaviside_jit((-1)**(p+1)*(V_p[i+p,0]-v1[i+p,j+q]),0.5) \
+                            *heaviside_jit((-1)**(q+1)*(V_p[0,j+q]-v2[i+p,j+q]),0.5)
+                        ## PRINTS FOR DEBUGGING / TESTING
+                        # if i==2 and j==0:
+                        #     print('B4', B[i,j])
+                            
+    # Combine birth and death
+    dNdt = B + D
     
-    # Due to numerical issues it is necessary to define a threshold for DN
-    for i in range(NS+3): 
-        for j in range(NS+3):
-            if abs(DN[i,j])<THR: 
-                #print('THR')
-                DN[i,j] = 0
-    
-    return DN.reshape(-1) 
+    return dNdt.reshape(-1)  
 
 @jit(nopython=True)
 def get_dNdt_3d_geo_jit(t,NN,V,V1,V2,V3,F_M,NS,THR):       
@@ -2014,12 +1901,12 @@ def get_dNdt_1d_uni_jit(t,N,V,F_M,B_M,NS,THR):
     
     # Go through all possible combinations to calculate B and D matrix
     # First loop: All indices of DN 
-    for i in range(1,NS+2):
+    for i in range(0,NS):
             
             # Second loop: All agglomeration partners that are smaller or equally sized
-            for a in range(1,i+1):
+            for a in range(0,i+1):
                 # Corresponding partner that i is produced (b = i-a + 1, because border) 
-                for b in range(1,i+1):              
+                for b in range(0,i+1):              
                                         
                     # Only calculate if result of (a)+(b) yields agglomerate in 
                     # class i with respect to total volume
@@ -2029,7 +1916,7 @@ def get_dNdt_1d_uni_jit(t,N,V,F_M,B_M,NS,THR):
                         # Get corresponding F from F_M. Attention: F_M is defined without -1 borders
                         # and is a (NS+1)^2 matrix. a and b represent "real" indices of the N or V
                         # matrix --> It is necessary to subtract 1 in order to get the right entry
-                        F = F_M[a-1,b-1]
+                        F = F_M[a,b]
                         
                         # Calculate raw birth term as well as volumetric fluxes M.
                         # Division by 2 resulting from loop definition (don't count processes double)
@@ -2059,7 +1946,7 @@ def get_dNdt_1d_uni_jit(t,N,V,F_M,B_M,NS,THR):
 def get_dNdt_2d_uni_jit(t,NN,V,V1,V3,F_M,NS,THR):       
   
     N = NN.copy() 
-    N = N.reshape((NS+3,NS+3))
+    N = N.reshape((NS,NS))
     
     # Initialize DN with zeros
     DN = np.zeros(np.shape(N))
@@ -2069,15 +1956,15 @@ def get_dNdt_2d_uni_jit(t,NN,V,V1,V3,F_M,NS,THR):
     
     # Go through all possible combinations to calculate B and D matrix
     # First loop: All indices of DN to sum and reference actual concentration change
-    for i in range(1,NS+2):
-        for j in range(1,NS+2):
+    for i in range(0,NS):
+        for j in range(0,NS):
             
             # Second loop: All agglomeration partners 1 [a,c] and 2 [b,d] 
             # with index (<=i,<=j)
-            for a in range(1,i+1):
-                for c in range(1,j+1):
-                    for b in range(1,i+1): 
-                        for d in range(1,j+1): 
+            for a in range(0,i+1):
+                for c in range(0,j+1):
+                    for b in range(0,i+1): 
+                        for d in range(0,j+1): 
                                             
                             # Only calculate if result of (a,c)+(b,d) yields agglomerate in 
                             # range(i-1:i+1,j-1:j+1) with respect to total volume
@@ -2087,7 +1974,7 @@ def get_dNdt_2d_uni_jit(t,NN,V,V1,V3,F_M,NS,THR):
                                 # Get corresponding F from F_M. Attention: F_M is defined without -1 borders
                                 # and is a (NS+1)^4 matrix. a-d represent "real" indices of the N or V
                                 # matrix --> It is necessary to subtract 1 in order to get the right entry
-                                F = F_M[a-1,c-1,b-1,d-1]
+                                F = F_M[a,c,b,d]
                                 
                                 # Calculate raw birth term
                                 # Division by 2 resulting from loop definition (don't count processes double)
@@ -2102,8 +1989,8 @@ def get_dNdt_2d_uni_jit(t,NN,V,V1,V3,F_M,NS,THR):
     DN = B-D
     
     # Due to numerical issues it is necessary to define a threshold for DN
-    for i in range(NS+3): 
-        for j in range(NS+3):
+    for i in range(NS): 
+        for j in range(NS):
             if abs(DN[i,j])<THR: DN[i,j] = 0
     
     return DN.reshape(-1) 
@@ -2164,27 +2051,16 @@ def get_dNdt_3d_uni_jit(t,NN,V,V1,V2,V3,F_M,NS,THR):
     return DN.reshape(-1) 
 
 @jit(nopython=True)
-def get_lam_1d_jit(x,Vx,i,m1):
-
-    if m1 == "+":
-        if (Vx[i]-Vx[i+1]) == 0:
-            lam = 0
-        else:
-            lam = (x-Vx[i+1])/(Vx[i]-Vx[i+1])
-
+def lam(v, V_p, i, case):
+    if case == 'm':
+        return (v-V_p[i-1])/(V_p[i]-V_p[i-1])
+    elif case == 'p':        
+        return (v-V_p[i+1])/(V_p[i]-V_p[i+1])
     else:
-        if (Vx[i]-Vx[i-1]) == 0:
-            lam = 0
-        else:
-            lam = (x-Vx[i-1])/(Vx[i]-Vx[i-1])                
-                
-    if math.isnan(lam):
-        lam = 0         
-    
-    return lam
-    
+        print('WRONG CASE FOR LAM')
+        
 @jit(nopython=True)
-def get_lam_2d_jit(x,y,Vx,Vy,i,j,m1,m2):
+def lam_2d(x,y,Vx,Vy,i,j,m1,m2):
 
     if m1 == "+":
         if m2 == "+":
@@ -2199,9 +2075,19 @@ def get_lam_2d_jit(x,y,Vx,Vy,i,j,m1,m2):
                 
                 
     if math.isnan(lam):
-        lam = 0         
+        lam = 0 
+        print('lam is NaN!')        
     
-    return lam
+    return lam 
+
+@jit(nopython=True)
+def heaviside_jit(x1, x2):
+    if x1 < 0:
+        return 0.0
+    elif x1 > 0:
+        return 1.0
+    else:
+        return x2
 
 @jit(nopython=True)
 def get_lam_3d(x,y,z,Vx,Vy,Vz,i,j,k,m1,m2,m3):
@@ -2249,7 +2135,7 @@ def calc_F_M_2D_jit(NS,disc,COLEVAL,CORR_BETA,G,R,X1,X3,EFFEVAL,alpha_prim,SIZEE
     # Initialize F_M Matrix. NOTE: F_M is defined without the border around the calculation grid
     # as e.g. N or V are (saving memory and calculations). 
     # Thus, F_M is (NS+1)^4 instead of (NS+3)^4. As reference, V is (NS+3)^2.
-    F_M = np.zeros((NS+1,NS+1,NS+1,NS+1))
+    F_M = np.zeros((NS,NS,NS,NS))
     # alpha = np.zeros((NS+1,NS+1,NS+1,NS+1))
     # beta = np.zeros((NS+1,NS+1,NS+1,NS+1))
     
@@ -2262,7 +2148,7 @@ def calc_F_M_2D_jit(NS,disc,COLEVAL,CORR_BETA,G,R,X1,X3,EFFEVAL,alpha_prim,SIZEE
         
         # Calculate the corresponding agglomeration efficiency
         # Add one to indices to account for borders
-        a = idx[0]+1; b = idx[1]+1; i = idx[2]+1; j = idx[3]+1
+        a = idx[0]; b = idx[1]; i = idx[2]; j = idx[3]
         
         # Calculate collision frequency beta depending on COLEVAL
         if COLEVAL == 1:
