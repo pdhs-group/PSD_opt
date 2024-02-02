@@ -66,7 +66,7 @@ class population():
                                            method='RK23',first_step=0.1,rtol=1e-1)
             
             # Reshape and save result to N and t_vec
-            self.N = self.RES.y.reshape((self.NS,self.NS,len(self.RES.t)))
+            self.N = self.RES.y.reshape((self.NS+1,self.NS+1,len(self.RES.t)))
             self.t_vec = self.RES.t
         
         elif self.dim == 3:
@@ -153,7 +153,8 @@ class population():
         elif self.dim == 2:
             
             # Initialize V1-V2 
-            self.V1 = np.zeros(self.NS)
+            self.V1 = np.zeros(self.NS+1)
+            self.V1[0] = -1
             # self.V1[1] = 0
             self.V3 = np.copy(self.V1) 
             
@@ -163,9 +164,9 @@ class population():
                     self.V3[i] = i*4*math.pi*self.R03**3/3
             
             if self.disc == 'geo': 
-                self.V1_e = np.zeros(self.NS+1)-1
-                self.V3_e = np.zeros(self.NS+1)-1
-                for i in range(len(self.V1)-1):
+                self.V1_e = np.zeros(self.NS+2)-1
+                self.V3_e = np.zeros(self.NS+2)-1
+                for i in range(1, len(self.V1)-1):
                     self.V1[i+1] = self.S**(i)*4*math.pi*self.R01**3/3
                     self.V3[i+1] = self.S**(i)*4*math.pi*self.R03**3/3
                     self.V1_e[i+1] = (self.V1[i] + self.V1[i+1]) / 2
@@ -177,22 +178,22 @@ class population():
             A3 = 3*self.V3/self.R03
             
             # Initialize V, R and ratio matrices
-            self.V = np.zeros((self.NS,self.NS))
+            self.V = np.zeros((self.NS+1,self.NS+1))
             self.R = np.copy(self.V)
             self.X1_vol = np.copy(self.V); self.X1_a=np.copy(self.V) 
             self.X3_vol = np.copy(self.V); self.X3_a=np.copy(self.V)
             
             # Write V1 and V3 in respective "column" of V
-            self.V[:,0] = self.V1 
-            self.V[0,:] = self.V3 
+            self.V[:,1] = self.V1 
+            self.V[1,:] = self.V3 
             
             # Calculate remaining entries of V and other matrices
             # range(1,X) excludes X itself -> self.NS+2
-            for i in range(len(self.V1)):
-                for j in range(len(self.V3)):
+            for i in range(1, len(self.V1)):
+                for j in range(1, len(self.V3)):
                     self.V[i,j] = self.V1[i]+self.V3[j]
                     self.R[i,j] = (self.V[i,j]*3/(4*math.pi))**(1/3)
-                    if i==0 and j==0:
+                    if i==1 and j==1:
                         self.X1_vol[i,j] = 0
                         self.X3_vol[i,j] = 0
                         self.X1_a[i,j] = 0
@@ -275,13 +276,13 @@ class population():
         
         # 2-D case
         elif self.dim == 2:
-            self.N = np.zeros((self.NS,self.NS,self.NUM_T+1))
+            self.N = np.zeros((self.NS+1,self.NS+1,self.NUM_T+1))
             if self.USE_PSD:
-                self.N[1:,1,0] = self.new_initialize_psd(2*self.R[1:,0],self.DIST1,self.V01)
-                self.N[1,1:,0] = self.new_initialize_psd(2*self.R[0,1:],self.DIST3,self.V03)
+                self.N[2:,1,0] = self.new_initialize_psd(2*self.R[2:,1],self.DIST1,self.V01)
+                self.N[1,2:,0] = self.new_initialize_psd(2*self.R[1,2:],self.DIST3,self.V03)
             else:
-                self.N[1,0,0] = self.N01
-                self.N[0,1,0] = self.N03
+                self.N[2,1,0] = self.N01
+                self.N[1,2,0] = self.N03
         
         # 3-D case
         elif self.dim == 3:
@@ -381,7 +382,7 @@ class population():
                 # Initialize F_M Matrix. NOTE: F_M is defined without the border around the calculation grid
                 # as e.g. N or V are (saving memory and calculations). 
                 # Thus, F_M is (NS+1)^4 instead of (NS+3)^4. As reference, V is (NS+3)^2.
-                self.F_M = np.zeros((self.NS,self.NS,self.NS,self.NS))
+                self.F_M = np.zeros((self.NS+1,self.NS+1,self.NS+1,self.NS+1))
                 
                 # Go through all agglomeration partners 1 [a,b] and 2 [i,j]
                 # The current index tuple idx stores them as (a,b,i,j)
@@ -392,7 +393,7 @@ class population():
                     
                     # Calculate the corresponding agglomeration efficiency
                     # Add one to indices to account for borders
-                    a = idx[0]; b = idx[1]; i = idx[2]; j = idx[3]
+                    a = idx[0]+1; b = idx[1]+1; i = idx[2]+1; j = idx[3]+1
                     
                     # Calculate collision frequency beta depending on COLEVAL
                     if self.COLEVAL == 1:
@@ -1662,7 +1663,7 @@ def get_dNdt_1d_geo_jit(t,N,V_p,V_e, F_M,B_M,NS,THR):
 def get_dNdt_2d_geo_jit(t,NN,V_p,V1_e,V3_e,F_M,NS,THR):       
   
     N = np.copy(NN) 
-    N = np.reshape(N,(NS,NS))
+    N = np.reshape(N,(NS+1,NS+1))
     dNdt = np.zeros(np.shape(N))
     B_c = np.zeros(np.shape(N)) #np.shape(V_e) (old)
     M1_c = np.zeros(np.shape(N))
@@ -1675,41 +1676,42 @@ def get_dNdt_2d_geo_jit(t,NN,V_p,V1_e,V3_e,F_M,NS,THR):
     # Loop through all edges
     # Go from 2 till len()-1 to make sure nothing is collected in the BORDER
     # This automatically solves border issues. If B_c is 0 in the border, nothing has to be distributed
-    for e1 in range(1, len(V_p[:,0])):
-        for e2 in range(1, len(V_p[0,:])):
+    for e1 in range(2, len(V1_e)-1):
+        for e2 in range(2, len(V3_e)-1):
             # Loop through all pivots (twice)
-            for i in range(len(V_p[:,0])):
-                for j in range(len(V_p[0,:])):
+            for i in range(1,len(V_p[:,0])):
+                for j in range(1,len(V_p[0,:])):
                     # a <= i and b <= j (equal is allowed!) 
-                    for a in range(len(V_p[:,0])): #i+1
-                        for b in range(len(V_p[:,0])): #j+1
+                    for a in range(1,len(V_p[:,0])): #i+1
+                        for b in range(1,len(V_p[:,0])): #j+1
                             # Check if the agglomeration of ij and ab produce an 
                             # agglomerate inside the current cell 
                             # Use upper edge as "reference point"
-                            if (V1_e[e1-1] <= V_p[i,0]+V_p[a,0] < V1_e[e1]) and \
-                                (V3_e[e2-1] <= V_p[0,j]+V_p[0,b] < V3_e[e2]):
+                            if (V1_e[e1-1] <= V_p[i,1]+V_p[a,1] < V1_e[e1]) and \
+                                (V3_e[e2-1] <= V_p[1,j]+V_p[1,b] < V3_e[e2]):
                                 # if abs(V_p[a,b]+V_p[i,j]-V_p[e1,e2]) < 1e-5*V_p[1,0]:
-                                #     #print(i,a,c,'|',j,b,d)
+
                                 #     zeta = 1
                                 # else:
                                 #     zeta = 2
                                 zeta = 2    
-                                F = F_M[i,j,a,b]
+                                F = F_M[i-1,j-1,a-1,b-1]
                                 # Total birthed agglomerates
                                 # e1 and e2 start at 1 (upper edge) --> corresponds to cell "below"
                                 # Use B_c[e1-1, e2-1] (e.g. e1=1, e2=1 corresponds to the first CELL [0,0])
-                                B_c[e1,e2] += F*N[i,j]*N[a,b]/zeta
-                                M1_c[e1,e2] += F*N[i,j]*N[a,b]*(V_p[i,0]+V_p[a,0])/zeta
-                                M2_c[e1,e2] += F*N[i,j]*N[a,b]*(V_p[0,j]+V_p[0,b])/zeta
-     
+                                B_c[e1-1,e2-1] += F*N[i,j]*N[a,b]/zeta
+                                M1_c[e1-1,e2-1] += F*N[i,j]*N[a,b]*(V_p[i,1]+V_p[a,1])/zeta
+                                M2_c[e1-1,e2-1] += F*N[i,j]*N[a,b]*(V_p[1,j]+V_p[1,b])/zeta
+                                                                
+                                # Average volume 
+                                if B_c[e1-1,e2-1]!=0:
+                                    v1[e1-1,e2-1] = M1_c[e1-1,e2-1]/B_c[e1-1,e2-1]
+                                    v2[e1-1,e2-1] = M2_c[e1-1,e2-1]/B_c[e1-1,e2-1]
+                                    
                                 # Track death 
-                                D[i,j] -= F*N[i,j]*N[a,b]
-                                # D[a,b] -= F*N[i,j]*N[a,b]/zeta
+                                D[i,j] -= F*N[i,j]*N[a,b]/zeta
+                                D[a,b] -= F*N[i,j]*N[a,b]/zeta
                                 #print(D)
-            # Average volume 
-            if B_c[e1,e2]!=0:
-                v1[e1,e2] = M1_c[e1,e2]/B_c[e1,e2]
-                v2[e1,e2] = M2_c[e1,e2]/B_c[e1,e2]
                                 
     # 30.01.24 B_c, D and v1 seem correct (judging from first dNdt)
     # print(B_c)
@@ -1717,44 +1719,51 @@ def get_dNdt_2d_geo_jit(t,NN,V_p,V1_e,V3_e,F_M,NS,THR):
     # print(v1)
     
     # # Assign BIRTH on each pivot
-    for i in range(len(V_p[:,0])):
-        for j in range(len(V_p[0,:])): 
+    for i in range(1,len(V_p[:,0])):
+        for j in range(1,len(V_p[0,:])): 
             for p in range(2):
                 for q in range(2):
                     # Actual modification calculation
                     if (i!=0) and (j!=0):
                         B[i,j] += B_c[i-p,j-q] \
-                            *lam_2d(v1[i-p,j-q],v2[i-p,j-q],V_p[:,0],V_p[0,:],i,j,"-","-") \
-                            *heaviside_jit((-1)**p*(V_p[i-p,0]-v1[i-p,j-q]),0.5) \
-                            *heaviside_jit((-1)**q*(V_p[0,j-q]-v2[i-p,j-q]),0.5) 
+                            *lam_2d(v1[i-p,j-q],v2[i-p,j-q],V_p[:,1],V_p[1,:],i,j,"-","-") \
+                            *heaviside_jit((-1)**p*(V_p[i-p,1]-v1[i-p,j-q]),0.5) \
+                            *heaviside_jit((-1)**q*(V_p[1,j-q]-v2[i-p,j-q]),0.5) 
                         ## PRINTS FOR DEBUGGING / TESTING
                         # if i==2 and j==0:
                         #     print('B1', B[i,j])
                     if (i!=0) and (j!=len(V_p[0,:])-1):                           
                         B[i,j] += B_c[i-p,j+q] \
-                            *lam_2d(v1[i-p,j+q],v2[i-p,j+q],V_p[:,0],V_p[0,:],i,j,"-","+") \
-                            *heaviside_jit((-1)**p*(V_p[i-p,0]-v1[i-p,j+q]),0.5) \
-                            *heaviside_jit((-1)**(q+1)*(V_p[0,j+q]-v2[i-p,j+q]),0.5) 
+                            *lam_2d(v1[i-p,j+q],v2[i-p,j+q],V_p[:,1],V_p[1,:],i,j,"-","+") \
+                            *heaviside_jit((-1)**p*(V_p[i-p,1]-v1[i-p,j+q]),0.5) \
+                            *heaviside_jit((-1)**(q+1)*(V_p[1,j+q]-v2[i-p,j+q]),0.5) 
                         ## PRINTS FOR DEBUGGING / TESTING
                         # if i==2 and j==0:
                         #     print('B2', B[i,j])
                     if (i!=len(V_p[:,0])-1) and (j!=0):
                         B[i,j] += B_c[i+p,j-q] \
-                            *lam_2d(v1[i+p,j-q],v2[i+p,j-q],V_p[:,0],V_p[0,:],i,j,"+","-") \
-                            *heaviside_jit((-1)**(p+1)*(V_p[i+p,0]-v1[i+p,j-q]),0.5) \
-                            *heaviside_jit((-1)**q*(V_p[0,j-q]-v2[i+p,j-q]),0.5)
+                            *lam_2d(v1[i+p,j-q],v2[i+p,j-q],V_p[:,1],V_p[1,:],i,j,"+","-") \
+                            *heaviside_jit((-1)**(p+1)*(V_p[i+p,1]-v1[i+p,j-q]),0.5) \
+                            *heaviside_jit((-1)**q*(V_p[1,j-q]-v2[i+p,j-q]),0.5)
                         ## PRINTS FOR DEBUGGING / TESTING
                         # if i==2 and j==0:
                         #     print('B3', B[i,j])
                     if (i!=len(V_p[:,0])-1) and (j!=len(V_p[0,:])-1): 
                         B[i,j] += B_c[i+p,j+q] \
-                            *lam_2d(v1[i+p,j+q],v2[i+p,j+q],V_p[:,0],V_p[0,:],i,j,"+","+") \
-                            *heaviside_jit((-1)**(p+1)*(V_p[i+p,0]-v1[i+p,j+q]),0.5) \
-                            *heaviside_jit((-1)**(q+1)*(V_p[0,j+q]-v2[i+p,j+q]),0.5)
-                        ## PRINTS FOR DEBUGGING / TESTING
-                        # if i==2 and j==0:
-                        #     print('B4', B[i,j])
+                            *lam_2d(v1[i+p,j+q],v2[i+p,j+q],V_p[:,1],V_p[1,:],i,j,"+","+") \
+                            *heaviside_jit((-1)**(p+1)*(V_p[i+p,1]-v1[i+p,j+q]),0.5) \
+                            *heaviside_jit((-1)**(q+1)*(V_p[1,j+q]-v2[i+p,j+q]),0.5)
                             
+                        ## PRINTS FOR DEBUGGING / TESTING
+                        # if i==3 and j==0:
+                        #     print('B4', B[i,j])
+                        # if i==3 and j==1 and p==1 and q==0:
+                        #     print(f'i={i}, j={j}, p={p}, q={q} (transfer from B_c[{i+p},{j+q}]')
+                        #     print('B_c', B_c[i+p,j+q])                            
+                        #     print('lam', lam_2d(v1[i+p,j+q],v2[i+p,j+q],V_p[:,1],V_p[1,:],i,j,"+","+"))
+                        #     print('heavi 1',heaviside_jit((-1)**(p+1)*(V_p[i+p,1]-v1[i+p,j+q]),0.5))
+                        #     print('heavi 2',heaviside_jit((-1)**(q+1)*(V_p[1,j+q]-v2[i+p,j+q]),0.5))
+    
     # Combine birth and death
     dNdt = B + D
     
@@ -2148,7 +2157,7 @@ def calc_F_M_2D_jit(NS,disc,COLEVAL,CORR_BETA,G,R,X1,X3,EFFEVAL,alpha_prim,SIZEE
         
         # Calculate the corresponding agglomeration efficiency
         # Add one to indices to account for borders
-        a = idx[0]; b = idx[1]; i = idx[2]; j = idx[3]
+        a = idx[0]+1; b = idx[1]+1; i = idx[2]+1; j = idx[3]+1
         
         # Calculate collision frequency beta depending on COLEVAL
         if COLEVAL == 1:

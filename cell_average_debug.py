@@ -350,7 +350,7 @@ if dim == 2:
     N = np.zeros((NS,NS,len(t)))#np.zeros((NS,NS,len(t)))
     N[0,1,0] = 0.3
     N[1,0,0] = 0.3
-    F_M_tem=1e-15
+    F_M_tem=1
     F = np.zeros((NS,NS,NS,NS))
     for idx, tmp in np.ndenumerate(F):
         if idx[0]+idx[1]==0 or idx[2]+idx[3]==0:
