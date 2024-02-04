@@ -20,8 +20,8 @@ pt.plot_init(mrksze=8,lnewdth=1)
     
 #%% PARAM
 t = np.arange(0, 601, 60, dtype=float)
-NS = 12
-S = 2
+NS = 6
+S = 1.5
 R01, R02 = 1, 1
 V01, V02 = 1, 1
 dim = 2

@@ -167,8 +167,8 @@ class population():
                 self.V1_e = np.zeros(self.NS+2)-1
                 self.V3_e = np.zeros(self.NS+2)-1
                 for i in range(1, len(self.V1)-1):
-                    self.V1[i+1] = self.S**(i)*4*math.pi*self.R01**3/3
-                    self.V3[i+1] = self.S**(i)*4*math.pi*self.R03**3/3
+                    self.V1[i+1] = self.S**(i-1)*4*math.pi*self.R01**3/3
+                    self.V3[i+1] = self.S**(i-1)*4*math.pi*self.R03**3/3
                     self.V1_e[i+1] = (self.V1[i] + self.V1[i+1]) / 2
                     self.V3_e[i+1] = (self.V3[i] + self.V3[i+1]) / 2
                 self.V1_e[-1] = self.V1[-1] * (1 + self.S) / 2 

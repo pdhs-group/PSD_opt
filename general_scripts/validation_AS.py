@@ -717,7 +717,7 @@ if __name__ == "__main__":
     #CASE = '2D_ortho_mono_ccm'
     
     ### General parameters
-    t = np.arange(0, 601, 60, dtype=float)     # Time array [s]
+    t = np.arange(0, 600, 60, dtype=float)     # Time array [s]
     c = 0.1e-2*1e-2                 # Volume concentration [-]
     x = 1e-6                        # Particle diameter [m]
     beta0 = 1e-16                   # Collision frequency parameter [m^3/s]
@@ -727,8 +727,8 @@ if __name__ == "__main__":
     
     ### PBE Parameters
     grid = 'geo'
-    NS = 10
-    # NS2 = 15
+    NS = 8
+    NS2 = 15
     #NS2 = 50
     
     S = 1.5

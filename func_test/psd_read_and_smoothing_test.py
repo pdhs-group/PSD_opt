@@ -15,13 +15,19 @@ import opt_config as conf
 import matplotlib.pyplot as plt
 import plotter.plotter as pt   
 
-def visualize_distribution_smoothing(Opt, pop, x_uni, q3, Q3, ax=None,fig=None,
+def visualize_distribution_smoothing(Opt, pop, x_uni, q3, Q3, sumvol_uni, ax=None,fig=None,
                            close_all=False,clr='k',scl_a4=1,figsze=[12.8,6.4*1.5]):
-    x_uni *= 1e6
+    v_uni = find.algo.calc_v_uni(pop)
+    sumN_uni_sm = np.zeros(len(sumvol_uni))
     ## smoothing the results
-    kde = find.algo.KDE_fit(x_uni, q3, bandwidth='scott', kernel_func='epanechnikov')
-    sumN_uni = find.algo.KDE_score(kde, x_uni)
-    _, q3_sm, Q3_sm, _, _,_ = find.algo.re_cal_distribution(x_uni, sumN_uni)
+    kde = find.algo.KDE_fit(x_uni, sumvol_uni, bandwidth='scott', kernel_func='epanechnikov')
+    q3_sm = find.algo.KDE_score(kde, x_uni)
+    Q3_sm = find.algo.calc_Q3(x_uni,q3_sm)
+    sumvol_uni_sm = find.algo.calc_sum_uni(Q3_sm, sumvol_uni.sum())
+    sumN_uni_sm[1:] = sumvol_uni_sm[1:] / v_uni
+    
+    noised_data = np.random.normal(1, 0.2, len(sumvol_uni))
+    sumN_uni_noise = sumN_uni_sm * noised_data
     
     pt.plot_init(scl_a4=scl_a4,figsze=figsze,lnewdth=0.8,mrksze=5,use_locale=True,scl=1.2)
     fig=plt.figure()    
@@ -29,25 +35,32 @@ def visualize_distribution_smoothing(Opt, pop, x_uni, q3, Q3, ax=None,fig=None,
     axQ3=fig.add_subplot(1,2,2) 
     
     # axq3, fig = pt.plot_data(x_uni, q3/np.max(q3), fig=fig, ax=axq3,
-    #                        xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
-    #                        ylbl='number distribution of agglomerates $q3$ / $-$',
-    #                        lbl='q3',clr='b',mrk='o')
+    #                         xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
+    #                         ylbl='number distribution of agglomerates $q3$ / $-$',
+    #                         lbl='q3',clr='b',mrk='o')
     # axq3, fig = pt.plot_data(x_uni, q3_sm/np.max(q3_sm), fig=fig, ax=axq3,
-    #                        lbl='q3_sm',clr='r',mrk='v')
+    #                         lbl='q3_sm',clr='r',mrk='v')
     
-    axq3, fig = pt.plot_data(x_uni, q3, fig=fig, ax=axq3,
-                            xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
-                            ylbl='number distribution of agglomerates $q3$ / $-$',
-                            lbl='q3',clr='b',mrk='o')
-    axq3, fig = pt.plot_data(x_uni, q3_sm, fig=fig, ax=axq3,
-                            lbl='q3_sm',clr='r',mrk='v')
+    # axq3, fig = pt.plot_data(x_uni, q3, fig=fig, ax=axq3,
+    #                         xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
+    #                         ylbl='number distribution of agglomerates $q3$ / $-$',
+    #                         lbl='q3',clr='b',mrk='o')
+    # axq3, fig = pt.plot_data(x_uni, q3_sm, fig=fig, ax=axq3,
+    #                         lbl='q3_sm',clr='r',mrk='v')
     
     axQ3, fig = pt.plot_data(x_uni, Q3, fig=fig, ax=axQ3,
-                           xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
-                           ylbl='accumulated number distribution of agglomerates $Q3$ / $-$',
-                           lbl='Q3',clr='b',mrk='o')
+                            xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
+                            ylbl='accumulated number distribution of agglomerates $Q3$ / $-$',
+                            lbl='Q3',clr='b',mrk='o')
     axQ3, fig = pt.plot_data(x_uni, Q3_sm, fig=fig, ax=axQ3,
-                           lbl='Q3_sm',clr='r',mrk='v')
+                            lbl='Q3_sm',clr='r',mrk='v')
+    
+    axq3, fig = pt.plot_data(x_uni, sumN_uni_sm, fig=fig, ax=axq3,
+                            xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
+                            ylbl='number density of agglomerates $q3$ / $-$',
+                            lbl='data_origin',clr='r',mrk='o')
+    axq3, fig = pt.plot_data(x_uni, sumN_uni_noise, fig=fig, ax=axq3,
+                            lbl='data_noised',clr='k',mrk='v')
 
     axq3.grid('minor')
     axQ3.grid('minor')
@@ -165,22 +178,22 @@ if __name__ == '__main__':
     find.algo.corr_beta = 15
     find.algo.alpha_prim = np.array([0.5, 1, 0.5])
     ## Calculate PBE direkt with psd-data, result is raw exp-data
-    find.algo.cal_all_pop(find.algo.corr_beta, find.algo.alpha_prim)
+    find.algo.calc_all_pop(find.algo.corr_beta, find.algo.alpha_prim)
     
     # ## Test the influence of Total number concentration to q3
     # find.algo.p_M.V01 *= 10
     # find.algo.cal_pop(find.algo.p_M, find.algo.corr_beta, find.algo.alpha_prim[0])
     
-    x_uni, q3, Q3, _, _, _ = find.algo.p.return_num_distribution(t=2)
-    x_uni_NM, q3_NM, Q3_NM, _, _, _ = find.algo.p_NM.return_num_distribution(t=2)
-    x_uni_M, q3_M, Q3_M, _, _, _ = find.algo.p_M.return_num_distribution(t=2)
-    v_uni = find.algo.cal_v_uni(find.algo.p)
-    v_uni_NM = find.algo.cal_v_uni(find.algo.p_NM)
-    v_uni_M = find.algo.cal_v_uni(find.algo.p_M)
+    x_uni, q3, Q3, sumvol_uni = find.algo.p.return_distribution(t=-1, flag='x_uni, q3, Q3, sumvol_uni')
+    x_uni_NM, q3_NM, Q3_NM, sumvol_uni_NM = find.algo.p_NM.return_distribution(t=-1, flag='x_uni, q3, Q3, sumvol_uni')
+    x_uni_M, q3_M, Q3_M, sumvol_uni_M = find.algo.p_M.return_distribution(t=-1, flag='x_uni, q3, Q3, sumvol_uni')
+    v_uni = find.algo.calc_v_uni(find.algo.p)
+    v_uni_NM = find.algo.calc_v_uni(find.algo.p_NM)
+    v_uni_M = find.algo.calc_v_uni(find.algo.p_M)
     
-    visualize_distribution_smoothing(find, find.algo.p, x_uni, q3, Q3)
-    visualize_distribution_smoothing(find, find.algo.p_NM, x_uni_NM, q3_NM, Q3_NM)
-    visualize_distribution_smoothing(find, find.algo.p_M, x_uni_M, q3_M, Q3_M)
+    visualize_distribution_smoothing(find, find.algo.p, x_uni, q3, Q3, sumvol_uni)
+    visualize_distribution_smoothing(find, find.algo.p_NM, x_uni_NM, q3_NM, Q3_NM, sumvol_uni_NM)
+    visualize_distribution_smoothing(find, find.algo.p_M, x_uni_M, q3_M, Q3_M, sumvol_uni_M)
     # visualize_distribution_smoothing_v(find, find.algo.p, v_uni, q3, Q3)
     # visualize_distribution_smoothing_v(find, find.algo.p_NM, v_uni_NM, q3_NM, Q3_NM)
     # visualize_distribution_smoothing_v(find, find.algo.p_M, v_uni_M, q3_M, Q3_M)
