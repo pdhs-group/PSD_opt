@@ -402,7 +402,7 @@ class opt_algo():
                                      self.calc_Q3(x_uni, sum_uni=sum_uni_slice), 0, sum_uni)
             q3_new = np.apply_along_axis(lambda Q3_slice: 
                                           self.calc_q3(Q3_slice, x_uni), 0, Q3_new)
-
+        
         dim = q3_new.shape[1]
         x_10_new = np.zeros(dim)
         x_50_new = np.zeros(dim)
