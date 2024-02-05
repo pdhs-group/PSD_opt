@@ -727,7 +727,7 @@ if __name__ == "__main__":
     
     ### PBE Parameters
     grid = 'geo'
-    NS = 5
+    NS = 8
     NS2 = 15
     #NS2 = 50
     

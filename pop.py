@@ -1664,30 +1664,39 @@ def get_dNdt_2d_geo_jit(t,NN,V_p,V1_e,V3_e,F_M,NS,THR):
     N = np.copy(NN) 
     N = np.reshape(N,(NS,NS))
     dNdt = np.zeros(np.shape(N))
-    B_c = np.zeros(np.shape(N)) #np.shape(V_e) (old)
-    M1_c = np.zeros(np.shape(N))
-    M2_c = np.zeros(np.shape(N))
-    v1 = np.zeros(np.shape(N))
-    v2 = np.zeros(np.shape(N))
     D = np.zeros(np.shape(N))
-    B = np.zeros(np.shape(N))
+    # shape_mit_boundary = tuple(dim + 1 for dim in N.shape)
+    shape_mit_boundary = (NS+1, NS+1)
+    B_c = np.zeros(shape_mit_boundary) #np.shape(V_e) (old)
+    B = np.zeros(shape_mit_boundary)
+    M1_c = np.zeros(shape_mit_boundary)
+    M2_c = np.zeros(shape_mit_boundary)
+    v1 = np.zeros(shape_mit_boundary)
+    v2 = np.zeros(shape_mit_boundary)
+    V_p_tem = np.zeros(shape_mit_boundary)
+    
+    V_p_tem[1:,0] = - V_p[:,0]-1
+    V_p_tem[0,1:] = - V_p[0,:]-1
+    V_p_tem[1:, 1:] = V_p
+    V_p = V_p_tem
+    
     
     # Loop through all edges
     # Go from 2 till len()-1 to make sure nothing is collected in the BORDER
     # This automatically solves border issues. If B_c is 0 in the border, nothing has to be distributed
-    for e1 in range(1, len(V_p[:,0])):
-        for e2 in range(1, len(V_p[0,:])):
+    for e1 in range(1, len(V_p[:,0])-1):
+        for e2 in range(1, len(V_p[0,:])-1):
             # Loop through all pivots (twice)
-            for i in range(len(V_p[:,0])):
-                for j in range(len(V_p[0,:])):
+            for i in range(len(V_p[:,0])-1):
+                for j in range(len(V_p[0,:])-1):
                     # a <= i and b <= j (equal is allowed!) 
-                    for a in range(len(V_p[:,0])): #i+1
-                        for b in range(len(V_p[:,0])): #j+1
+                    for a in range(len(V_p[:,0])-1): #i+1
+                        for b in range(len(V_p[:,0])-1): #j+1
                             # Check if the agglomeration of ij and ab produce an 
                             # agglomerate inside the current cell 
                             # Use upper edge as "reference point"
-                            if (V1_e[e1-1] <= V_p[i,0]+V_p[a,0] < V1_e[e1]) and \
-                                (V3_e[e2-1] <= V_p[0,j]+V_p[0,b] < V3_e[e2]):
+                            if (V1_e[e1-1] <= V_p[i+1,1]+V_p[a+1,1] < V1_e[e1]) and \
+                                (V3_e[e2-1] <= V_p[1,j+1]+V_p[1,b+1] < V3_e[e2]):
                                 # if abs(V_p[a,b]+V_p[i,j]-V_p[e1,e2]) < 1e-5*V_p[1,0]:
                                 #     #print(i,a,c,'|',j,b,d)
                                 #     zeta = 1
@@ -1699,8 +1708,8 @@ def get_dNdt_2d_geo_jit(t,NN,V_p,V1_e,V3_e,F_M,NS,THR):
                                 # e1 and e2 start at 1 (upper edge) --> corresponds to cell "below"
                                 # Use B_c[e1-1, e2-1] (e.g. e1=1, e2=1 corresponds to the first CELL [0,0])
                                 B_c[e1,e2] += F*N[i,j]*N[a,b]/zeta
-                                M1_c[e1,e2] += F*N[i,j]*N[a,b]*(V_p[i,0]+V_p[a,0])/zeta
-                                M2_c[e1,e2] += F*N[i,j]*N[a,b]*(V_p[0,j]+V_p[0,b])/zeta
+                                M1_c[e1,e2] += F*N[i,j]*N[a,b]*(V_p[i+1,1]+V_p[a+1,1])/zeta
+                                M2_c[e1,e2] += F*N[i,j]*N[a,b]*(V_p[1,j+1]+V_p[1,b+1])/zeta
      
                                 # Track death 
                                 D[i,j] -= F*N[i,j]*N[a,b]
@@ -1724,39 +1733,39 @@ def get_dNdt_2d_geo_jit(t,NN,V_p,V1_e,V3_e,F_M,NS,THR):
                     # Actual modification calculation
                     if (i!=0) and (j!=0):
                         B[i,j] += B_c[i-p,j-q] \
-                            *lam_2d(v1[i-p,j-q],v2[i-p,j-q],V_p[:,0],V_p[0,:],i,j,"-","-") \
-                            *heaviside_jit((-1)**p*(V_p[i-p,0]-v1[i-p,j-q]),0.5) \
-                            *heaviside_jit((-1)**q*(V_p[0,j-q]-v2[i-p,j-q]),0.5) 
+                            *lam_2d(v1[i-p,j-q],v2[i-p,j-q],V_p[:,1],V_p[1,:],i,j,"-","-") \
+                            *heaviside_jit((-1)**p*(V_p[i-p,1]-v1[i-p,j-q]),0.5) \
+                            *heaviside_jit((-1)**q*(V_p[1,j-q]-v2[i-p,j-q]),0.5) 
                         ## PRINTS FOR DEBUGGING / TESTING
                         # if i==2 and j==0:
                         #     print('B1', B[i,j])
                     if (i!=0) and (j!=len(V_p[0,:])-1):                           
                         B[i,j] += B_c[i-p,j+q] \
-                            *lam_2d(v1[i-p,j+q],v2[i-p,j+q],V_p[:,0],V_p[0,:],i,j,"-","+") \
-                            *heaviside_jit((-1)**p*(V_p[i-p,0]-v1[i-p,j+q]),0.5) \
-                            *heaviside_jit((-1)**(q+1)*(V_p[0,j+q]-v2[i-p,j+q]),0.5) 
+                            *lam_2d(v1[i-p,j+q],v2[i-p,j+q],V_p[:,1],V_p[1,:],i,j,"-","+") \
+                            *heaviside_jit((-1)**p*(V_p[i-p,1]-v1[i-p,j+q]),0.5) \
+                            *heaviside_jit((-1)**(q+1)*(V_p[1,j+q]-v2[i-p,j+q]),0.5) 
                         ## PRINTS FOR DEBUGGING / TESTING
                         # if i==2 and j==0:
                         #     print('B2', B[i,j])
                     if (i!=len(V_p[:,0])-1) and (j!=0):
                         B[i,j] += B_c[i+p,j-q] \
-                            *lam_2d(v1[i+p,j-q],v2[i+p,j-q],V_p[:,0],V_p[0,:],i,j,"+","-") \
-                            *heaviside_jit((-1)**(p+1)*(V_p[i+p,0]-v1[i+p,j-q]),0.5) \
-                            *heaviside_jit((-1)**q*(V_p[0,j-q]-v2[i+p,j-q]),0.5)
+                            *lam_2d(v1[i+p,j-q],v2[i+p,j-q],V_p[:,1],V_p[1,:],i,j,"+","-") \
+                            *heaviside_jit((-1)**(p+1)*(V_p[i+p,1]-v1[i+p,j-q]),0.5) \
+                            *heaviside_jit((-1)**q*(V_p[1,j-q]-v2[i+p,j-q]),0.5)
                         ## PRINTS FOR DEBUGGING / TESTING
                         # if i==2 and j==0:
                         #     print('B3', B[i,j])
                     if (i!=len(V_p[:,0])-1) and (j!=len(V_p[0,:])-1): 
                         B[i,j] += B_c[i+p,j+q] \
-                            *lam_2d(v1[i+p,j+q],v2[i+p,j+q],V_p[:,0],V_p[0,:],i,j,"+","+") \
-                            *heaviside_jit((-1)**(p+1)*(V_p[i+p,0]-v1[i+p,j+q]),0.5) \
-                            *heaviside_jit((-1)**(q+1)*(V_p[0,j+q]-v2[i+p,j+q]),0.5)
+                            *lam_2d(v1[i+p,j+q],v2[i+p,j+q],V_p[:,1],V_p[1,:],i,j,"+","+") \
+                            *heaviside_jit((-1)**(p+1)*(V_p[i+p,1]-v1[i+p,j+q]),0.5) \
+                            *heaviside_jit((-1)**(q+1)*(V_p[1,j+q]-v2[i+p,j+q]),0.5)
                         ## PRINTS FOR DEBUGGING / TESTING
                         # if i==2 and j==0:
                         #     print('B4', B[i,j])
                             
     # Combine birth and death
-    dNdt = B + D
+    dNdt = B[1:, 1:] + D
     
     return dNdt.reshape(-1)  
 
