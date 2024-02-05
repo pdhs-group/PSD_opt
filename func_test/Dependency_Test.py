@@ -9,10 +9,12 @@ import sys
 import os
 import numpy as np
 sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),".."))
-import opt_method as opt
-
+from general_scripts.generate_psd import full_psd
+import opt_find as opt
+import opt_config as conf
+## For plots
 import matplotlib.pyplot as plt
-import plotter.plotter as pt
+import plotter.plotter as pt  
 
 def return_results(Opt, pop):
     x_uni, q3, Q3, _, x_50, _ = pop.return_num_distribution_fixed(t=len(pop.t_vec)-1)
@@ -35,7 +37,7 @@ def cal_pop(Opt, corr_beta, alpha_prim, x3x1):
     
     return x_uni, q3, Q3, x_50, x_uni_NM, q3_NM, Q3_NM, x_50_NM, x_uni_M, q3_M, Q3_M, x_50_M
     
-def depend_test(Opt, test_case):
+def depend_test(find, test_case):
     corr_beta = 10
     alpha_prim = np.array([0.5, 0.5, 0.5])
     x3x1 = 1
@@ -45,37 +47,9 @@ def depend_test(Opt, test_case):
     q3_NM = []
     Q3_NM = []
     q3_M = []
-    Q3_M = []
-    if test_case == 'corr_beta':
-        corr_beta = np.zeros(11)
-        for i in range(11):
-            corr_beta[i] = 2 * i + 0.1
-            x_uni, q3_i, Q3_i, x_50[i], \
-            x_uni_NM, q3_NM_i, Q3_NM_i, x_50_NM[i], \
-            x_uni_M, q3_M_i, Q3_M_i, x_50_M[i] = cal_pop(Opt, corr_beta[i], alpha_prim, x3x1)
-            q3.append(q3_i)
-            Q3.append(Q3_i)
-            q3_NM.append(q3_NM_i)
-            Q3_NM.append(Q3_NM_i)
-            q3_M.append(q3_M_i)
-            Q3_M.append(Q3_M_i)
-            
-    elif test_case == 'alpha_prim_1':
-        alpha_prim_tem = np.zeros(11)
-        for i in range(11):
-            alpha_prim_tem[i] = 0.1 * i
-            alpha_prim = np.array([alpha_prim_tem[i], 0.5, 0.5])
-            x_uni, q3_i, Q3_i, x_50[i], \
-            x_uni_NM, q3_NM_i, Q3_NM_i, x_50_NM[i], \
-            x_uni_M, q3_M_i, Q3_M_i, x_50_M[i] = cal_pop(Opt, corr_beta, alpha_prim, x3x1)
-            q3.append(q3_i)
-            Q3.append(Q3_i)
-            q3_NM.append(q3_NM_i)
-            Q3_NM.append(Q3_NM_i)
-            q3_M.append(q3_M_i)
-            Q3_M.append(Q3_M_i)
-            
-    elif test_case == 'alpha_prim_2':
+    Q3_M = []        
+    
+    if test_case == 'kernels':
         alpha_prim_tem = np.zeros(11)
         for i in range(11):
             alpha_prim_tem[i] = 0.1 * i
@@ -172,28 +146,67 @@ def visualize_results(path, fig, test_case, varlabel, colors, x_uni, q3, Q3, x3x
     fig.savefig(path, dpi=300)
             
 if __name__ == '__main__':
-     dim = 2
-     corr_beta = 10
-     alpha_prim = np.array([0.8, 0.5, 0.2])
-     t_vec = np.arange(1, 602, 60, dtype=float)
-
-     delta_flag = 1
-     add_noise = True
-     smoothing = True
-     noise_type='Multiplicative'
-     noise_strength = 0.1
-     multi_flag = True
+     #%%  Input for Opt
+     dim = conf.config['dim']
+     t_init = conf.config['t_init']
+     t_vec = conf.config['t_vec']
+     add_noise = conf.config['add_noise']
+     smoothing = conf.config['smoothing']
+     noise_type=conf.config['noise_type']
+     noise_strength = conf.config['noise_strength']
+     sample_num = conf.config['sample_num']
      
-     Opt = opt.opt_method(add_noise, smoothing, corr_beta, alpha_prim, dim,
-                         delta_flag, noise_type, noise_strength, t_vec, multi_flag)
-
-     Opt.k.set_comp_para(R_NM=2.9e-7, R_M=2.9e-7)
+     ## Instantiate find and algo.
+     ## The find class determines how the experimental 
+     ## data is used, while algo determines the optimization process.
+     find = opt.opt_find()
+      
+     #%% Variable parameters
+     ## Set the R0 particle radius and 
+     ## whether to calculate the initial conditions from experimental data
+     ## 0. Use only 2D Data or 1D+2D
+     find.multi_flag = conf.config['multi_flag']
+     find.init_opt_algo(dim, t_init, t_vec, add_noise, noise_type, noise_strength, smoothing)
+     ## Iteration steps for optimierer
+     find.algo.n_iter = conf.config['n_iter']
      
-     test_case = 'corr_beta'
+     ## 1. The diameter ratio of the primary particles can also be used as a variable
+     find.algo.calc_init_N = False
+     pth = os.path.dirname( __file__ )
+     dist_path_1 = os.path.join(pth, "..", "data", "PSD_data", conf.config['dist_scale_1'])
+     find.algo.set_comp_para('r0_001', 'r0_001', dist_path_1, dist_path_1)
+     find.algo.corr_beta = 15
+     find.algo.alpha_prim = np.array([0.5, 1, 0.5])
+     
+     ## 2. Criteria of optimization target
+     ## delta_flag = 1: use q3
+     ## delta_flag = 2: use Q3
+     ## delta_flag = 3: use x_10
+     ## delta_flag = 4: use x_50
+     ## delta_flag = 5: use x_90
+     find.algo.delta_flag = conf.config['multi_flag']
+     delta_flag_target = ['','q3','Q3','x_10','x_50','x_90']
+     
+     ## 3. Optimize method: 
+     ##   'BO': Bayesian Optimization with package BayesianOptimization
+     find.algo.method='BO'
+     
+     ## 4. Type of cost function to use
+     ##   'MSE': Mean Squared Error
+     ##   'RMSE': Root Mean Squared Error
+     ##   'MAE': Mean Absolute Error
+     ##   'KL': Kullback–Leibler divergence(Only q3 and Q3 are compatible with KL) 
+     find.algo.cost_func_type = 'KL'
+     
+     ## 5. Weight of 2D data
+     ## The error of 2d pop may be more important, so weight needs to be added
+     find.algo.weight_2d = 1
+     
+     test_case = 'kernels'
      # test_case = 'alpha_prim_1'
      # test_case = 'alpha_prim_2'
      # test_case = 'alpha_prim_3'
      # test_case = 'x3x1' # not implement
-     depend_test(Opt, test_case)
+     depend_test(find, test_case)
 
      
