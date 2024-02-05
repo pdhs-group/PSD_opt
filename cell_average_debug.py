@@ -20,8 +20,8 @@ pt.plot_init(mrksze=8,lnewdth=1)
     
 #%% PARAM
 t = np.arange(0, 601, 60, dtype=float)
-NS = 12
-S = 2
+NS = 6
+S = 1.5
 R01, R02 = 1, 1
 V01, V02 = 1, 1
 dim = 2
@@ -350,7 +350,7 @@ if dim == 2:
     N = np.zeros((NS,NS,len(t)))#np.zeros((NS,NS,len(t)))
     N[0,1,0] = 0.3
     N[1,0,0] = 0.3
-    F_M_tem=1e-15
+    F_M_tem=1
     F = np.zeros((NS,NS,NS,NS))
     for idx, tmp in np.ndenumerate(F):
         if idx[0]+idx[1]==0 or idx[2]+idx[3]==0:
