@@ -160,7 +160,7 @@ class opt_find():
             
             corr_agg = self.algo.corr_beta * self.algo.alpha_prim
             corr_agg_opt = self.algo.corr_beta_opt * self.algo.alpha_prim_opt
-            corr_agg_diff = abs(corr_agg_opt - corr_agg) / corr_agg
+            corr_agg_diff = abs(corr_agg_opt - corr_agg) / np.where(corr_agg == 0, 1, corr_agg)
             para_diff=para_diff_i.mean()
             return self.algo.corr_beta_opt, self.algo.alpha_prim_opt, para_diff, delta_opt, \
                 corr_agg, corr_agg_opt, corr_agg_diff

@@ -2,6 +2,7 @@
 .log
 *.xlsx
 *.png
+*.npz
 
 # ignore ordner
 __pycache__

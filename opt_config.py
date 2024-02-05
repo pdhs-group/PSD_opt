@@ -23,8 +23,8 @@ config = {
     'calc_init_N': True,
     'R_NM': 8.68e-7,
     'R_M': 8.68e-7,
-    'delta_flag': 'q3',
-    'cost_func_type': 'KL',
+    'delta_flag': 'x_50',
+    'cost_func_type': 'MSE',
     'weight_2d': 1,
     
     'dist_scale_1': "PSD_x50_2.0E-6_v50_4.2E-18_RelSigmaV_1.5E-1.npy",
