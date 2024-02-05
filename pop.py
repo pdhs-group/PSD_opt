@@ -924,14 +924,21 @@ class population():
     
     ## Return particle size distribution on fixed grid 
     def return_distribution(self, comp='all', t=0, N=None, flag='all'):
-        
+        def unique_with_tolerance(V, tol=1e-3):
+            V_sorted = np.sort(V)
+            V_unique = [V_sorted[0]]
+            
+            for V_val in V_sorted[1:]:
+                if not np.isclose(V_val, V_unique[-1], atol=tol*V_sorted[0], rtol=0):
+                    V_unique.append(V_val)
+            return np.array(V_unique)
         # If no N is provided use the one from the class instance
         if N is None:
             N = self.N
         
         # Extract unique values that are NOT -1 or 0 (border)
         v_uni = np.setdiff1d(self.V,[-1,0])
-        
+        # v_uni = unique_with_tolerance(v_uni)
         q3 = np.zeros(len(v_uni)+1)
         x_uni = np.zeros(len(v_uni)+1)
         sumvol_uni = np.zeros(len(v_uni)+1)

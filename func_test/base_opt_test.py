@@ -209,11 +209,11 @@ if __name__ == '__main__':
         exp_data_path.replace(".xlsx", "_M.xlsx")
     ]
     
-    find.algo.calc_init_N = False
-    pth = os.path.dirname( __file__ )
-    dist_path_1 = os.path.join(pth, "..", "data", "PSD_data", conf.config['dist_scale_1'])
-    find.algo.set_comp_para('r0_001', 'r0_001', dist_path_1, dist_path_1)
-    find.generate_data(sample_num, add_info='_para_15.0_0.2_0.6_0.8_1')
+    # find.algo.calc_init_N = False
+    # pth = os.path.dirname( __file__ )
+    # dist_path_1 = os.path.join(pth, "..", "data", "PSD_data", conf.config['dist_scale_1'])
+    # find.algo.set_comp_para('r0_001', 'r0_001', dist_path_1, dist_path_1)
+    # find.generate_data(sample_num, add_info='_para_15.0_0.2_0.6_0.8_1')
     
     corr_beta_opt, alpha_prim_opt, para_diff, delta_opt, elapsed_time,corr_agg, \
         corr_agg_opt, corr_agg_diff = normal_test()

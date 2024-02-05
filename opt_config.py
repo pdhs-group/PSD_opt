@@ -32,7 +32,7 @@ config = {
     ## delta_flag = x_10: use x_10
     ## delta_flag = x_50: use x_50
     ## delta_flag = x_90: use x_90
-    'delta_flag': 'x_50',
+    'delta_flag': 'q3',
     
     ##   'MSE': Mean Squared Error
     ##   'RMSE': Root Mean Squared Error
