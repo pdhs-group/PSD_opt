@@ -3,6 +3,8 @@
 *.xlsx
 *.png
 *.npz
+*.npy
+*.pds
 
 # ignore ordner
 __pycache__
