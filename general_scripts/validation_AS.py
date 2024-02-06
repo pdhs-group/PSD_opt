@@ -708,10 +708,10 @@ if __name__ == "__main__":
     # '2D_ortho_mono': 2D, ortho kernel, monodisperse initial conditions, alpha = 1
     # '2D_ortho_mono': 2D, ortho kernel, monodisperse initial conditions, alpha from CCM
     # CASE = '1D_const_mono'
-    CASE = '2D_const_mono'
+    # CASE = '2D_const_mono'
     #CASE = '3D_const_mono'
     # CASE = '1D_sum_mono'
-    # CASE = '2D_sum_mono'
+    CASE = '2D_sum_mono'
     #CASE = '2D_sum_mono_ccm'
     #CASE = '2D_ortho_mono'
     #CASE = '2D_ortho_mono_ccm'
