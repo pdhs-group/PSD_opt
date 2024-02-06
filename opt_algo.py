@@ -83,7 +83,7 @@ class opt_algo():
                 for idt in range(self.num_t_steps):
                     q3_mod_tem = self.KDE_score(kde_list[idt], x_uni_exp)
                     q3_mod[:, idt] = q3_mod_tem
-                    
+
                 data_mod = self.re_calc_distribution(x_uni_exp, q3=q3_mod, flag=self.delta_flag)[0]
                 data_exp = self.re_calc_distribution(x_uni_exp, sum_uni=sumvol_uni_exp, flag=self.delta_flag)[0]
                 # Calculate the error between experimental data and simulation results
@@ -336,9 +336,9 @@ class opt_algo():
         self.calc_all_R()
         self.set_init_N_1D(self.p_NM, sample_num, exp_data_paths[1], init_flag)
         self.set_init_N_1D(self.p_M, sample_num, exp_data_paths[2], init_flag)
-        self.p.N = np.zeros((self.p.NS+3, self.p.NS+3, len(self.p.t_vec)))
-        self.p.N[2:, 1, 0] = self.p_NM.N[2:, 0]
-        self.p.N[1, 2:, 0] = self.p_M.N[2:, 0]
+        self.p.N = np.zeros((self.p.NS, self.p.NS, len(self.p.t_vec)))
+        self.p.N[1:, 1, 0] = self.p_NM.N[1:, 0]
+        self.p.N[1, 1:, 0] = self.p_M.N[1:, 0]
     
     def set_init_N_1D(self, pop, sample_num, exp_data_path, init_flag):
         x_uni = self.calc_x_uni(pop)
@@ -373,11 +373,11 @@ class opt_algo():
         inter_grid = interp1d(x_uni_exp, sumN_uni_init, kind='linear', fill_value="extrapolate")
         sumN_uni_init = inter_grid(x_uni)
                 
-        pop.N = np.zeros((pop.NS+3, len(pop.t_vec)))
+        pop.N = np.zeros((pop.NS, len(pop.t_vec)))
         ## Because sumN_uni_init[0] = 0
-        pop.N[2:, 0]= sumN_uni_init[1:]
+        pop.N[1:, 0]= sumN_uni_init[1:]
         thr = 1e-5
-        pop.N[pop.N < (thr * pop.N[2:, 0].max())]=0     
+        pop.N[pop.N < (thr * pop.N[1:, 0].max())]=0     
         
     def calc_v_uni(self, pop):
         return np.setdiff1d(pop.V, [-1, 0])*1e18
@@ -402,7 +402,7 @@ class opt_algo():
                                      self.calc_Q3(x_uni, sum_uni=sum_uni_slice), 0, sum_uni)
             q3_new = np.apply_along_axis(lambda Q3_slice: 
                                           self.calc_q3(Q3_slice, x_uni), 0, Q3_new)
-
+        
         dim = q3_new.shape[1]
         x_10_new = np.zeros(dim)
         x_50_new = np.zeros(dim)
