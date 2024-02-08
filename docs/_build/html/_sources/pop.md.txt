@@ -1,7 +1,5 @@
 # pop module
 
-abc 
-
 ```{eval-rst}
 .. automodule:: pop
    :members:
