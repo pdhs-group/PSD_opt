@@ -1,0 +1,7 @@
+pop module
+==========
+
+.. automodule:: pop
+   :members:
+   :undoc-members:
+   :show-inheritance:

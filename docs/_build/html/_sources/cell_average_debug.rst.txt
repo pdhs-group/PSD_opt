@@ -1,0 +1,7 @@
+cell\_average\_debug module
+===========================
+
+.. automodule:: cell_average_debug
+   :members:
+   :undoc-members:
+   :show-inheritance:

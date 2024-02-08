@@ -1,0 +1,7 @@
+opt\_algo\_multi module
+=======================
+
+.. automodule:: opt_algo_multi
+   :members:
+   :undoc-members:
+   :show-inheritance:
