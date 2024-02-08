@@ -20,9 +20,7 @@
         <script src="_static/sphinx_highlight.js"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
-    <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="Attributes of the dPBE Class" href="attributes.html" />
-    <link rel="prev" title="pop module" href="pop.html" /> 
+    <link rel="search" title="Search" href="search.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -45,9 +43,8 @@
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
-<ul class="current">
+<ul>
 <li class="toctree-l1"><a class="reference internal" href="pop.html">pop module</a></li>
-<li class="toctree-l1 current"><a class="current reference internal" href="#">opt_algo module</a></li>
 <li class="toctree-l1"><a class="reference internal" href="attributes.html">Attributes of the dPBE Class</a></li>
 </ul>
 
@@ -75,17 +72,142 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section class="tex2jax_ignore mathjax_ignore" id="opt-algo-module">
-<h1>opt_algo module<a class="headerlink" href="#opt-algo-module" title="Permalink to this heading"></a></h1>
+  <section class="tex2jax_ignore mathjax_ignore" id="module-opt_algo">
+<span id="opt-algo-module"></span><h1>opt_algo module<a class="headerlink" href="#module-opt_algo" title="Permalink to this heading"></a></h1>
+<p>Created on Wed Nov 15 14:38:56 2023</p>
+<p>&#64;author: px2030</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="opt_algo.opt_algo">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">opt_algo.</span></span><span class="sig-name descname"><span class="pre">opt_algo</span></span><a class="reference internal" href="_modules/opt_algo.html#opt_algo"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_algo.opt_algo" title="Permalink to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="opt_algo.opt_algo.calc_delta">
+<span class="sig-name descname"><span class="pre">calc_delta</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">corr_beta</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_prim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_num</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exp_data_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/opt_algo.html#opt_algo.calc_delta"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_algo.opt_algo.calc_delta" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="opt_algo.opt_algo.calc_delta_agg">
+<span class="sig-name descname"><span class="pre">calc_delta_agg</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">corr_agg</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_num</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exp_data_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/opt_algo.html#opt_algo.calc_delta_agg"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_algo.opt_algo.calc_delta_agg" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="opt_algo.opt_algo.calc_delta_tem">
+<span class="sig-name descname"><span class="pre">calc_delta_tem</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sample_num</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exp_data_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pop</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/opt_algo.html#opt_algo.calc_delta_tem"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_algo.opt_algo.calc_delta_tem" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="opt_algo.opt_algo.optimierer">
+<span class="sig-name descname"><span class="pre">optimierer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">init_points</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">4</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_num</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hyperparameter</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exp_data_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/opt_algo.html#opt_algo.optimierer"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_algo.opt_algo.optimierer" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="opt_algo.opt_algo.optimierer_agg">
+<span class="sig-name descname"><span class="pre">optimierer_agg</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">method</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'BO'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">init_points</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">4</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_num</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hyperparameter</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exp_data_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/opt_algo.html#opt_algo.optimierer_agg"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_algo.opt_algo.optimierer_agg" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="opt_algo.opt_algo.return_syth_beta">
+<span class="sig-name descname"><span class="pre">return_syth_beta</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">corr_agg</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/opt_algo.html#opt_algo.return_syth_beta"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_algo.opt_algo.return_syth_beta" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="opt_algo.opt_algo.cost_fun">
+<span class="sig-name descname"><span class="pre">cost_fun</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data_exp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_mod</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/opt_algo.html#opt_algo.cost_fun"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_algo.opt_algo.cost_fun" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="opt_algo.opt_algo.read_exp">
+<span class="sig-name descname"><span class="pre">read_exp</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">exp_data_path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/opt_algo.html#opt_algo.read_exp"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_algo.opt_algo.read_exp" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="opt_algo.opt_algo.function_noise">
+<span class="sig-name descname"><span class="pre">function_noise</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ori_data</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/opt_algo.html#opt_algo.function_noise"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_algo.opt_algo.function_noise" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="opt_algo.opt_algo.KDE_fit">
+<span class="sig-name descname"><span class="pre">KDE_fit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x_uni_ori</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_ori</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bandwidth</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'scott'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">kernel_func</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'epanechnikov'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/opt_algo.html#opt_algo.KDE_fit"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_algo.opt_algo.KDE_fit" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="opt_algo.opt_algo.KDE_score">
+<span class="sig-name descname"><span class="pre">KDE_score</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">kde</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">x_uni_new</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/opt_algo.html#opt_algo.KDE_score"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_algo.opt_algo.KDE_score" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="opt_algo.opt_algo.traverse_path">
+<span class="sig-name descname"><span class="pre">traverse_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path_ori</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/opt_algo.html#opt_algo.traverse_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_algo.opt_algo.traverse_path" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="opt_algo.opt_algo.create_1d_pop">
+<span class="sig-name descname"><span class="pre">create_1d_pop</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">disc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'geo'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/opt_algo.html#opt_algo.create_1d_pop"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_algo.opt_algo.create_1d_pop" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="opt_algo.opt_algo.calc_pop">
+<span class="sig-name descname"><span class="pre">calc_pop</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pop</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">corr_beta</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_prim</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">t_vec</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/opt_algo.html#opt_algo.calc_pop"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_algo.opt_algo.calc_pop" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="opt_algo.opt_algo.set_comp_para">
+<span class="sig-name descname"><span class="pre">set_comp_para</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">R01_0</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'r0_005'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">R03_0</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'r0_005'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dist_path_NM</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dist_path_M</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">R_NM</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2.9e-07</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">R_M</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2.9e-07</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/opt_algo.html#opt_algo.set_comp_para"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_algo.opt_algo.set_comp_para" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="opt_algo.opt_algo.calc_all_R">
+<span class="sig-name descname"><span class="pre">calc_all_R</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/opt_algo.html#opt_algo.calc_all_R"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_algo.opt_algo.calc_all_R" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="opt_algo.opt_algo.set_init_N">
+<span class="sig-name descname"><span class="pre">set_init_N</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sample_num</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exp_data_paths</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">init_flag</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/opt_algo.html#opt_algo.set_init_N"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_algo.opt_algo.set_init_N" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="opt_algo.opt_algo.set_init_N_1D">
+<span class="sig-name descname"><span class="pre">set_init_N_1D</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pop</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_num</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exp_data_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">init_flag</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/opt_algo.html#opt_algo.set_init_N_1D"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_algo.opt_algo.set_init_N_1D" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="opt_algo.opt_algo.calc_v_uni">
+<span class="sig-name descname"><span class="pre">calc_v_uni</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pop</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/opt_algo.html#opt_algo.calc_v_uni"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_algo.opt_algo.calc_v_uni" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="opt_algo.opt_algo.calc_x_uni">
+<span class="sig-name descname"><span class="pre">calc_x_uni</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pop</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/opt_algo.html#opt_algo.calc_x_uni"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_algo.opt_algo.calc_x_uni" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="opt_algo.opt_algo.re_calc_distribution">
+<span class="sig-name descname"><span class="pre">re_calc_distribution</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x_uni</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">q3</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sum_uni</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">flag</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'all'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/opt_algo.html#opt_algo.re_calc_distribution"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_algo.opt_algo.re_calc_distribution" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="opt_algo.opt_algo.calc_Q3">
+<span class="sig-name descname"><span class="pre">calc_Q3</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x_uni</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">q3</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sum_uni</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/opt_algo.html#opt_algo.calc_Q3"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_algo.opt_algo.calc_Q3" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="opt_algo.opt_algo.calc_sum_uni">
+<span class="sig-name descname"><span class="pre">calc_sum_uni</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">Q3</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sum_total</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/opt_algo.html#opt_algo.calc_sum_uni"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_algo.opt_algo.calc_sum_uni" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="opt_algo.opt_algo.calc_q3">
+<span class="sig-name descname"><span class="pre">calc_q3</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">Q3</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">x_uni</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/opt_algo.html#opt_algo.calc_q3"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_algo.opt_algo.calc_q3" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
 </section>
 
 
            </div>
           </div>
-          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="pop.html" class="btn btn-neutral float-left" title="pop module" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="attributes.html" class="btn btn-neutral float-right" title="Attributes of the dPBE Class" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
-    </div>
+          <footer>
 
   <hr/>
 

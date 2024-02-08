@@ -6,6 +6,12 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
+
+import os
+import sys
+
+sys.path.insert(0, os.path.abspath(".."))
+
 project = 'dPBE: Discrete Population Balance Equations'
 copyright = '2024, Frank Rhein, Haoran Ji'
 author = 'Frank Rhein, Haoran Ji'
@@ -24,7 +30,10 @@ myst_enable_extensions = ["dollarmath", "amsmath"]
 #templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 
-
+# Include all external packages (should not be included in the docs)
+autodoc_mock_imports = ['numpy', 'matplotlib', 'scipy', 'numba', 'math', 'plotter',
+                        'bayes_opt', 'sklearn', 'pandas']
+autodoc_default_options = {'member-order': 'bysource'}
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output

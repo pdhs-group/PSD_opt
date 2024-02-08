@@ -45,7 +45,6 @@
               <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="pop.html">pop module</a></li>
-<li class="toctree-l1"><a class="reference internal" href="opt_algo.html">opt_algo module</a></li>
 <li class="toctree-l1"><a class="reference internal" href="attributes.html">Attributes of the dPBE Class</a></li>
 </ul>
 
@@ -73,8 +72,46 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section class="tex2jax_ignore mathjax_ignore" id="opt-find-module">
-<h1>opt_find module<a class="headerlink" href="#opt-find-module" title="Permalink to this heading"></a></h1>
+  <section class="tex2jax_ignore mathjax_ignore" id="module-opt_find">
+<span id="opt-find-module"></span><h1>opt_find module<a class="headerlink" href="#module-opt_find" title="Permalink to this heading"></a></h1>
+<p>Created on Tue Dec  5 09:22:00 2023</p>
+<p>&#64;author: px2030</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="opt_find.opt_find">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">opt_find.</span></span><span class="sig-name descname"><span class="pre">opt_find</span></span><a class="reference internal" href="_modules/opt_find.html#opt_find"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_find.opt_find" title="Permalink to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="opt_find.opt_find.init_opt_algo">
+<span class="sig-name descname"><span class="pre">init_opt_algo</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">t_init</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">t_vec</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">add_noise</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">noise_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'Gaus'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">noise_strength</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.01</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">smoothing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/opt_find.html#opt_find.init_opt_algo"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_find.opt_find.init_opt_algo" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="opt_find.opt_find.generate_data">
+<span class="sig-name descname"><span class="pre">generate_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sample_num</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">add_info</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/opt_find.html#opt_find.generate_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_find.opt_find.generate_data" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="opt_find.opt_find.find_opt_kernels">
+<span class="sig-name descname"><span class="pre">find_opt_kernels</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sample_num</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">method</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'kernels'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/opt_find.html#opt_find.find_opt_kernels"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_find.opt_find.find_opt_kernels" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="opt_find.opt_find.write_new_data">
+<span class="sig-name descname"><span class="pre">write_new_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pop</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exp_data_path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/opt_find.html#opt_find.write_new_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_find.opt_find.write_new_data" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="opt_find.opt_find.visualize_distribution">
+<span class="sig-name descname"><span class="pre">visualize_distribution</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pop</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">corr_beta_ori</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_prim_ori</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">corr_beta_opt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_prim_opt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exp_data_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ax</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fig</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">close_all</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'k'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scl_a4</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">figsze</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[12.8,</span> <span class="pre">9.600000000000001]</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/opt_find.html#opt_find.visualize_distribution"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_find.opt_find.visualize_distribution" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="opt_find.opt_find.save_as_png">
+<span class="sig-name descname"><span class="pre">save_as_png</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fig</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">file_name</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/opt_find.html#opt_find.save_as_png"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_find.opt_find.save_as_png" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
 </section>
 
 

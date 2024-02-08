@@ -1,8 +1,9 @@
-# -*- coding: utf-8 -*-
+""" Solving 1D, 2D and 3D discrete population balance equations for agglomerating systems.
+
+Authors: Frank Rhein (frank.rhein@kit.edu), Haoran Ji (haoran.ji@kit.edu) 
+Affiliation: Karlsruhe Institute of Technology (KIT), Institute of Mechanical Process Engineering and Mechanics
 """
-Solving 1D, 2D and 3D DISCRETE population balance equations for agglomerating systems.
-@author: Frank Rhein, frank.rhein@kit.edu, Institute of Mechanical Process Engineering and Mechanics
-"""
+
 ### ------ IMPORTS ------ ###
 ## General
 import os
@@ -20,6 +21,17 @@ from func.func_math import float_in_list, float_equal, isZero
 
 ### ------ POPULATION CLASS DEFINITION ------ ###
 class population():
+    """Class definition for calculating discrete population balance equations 
+    
+    Parameters
+    ----------
+    dim : int
+        Dimension of PBE in [1, 2, 3].
+    grid : str
+        Discretization strategy in ['uni', 'geo'].
+    NS : int
+        Number of grid points per dimension.
+    """
     
     ## BASELINE PATH
     pth = os.path.dirname( __file__ )
