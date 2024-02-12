@@ -48,23 +48,27 @@ def visualize_results(data_paths, labels):
     plt.show()
     
     
-data_paths1 = ['Parameter_study/multi_q3_BO_KL_wight_1_iter_400.npz',
-              'Parameter_study/multi_q3_BO_KL_wight_1_iter_800.npz',
-              ]
+# data_paths1 = ['Parameter_study/multi_q3_BO_KL_wight_1_iter_400.npz',
+#               'Parameter_study/multi_q3_BO_KL_wight_1_iter_800.npz',
+#               ]
 
-labels1 = ['iter_400',
-          'iter_800',
-              ]
+# labels1 = ['iter_400',
+#           'iter_800',
+#               ]
 
-data_paths2 = ['Parameter_study/multi_q3_BO_KL_wight_1_iter_800.npz',
-              'Parameter_study/multi_q3_BO_MSE_wight_1.npz',
-              'Parameter_study/multi_Q3_BO_KL_wight_1.npz',
-              ]
+# data_paths2 = ['Parameter_study/multi_q3_BO_KL_wight_1_iter_800.npz',
+#               'Parameter_study/multi_q3_BO_MSE_wight_1.npz',
+#               'Parameter_study/multi_Q3_BO_KL_wight_1.npz',
+#               ]
 
-labels2 = ['q3_KL',
-            'q3_MSE',
-            'Q3_KL',
-              ]
+# labels2 = ['q3_KL',
+#             'q3_MSE',
+#             'Q3_KL',
+#               ]
 
-visualize_results(data_paths1, labels1)
-visualize_results(data_paths2, labels2)
+# visualize_results(data_paths1, labels1)
+# visualize_results(data_paths2, labels2)
+
+data_paths = ['Parameter_study/multi_q3_BO_KL_wight_1.npz']
+labels = ['iter_10']
+visualize_results(data_paths, labels)

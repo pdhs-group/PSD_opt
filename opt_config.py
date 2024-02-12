@@ -17,7 +17,7 @@ config = {
     'noise_strength': 0.1,
     'sample_num': 5,
     'method': 'BO',
-    'n_iter': 400,
+    'n_iter': 10,
     'calc_init_N': True,
     
     ## Use only 2D Data or 1D+2D
@@ -38,7 +38,7 @@ config = {
     ##   'RMSE': Root Mean Squared Error
     ##   'MAE': Mean Absolute Error
     ##   'KL': Kullback–Leibler divergence(Only q3 and Q3 are compatible with KL) 
-    'cost_func_type': 'MSE',
+    'cost_func_type': 'KL',
     
     ## The error of 2d pop may be more important, so weight needs to be added
     'weight_2d': 1,

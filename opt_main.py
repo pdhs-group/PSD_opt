@@ -113,7 +113,7 @@ if __name__ == '__main__':
     ## The case of all zero α is meaningless, that means no Agglomeration occurs
     var_alpha_prim = var_alpha_prim[~np.all(var_alpha_prim == 0, axis=1)]
     
-    pool = multiprocessing.Pool(processes=8)
+    pool = multiprocessing.Pool(processes=4)
     tasks = []
     for i, corr_beta in enumerate(var_corr_beta):
         for j, alpha_prim in enumerate(var_alpha_prim):
