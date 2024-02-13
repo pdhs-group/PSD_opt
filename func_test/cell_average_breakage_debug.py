@@ -22,12 +22,12 @@ pt.plot_init(mrksze=8,lnewdth=1)
     
 #%% PARAM
 t = np.arange(0, 10, 1, dtype=float)
-NS = 10
+NS = 30
 S = 2
 R01, R02 = 1, 1
 V01, V02 = 2e-9, 2e-9
 dim = 2
-BREAKFVAL = 1
+BREAKFVAL = 2
 BREAKRVAL = 1
 
 #%% FUNCTIONS
@@ -40,11 +40,11 @@ def dNdt_1D(t,N,V_p,V_e,B_R,B_F,BREAKFVAL):
     B = np.zeros(N.shape)
     
     e = 0
-    b = B_F[e,e]
-    b_int = b_integrate(V_p[e], V_e[e], b=b)
-    xb_int = xb_integrate(V_p[e], V_e[e], b=b)
-    B_c[e] += B_R[e]*b_int*N[e]
-    M_c[e] += B_R[e]*xb_int*N[e]
+    # b = B_F[e,e]
+    # b_int = b_integrate(V_p[e], V_e[e], b=b)
+    # xb_int = xb_integrate(V_p[e], V_e[e], b=b)
+    # B_c[e] += B_R[e]*b_int*N[e]
+    # M_c[e] += B_R[e]*xb_int*N[e]
     for i in range(e+1, len(V_p)):
         b = B_F[e,i]
         b_int = b_integrate(V_e[e+1], V_p[e], b=b)
@@ -96,15 +96,21 @@ def dNdt_1D(t,N,V_p,V_e,B_R,B_F,BREAKFVAL):
     dNdt = B + D
     
     return dNdt 
-
+@jit(nopython=True)
 def b_integrate(x_up,x_low,y_up=None,y_low=None,b=None):
     if y_up is None or y_low is None:
         return (x_up - x_low)*b
     else:
-        return (x_up - x_low)*(y_up - y_low)*b
-    
-def xb_integrate(x_up,x_low,b=None):
-    return (x_up**2 - x_low**2)*0.5*b
+        return (x_up*y_up - x_low*y_low)*b
+@jit(nopython=True)    
+def xb_integrate(x_up,x_low,y_up=None,y_low=None,b=None):
+    if y_up is None or y_low is None:
+        return (x_up**2 - x_low**2)*0.5*b
+    else:
+        return (x_up**2*y_up- x_low**2*y_low)*0.5*b
+@jit(nopython=True)    
+def yb_integrate(x_up,x_low,y_up=None,y_low=None,b=None):
+    return (x_up*y_up**2 - x_low*y_low**2)*0.5*b    
     
 @jit(nopython=True)
 def lam(v, V_p, i, case):
@@ -144,8 +150,9 @@ def heaviside_jit(x1, x2):
         return 1.0
     else:
         return x2
-
-def dNdt_2D(t,NN,V_p,V_e1,V_e2,B_R,B_F,BREAKFVAL):
+    
+@jit(nopython=True)    
+def dNdt_2D(t,NN,V_p1,V_p2,V_e1,V_e2,B_R,B_F,BREAKFVAL):
     N = np.copy(NN) 
     N = np.reshape(N,(NS,NS))
     dNdt = np.zeros(N.shape)
@@ -156,97 +163,157 @@ def dNdt_2D(t,NN,V_p,V_e1,V_e2,B_R,B_F,BREAKFVAL):
     v2 = np.zeros((NS+1,NS+1))
     D = np.zeros(N.shape)
     B = np.zeros(N.shape)
-    V_p_ex = np.pad(V_p, ((0, 1), (0, 1)), 'constant', constant_values=(0,))
-    # Loop through all edges
-    # -1 to make sure nothing overshoots (?) CHECK THIS
-    for e1 in range(0, len(V_p[:,0])):
-        for e2 in range(0, len(V_p[0,:])):
-            if e1 != 0 and e2 !=0:
-                b = B_F[e1,e2,e1,e2]
-                b_int = b_integrate(V_p[e1,0], V_e1[e1], V_p[0,e2], V_e2[e2], b)
-                xb_int = xb_integrate(V_p[e1,0], V_e1[e1], b)
-                yb_int = xb_integrate(V_p[0,e2], V_e2[e2], b)
-                B_c[e1,e2] += B_R[e1,e2]*b_int*N[e1,e2]
-                M1_c[e1,e2] += B_R[e1,e2]*xb_int*N[e1,e2]
-                M1_c[e1,e2] += B_R[e1,e2]*yb_int*N[e1,e2]
-        
-            ## if breakage function is independent of parent particle, 
-            ## then the its integral only needs to be calculated once
-            for i in range(e1+1, len(V_p[:,0])):
-                if e1 !=0: ## same y
-                    b = B_F[e1,e2,i,e2]
-                    b_int = b_integrate(V_e1[i+1], V_e1[i], V_p[0,e2], V_e2[e2], b)
-                    xb_int = xb_integrate(V_e1[i+1], V_e1[i], b)
-                    yb_int = xb_integrate(V_p[0,e2], V_e2[e2], b)
-                    B_c[e1,e2] += B_R[i,e2]*b_int*N[i,e2]
-                    M1_c[e1,e2] += B_R[i,e2]*xb_int*N[i,e2]
-                    M1_c[e1,e2] += B_R[i,e2]*yb_int*N[i,e2]
-            for j in range(e2+1,len(V_p[0,:])):
-                if e2 !=0: ## same x
-                    b = B_F[e1,e2,e1,j]
-                    b_int = b_integrate(V_p[e1,0], V_e1[e1], V_e2[j+1], V_e2[j], b)
-                    xb_int = xb_integrate(V_p[e1,0], V_e1[e1], b)
-                    yb_int = xb_integrate(V_e2[j+1], V_e2[j], b)
-                    B_c[e1,e2] += B_R[e1,j]*b_int*N[e1,j]
-                    M1_c[e1,e2] += B_R[e1,j]*xb_int*N[e1,j]
-                    M1_c[e1,e2] += B_R[e1,j]*yb_int*N[e1,j] 
-            # Loop through all pivots (twice)
-            for i in range(e1+1, len(V_p[:,0])):
-                for j in range(e2+1,len(V_p[0,:])):  
-                    b = B_F[e1,e2,i,j]
-                    b_int = b_integrate(V_e1[i+1], V_e1[i], V_e2[j+1], V_e2[j], b)
-                    xb_int = xb_integrate(V_e1[i+1], V_e1[i], b)
-                    yb_int = xb_integrate(V_e2[j+1], V_e2[j], b)
-                    B_c[e1,e2] += B_R[i,j]*b_int*N[i,j]
-                    M1_c[e1,e2] += B_R[i,j]*xb_int*N[i,j]
-                    M1_c[e1,e2] += B_R[i,j]*yb_int*N[i,j]  
-                
-            D[e1,e2] = -B_R[e1,e2]*N[e1,e2]
-    D[0,0] = 0
+    V_p1_ex = np.pad(V_p1, ((0, 1)), 'constant', constant_values=(0,))
+    V_p2_ex = np.pad(V_p2, ((0, 1)), 'constant', constant_values=(0,))
+    
+    # The smallest particles will not break, so D don't need to be calculated
+    e1 = 0; e2 = 0
+    for i in range(e1+1, len(V_p1)):
+        for j in range(e2+1,len(V_p2)):  
+            b = B_F[e1,e2,i,j]
+            b_int = b_integrate(V_e1[e1+1], V_p1[e1], V_e2[e2+1], V_p2[e2], b)
+            xb_int = xb_integrate(V_e1[e1+1], V_p1[e1], V_e2[e2+1], V_p2[e2], b)
+            yb_int = yb_integrate(V_e1[e1+1], V_p1[e1], V_e2[e2+1], V_p2[e2], b)
+            B_c[e1,e2] += B_R[i,j]*b_int*N[i,j]
+            M1_c[e1,e2] += B_R[i,j]*xb_int*N[i,j]
+            M2_c[e1,e2] += B_R[i,j]*yb_int*N[i,j]  
+            
     if B_c[e1,e2]!=0:
         v1[e1,e2] = M1_c[e1,e2]/B_c[e1,e2]
         v2[e1,e2] = M2_c[e1,e2]/B_c[e1,e2]
     
+    e1 = 0 ## left boundary
+    for e2 in range(1,len(V_p2)):
+        for i in range(e1+1,len(V_p1)): ## same y/e2
+            b = B_F[e1,e2,i,e2]
+            b_int = b_integrate(V_e1[e1+1], V_p1[e1], V_p2[e2], V_e2[e2], b)
+            xb_int = xb_integrate(V_e1[e1+1], V_p1[e1], V_p2[e2], V_e2[e2], b)
+            yb_int = yb_integrate(V_e1[e1+1], V_p1[e1], V_p2[e2], V_e2[e2], b)
+            B_c[e1,e2] += B_R[i,e2]*b_int*N[i,e2] 
+            M1_c[e1,e2] += B_R[i,e2]*xb_int*N[i,e2]
+            M2_c[e1,e2] += B_R[i,e2]*yb_int*N[i,e2]
+        for i in range(e1+1, len(V_p1)):
+            for j in range(e2+1,len(V_p2)):  
+                b = B_F[e1,e2,i,j]
+                b_int = b_integrate(V_e1[e1+1], V_p1[e1], V_e2[e2+1], V_e2[e2], b)
+                xb_int = xb_integrate(V_e1[e1+1],V_p1[e1], V_e2[e2+1], V_e2[e2], b)
+                yb_int = yb_integrate(V_e1[e1+1], V_p1[e1], V_e2[e2+1], V_e2[e2], b)
+                B_c[e1,e2] += B_R[i,j]*b_int*N[i,j]
+                M1_c[e1,e2] += B_R[i,j]*xb_int*N[i,j]
+                M2_c[e1,e2] += B_R[i,j]*yb_int*N[i,j]  
+        D[e1,e2] = -B_R[e1,e2]*N[e1,e2]
+        if B_c[e1,e2]!=0:
+            v1[e1,e2] = M1_c[e1,e2]/B_c[e1,e2]
+            v2[e1,e2] = M2_c[e1,e2]/B_c[e1,e2]
+            
+    e2 = 0 ##  low boundary
+    for e1 in range(1,len(V_p1)):
+        for j in range(e2+1,len(V_p2)): ## same x/e1
+            b = B_F[e1,e2,e1,j]
+            b_int = b_integrate(V_p1[e1], V_e1[e1], V_e2[e2+1], V_p2[e2], b)
+            xb_int = xb_integrate(V_p1[e1], V_e1[e1], V_e2[e2+1], V_p2[e2], b)
+            yb_int = yb_integrate(V_p1[e1], V_e1[e1], V_e2[e2+1], V_p2[e2], b)
+            B_c[e1,e2] += B_R[e1,j]*b_int*N[e1,j]
+            M1_c[e1,e2] += B_R[e1,j]*xb_int*N[e1,j]
+            M2_c[e1,e2] += B_R[e1,j]*yb_int*N[e1,j] 
+        for i in range(e1+1, len(V_p1)):
+            for j in range(e2+1,len(V_p2)):  
+                b = B_F[e1,e2,i,j]
+                b_int = b_integrate(V_e1[e1+1], V_e1[e1], V_e2[e2+1], V_p2[e2], b)
+                xb_int = xb_integrate(V_e1[e1+1], V_e1[e1], V_e2[e2+1], V_p2[e2], b)
+                yb_int = yb_integrate(V_e1[e1+1], V_e1[e1], V_e2[e2+1], V_p2[e2], b)
+                B_c[e1,e2] += B_R[i,j]*b_int*N[i,j]
+                M1_c[e1,e2] += B_R[i,j]*xb_int*N[i,j]
+                M2_c[e1,e2] += B_R[i,j]*yb_int*N[i,j]  
+        D[e1,e2] = -B_R[e1,e2]*N[e1,e2]
+        if B_c[e1,e2]!=0:
+            v1[e1,e2] = M1_c[e1,e2]/B_c[e1,e2]
+            v2[e1,e2] = M2_c[e1,e2]/B_c[e1,e2]
+        
+    for e1 in range(1, len(V_p1)):
+        for e2 in range(1, len(V_p2)):
+            ## The contribution of self-fragmentation
+            b = B_F[e1,e2,e1,e2]
+            b_int = b_integrate(V_p1[e1], V_e1[e1], V_p2[e2], V_e2[e2], b)
+            xb_int = xb_integrate(V_p1[e1], V_e1[e1], V_p2[e2], V_e2[e2], b)
+            yb_int = yb_integrate(V_p1[e1], V_e1[e1], V_p2[e2], V_e2[e2], b)
+            B_c[e1,e2] += B_R[e1,e2]*b_int*N[e1,e2]
+            M1_c[e1,e2] += B_R[e1,e2]*xb_int*N[e1,e2]
+            M2_c[e1,e2] += B_R[e1,e2]*yb_int*N[e1,e2]
+            ## The contributions of fragments on the same y-axis
+            for i in range(e1+1,len(V_p1)):
+                b = B_F[e1,e2,i,e2]
+                b_int = b_integrate(V_e1[e1+1], V_e1[e1], V_p2[e2], V_e2[e2], b)
+                xb_int = xb_integrate(V_e1[e1+1], V_e1[e1], V_p2[e2], V_e2[e2], b)
+                yb_int = yb_integrate(V_e1[e1+1], V_e1[e1], V_p2[e2], V_e2[e2], b)
+                B_c[e1,e2] += B_R[i,e2]*b_int*N[i,e2] 
+                M1_c[e1,e2] += B_R[i,e2]*xb_int*N[i,e2]
+                M2_c[e1,e2] += B_R[i,e2]*yb_int*N[i,e2]
+            ## The contributions of fragments on the same x-axis
+            for j in range(e2+1,len(V_p2)):
+                b = B_F[e1,e2,e1,j]
+                b_int = b_integrate(V_p1[e1], V_e1[e1], V_e2[e2+1], V_e2[e2], b)
+                xb_int = xb_integrate(V_p1[e1], V_e1[e1], V_e2[e2+1], V_e2[e2], b)
+                yb_int = yb_integrate(V_p1[e1], V_e1[e1], V_e2[e2+1], V_e2[e2], b)
+                B_c[e1,e2] += B_R[e1,j]*b_int*N[e1,j]
+                M1_c[e1,e2] += B_R[e1,j]*xb_int*N[e1,j]
+                M2_c[e1,e2] += B_R[e1,j]*yb_int*N[e1,j] 
+            ## The contribution from the fragments of large particles on the upper right side         
+            for i in range(e1+1, len(V_p1)):
+                for j in range(e2+1,len(V_p2)):  
+                    b = B_F[e1,e2,i,j]
+                    b_int = b_integrate(V_e1[e1+1], V_e1[e1], V_e2[e2+1], V_e2[e2], b)
+                    xb_int = xb_integrate(V_e1[e1+1], V_e1[e1], V_e2[e2+1], V_e2[e2], b)
+                    yb_int = yb_integrate(V_e1[e1+1], V_e1[e1], V_e2[e2+1], V_e2[e2], b)
+                    B_c[e1,e2] += B_R[i,j]*b_int*N[i,j]
+                    M1_c[e1,e2] += B_R[i,j]*xb_int*N[i,j]
+                    M2_c[e1,e2] += B_R[i,j]*yb_int*N[i,j]  
+                
+            D[e1,e2] = -B_R[e1,e2]*N[e1,e2]
+            if B_c[e1,e2]!=0:
+                v1[e1,e2] = M1_c[e1,e2]/B_c[e1,e2]
+                v2[e1,e2] = M2_c[e1,e2]/B_c[e1,e2]
+    
     # print(B_c)
 
     # Assign BIRTH on each pivot
-    for i in range(len(V_p[:,0])):
-        for j in range(len(V_p[0,:])): 
+    for i in range(len(V_p1)):
+        for j in range(len(V_p2)): 
             for p in range(2):
                 for q in range(2):
-                    # Actual modification calculation
-                    # if (i!=0) and (j!=0):
-                        B[i,j] += B_c[i-p,j-q] \
-                            *lam_2d(v1[i-p,j-q],v2[i-p,j-q],V_p[:,0],V_p[0,:],i,j,"-","-") \
-                            *heaviside_jit((-1)**p*(V_p[i-p,0]-v1[i-p,j-q]),0.5) \
-                            *heaviside_jit((-1)**q*(V_p[0,j-q]-v2[i-p,j-q]),0.5) 
-                        ## PRINTS FOR DEBUGGING / TESTING
-                        # if i==2 and j==0:
-                        #     print('B1', B[i,j])
-                    # if (i!=0) and (j!=len(V_p[0,:])-1):                           
-                        B[i,j] += B_c[i-p,j+q] \
-                            *lam_2d(v1[i-p,j+q],v2[i-p,j+q],V_p[:,0],V_p[0,:],i,j,"-","+") \
-                            *heaviside_jit((-1)**p*(V_p[i-p,0]-v1[i-p,j+q]),0.5) \
-                            *heaviside_jit((-1)**(q+1)*(V_p_ex[0,j+q]-v2[i-p,j+q]),0.5) 
-                        ## PRINTS FOR DEBUGGING / TESTING
-                        # if i==2 and j==0:
-                        #     print('B2', B[i,j])
-                    # if (i!=len(V_p[:,0])-1) and (j!=0):
-                        B[i,j] += B_c[i+p,j-q] \
-                            *lam_2d(v1[i+p,j-q],v2[i+p,j-q],V_p[:,0],V_p[0,:],i,j,"+","-") \
-                            *heaviside_jit((-1)**(p+1)*(V_p_ex[i+p,0]-v1[i+p,j-q]),0.5) \
-                            *heaviside_jit((-1)**q*(V_p[0,j-q]-v2[i+p,j-q]),0.5)
-                        ## PRINTS FOR DEBUGGING / TESTING
-                        # if i==2 and j==0:
-                        #     print('B3', B[i,j])
-                    # if (i!=len(V_p[:,0])-1) and (j!=len(V_p[0,:])-1): 
-                        B[i,j] += B_c[i+p,j+q] \
-                            *lam_2d(v1[i+p,j+q],v2[i+p,j+q],V_p[:,0],V_p[0,:],i,j,"+","+") \
-                            *heaviside_jit((-1)**(p+1)*(V_p_ex[i+p,0]-v1[i+p,j+q]),0.5) \
-                            *heaviside_jit((-1)**(q+1)*(V_p_ex[0,j+q]-v2[i+p,j+q]),0.5)
-                        ## PRINTS FOR DEBUGGING / TESTING
-                        # if i==2 and j==0:
-                        #     print('B4', B[i,j])
+                # Actual modification calculation
+                # if (i!=0) and (j!=0):
+                    B[i,j] += B_c[i-p,j-q] \
+                        *lam_2d(v1[i-p,j-q],v2[i-p,j-q],V_p1,V_p2,i,j,"-","-") \
+                        *heaviside_jit((-1)**p*(V_p1[i-p]-v1[i-p,j-q]),0.5) \
+                        *heaviside_jit((-1)**q*(V_p2[j-q]-v2[i-p,j-q]),0.5) 
+                    ## PRINTS FOR DEBUGGING / TESTING
+                    # if i==2 and j==0:
+                    #     print('B1', B[i,j])
+                # if (i!=0) and (j!=len(V_p[0,:])-1):                           
+                    B[i,j] += B_c[i-p,j+q] \
+                        *lam_2d(v1[i-p,j+q],v2[i-p,j+q],V_p1,V_p2,i,j,"-","+") \
+                        *heaviside_jit((-1)**p*(V_p1[i-p]-v1[i-p,j+q]),0.5) \
+                        *heaviside_jit((-1)**(q+1)*(V_p2_ex[j+q]-v2[i-p,j+q]),0.5) 
+                    ## PRINTS FOR DEBUGGING / TESTING
+                    # if i==2 and j==0:
+                    #     print('B2', B[i,j])
+                # if (i!=len(V_p[:,0])-1) and (j!=0):
+                    B[i,j] += B_c[i+p,j-q] \
+                        *lam_2d(v1[i+p,j-q],v2[i+p,j-q],V_p1,V_p2,i,j,"+","-") \
+                        *heaviside_jit((-1)**(p+1)*(V_p1_ex[i+p]-v1[i+p,j-q]),0.5) \
+                        *heaviside_jit((-1)**q*(V_p2[j-q]-v2[i+p,j-q]),0.5)
+                    ## PRINTS FOR DEBUGGING / TESTING
+                    # if i==2 and j==0:
+                    #     print('B3', B[i,j])
+                # if (i!=len(V_p[:,0])-1) and (j!=len(V_p[0,:])-1): 
+                    B[i,j] += B_c[i+p,j+q] \
+                        *lam_2d(v1[i+p,j+q],v2[i+p,j+q],V_p1,V_p2,i,j,"+","+") \
+                        *heaviside_jit((-1)**(p+1)*(V_p1_ex[i+p]-v1[i+p,j+q]),0.5) \
+                        *heaviside_jit((-1)**(q+1)*(V_p2_ex[j+q]-v2[i+p,j+q]),0.5)
+                    ## PRINTS FOR DEBUGGING / TESTING
+                    # if i==2 and j==0:
+                    #     print('B4', B[i,j])
                             
     # Combine birth and death
     dNdt = B + D
@@ -357,7 +424,8 @@ if dim == 1:
 if dim == 2:
     # V_e: Volume of EDGES
     V_e1 = np.zeros(NS+1) #np.zeros(NS+1)
-    V_e2 = np.zeros(NS+1) #np.zeros(NS+1)    
+    V_e2 = np.zeros(NS+1) #np.zeros(NS+1)  
+    V_e1[0], V_e2[0] = 0.5*V01, 0.5*V02
     
     # V_p: Volume of PIVOTS
     V_p1 = np.zeros(NS)#np.zeros(NS)
@@ -401,6 +469,19 @@ if dim == 2:
             
     for idx, tmp in np.ndenumerate(B_F):
         a = idx[0]; b = idx[1] ; i = idx[2]; j = idx[3] 
+        # if i==0 and j==0:
+        #     continue
+        # elif i==0:
+        #     if BREAKFVAL == 1:  
+        #         B_F[idx] = 4 / V_p2[j]
+        #     elif BREAKFVAL == 2:
+        #         B_F[idx] = 2 / V_p2[j]
+        # elif j == 0:
+        #     if BREAKFVAL == 1:  
+        #         B_F[idx] = 4 / V_p1[i]
+        #     elif BREAKFVAL == 2:
+        #         B_F[idx] = 2 / V_p1[i]
+        # else:
         if BREAKFVAL == 1:  
             B_F[idx] = 4 / (V_p1[i]*V_p2[j])
         elif BREAKFVAL == 2:
@@ -412,7 +493,7 @@ if dim == 2:
     RES = integrate.solve_ivp(dNdt_2D,
                               [0, max(t)], 
                               N[:,:,0].reshape(-1), t_eval=t,
-                              args=(V_p,V_e1,V_e2,B_R,B_F,BREAKFVAL),
+                              args=(V_p1,V_p2,V_e1,V_e2,B_R,B_F,BREAKFVAL),
                               method='RK23',first_step=0.1,rtol=1e-3)
     
     # Reshape and save result to N and t_vec
@@ -425,7 +506,7 @@ if dim == 2:
     print(np.sum(N0*V_p), np.sum(NE*V_p))
     
     print('### Initial dNdt..')
-    dNdt0=dNdt_2D(0,N[:,:,0].reshape(-1),V_p,V_e1,V_e2,B_R,B_F,BREAKFVAL).reshape(NS,NS)#.reshape(NS,NS)
+    dNdt0=dNdt_2D(0,N[:,:,0].reshape(-1),V_p1,V_p2,V_e1,V_e2,B_R,B_F,BREAKFVAL).reshape(NS,NS)#.reshape(NS,NS)
     print(dNdt0)
     
     VE2, VE1 = np.meshgrid(V_e2, V_e1)
@@ -455,6 +536,10 @@ if dim == 2:
         for k in range(2):
             for l in range(2):
                 mu_as[k,l,:] = np.exp((4/((k+1)*(l+1))-1)*t)
+    elif BREAKRVAL == 1 and BREAKFVAL == 2:
+        for k in range(2):
+            for l in range(2):
+                mu_as[k,l,:] = np.exp((2/((k+1)*(l+1))-1)*t)
     elif BREAKRVAL == 2 and BREAKFVAL == 1:
         mu_as[0,0,:] = 1.0 + 3*t
         mu_as[1,1,:] = 1.0

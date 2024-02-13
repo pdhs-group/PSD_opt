@@ -9,6 +9,8 @@ Created on Mon Jan 29 08:35:05 2024
 import matplotlib.pyplot as plt
 import numpy as np
 import math
+import sys, os
+sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),".."))
 import plotter.plotter as pt
 from plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
 
@@ -20,8 +22,8 @@ pt.plot_init(mrksze=8,lnewdth=1)
     
 #%% PARAM
 t = np.arange(0, 601, 60, dtype=float)
-NS = 6
-S = 1.5
+NS = 12
+S = 2
 R01, R02 = 1, 1
 V01, V02 = 1, 1
 dim = 2
@@ -117,6 +119,8 @@ def dNdt_2D(t,NN,V_p,V1_e,V3_e,NS,F_M):
     N = np.copy(NN) 
     N = np.reshape(N,(NS,NS))
     dNdt = np.zeros(np.shape(N))
+    D = np.zeros(np.shape(N))
+    # shape_mit_boundary = tuple(dim + 1 for dim in N.shape)
     B_c = np.zeros(np.shape(N)) #np.shape(V_e) (old)
     M1_c = np.zeros(np.shape(N))
     M2_c = np.zeros(np.shape(N))
@@ -128,8 +132,8 @@ def dNdt_2D(t,NN,V_p,V1_e,V3_e,NS,F_M):
     # Loop through all edges
     # Go from 2 till len()-1 to make sure nothing is collected in the BORDER
     # This automatically solves border issues. If B_c is 0 in the border, nothing has to be distributed
-    for e1 in range(1, len(V_p[:,0])):
-        for e2 in range(1, len(V_p[0,:])):
+    for e1 in range(len(V_p[:,0])-1):
+        for e2 in range(len(V_p[0,:])-1):
             # Loop through all pivots (twice)
             for i in range(len(V_p[:,0])):
                 for j in range(len(V_p[0,:])):
@@ -139,8 +143,8 @@ def dNdt_2D(t,NN,V_p,V1_e,V3_e,NS,F_M):
                             # Check if the agglomeration of ij and ab produce an 
                             # agglomerate inside the current cell 
                             # Use upper edge as "reference point"
-                            if (V1_e[e1-1] <= V_p[i,0]+V_p[a,0] < V1_e[e1]) and \
-                                (V3_e[e2-1] <= V_p[0,j]+V_p[0,b] < V3_e[e2]):
+                            if (V1_e[e1] <= V_p[i,0]+V_p[a,0] < V1_e[e1+1]) and \
+                                (V3_e[e2] <= V_p[0,j]+V_p[0,b] < V3_e[e2+1]):
                                 # if abs(V_p[a,b]+V_p[i,j]-V_p[e1,e2]) < 1e-5*V_p[1,0]:
                                 #     #print(i,a,c,'|',j,b,d)
                                 #     zeta = 1
@@ -170,12 +174,12 @@ def dNdt_2D(t,NN,V_p,V1_e,V3_e,NS,F_M):
     # print(v1)
     
     # # Assign BIRTH on each pivot
-    for i in range(len(V_p[:,0])):
-        for j in range(len(V_p[0,:])): 
+    for i in range(len(V_p[:,0])-1):
+        for j in range(len(V_p[0,:])-1): 
             for p in range(2):
                 for q in range(2):
                     # Actual modification calculation
-                    if (i!=0) and (j!=0):
+                    # if (i!=0) and (j!=0):
                         B[i,j] += B_c[i-p,j-q] \
                             *lam_2d(v1[i-p,j-q],v2[i-p,j-q],V_p[:,0],V_p[0,:],i,j,"-","-") \
                             *heaviside_jit((-1)**p*(V_p[i-p,0]-v1[i-p,j-q]),0.5) \
@@ -183,7 +187,7 @@ def dNdt_2D(t,NN,V_p,V1_e,V3_e,NS,F_M):
                         ## PRINTS FOR DEBUGGING / TESTING
                         # if i==2 and j==0:
                         #     print('B1', B[i,j])
-                    if (i!=0) and (j!=len(V_p[0,:])-1):                           
+                    # if (i!=0) and (j!=len(V_p[0,:])-1):                           
                         B[i,j] += B_c[i-p,j+q] \
                             *lam_2d(v1[i-p,j+q],v2[i-p,j+q],V_p[:,0],V_p[0,:],i,j,"-","+") \
                             *heaviside_jit((-1)**p*(V_p[i-p,0]-v1[i-p,j+q]),0.5) \
@@ -191,7 +195,7 @@ def dNdt_2D(t,NN,V_p,V1_e,V3_e,NS,F_M):
                         ## PRINTS FOR DEBUGGING / TESTING
                         # if i==2 and j==0:
                         #     print('B2', B[i,j])
-                    if (i!=len(V_p[:,0])-1) and (j!=0):
+                    # if (i!=len(V_p[:,0])-1) and (j!=0):
                         B[i,j] += B_c[i+p,j-q] \
                             *lam_2d(v1[i+p,j-q],v2[i+p,j-q],V_p[:,0],V_p[0,:],i,j,"+","-") \
                             *heaviside_jit((-1)**(p+1)*(V_p[i+p,0]-v1[i+p,j-q]),0.5) \
@@ -199,15 +203,53 @@ def dNdt_2D(t,NN,V_p,V1_e,V3_e,NS,F_M):
                         ## PRINTS FOR DEBUGGING / TESTING
                         # if i==2 and j==0:
                         #     print('B3', B[i,j])
-                    if (i!=len(V_p[:,0])-1) and (j!=len(V_p[0,:])-1): 
+                    # if (i!=len(V_p[:,0])-1) and (j!=len(V_p[0,:])-1): 
                         B[i,j] += B_c[i+p,j+q] \
                             *lam_2d(v1[i+p,j+q],v2[i+p,j+q],V_p[:,0],V_p[0,:],i,j,"+","+") \
                             *heaviside_jit((-1)**(p+1)*(V_p[i+p,0]-v1[i+p,j+q]),0.5) \
                             *heaviside_jit((-1)**(q+1)*(V_p[0,j+q]-v2[i+p,j+q]),0.5)
+    i = len(V_p[0,:]) - 1
+    for j in range(len(V_p[0,:])-1):
+        for p in range(2):
+            for q in range(2):
+                B[i,j] += B_c[i-p,j-q] \
+                    *lam_2d(v1[i-p,j-q],v2[i-p,j-q],V_p[:,0],V_p[0,:],i,j,"-","-") \
+                    *heaviside_jit((-1)**p*(V_p[i-p,0]-v1[i-p,j-q]),0.5) \
+                    *heaviside_jit((-1)**q*(V_p[0,j-q]-v2[i-p,j-q]),0.5)  
+                B[i,j] += B_c[i-p,j+q] \
+                    *lam_2d(v1[i-p,j+q],v2[i-p,j+q],V_p[:,0],V_p[0,:],i,j,"-","+") \
+                    *heaviside_jit((-1)**p*(V_p[i-p,0]-v1[i-p,j+q]),0.5) \
+                    *heaviside_jit((-1)**(q+1)*(V_p[0,j+q]-v2[i-p,j+q]),0.5) 
+    j = len(V_p[0,:]) - 1
+    for i in range(len(V_p[0,:])-1):
+       for p in range(2):
+           for q in range(2):
+              B[i,j] += B_c[i-p,j-q] \
+                  *lam_2d(v1[i-p,j-q],v2[i-p,j-q],V_p[:,0],V_p[0,:],i,j,"-","-") \
+                  *heaviside_jit((-1)**p*(V_p[i-p,0]-v1[i-p,j-q]),0.5) \
+                  *heaviside_jit((-1)**q*(V_p[0,j-q]-v2[i-p,j-q]),0.5)  
+              B[i,j] += B_c[i+p,j-q] \
+                  *lam_2d(v1[i+p,j-q],v2[i+p,j-q],V_p[:,0],V_p[0,:],i,j,"+","-") \
+                  *heaviside_jit((-1)**(p+1)*(V_p[i+p,0]-v1[i+p,j-q]),0.5) \
+                  *heaviside_jit((-1)**q*(V_p[0,j-q]-v2[i+p,j-q]),0.5) 
+    i = len(V_p[0,:]) - 1
+    j = len(V_p[0,:]) - 1
+    for p in range(2):
+        for q in range(2):     
+           B[i,j] += B_c[i-p,j-q] \
+               *lam_2d(v1[i-p,j-q],v2[i-p,j-q],V_p[:,0],V_p[0,:],i,j,"-","-") \
+               *heaviside_jit((-1)**p*(V_p[i-p,0]-v1[i-p,j-q]),0.5) \
+               *heaviside_jit((-1)**q*(V_p[0,j-q]-v2[i-p,j-q]),0.5)  
                         ## PRINTS FOR DEBUGGING / TESTING
-                        # if i==2 and j==0:
+                        # if i==3 and j==0:
                         #     print('B4', B[i,j])
-                            
+                        # if i==3 and j==1 and p==1 and q==0:
+                        #     print(f'i={i}, j={j}, p={p}, q={q} (transfer from B_c[{i+p},{j+q}]')
+                        #     print('B_c', B_c[i+p,j+q])                            
+                        #     print('lam', lam_2d(v1[i+p,j+q],v2[i+p,j+q],V_p[:,1],V_p[1,:],i,j,"+","+"))
+                        #     print('heavi 1',heaviside_jit((-1)**(p+1)*(V_p[i+p,1]-v1[i+p,j+q]),0.5))
+                        #     print('heavi 2',heaviside_jit((-1)**(q+1)*(V_p[1,j+q]-v2[i+p,j+q]),0.5))
+    
     # Combine birth and death
     dNdt = B + D
     
@@ -332,8 +374,8 @@ if dim == 1:
 #%% NEW 2D    
 if dim == 2:
     # V_e: Volume of EDGES
-    V_e1 = np.zeros(NS+1)-1 #np.zeros(NS+1)
-    V_e2 = np.zeros(NS+1)-1 #np.zeros(NS+1)    
+    V_e1 = np.zeros(NS+1) #np.zeros(NS+1)
+    V_e2 = np.zeros(NS+1) #np.zeros(NS+1)    
     # Make first cell symmetric --> pivots fall on 0
     V_e1[0], V_e2[0] = -V01, -V02
     
@@ -348,8 +390,7 @@ if dim == 2:
     
     # SOLUTION N is saved on pivots
     N = np.zeros((NS,NS,len(t)))#np.zeros((NS,NS,len(t)))
-    N[0,1,0] = 0.3
-    N[1,0,0] = 0.3
+    
     F_M_tem=1
     F = np.zeros((NS,NS,NS,NS))
     for idx, tmp in np.ndenumerate(F):
@@ -377,7 +418,10 @@ if dim == 2:
     #V_e[0,:] = V_e2
     V_p[:,0] = V_p1 #V_p[:,0] = V_p1  
     V_p[0,:] = V_p2 #V_p[0,:] = V_p2
-    
+    # N[0,1,0] = 0.3
+    # N[1,0,0] = 0.3
+    N[0,1:,0] = np.exp(-V_p1[1:])
+    N[1:,0,0] = np.exp(-V_p2[1:])
     # Calculate remaining entries of V_e and V_p and other matrices
     for i in range(NS): #range(NS)
         for j in range(NS): #range(NS)
