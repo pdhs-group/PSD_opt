@@ -9,7 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import to_rgba
 import plotter.plotter as pt          
-from plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
+from plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue, KIT_black_green_white
 pt.close()
 pt.plot_init(mrksze=12,lnewdth=1)
 from copy import deepcopy
@@ -133,7 +133,7 @@ def plot_G(G, title=None, fill_no=[], fill_clr=[]):
     
     return ax, fig
 
-def break_one_bond(G, STR, idx=None):
+def break_one_bond(G, STR, idx=None, init_break_random=False):
     # STR: Array containing the strength of bonds [11,12,22]
     # idx: np.array([i,j]) indicating the index of current edge to propagate breakge
     #      None indicates that we start a new rupture (from the outside edge)
@@ -143,31 +143,56 @@ def break_one_bond(G, STR, idx=None):
     # Find initial edge to start rupture if idx=None
     # A valid edge must only have one or two neighboring "real" bonds (not -1)
     if idx is None:
-        flag = True
-        while flag:
-            # Generate random edge
-            idx = np.random.choice(np.arange(0,G.shape[0],2), size=2)
-            
-            # Counter for valid bonds
-            cnt = 0
-            
-            # Check surrounding bonds
-            if idx[0] > 0:
-                if G[idx[0]-1, idx[1]] != -1:
-                    cnt +=1 
-            if idx[0] < G.shape[0]-1:
-                if G[idx[0]+1, idx[1]] != -1:
-                    cnt +=1 
-            if idx[1] > 0:
-                if G[idx[0], idx[1]-1] != -1:
-                    cnt +=1 
-            if idx[1] < G.shape[0]-1:
-                if G[idx[0], idx[1]+1] != -1:
-                    cnt +=1
-            
-            if cnt == 1 or cnt == 2:
-                flag = False
+        if init_break_random:
+            flag = True
+            while flag:
+                # Generate random edge
+                idx = np.random.choice(np.arange(0,G.shape[0],2), size=2)
                 
+                # Counter for valid bonds
+                cnt = 0
+                
+                # Check surrounding bonds
+                if idx[0] > 0:
+                    if G[idx[0]-1, idx[1]] != -1:
+                        cnt +=1 
+                if idx[0] < G.shape[0]-1:
+                    if G[idx[0]+1, idx[1]] != -1:
+                        cnt +=1 
+                if idx[1] > 0:
+                    if G[idx[0], idx[1]-1] != -1:
+                        cnt +=1 
+                if idx[1] < G.shape[0]-1:
+                    if G[idx[0], idx[1]+1] != -1:
+                        cnt +=1
+                
+                if cnt == 1 or cnt == 2:
+                    flag = False
+        else:
+            # List all breakable edges, their index and their corresponding bond strength
+            # init_array[Number, TYPE, i, j, PROB]
+            init_array = np.zeros((int(4*(G.shape[0]-3)/2),5))
+            cnt = 0
+            # Bottom and top row
+            for i in range(2,G.shape[0]-1,2):
+                init_array[cnt, :-1] = np.array([cnt, G[i,1], i, 0])                    
+                init_array[cnt+1, :-1] = np.array([cnt+1, G[i,-2], i, G.shape[0]-1])
+                cnt += 2
+            # Left and right column
+            for j in range(2,G.shape[0]-1,2):
+                init_array[cnt, :-1] = np.array([cnt, G[1,j], 0, j])                    
+                init_array[cnt+1, :-1] = np.array([cnt+1, G[-2,j], G.shape[0]-1, j])
+                cnt += 2
+            # Set probability column
+            init_array[:,4][init_array[:,1]==11] = 1/STR[0]
+            init_array[:,4][init_array[:,1]==12] = 1/STR[1]
+            init_array[:,4][init_array[:,1]==22] = 1/STR[2]
+            init_array[:,4] /= np.sum(init_array[:,4])
+            
+            b_idx = int(np.random.choice(init_array[:,0], p=init_array[:,4]))
+            idx = np.array([init_array[b_idx,2],init_array[b_idx,3]]).astype(int)   
+            #print('initial bond is type: ', init_array[b_idx,1])             
+            
     # Start at idx and list all surrounding bonds that are breakable (not -1)
     b = np.zeros(4)
     if idx[0] > 0:
@@ -182,9 +207,9 @@ def break_one_bond(G, STR, idx=None):
     # Create probability array for each bond 
     p = np.zeros(4)
     # p[b==-1] = 0 Not needed since initialized with 0
-    p[b==11] = STR[0]
-    p[b==12] = STR[1]
-    p[b==22] = STR[2]
+    p[b==11] = 1/STR[0]
+    p[b==12] = 1/STR[1]
+    p[b==22] = 1/STR[2]
     
     # Normalize probabilites
     p /= np.sum(p)
@@ -287,76 +312,250 @@ def check_deadend(idx, idx_hist, G):
     # A deadend is reached (return True) if 
     #     all surrounding pivots are in idx_hist
     #     or surrounding bonds are -1 (no contact) 
-    bool_list = [np.any(np.all(idx+[2,0] == idx_hist, axis=1)) or G[tuple(idx+[1,0])]==-1,
-                 np.any(np.all(idx-[2,0] == idx_hist, axis=1)) or G[tuple(idx-[1,0])]==-1,
-                 np.any(np.all(idx+[0,2] == idx_hist, axis=1)) or G[tuple(idx+[0,1])]==-1,
-                 np.any(np.all(idx-[0,2] == idx_hist, axis=1)) or G[tuple(idx-[0,1])]==-1]
+    # bool_list = [np.any(np.all(idx+[2,0] == idx_hist, axis=1)) or G[tuple(idx+[1,0])]==-1,
+    #              np.any(np.all(idx-[2,0] == idx_hist, axis=1)) or G[tuple(idx-[1,0])]==-1,
+    #              np.any(np.all(idx+[0,2] == idx_hist, axis=1)) or G[tuple(idx+[0,1])]==-1,
+    #              np.any(np.all(idx-[0,2] == idx_hist, axis=1)) or G[tuple(idx-[0,1])]==-1]
+    bool_list = [np.any(np.all(idx+[2,0] == idx_hist, axis=1)),
+                 np.any(np.all(idx-[2,0] == idx_hist, axis=1)),
+                 np.any(np.all(idx+[0,2] == idx_hist, axis=1)),
+                 np.any(np.all(idx-[0,2] == idx_hist, axis=1))]
     
     return all(bool_list)
-    
-# %% MAIN    
-if __name__ == '__main__':
-    
-    A = 10
-    X1 = 0.21
-    X2 = 1-X1
-    STR = np.array([1,1,1])
-    NO_FRAG = 4
+
+def single_sim(A, X1, X2, STR, NO_FRAG, init_break_random=False, plot=True, close=False, verbose=True):
+    if close: plt.close('all')
     
     # Generate and plot grid
     G, N, B, A0 = generate_grid_2D(A, X1, X2)
+    G0 = np.copy(G)
+    
     # print(A0, A*X1/A0, A*X2/A0)
-    ax0, fig0 = plot_G(G, title='Initial grid')
+    if plot: ax0, fig0 = plot_G(G0, title='Initial grid')
     
     # Breaking stuff
-    # Tracking number of fragments and index history
+    # Tracking number of fragments and index history of all fragments
     no_frag = 1
-    idx_hist = []
-    
+    idx_hist_frag = []
+
     while no_frag < NO_FRAG:
-        print(f'Starting fracture. Currently at {no_frag} fragments')
+        # For each fracture keep a separate history (otherwise fragments cannot break "inside" themselves)
+        idx_hist = []
+        
+        if verbose: print(f'Starting fracture. Currently at {no_frag} fragments')
         # Initialize a new fracture. idx=None indicates that this is the first event
-        G, idx, ff = break_one_bond(G, STR, idx=None)
+        G, idx, ff = break_one_bond(G, STR, idx=None, init_break_random=init_break_random)
         idx_hist.append(np.copy(idx))
         
-        # print(idx)
-        # Pursue this fracture until it breaks through
-        while ff is False:
-            print(idx)
+        # Pursue this fracture until it breaks through 
+        # Rare cases lead to an endless loop (despite check_deadend call)
+        # In this case simply repeat the fracture process from the beginning!
+        cnt = 0
+        while ff is False and cnt < 2*G.shape[0]:
             G_tmp, idx_tmp, ff_tmp = break_one_bond(G, STR, idx=idx)
             
             # Final Fracture is always valid
             # Check for circular fracture (if not so, keep the result)
-            # Also check surrounding nodes for circular fracture (endless loop otherwise)
-            # if ff_tmp or \
-            #     (not check_idx_hist(idx_tmp, idx_hist) \
-            #     and not check_deadend(idx_tmp, idx_hist, G)):
-            # if not check_idx_hist(idx_tmp, idx_hist) \
-            #     and not check_deadend(idx_tmp, idx_hist, G): 
-            if not check_idx_hist(idx_tmp, idx_hist):
-                #print(idx, idx_tmp)
+            # Also check surrounding nodes for circular fracture (endless loop otherwise / deadend)
+            if not check_idx_hist(idx_tmp, idx_hist) \
+                and not check_deadend(idx_tmp, idx_hist, G): 
                 
-                idx = deepcopy(idx_tmp)
-                G = deepcopy(G_tmp)
+                idx = np.copy(idx_tmp)
+                G = np.copy(G_tmp)
                 ff = ff_tmp
                 idx_hist.append(np.copy(idx_tmp))
                 # print(f'valid event')
             else:
-                print(f'index {idx_tmp} already inside idx_hist')
+                if verbose: print(f'index {idx_tmp} already inside idx_hist')
+            cnt += 1
         
-        no_frag += 1
-        _, _ = plot_G(G, title=f'Currently {no_frag} fragments')  
+        # Caught in an endless loop. Report and restart the fragmentation (reset no_frag and idx_hist_frag)
+        if cnt >= 2*G.shape[0]: 
+            no_frag = 1
+            idx_hist_frag = []
+            G = np.copy(G0)            
+            if verbose: print('Caught in an endless loop :( Restarting this fragmentation process..')
+        else:
+            # Increase number of fragments and append to overall history
+            no_frag += 1
+            idx_hist_frag += idx_hist
+            
+            # Plot current fracture
+            if plot: _, _ = plot_G(G, title=f'Currently {no_frag} fragments')  
     
+    # Analyze framents (use copy to retain original G)
     G_new = np.copy(G)
-    # G_new, cnt_1, cnt_2 = recursive_fun(G_new, 1, 1, 0, 0, new_value=5)
     G_new, cnt_1_arr, cnt_2_arr, val_arr = analyze_fragments(G_new)
     
-    # Generate random colors for filling
-    colormap = plt.get_cmap('nipy_spectral')
-    indices = np.random.randint(0, 256, size=len(val_arr))
-    fill_clr = [to_rgba(colormap(i)) for i in indices]
+    if plot: 
+        # Generate random colors for filling
+        colormap = plt.get_cmap('nipy_spectral')
+        indices = np.random.randint(0, 256, size=len(val_arr))
+        fill_clr = [to_rgba(colormap(i)) for i in indices]
+        
+        plot_G(G_new, fill_no=val_arr, fill_clr=fill_clr)
+        
+    return G, G_new, cnt_1_arr, cnt_2_arr, val_arr
+        
+# Simulate N_GRIDS grids that each fracture N_FRACS times
+# For debugging/testing use single_sim, as this function is "optimized" by not plotting and printing stuff
+def MC_breakage(A, X1, X2, STR, NO_FRAG, N_GRIDS=100, N_FRACS=100, init_break_random=False):
     
-    plot_G(G_new, fill_no=val_arr, fill_clr=fill_clr)
+    # Initialize lists with counts of each material in each fragment
+    cnt_1_arr = []
+    cnt_2_arr = []
+    
+    # Loop through all grids based on A, X1 and X2
+    for g in range(N_GRIDS):
+        print(f'Calculating grid no. {g+1}/{N_GRIDS}')
+        # Generate grid and copy it (identical initial conditions for other fractures)
+        G, N, B, A0 = generate_grid_2D(A, X1, X2)
+        G0 = np.copy(G)
+        
+        for f in range(N_FRACS):
+            # Tracking number of fragments and index history of all fragments
+            no_frag = 1
+            G = np.copy(G0)
+            
+            while no_frag < NO_FRAG:
+                # For each fracture keep a separate history (otherwise fragments cannot break "inside" themselves)
+                idx_hist = []
+                
+                # Initialize a new fracture. idx=None indicates that this is the first event
+                G, idx, ff = break_one_bond(G, STR, idx=None, init_break_random=init_break_random)
+                idx_hist.append(np.copy(idx))
+                
+                # Pursue this fracture until it breaks through 
+                # Rare cases lead to an endless loop (despite check_deadend call)
+                # In this case simply repeat the fracture process from the beginning!
+                cnt = 0
+                while ff is False and cnt < 2*G.shape[0]:
+                    G_tmp, idx_tmp, ff_tmp = break_one_bond(G, STR, idx=idx)
+                    
+                    # Final Fracture is always valid
+                    # Check for circular fracture (if not so, keep the result)
+                    # Also check surrounding nodes for circular fracture (endless loop otherwise / deadend)
+                    if not check_idx_hist(idx_tmp, idx_hist) \
+                        and not check_deadend(idx_tmp, idx_hist, G): 
+                        
+                        idx = np.copy(idx_tmp)
+                        G = np.copy(G_tmp)
+                        ff = ff_tmp
+                        idx_hist.append(np.copy(idx_tmp))
+                    cnt += 1
+                
+                # Caught in an endless loop. Report and restart the fragmentation (reset no_frag and idx_hist_frag)
+                if cnt >= 2*G.shape[0]: 
+                    no_frag = 1
+                    G = np.copy(G0)            
+                else:
+                    # Increase number of fragments and append to overall history
+                    no_frag += 1
+            
+            # Analyze framents (use copy to retain original G)
+            G, cnt_1_tmp, cnt_2_tmp, val_arr = analyze_fragments(G)
+            
+            # Append to solution array
+            cnt_1_arr += cnt_1_tmp
+            cnt_2_arr += cnt_2_tmp
+    
+    # Fragment array [total area, X1, X2]
+    F = np.zeros((len(cnt_1_arr),3))
+    F[:,0] = (np.array(cnt_1_arr) + np.array(cnt_2_arr))*A0    
+    F[:,1] = np.array(cnt_1_arr)/(np.array(cnt_1_arr)+np.array(cnt_2_arr))    
+    F[:,2] = np.array(cnt_2_arr)/(np.array(cnt_1_arr)+np.array(cnt_2_arr))
+    
+    return F
+    
+# %% MAIN    
+if __name__ == '__main__':
+    pt.close()
+    
+    A = 10
+    X1 = 0.51
+    X2 = 1-X1
+    STR = np.array([1,1,1])
+    NO_FRAG = 4
+    INIT_BREAK_RANDOM = False
+    
+    N_GRIDS, N_FRACS = 100, 100
+    
+    # Perform a single simulation (1 grid, 1 fracture) for visualization
+    G, G_new, cnt_1_arr, cnt_2_arr, val_arr = single_sim(A, X1, X2, STR, NO_FRAG, 
+                                                         plot=True, close=True,
+                                                         init_break_random=INIT_BREAK_RANDOM)
+    
+    # Perform stochastic simulation
+    F = MC_breakage(A, X1, X2, STR, NO_FRAG, N_GRIDS=N_GRIDS, N_FRACS=N_FRACS, init_break_random=INIT_BREAK_RANDOM)
+    
+    # #%% PLOTS
+    ax, fig, cb, H, xe, ye = pt.plot_2d_hist(x=F[:,0]*F[:,1],y=F[:,0]*F[:,2],bins=(20,20),w=None,
+                                              scale=('lin','lin'), clr=KIT_black_green_white.reversed(),grd=True,
+                                              xlbl='Partial Volume 1 $V_1$ / $\mathrm{m^3}$', norm=False,
+                                              ylbl='Partial Volume 2 $V_2$ / $\mathrm{m^3}$', 
+                                              scale_hist='log', hist_thr=1e-4)
+    
+    # cb.formatter.set_powerlimits((0, 0))
+    # cb.ax.yaxis.set_offset_position('left')
+    
+    # # Generate and plot grid
+    # G, N, B, A0 = generate_grid_2D(A, X1, X2)
+    # # print(A0, A*X1/A0, A*X2/A0)
+    # ax0, fig0 = plot_G(G, title='Initial grid')
+    
+    # # Breaking stuff
+    # # Tracking number of fragments and index history of all fragments
+    # no_frag = 1
+    # idx_hist_frag = []
+
+    # while no_frag < NO_FRAG:
+    #     # For each fracture keep a separate history (otherwise fragments cannot break "inside" themselves)
+    #     idx_hist = []
+        
+    #     print(f'Starting fracture. Currently at {no_frag} fragments')
+    #     # Initialize a new fracture. idx=None indicates that this is the first event
+    #     G, idx, ff = break_one_bond(G, STR, idx=None)
+    #     idx_hist.append(np.copy(idx))
+        
+    #     # Pursue this fracture until it breaks through
+    #     # cnt = 0
+    #     while ff is False:# and cnt<100:
+    #         print(idx)
+    #         G_tmp, idx_tmp, ff_tmp = break_one_bond(G, STR, idx=idx)
+            
+    #         # Final Fracture is always valid
+    #         # Check for circular fracture (if not so, keep the result)
+    #         # Also check surrounding nodes for circular fracture (endless loop otherwise / deadend)
+    #         if not check_idx_hist(idx_tmp, idx_hist) \
+    #             and not check_deadend(idx_tmp, idx_hist, G): 
+                
+    #             idx = deepcopy(idx_tmp)
+    #             G = deepcopy(G_tmp)
+    #             ff = ff_tmp
+    #             idx_hist.append(np.copy(idx_tmp))
+    #             # print(f'valid event')
+    #         else:
+    #             print(f'index {idx_tmp} already inside idx_hist')
+    #         # cnt += 1
+        
+    #     # Increase number of fragments and append to overall history
+    #     no_frag += 1
+    #     idx_hist_frag += idx_hist
+        
+    #     # Plot current fracture
+    #     _, _ = plot_G(G, title=f'Currently {no_frag} fragments')  
+        
+    #     G_new = np.copy(G)
+    #     # G_new, cnt_1, cnt_2 = recursive_fun(G_new, 1, 1, 0, 0, new_value=5)
+    #     G_new, cnt_1_arr, cnt_2_arr, val_arr = analyze_fragments(G_new)
+        
+    #     # Generate random colors for filling
+    #     colormap = plt.get_cmap('nipy_spectral')
+    #     indices = np.random.randint(0, 256, size=len(val_arr))
+    #     fill_clr = [to_rgba(colormap(i)) for i in indices]
+        
+    #     plot_G(G_new, fill_no=val_arr, fill_clr=fill_clr)
+    
     # ARCHIEVE 
         
     # p, e_v, e_h, N, B, A0 = generate_grids_2D(A, X1, X2)

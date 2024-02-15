@@ -193,10 +193,11 @@ def plot_data(x,y,err=None,fig=None,ax=None,plt_type=None,lbl=None,xlbl=None,ylb
 # only_calc: (optional) Only calculate bins and data without plotting
 def plot_2d_hist(x,y,w=None,bins=(10,10),scale=('lin','lin'),fig=None,ax=None,xlbl=None,
                  ylbl=None, clr='viridis',tit=None,grd=True, norm=True, colorbar=True, cblbl='',
-                 only_calc=False):
+                 only_calc=False, scale_hist='lin', hist_thr=1e-6):
     
     import numpy as np
-    from mpl_toolkits.axes_grid1 import make_axes_locatable
+    from mpl_toolkits.axes_grid1 import make_axes_locatable    
+    import matplotlib.colors as colors
 
     # --- Calculate histogram data
     H, xe, ye = np.histogram2d(x, y, bins=bins, weights=w)
@@ -235,8 +236,15 @@ def plot_2d_hist(x,y,w=None,bins=(10,10),scale=('lin','lin'),fig=None,ax=None,xl
         # --- If ax is not given create new axis on figure (only reasonable if fig==None also) ---
         if fig == None or ax == None:    
             ax=fig.add_subplot(1,1,1)
-
-        cp = ax.pcolormesh(X, Y, H, cmap=clr, edgecolor=ecl, antialiased=True, linewidth=0.1)
+        
+        if scale_hist == 'log':
+            # H == 0 is not allowed. set to hist_thr*H.max() 
+            H[H==0] = hist_thr*H.max()
+            
+            cp = ax.pcolormesh(X, Y, H, cmap=clr, edgecolor=ecl, antialiased=True, linewidth=0.1,
+                               norm=colors.LogNorm(vmin=H.min(), vmax=H.max()))
+        else:
+            cp = ax.pcolormesh(X, Y, H, cmap=clr, edgecolor=ecl, antialiased=True, linewidth=0.1)
         
         if colorbar:
             divider = make_axes_locatable(ax)
