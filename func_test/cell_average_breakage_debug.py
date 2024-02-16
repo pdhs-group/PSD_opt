@@ -23,13 +23,13 @@ pt.plot_init(mrksze=8,lnewdth=1)
 #%% PARAM
 t = np.arange(0, 11, 1, dtype=float)
 NS = 15
-S = 3
+S = 3.9811
 R01, R02 = 1, 1
 V01, V02 = 2e-9, 2e-9
 dim = 2
 ## BREAKRVAL == 1: 1, constant breakage rate
-## BREAKRVAL == 2: x*y, breakage rate is related to particle size
-BREAKRVAL = 2
+## BREAKRVAL == 2: x*y or x + y, breakage rate is related to particle size
+BREAKRVAL = 1
 ## BREAKFVAL == 1: 4/x'y', meet the first cross moment
 ## BREAKFVAL == 1: 2/x'y', meet the first moment/ mass conversation
 BREAKFVAL = 2
@@ -162,7 +162,7 @@ def heaviside_jit(x1, x2):
     else:
         return x2
     
-@jit(nopython=True)    
+# @jit(nopython=True)    
 def dNdt_2D(t,NN,V_p1,V_p2,V_e1,V_e2,B_R,B_F,BREAKFVAL):
     N = np.copy(NN) 
     N = np.reshape(N,(NS,NS))
@@ -177,129 +177,261 @@ def dNdt_2D(t,NN,V_p1,V_p2,V_e1,V_e2,B_R,B_F,BREAKFVAL):
     V_p1_ex = np.zeros(NS+1)
     V_p2_ex = np.zeros(NS+1)
     
-    # # The smallest particles will not break, so D don't need to be calculated
-    # e1 = 0; e2 = 0
-    # for i in range(e1+1, len(V_p1)):
-    #     for j in range(e2+1,len(V_p2)):  
-    #         b = B_F[e1,e2,i,j]
-    #         b_int = b_integrate(V_e1[e1+1], V_p1[e1], V_e2[e2+1], V_p2[e2], b)
-    #         xb_int = xb_integrate(V_e1[e1+1], V_p1[e1], V_e2[e2+1], V_p2[e2], b)
-    #         yb_int = yb_integrate(V_e1[e1+1], V_p1[e1], V_e2[e2+1], V_p2[e2], b)
-    #         B_c[e1,e2] += B_R[i,j]*b_int*N[i,j]
-    #         M1_c[e1,e2] += B_R[i,j]*xb_int*N[i,j]
-    #         M2_c[e1,e2] += B_R[i,j]*yb_int*N[i,j]  
-            
-    # if B_c[e1,e2]!=0:
-    #     v1[e1,e2] = M1_c[e1,e2]/B_c[e1,e2]
-    #     v2[e1,e2] = M2_c[e1,e2]/B_c[e1,e2]
+    ## The smallest particles will not break, so D don't need to be calculated
+
+    e1 = 0; e2 = 0
+    ## The boundary is treated as 1d
+    for i in range(e1+1,len(V_p1)):
+        b = B_F[e1,e2,i,e2]
+        S = B_R[i,e2]
+        b_int = b_integrate(V_e1[e1+1], 0.0, b=b)
+        xb_int = xb_integrate(V_e1[e1+1], 0.0, b=b)
+        B_c[e1,e2] += S*b_int*N[i,e2]
+        M1_c[e1,e2] += S*xb_int*N[i,e2]
+    for j in range(e2+1,len(V_p2)):
+        b = B_F[e1,e2,e1,j]
+        S = B_R[e1,j]
+        b_int = b_integrate(V_e2[e2+1], 0, b=b)
+        yb_int = xb_integrate(V_e2[e2+1], 0, b=b)
+        B_c[e1,e2] += S*b_int*N[e1,j]
+        M2_c[e1,e2] += S*yb_int*N[e1,j]
+    ## particle with e=1 and e2=1 only break in 1D -> no contribution to boundary? 
+    for i in range(e1+2, len(V_p1)):
+        for j in range(e2+2,len(V_p2)):  
+            b = B_F[e1,e2,i,j]
+            b_int = b_integrate(V_e1[e1+1], 0.0, V_e2[e2+1], 0.0, b)
+            xb_int = xb_integrate(V_e1[e1+1], 0.0, V_e2[e2+1], 0.0, b)
+            yb_int = yb_integrate(V_e1[e1+1], 0.0, V_e2[e2+1], 0.0, b)
+            B_c[e1,e2] += B_R[i,j]*b_int*N[i,j]
+            M1_c[e1,e2] += B_R[i,j]*xb_int*N[i,j]
+            M2_c[e1,e2] += B_R[i,j]*yb_int*N[i,j]        
+    if B_c[e1,e2]!=0:
+        v1[e1,e2] = M1_c[e1,e2]/B_c[e1,e2]
+        v2[e1,e2] = M2_c[e1,e2]/B_c[e1,e2]
     
-    # e1 = 0 ## left boundary
-    # for e2 in range(1,len(V_p2)):
-    #     for i in range(e1+1,len(V_p1)): ## same y/e2
-    #         b = B_F[e1,e2,i,e2]
-    #         b_int = b_integrate(V_e1[e1+1], V_p1[e1], V_p2[e2], V_e2[e2], b)
-    #         xb_int = xb_integrate(V_e1[e1+1], V_p1[e1], V_p2[e2], V_e2[e2], b)
-    #         yb_int = yb_integrate(V_e1[e1+1], V_p1[e1], V_p2[e2], V_e2[e2], b)
-    #         B_c[e1,e2] += B_R[i,e2]*b_int*N[i,e2] 
-    #         M1_c[e1,e2] += B_R[i,e2]*xb_int*N[i,e2]
-    #         M2_c[e1,e2] += B_R[i,e2]*yb_int*N[i,e2]
-    #     for i in range(e1+1, len(V_p1)):
-    #         for j in range(e2+1,len(V_p2)):  
-    #             b = B_F[e1,e2,i,j]
-    #             b_int = b_integrate(V_e1[e1+1], V_p1[e1], V_e2[e2+1], V_e2[e2], b)
-    #             xb_int = xb_integrate(V_e1[e1+1],V_p1[e1], V_e2[e2+1], V_e2[e2], b)
-    #             yb_int = yb_integrate(V_e1[e1+1], V_p1[e1], V_e2[e2+1], V_e2[e2], b)
-    #             B_c[e1,e2] += B_R[i,j]*b_int*N[i,j]
-    #             M1_c[e1,e2] += B_R[i,j]*xb_int*N[i,j]
-    #             M2_c[e1,e2] += B_R[i,j]*yb_int*N[i,j]  
-    #     D[e1,e2] = -B_R[e1,e2]*N[e1,e2]
-    #     if B_c[e1,e2]!=0:
-    #         v1[e1,e2] = M1_c[e1,e2]/B_c[e1,e2]
-    #         v2[e1,e2] = M2_c[e1,e2]/B_c[e1,e2]
+    e1 = 0 ## left boundary
+    for e2 in range(1,len(V_p2)):
+        b = B_F[e1,e2,e1,e2]
+        S = B_R[e1,e2]
+        b_int = b_integrate(V_p2[e2], V_e2[e2], b=b)
+        ## The boundary is treated as 1d
+        yb_int = xb_integrate(V_p2[e2], V_e2[e2], b=b)
+        B_c[e1,e2] += S*b_int*N[e1,e2]
+        M2_c[e1,e2] += S*yb_int*N[e1,e2]
+        for j in range(e2+1,len(V_p2)):
+            b = B_F[e1,e2,e1,j]
+            S = B_R[e1,j]
+            b_int = b_integrate(V_e2[e2+1], V_e2[e2], b=b)
+            yb_int = xb_integrate(V_e2[e2+1], V_e2[e2], b=b)
+            B_c[e1,e2] += S*b_int*N[e1,j]
+            M2_c[e1,e2] += S*yb_int*N[e1,j]
+        ## particle with e=1 and e2=1 only break in 1D -> no contribution to boundary? 
+        for i in range(e1+2,len(V_p1)): ## same y/e2
+            b = B_F[e1,e2,i,e2]
+            b_int = b_integrate(V_e1[e1+1], 0.0, V_p2[e2], V_e2[e2], b)
+            xb_int = xb_integrate(V_e1[e1+1], 0.0, V_p2[e2], V_e2[e2], b)
+            yb_int = yb_integrate(V_e1[e1+1], 0.0, V_p2[e2], V_e2[e2], b)
+            B_c[e1,e2] += B_R[i,e2]*b_int*N[i,e2] 
+            M1_c[e1,e2] += B_R[i,e2]*xb_int*N[i,e2]
+            M2_c[e1,e2] += B_R[i,e2]*yb_int*N[i,e2]
+        for i in range(e1+2, len(V_p1)):
+            ## particle with e=1 and e2=1 only break in 1D -> no contribution to boundary? 
+            for j in range(e2+1,len(V_p2)):  
+                b = B_F[e1,e2,i,j]
+                b_int = b_integrate(V_e1[e1+1], 0.0, V_e2[e2+1], V_e2[e2], b)
+                xb_int = xb_integrate(V_e1[e1+1],0.0, V_e2[e2+1], V_e2[e2], b)
+                yb_int = yb_integrate(V_e1[e1+1], 0.0, V_e2[e2+1], V_e2[e2], b)
+                B_c[e1,e2] += B_R[i,j]*b_int*N[i,j]
+                M1_c[e1,e2] += B_R[i,j]*xb_int*N[i,j]
+                M2_c[e1,e2] += B_R[i,j]*yb_int*N[i,j]  
+        D[e1,e2] = -B_R[e1,e2]*N[e1,e2]
+        if B_c[e1,e2]!=0:
+            v1[e1,e2] = M1_c[e1,e2]/B_c[e1,e2]
+            v2[e1,e2] = M2_c[e1,e2]/B_c[e1,e2]
             
-    # e2 = 0 ##  low boundary
-    # for e1 in range(1,len(V_p1)):
-    #     for j in range(e2+1,len(V_p2)): ## same x/e1
-    #         b = B_F[e1,e2,e1,j]
-    #         b_int = b_integrate(V_p1[e1], V_e1[e1], V_e2[e2+1], V_p2[e2], b)
-    #         xb_int = xb_integrate(V_p1[e1], V_e1[e1], V_e2[e2+1], V_p2[e2], b)
-    #         yb_int = yb_integrate(V_p1[e1], V_e1[e1], V_e2[e2+1], V_p2[e2], b)
-    #         B_c[e1,e2] += B_R[e1,j]*b_int*N[e1,j]
-    #         M1_c[e1,e2] += B_R[e1,j]*xb_int*N[e1,j]
-    #         M2_c[e1,e2] += B_R[e1,j]*yb_int*N[e1,j] 
-    #     for i in range(e1+1, len(V_p1)):
-    #         for j in range(e2+1,len(V_p2)):  
-    #             b = B_F[e1,e2,i,j]
-    #             b_int = b_integrate(V_e1[e1+1], V_e1[e1], V_e2[e2+1], V_p2[e2], b)
-    #             xb_int = xb_integrate(V_e1[e1+1], V_e1[e1], V_e2[e2+1], V_p2[e2], b)
-    #             yb_int = yb_integrate(V_e1[e1+1], V_e1[e1], V_e2[e2+1], V_p2[e2], b)
-    #             B_c[e1,e2] += B_R[i,j]*b_int*N[i,j]
-    #             M1_c[e1,e2] += B_R[i,j]*xb_int*N[i,j]
-    #             M2_c[e1,e2] += B_R[i,j]*yb_int*N[i,j]  
-    #     D[e1,e2] = -B_R[e1,e2]*N[e1,e2]
-    #     if B_c[e1,e2]!=0:
-    #         v1[e1,e2] = M1_c[e1,e2]/B_c[e1,e2]
-    #         v2[e1,e2] = M2_c[e1,e2]/B_c[e1,e2]
-        
-    for e1 in range(0, len(V_p1)):
-        for e2 in range(0, len(V_p2)):
+    e2 = 0 ##  low boundary
+    for e1 in range(1,len(V_p1)):
+        b = B_F[e1,e2,e1,e2]
+        S = B_R[e1,e2]
+        b_int = b_integrate(V_p1[e1], V_e1[e1], b=b)
+        ## The boundary is treated as 1d
+        xb_int = xb_integrate(V_p1[e1], V_e1[e1], b=b)
+        B_c[e1,e2] += S*b_int*N[e1,e2]
+        M1_c[e1,e2] += S*xb_int*N[e1,e2]
+        ## particle with e=1 and e2=1 only break in 1D -> no contribution to boundary? 
+        for j in range(e2+2,len(V_p2)): ## same x/e1
+            b = B_F[e1,e2,e1,j]
+            b_int = b_integrate(V_p1[e1], V_e1[e1], V_e2[e2+1], 0.0, b)
+            xb_int = xb_integrate(V_p1[e1], V_e1[e1], V_e2[e2+1], 0.0, b)
+            yb_int = yb_integrate(V_p1[e1], V_e1[e1], V_e2[e2+1], 0.0, b)
+            B_c[e1,e2] += B_R[e1,j]*b_int*N[e1,j]
+            M1_c[e1,e2] += B_R[e1,j]*xb_int*N[e1,j]
+            M2_c[e1,e2] += B_R[e1,j]*yb_int*N[e1,j] 
+        for i in range(e1+1,len(V_p1)):
+            b = B_F[e1,e2,i,e2]
+            S = B_R[i,e2]
+            b_int = b_integrate(V_e1[e1+1], V_e1[e1], b=b)
+            xb_int = xb_integrate(V_e1[e1+1], V_e1[e1], b=b)
+            B_c[e1,e2] += S*b_int*N[i,e2]
+            M1_c[e1,e2] += S*xb_int*N[i,e2]
+        for i in range(e1+1, len(V_p1)):
+            ## particle with e=1 and e2=1 only break in 1D -> no contribution to boundary? 
+            for j in range(e2+2,len(V_p2)):  
+                b = B_F[e1,e2,i,j]
+                b_int = b_integrate(V_e1[e1+1], V_e1[e1], V_e2[e2+1], 0.0, b)
+                xb_int = xb_integrate(V_e1[e1+1], V_e1[e1], V_e2[e2+1], 0.0, b)
+                yb_int = yb_integrate(V_e1[e1+1], V_e1[e1], V_e2[e2+1], 0.0, b)
+                B_c[e1,e2] += B_R[i,j]*b_int*N[i,j]
+                M1_c[e1,e2] += B_R[i,j]*xb_int*N[i,j]
+                M2_c[e1,e2] += B_R[i,j]*yb_int*N[i,j]  
+        D[e1,e2] = -B_R[e1,e2]*N[e1,e2]
+        if B_c[e1,e2]!=0:
+            v1[e1,e2] = M1_c[e1,e2]/B_c[e1,e2]
+            v2[e1,e2] = M2_c[e1,e2]/B_c[e1,e2]
+            
+    e1 = 1; e2 = 1
+    ## The 2.boundary is treated as 1d
+    for i in range(e1+1,len(V_p1)):
+        b = B_F[e1,e2,i,e2]
+        S = B_R[i,e2]
+        b_int = b_integrate(V_e1[e1+1], V_e1[e1], b=b)
+        xb_int = xb_integrate(V_e1[e1+1], V_e1[e1], b=b)
+        B_c[e1,e2] += S*b_int*N[i,e2]
+        M1_c[e1,e2] += S*xb_int*N[i,e2]
+    for j in range(e2+1,len(V_p2)):
+        b = B_F[e1,e2,e1,j]
+        S = B_R[e1,j]
+        b_int = b_integrate(V_e2[e2+1], V_e2[e2], b=b)
+        yb_int = xb_integrate(V_e2[e2+1], V_e2[e2], b=b)
+        B_c[e1,e2] += S*b_int*N[e1,j]
+        M2_c[e1,e2] += S*yb_int*N[e1,j]
+    ## particle with e=1 and e2=1 only break in 1D -> no contribution to boundary? 
+    for i in range(e1+1, len(V_p1)):
+        for j in range(e2+1,len(V_p2)):  
+            b = B_F[e1,e2,i,j]
+            b_int = b_integrate(V_e1[e1+1], V_e1[e1], V_e2[e2+1], V_e2[e2], b)
+            xb_int = xb_integrate(V_e1[e1+1], V_e1[e1], V_e2[e2+1], V_e2[e2], b)
+            yb_int = yb_integrate(V_e1[e1+1], V_e1[e1], V_e2[e2+1], V_e2[e2], b)
+            B_c[e1,e2] += B_R[i,j]*b_int*N[i,j]
+            M1_c[e1,e2] += B_R[i,j]*xb_int*N[i,j]
+            M2_c[e1,e2] += B_R[i,j]*yb_int*N[i,j]        
+    if B_c[e1,e2]!=0:
+        v1[e1,e2] = M1_c[e1,e2]/B_c[e1,e2]
+        v2[e1,e2] = M2_c[e1,e2]/B_c[e1,e2]
+    D[e1,e2] = -B_R[e1,e2]*N[e1,e2]
+    
+    e1 = 1 ## left 2.boundary
+    for e2 in range(2,len(V_p2)):
+        b = B_F[e1,e2,e1,e2]
+        S = B_R[e1,e2]
+        b_int = b_integrate(V_p2[e2], V_e2[e2], b=b)
+        ## The boundary is treated as 1d
+        yb_int = xb_integrate(V_p2[e2], V_e2[e2], b=b)
+        B_c[e1,e2] += S*b_int*N[e1,e2]
+        M2_c[e1,e2] += S*yb_int*N[e1,e2]
+        for j in range(e2+1,len(V_p2)):
+            b = B_F[e1,e2,e1,j]
+            S = B_R[e1,j]
+            b_int = b_integrate(V_e2[e2+1], V_e2[e2], b=b)
+            yb_int = xb_integrate(V_e2[e2+1], V_e2[e2], b=b)
+            B_c[e1,e2] += S*b_int*N[e1,j]
+            M2_c[e1,e2] += S*yb_int*N[e1,j]
+        ## particle with e=1 and e2=1 only break in 1D -> no contribution to boundary? 
+        for i in range(e1+1,len(V_p1)): ## same y/e2
+            b = B_F[e1,e2,i,e2]
+            b_int = b_integrate(V_e1[e1+1], V_e1[e1], V_p2[e2], V_e2[e2], b)
+            xb_int = xb_integrate(V_e1[e1+1], V_e1[e1], V_p2[e2], V_e2[e2], b)
+            yb_int = yb_integrate(V_e1[e1+1], V_e1[e1], V_p2[e2], V_e2[e2], b)
+            B_c[e1,e2] += B_R[i,e2]*b_int*N[i,e2] 
+            M1_c[e1,e2] += B_R[i,e2]*xb_int*N[i,e2]
+            M2_c[e1,e2] += B_R[i,e2]*yb_int*N[i,e2]
+        for i in range(e1+1, len(V_p1)):
+            ## particle with e=1 and e2=1 only break in 1D -> no contribution to boundary? 
+            for j in range(e2+1,len(V_p2)):  
+                b = B_F[e1,e2,i,j]
+                b_int = b_integrate(V_e1[e1+1], V_e1[e1], V_e2[e2+1], V_e2[e2], b)
+                xb_int = xb_integrate(V_e1[e1+1],V_e1[e1], V_e2[e2+1], V_e2[e2], b)
+                yb_int = yb_integrate(V_e1[e1+1], V_e1[e1], V_e2[e2+1], V_e2[e2], b)
+                B_c[e1,e2] += B_R[i,j]*b_int*N[i,j]
+                M1_c[e1,e2] += B_R[i,j]*xb_int*N[i,j]
+                M2_c[e1,e2] += B_R[i,j]*yb_int*N[i,j]  
+        D[e1,e2] = -B_R[e1,e2]*N[e1,e2]
+        if B_c[e1,e2]!=0:
+            v1[e1,e2] = M1_c[e1,e2]/B_c[e1,e2]
+            v2[e1,e2] = M2_c[e1,e2]/B_c[e1,e2]
+            
+    e2 = 1 ##  2.low boundary
+    for e1 in range(2,len(V_p1)):
+        b = B_F[e1,e2,e1,e2]
+        S = B_R[e1,e2]
+        b_int = b_integrate(V_p1[e1], V_e1[e1], b=b)
+        ## The boundary is treated as 1d
+        xb_int = xb_integrate(V_p1[e1], V_e1[e1], b=b)
+        B_c[e1,e2] += S*b_int*N[e1,e2]
+        M1_c[e1,e2] += S*xb_int*N[e1,e2]
+        ## particle with e=1 and e2=1 only break in 1D -> no contribution to boundary? 
+        for j in range(e2+1,len(V_p2)): ## same x/e1
+            b = B_F[e1,e2,e1,j]
+            b_int = b_integrate(V_p1[e1], V_e1[e1], V_e2[e2+1], V_e2[e2], b)
+            xb_int = xb_integrate(V_p1[e1], V_e1[e1], V_e2[e2+1], V_e2[e2], b)
+            yb_int = yb_integrate(V_p1[e1], V_e1[e1], V_e2[e2+1], V_e2[e2], b)
+            B_c[e1,e2] += B_R[e1,j]*b_int*N[e1,j]
+            M1_c[e1,e2] += B_R[e1,j]*xb_int*N[e1,j]
+            M2_c[e1,e2] += B_R[e1,j]*yb_int*N[e1,j] 
+        for i in range(e1+1,len(V_p1)):
+            b = B_F[e1,e2,i,e2]
+            S = B_R[i,e2]
+            b_int = b_integrate(V_e1[e1+1], V_e1[e1], b=b)
+            xb_int = xb_integrate(V_e1[e1+1], V_e1[e1], b=b)
+            B_c[e1,e2] += S*b_int*N[i,e2]
+            M1_c[e1,e2] += S*xb_int*N[i,e2]
+        for i in range(e1+1, len(V_p1)):
+            ## particle with e=1 and e2=1 only break in 1D -> no contribution to boundary? 
+            for j in range(e2+1,len(V_p2)):  
+                b = B_F[e1,e2,i,j]
+                b_int = b_integrate(V_e1[e1+1], V_e1[e1], V_e2[e2+1], V_e2[e2], b)
+                xb_int = xb_integrate(V_e1[e1+1], V_e1[e1], V_e2[e2+1], V_e2[e2], b)
+                yb_int = yb_integrate(V_e1[e1+1], V_e1[e1], V_e2[e2+1], V_e2[e2], b)
+                B_c[e1,e2] += B_R[i,j]*b_int*N[i,j]
+                M1_c[e1,e2] += B_R[i,j]*xb_int*N[i,j]
+                M2_c[e1,e2] += B_R[i,j]*yb_int*N[i,j]  
+        D[e1,e2] = -B_R[e1,e2]*N[e1,e2]
+        if B_c[e1,e2]!=0:
+            v1[e1,e2] = M1_c[e1,e2]/B_c[e1,e2]
+            v2[e1,e2] = M2_c[e1,e2]/B_c[e1,e2]    
+    for e1 in range(2, len(V_p1)):
+        for e2 in range(2, len(V_p2)):
             ## The contribution of self-fragmentation
             b = B_F[e1,e2,e1,e2]
             S = B_R[e1,e2]
-            if e1 == 0:
-                b_int = b_integrate(V_p2[e2], V_e2[e2], b=b)
-                ## The boundary is treated as 1d
-                yb_int = xb_integrate(V_p2[e2], V_e2[e2], b=b)
-                B_c[e1,e2] += S*b_int*N[e1,e2]
-                M2_c[e1,e2] += S*yb_int*N[e1,e2]
-            elif e2 == 0:
-                b_int = b_integrate(V_p1[e1], V_e1[e1], b=b)
-                ## The boundary is treated as 1d
-                xb_int = xb_integrate(V_p1[e1], V_e1[e1], b=b)
-                B_c[e1,e2] += S*b_int*N[e1,e2]
-                M1_c[e1,e2] += S*xb_int*N[e1,e2]
-            else:
-                b_int = b_integrate(V_p1[e1], V_e1[e1], V_p2[e2], V_e2[e2], b)
-                xb_int = xb_integrate(V_p1[e1], V_e1[e1], V_p2[e2], V_e2[e2], b)
-                yb_int = yb_integrate(V_p1[e1], V_e1[e1], V_p2[e2], V_e2[e2], b)
-                B_c[e1,e2] += S*b_int*N[e1,e2]
-                M1_c[e1,e2] += S*xb_int*N[e1,e2]
-                M2_c[e1,e2] += S*yb_int*N[e1,e2]
+            b_int = b_integrate(V_p1[e1], V_e1[e1], V_p2[e2], V_e2[e2], b)
+            xb_int = xb_integrate(V_p1[e1], V_e1[e1], V_p2[e2], V_e2[e2], b)
+            yb_int = yb_integrate(V_p1[e1], V_e1[e1], V_p2[e2], V_e2[e2], b)
+            B_c[e1,e2] += S*b_int*N[e1,e2]
+            M1_c[e1,e2] += S*xb_int*N[e1,e2]
+            M2_c[e1,e2] += S*yb_int*N[e1,e2]
                 
             D[e1,e2] = -S*N[e1,e2]
             ## The contributions of fragments on the same y-axis
             for i in range(e1+1,len(V_p1)):
                 b = B_F[e1,e2,i,e2]
                 S = B_R[i,e2]
-                if e2 == 0:
-                    b_int = b_integrate(V_e1[e1+1], V_e1[e1], b=b)
-                    ## The boundary is treated as 1d
-                    xb_int = xb_integrate(V_e1[e1+1], V_e1[e1], b=b)
-                    B_c[e1,e2] += S*b_int*N[i,e2]
-                    M1_c[e1,e2] += S*xb_int*N[i,e2]
-                else:
-                    b_int = b_integrate(V_e1[e1+1], V_e1[e1], V_p2[e2], V_e2[e2], b)
-                    xb_int = xb_integrate(V_e1[e1+1], V_e1[e1], V_p2[e2], V_e2[e2], b)
-                    yb_int = yb_integrate(V_e1[e1+1], V_e1[e1], V_p2[e2], V_e2[e2], b)
-                    B_c[e1,e2] += S*b_int*N[i,e2] 
-                    M1_c[e1,e2] += S*xb_int*N[i,e2]
-                    M2_c[e1,e2] += S*yb_int*N[i,e2]
+                b_int = b_integrate(V_e1[e1+1], V_e1[e1], V_p2[e2], V_e2[e2], b)
+                xb_int = xb_integrate(V_e1[e1+1], V_e1[e1], V_p2[e2], V_e2[e2], b)
+                yb_int = yb_integrate(V_e1[e1+1], V_e1[e1], V_p2[e2], V_e2[e2], b)
+                B_c[e1,e2] += S*b_int*N[i,e2] 
+                M1_c[e1,e2] += S*xb_int*N[i,e2]
+                M2_c[e1,e2] += S*yb_int*N[i,e2]
             ## The contributions of fragments on the same x-axis
             for j in range(e2+1,len(V_p2)):
                 b = B_F[e1,e2,e1,j]
                 S = B_R[e1,j]
-                if e1 == 0:
-                    b_int = b_integrate(V_e2[e2+1], V_e2[e2], b=b)
-                    yb_int = xb_integrate(V_e2[e2+1], V_e2[e2], b=b)
-                    B_c[e1,e2] += S*b_int*N[e1,j]
-                    M2_c[e1,e2] += S*yb_int*N[e1,j] 
-                else:
-                    b_int = b_integrate(V_p1[e1], V_e1[e1], V_e2[e2+1], V_e2[e2], b)
-                    xb_int = xb_integrate(V_p1[e1], V_e1[e1], V_e2[e2+1], V_e2[e2], b)
-                    yb_int = yb_integrate(V_p1[e1], V_e1[e1], V_e2[e2+1], V_e2[e2], b)
-                    B_c[e1,e2] += S*b_int*N[e1,j]
-                    M1_c[e1,e2] += S*xb_int*N[e1,j]
-                    M2_c[e1,e2] += S*yb_int*N[e1,j] 
+                b_int = b_integrate(V_p1[e1], V_e1[e1], V_e2[e2+1], V_e2[e2], b)
+                xb_int = xb_integrate(V_p1[e1], V_e1[e1], V_e2[e2+1], V_e2[e2], b)
+                yb_int = yb_integrate(V_p1[e1], V_e1[e1], V_e2[e2+1], V_e2[e2], b)
+                B_c[e1,e2] += S*b_int*N[e1,j]
+                M1_c[e1,e2] += S*xb_int*N[e1,j]
+                M2_c[e1,e2] += S*yb_int*N[e1,j] 
             ## The contribution from the fragments of large particles on the upper right side         
             for i in range(e1+1, len(V_p1)):
                 for j in range(e2+1,len(V_p2)):  
@@ -485,7 +617,7 @@ if dim == 2:
     # V_e: Volume of EDGES
     V_e1 = np.zeros(NS+1) #np.zeros(NS+1)
     V_e2 = np.zeros(NS+1) #np.zeros(NS+1)  
-    # V_e1[0], V_e2[0] =-V01, -V02
+    V_e1[0], V_e2[0] =-V01, -V02
     
     # V_p: Volume of PIVOTS
     V_p1 = np.zeros(NS)#np.zeros(NS)
@@ -521,36 +653,9 @@ if dim == 2:
     B_R = np.zeros((NS,NS))
     B_F = np.zeros((NS,NS,NS,NS))
     
-    if BREAKRVAL == 1:
-        B_R[:,:] = 1
-        B_R[0,0] = 0
-    elif BREAKRVAL == 2:
-        for idx, tmp in np.ndenumerate(B_R):
-            a = idx[0]; b = idx[1]
-            if a == 0 and b == 0:
-                continue
-            # elif a == 0:
-            #     B_R[idx] = V_p2[b]
-            # elif b == 0:
-            #     B_R[idx] = V_p1[a]
-            else:
-                B_R[idx] = V_p1[a]*V_p2[b]
             
     for idx, tmp in np.ndenumerate(B_F):
         a = idx[0]; b = idx[1] ; i = idx[2]; j = idx[3] 
-        # if i==0 and j==0:
-        #     continue
-        # elif i==0:
-        #     if BREAKFVAL == 1:  
-        #         B_F[idx] = 4 / V_p2[j]
-        #     elif BREAKFVAL == 2:
-        #         B_F[idx] = 2 / V_p2[j]
-        # elif j == 0:
-        #     if BREAKFVAL == 1:  
-        #         B_F[idx] = 4 / V_p1[i]
-        #     elif BREAKFVAL == 2:
-        #         B_F[idx] = 2 / V_p1[i]
-        # else:
         if BREAKFVAL == 1: 
             # if i == 0 and j == 0:
             #     continue
@@ -561,14 +666,32 @@ if dim == 2:
             # else:
             B_F[idx] = 4 / (V_p1[i]*V_p2[j])
         elif BREAKFVAL == 2:
-            if i == 0 and j == 0:
+            if i<2 and j<2:
                 continue
-            elif i == 0:
+            elif (i == 0 or i == 1) and (j >= 2):
                 B_F[idx] = 2 / (V_p2[j])
-            elif j == 0:
+            elif (j == 0 or j == 1) and (i >= 2):
                 B_F[idx] = 2 / (V_p1[i])
             else:
                 B_F[idx] = 2 / (V_p1[i]*V_p2[j])
+                
+    if BREAKRVAL == 1:
+        B_R[:,:] = 1
+        B_R[:2,:2] = 0
+    elif BREAKRVAL == 2:
+        for idx, tmp in np.ndenumerate(B_R):
+            a = idx[0]; b = idx[1]
+            if a < 2 and b < 2:
+                continue
+            elif (a==0 or a == 1) and (b >=2) :
+                B_R[idx] = V_p2[b]
+            elif (b==0 or b==1) and (a >=2):
+                B_R[idx] = V_p1[a]
+            else:
+                if BREAKFVAL == 1:
+                    B_R[idx] = V_p1[a]*V_p2[b]
+                else:
+                    B_R[idx] = V_p1[a] + V_p2[b]
             
     
     # SOLVE    
@@ -624,8 +747,10 @@ if dim == 2:
             for l in range(2):
                 mu_as[k,l,:] = np.exp((2/((k+1)*(l+1))-1)*t)
     elif BREAKRVAL == 2 and BREAKFVAL == 1:
-        mu_as[0,0,:] = 1.0 + 3*t
-        mu_as[1,1,:] = 1.0
+        mu_as[0,0,:] = 1.0 + 3*V_p[-1,-1]*t
+        mu_as[1,1,:] = V_p1[-1]*V_p2[-1]
+    else: 
+        mu_as[0,0,:] = 1.0 + V_p[-1,-1]*t
         
     ax2.plot(t, mu_as[0,0,:], color='k', linestyle='-.', label='$\mu_0$ (analytical)')
     ax2.plot(t, mu1, color=c_KIT_red, label='$\mu_1$')     
