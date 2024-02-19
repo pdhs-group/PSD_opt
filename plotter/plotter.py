@@ -173,6 +173,58 @@ def plot_data(x,y,err=None,fig=None,ax=None,plt_type=None,lbl=None,xlbl=None,ylb
     return ax, fig
 
 # ----------------------------------
+# Calculate and plot 1D histogram
+# ----------------------------------    
+# x: x-Data
+# w: (optional) weights
+# bins: (optional) int with number of bins 
+# scale: (optional) str with scaling ['lin'/'log']
+# fig: (optional) Plot in given fig. Create new if None
+# ax: (optional) Plot in given ax. Create new in None
+# xlbl: (optional) Label of x-axis
+# ylbl: (optional) Label of y-axis
+# clr: (optional) Color of plot
+# tit: (optional) Title of plot
+# grd: (optional) Set grid
+# norm: (optional) If True normalize histogram (on np.sum(H))
+# only_calc: (optional) Only calculate bins and data without plotting
+def plot_1d_hist(x,w=None,bins=10,scale='lin',fig=None,ax=None,xlbl=None,
+                 ylbl=None,clr='k',tit=None,grd=True,norm=True,
+                 only_calc=False, alpha=0.7):
+    
+    import numpy as np
+
+    # --- Calculate histogram data
+    H, xe = np.histogram(x, bins=bins, weights=w)
+    
+    if scale == 'log':
+        logbins_x = np.logspace(np.log10(xe[0]),np.log10(xe[-1]),len(xe))
+        H, xe = np.histogram(x, bins=logbins_x, weights=w)
+        
+    if norm: H = H/np.sum(H)
+    
+    # --- Plot Histogram ---    
+    if only_calc:
+        fig, ax = None, None
+        
+    else:
+        x_mean = np.array([(xe[i]+xe[i-1])/2 for i in range(1,len(xe))])
+        dx = np.array([xe[i]-xe[i-1] for i in range(1,len(xe))])
+        
+        ax, fig = plot_data(x_mean, H, plt_type='bar', barwidth=dx,leg=False, 
+                            alpha=alpha, clr=clr, ax=ax, fig=fig)
+            
+        # --- Set labels, title and grid if given ---
+        if scale == 'log': ax.set_xscale('log')
+        if xlbl != None: ax.set_xlabel(xlbl)
+        if ylbl != None: ax.set_ylabel(ylbl)
+        if tit != None: ax.set_title(tit)
+        if grd != None: ax.grid(True)
+        
+    # --- return ax and fig ---
+    return ax, fig, H, xe
+
+# ----------------------------------
 # Calculate and plot 2D histogram
 # ----------------------------------    
 # x: x-Data

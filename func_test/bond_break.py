@@ -13,6 +13,7 @@ from plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue, KIT_black_green
 pt.close()
 pt.plot_init(mrksze=12,lnewdth=1)
 from copy import deepcopy
+from numba import jit
 
 def float_gcd(a, b, rtol = 1e-3, atol = 1e-8):
     t = min(abs(a), abs(b))
@@ -21,11 +22,14 @@ def float_gcd(a, b, rtol = 1e-3, atol = 1e-8):
     return a
 
 # Generate 2D grid containing both pivots and edges
-def generate_grid_2D(A, X1, X2):
-    A0 = float_gcd(A*X1, A*X2)
-    
-    # N: array with total number of squares [1, 2] 
-    N = np.array([int(A*X1/A0), int(A*X2/A0)])
+def generate_grid_2D(A, X1, X2, A0=None):
+    if A0 is None or A0>(A*X1/2) or A0>(A*X2/2):
+        A0 = float_gcd(A*X1, A*X2)
+
+    # N: array with total number of squares [1, 2]
+    # R: array with rest area [1, 2]
+    N = np.array([int((A*X1)//A0), int((A*X2)//A0)]) 
+    R = np.array([(A*X1)%A0, (A*X2)%A0])
     DIM = int(np.ceil(np.sqrt(np.sum(N))))
     
     # B: array with total number of bonds [11, 12, 22]
@@ -94,7 +98,7 @@ def generate_grid_2D(A, X1, X2):
                         G[i,j-1] = 22
                         B[2] += 1                  
             
-    return G, N, B, A0
+    return G, N, B, A0, R
 
 def plot_G(G, title=None, fill_no=[], fill_clr=[]):
     i_p1, j_p1 = np.where(G==1)
@@ -204,13 +208,15 @@ def break_one_bond(G, STR, idx=None, init_break_random=False):
     if idx[1] < G.shape[0]-1:
         b[3] = G[idx[0],idx[1]+1]
         
-    # Create probability array for each bond 
+    # Create probability and strength array for each bond 
     p = np.zeros(4)
+    str_array = np.zeros(4)
     # p[b==-1] = 0 Not needed since initialized with 0
     p[b==11] = 1/STR[0]
     p[b==12] = 1/STR[1]
     p[b==22] = 1/STR[2]
-    
+    str_array[p!=0] = 1/p[p!=0]
+        
     # Normalize probabilites
     p /= np.sum(p)
     
@@ -220,7 +226,7 @@ def break_one_bond(G, STR, idx=None, init_break_random=False):
     # Progress the fracture
     if b_idx == 0:
         G_new[idx[0]-1,idx[1]] = -1
-        idx_new = np.array([idx[0]-2,idx[1]])
+        idx_new = np.array([idx[0]-2,idx[1]]) 
         # idx[0] -= 2
     if b_idx == 1:
         G_new[idx[0]+1,idx[1]] = -1
@@ -258,7 +264,7 @@ def break_one_bond(G, STR, idx=None, init_break_random=False):
     else:
         fracture_flag = True
         
-    return G_new, idx_new, fracture_flag    
+    return G_new, idx_new, fracture_flag, str_array[b_idx]    
 
 def recursive_fun(G, i, j, cnt_1, cnt_2, new_value=0):
     DIM = G.shape[0]
@@ -286,7 +292,7 @@ def recursive_fun(G, i, j, cnt_1, cnt_2, new_value=0):
             G[i,j-1] = -2
     
     return G, cnt_1, cnt_2        
-        
+    
 def analyze_fragments(G):
     DIM = G.shape[0]
     
@@ -303,8 +309,8 @@ def analyze_fragments(G):
                 val_arr.append(3+val_cnt)
                 val_cnt += 1
                 
-    return G, cnt_1_arr, cnt_2_arr, val_arr               
-
+    return G, np.array(cnt_1_arr), np.array(cnt_2_arr), val_arr 
+              
 def check_idx_hist(idx, idx_hist):
     return np.any(np.all(idx == idx_hist, axis=1))  
 
@@ -323,11 +329,13 @@ def check_deadend(idx, idx_hist, G):
     
     return all(bool_list)
 
-def single_sim(A, X1, X2, STR, NO_FRAG, init_break_random=False, plot=True, close=False, verbose=True):
+def single_sim(A, X1, X2, STR, NO_FRAG, A0=None, init_break_random=False, plot=True, 
+               close=False, verbose=True):
+    
     if close: plt.close('all')
     
     # Generate and plot grid
-    G, N, B, A0 = generate_grid_2D(A, X1, X2)
+    G, N, B, A0, R = generate_grid_2D(A, X1, X2, A0=A0)
     G0 = np.copy(G)
     
     # print(A0, A*X1/A0, A*X2/A0)
@@ -337,6 +345,7 @@ def single_sim(A, X1, X2, STR, NO_FRAG, init_break_random=False, plot=True, clos
     # Tracking number of fragments and index history of all fragments
     no_frag = 1
     idx_hist_frag = []
+    fracture_energy = 0
 
     while no_frag < NO_FRAG:
         # For each fracture keep a separate history (otherwise fragments cannot break "inside" themselves)
@@ -344,15 +353,16 @@ def single_sim(A, X1, X2, STR, NO_FRAG, init_break_random=False, plot=True, clos
         
         if verbose: print(f'Starting fracture. Currently at {no_frag} fragments')
         # Initialize a new fracture. idx=None indicates that this is the first event
-        G, idx, ff = break_one_bond(G, STR, idx=None, init_break_random=init_break_random)
+        G, idx, ff, str_bond = break_one_bond(G, STR, idx=None, init_break_random=init_break_random)
         idx_hist.append(np.copy(idx))
+        fracture_energy += str_bond
         
         # Pursue this fracture until it breaks through 
         # Rare cases lead to an endless loop (despite check_deadend call)
         # In this case simply repeat the fracture process from the beginning!
         cnt = 0
         while ff is False and cnt < 2*G.shape[0]:
-            G_tmp, idx_tmp, ff_tmp = break_one_bond(G, STR, idx=idx)
+            G_tmp, idx_tmp, ff_tmp, str_bond = break_one_bond(G, STR, idx=idx)
             
             # Final Fracture is always valid
             # Check for circular fracture (if not so, keep the result)
@@ -364,6 +374,7 @@ def single_sim(A, X1, X2, STR, NO_FRAG, init_break_random=False, plot=True, clos
                 G = np.copy(G_tmp)
                 ff = ff_tmp
                 idx_hist.append(np.copy(idx_tmp))
+                fracture_energy += str_bond
                 # print(f'valid event')
             else:
                 if verbose: print(f'index {idx_tmp} already inside idx_hist')
@@ -394,43 +405,59 @@ def single_sim(A, X1, X2, STR, NO_FRAG, init_break_random=False, plot=True, clos
         fill_clr = [to_rgba(colormap(i)) for i in indices]
         
         plot_G(G_new, fill_no=val_arr, fill_clr=fill_clr)
-        
-    return G, G_new, cnt_1_arr, cnt_2_arr, val_arr
+    
+    # Corresponding F array
+    F = np.zeros((NO_FRAG,4))
+    
+    X_F = (cnt_1_arr+cnt_2_arr)*A0/(A-np.sum(R))
+    # Total area of each fragment
+    F[:,0] = (cnt_1_arr+cnt_2_arr)*A0 + X_F*(R[0]+R[1])     
+    # Partial area of component 1
+    F[:,1] = (A0*cnt_1_arr + X_F*R[0]) / F[:,0]  
+    # Partial area of component 2
+    F[:,2] = 1 - F[:, 1]
+    # Scale fracture energy depending on individual bond length
+    # TO-DO: Physical thoughts required here
+    F[:,3] = np.ones(NO_FRAG)*fracture_energy*np.sqrt(A0)
+    
+    return G, G_new, R, cnt_1_arr, cnt_2_arr, val_arr, fracture_energy, F
         
 # Simulate N_GRIDS grids that each fracture N_FRACS times
 # For debugging/testing use single_sim, as this function is "optimized" by not plotting and printing stuff
-def MC_breakage(A, X1, X2, STR, NO_FRAG, N_GRIDS=100, N_FRACS=100, init_break_random=False):
+# TO-DO: Implement numba JIT with nopython=True (probably have to adjust all sub-functions)
+def MC_breakage(A, X1, X2, STR, NO_FRAG, N_GRIDS=100, N_FRACS=100, A0=None, init_break_random=False):
     
-    # Initialize lists with counts of each material in each fragment
-    cnt_1_arr = []
-    cnt_2_arr = []
+    # Initialize fracture array (return)
+    F = np.zeros((N_GRIDS*N_FRACS*NO_FRAG,4))
     
     # Loop through all grids based on A, X1 and X2
     for g in range(N_GRIDS):
         print(f'Calculating grid no. {g+1}/{N_GRIDS}')
         # Generate grid and copy it (identical initial conditions for other fractures)
-        G, N, B, A0 = generate_grid_2D(A, X1, X2)
+        G, N, B, A0, R = generate_grid_2D(A, X1, X2, A0=A0)
         G0 = np.copy(G)
         
         for f in range(N_FRACS):
             # Tracking number of fragments and index history of all fragments
             no_frag = 1
             G = np.copy(G0)
+            fracture_energy = 0
             
             while no_frag < NO_FRAG:
                 # For each fracture keep a separate history (otherwise fragments cannot break "inside" themselves)
                 idx_hist = []
                 
                 # Initialize a new fracture. idx=None indicates that this is the first event
-                G, idx, ff = break_one_bond(G, STR, idx=None, init_break_random=init_break_random)
+                G, idx, ff, str_bond = break_one_bond(G, STR, idx=None, init_break_random=init_break_random)
                 idx_hist.append(np.copy(idx))
+                fracture_energy += str_bond
                 
                 # Pursue this fracture until it breaks through 
                 # Rare cases lead to an endless loop (despite check_deadend call)
                 # In this case simply repeat the fracture process from the beginning!
                 cnt = 0
                 while ff is False and cnt < 2*G.shape[0]:
-                    G_tmp, idx_tmp, ff_tmp = break_one_bond(G, STR, idx=idx)
+                    G_tmp, idx_tmp, ff_tmp, str_bond = break_one_bond(G, STR, idx=idx)
                     
                     # Final Fracture is always valid
                     # Check for circular fracture (if not so, keep the result)
@@ -442,6 +469,7 @@ def MC_breakage(A, X1, X2, STR, NO_FRAG, N_GRIDS=100, N_FRACS=100, init_break_ra
                         G = np.copy(G_tmp)
                         ff = ff_tmp
                         idx_hist.append(np.copy(idx_tmp))
+                        fracture_energy += str_bond
                     cnt += 1
                 
                 # Caught in an endless loop. Report and restart the fragmentation (reset no_frag and idx_hist_frag)
@@ -452,54 +480,112 @@ def MC_breakage(A, X1, X2, STR, NO_FRAG, N_GRIDS=100, N_FRACS=100, init_break_ra
                     # Increase number of fragments and append to overall history
                     no_frag += 1
             
-            # Analyze framents (use copy to retain original G)
+            # Analyze framents 
             G, cnt_1_tmp, cnt_2_tmp, val_arr = analyze_fragments(G)
             
-            # Append to solution array
-            cnt_1_arr += cnt_1_tmp
-            cnt_2_arr += cnt_2_tmp
-    
-    # Fragment array [total area, X1, X2]
-    F = np.zeros((len(cnt_1_arr),3))
-    F[:,0] = (np.array(cnt_1_arr) + np.array(cnt_2_arr))*A0    
-    F[:,1] = np.array(cnt_1_arr)/(np.array(cnt_1_arr)+np.array(cnt_2_arr))    
-    F[:,2] = np.array(cnt_2_arr)/(np.array(cnt_1_arr)+np.array(cnt_2_arr))
-    
+            # Save fragment array F = [total area, X1, X2, fracture energy]
+            # Adjust for the remainder of the material (mass conservation)
+            idx_F = g*N_FRACS*NO_FRAG+f*NO_FRAG
+            X_F = (cnt_1_tmp+cnt_2_tmp)*A0/(A-np.sum(R))
+            # Total area of each fragment
+            F[idx_F:idx_F+NO_FRAG, 0] = (cnt_1_tmp+cnt_2_tmp)*A0 + X_F*(R[0]+R[1])     
+            # Partial area of component 1
+            F[idx_F:idx_F+NO_FRAG, 1] = (A0*cnt_1_tmp + X_F*R[0]) / F[idx_F:idx_F+NO_FRAG, 0]  
+            # Partial area of component 2
+            F[idx_F:idx_F+NO_FRAG, 2] = 1 - F[idx_F:idx_F+NO_FRAG, 1]
+            # Scale fracture energy depending on individual bond length
+            # TO-DO: Physical thoughts required here
+            F[idx_F:idx_F+NO_FRAG, 3] = np.ones(NO_FRAG)*fracture_energy*np.sqrt(A0)
+                
     return F
     
 # %% MAIN    
 if __name__ == '__main__':
-    pt.close()
+    ########### -----------
+    import cProfile
+    import pstats
+    profiler = cProfile.Profile()
+    profiler.enable()
+    ########### -----------
     
     A = 10
-    X1 = 0.51
+    A0 = 0.01
+    X1 = 0.21
     X2 = 1-X1
     STR = np.array([1,1,1])
     NO_FRAG = 4
     INIT_BREAK_RANDOM = False
     
-    N_GRIDS, N_FRACS = 100, 100
+    N_GRIDS, N_FRACS = 50, 50
     
     # Perform a single simulation (1 grid, 1 fracture) for visualization
-    G, G_new, cnt_1_arr, cnt_2_arr, val_arr = single_sim(A, X1, X2, STR, NO_FRAG, 
-                                                         plot=True, close=True,
-                                                         init_break_random=INIT_BREAK_RANDOM)
+    # G, G_new, R, cnt_1_arr, cnt_2_arr, val_arr, fracture_energy, F = \
+    #     single_sim(A, X1, X2, STR, NO_FRAG, plot=True, A0=A0,
+    #                close=True, init_break_random=INIT_BREAK_RANDOM)
     
     # Perform stochastic simulation
-    F = MC_breakage(A, X1, X2, STR, NO_FRAG, N_GRIDS=N_GRIDS, N_FRACS=N_FRACS, init_break_random=INIT_BREAK_RANDOM)
     
-    # #%% PLOTS
-    ax, fig, cb, H, xe, ye = pt.plot_2d_hist(x=F[:,0]*F[:,1],y=F[:,0]*F[:,2],bins=(20,20),w=None,
-                                              scale=('lin','lin'), clr=KIT_black_green_white.reversed(),grd=True,
-                                              xlbl='Partial Volume 1 $V_1$ / $\mathrm{m^3}$', norm=False,
-                                              ylbl='Partial Volume 2 $V_2$ / $\mathrm{m^3}$', 
-                                              scale_hist='log', hist_thr=1e-4)
+    # Fragment array [total area, X1, X2, fracture energy]
+    F = MC_breakage(A, X1, X2, STR, NO_FRAG, N_GRIDS=N_GRIDS, N_FRACS=N_FRACS, 
+                    A0=A0, init_break_random=INIT_BREAK_RANDOM)
+    
+    ########### -----------
+    stats = pstats.Stats(profiler)
+    stats.sort_stats('cumulative')
+    stats.print_stats(20)
+    print('#### Profiler of MC_breakage')
+    stats.print_stats('MC_breakage')
+    ########### -----------
+    
+    # %% PLOTS
+    pt.close()
+    # 2D Fragment distribution
+    ax1, fig1, cb1, H1, xe1, ye1 = pt.plot_2d_hist(x=F[:,0]*F[:,1],y=F[:,0]*F[:,2],bins=(20,20),w=None,
+                                                   scale=('lin','lin'), clr=KIT_black_green_white.reversed(),grd=True,
+                                                   xlbl='Partial Volume 1 $V_1$ / $\mathrm{m^3}$', norm=False,
+                                                   ylbl='Partial Volume 2 $V_2$ / $\mathrm{m^3}$', 
+                                                   scale_hist='log', hist_thr=1e-4)
+    
+    
+    # 1D Histogram of fracture energy   
+    ax2, fig2, H2, xe2 = pt.plot_1d_hist(x=F[:,3],bins=100,scale='lin',xlbl='Fracture Energy / a.u.',
+                                         ylbl='Counts / $-$',clr=c_KIT_green,norm=False, alpha=0.7)
+    #ax2.set_yscale('log')
+    
+    # 2D Histogram of fracture energy vs. fragment size
+    ax3, fig3, cb3, H3, xe3, ye3 = pt.plot_2d_hist(x=F[:,0],y=F[:,3],bins=(20,20),w=None,
+                                                   scale=('lin','lin'), clr=KIT_black_green_white.reversed(),grd=True,
+                                                   xlbl='Fragment Size $V$ / $\mathrm{m^3}$', norm=False,
+                                                   ylbl='Fracture Energy / a.u.', 
+                                                   scale_hist='log', hist_thr=1e-4)
+
+    # ########### -----------
+    # stats = pstats.Stats(profiler)
+    # stats.sort_stats('cumulative')
+    # stats.print_stats(20)
+    # ########### -----------
+
+    
+    # OLD calculation without mass conservation (rest)
+    
+    #         # Append to solution array
+    #         cnt_1_arr += list(cnt_1_tmp)
+    #         cnt_2_arr += list(cnt_2_tmp)
+    #         fracture_energy_arr += [fracture_energy for i in range(len(cnt_1_tmp))]
+    # # Fragment array [total area, X1, X2, fracture energy]
+    # F = np.zeros((len(cnt_1_arr),4))
+    # F[:,0] = (np.array(cnt_1_arr) + np.array(cnt_2_arr))*A0    
+    # F[:,1] = np.array(cnt_1_arr)/(np.array(cnt_1_arr)+np.array(cnt_2_arr))    
+    # F[:,2] = np.array(cnt_2_arr)/(np.array(cnt_1_arr)+np.array(cnt_2_arr))
+    # # Scale fracture energy depending on individual bond length
+    # # TO-DO: Physical thoughts required here
+    # F[:,3] = np.array(fracture_energy_arr)*np.sqrt(A0)
     
     # cb.formatter.set_powerlimits((0, 0))
     # cb.ax.yaxis.set_offset_position('left')
     
     # # Generate and plot grid
-    # G, N, B, A0 = generate_grid_2D(A, X1, X2)
+    # G, N, B, A0, R = generate_grid_2D(A, X1, X2)
     # # print(A0, A*X1/A0, A*X2/A0)
     # ax0, fig0 = plot_G(G, title='Initial grid')
     
