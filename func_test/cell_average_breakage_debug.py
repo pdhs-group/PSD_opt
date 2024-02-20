@@ -192,33 +192,26 @@ def dNdt_2D(t,NN,V_p1,V_p2,V_e1,V_e2,B_R,B_F,BREAKFVAL):
     V_p2_ex[:-1] = V_p2
     
     ## only to check volume conservation
-    D_M = np.zeros(N.shape)
-    
+    # D_M = np.zeros(N.shape)
+    ## Because the cells on the lower boundary (e1=0 or e2=0)are not allowed to break outward, 
+    ## 1d calculations need to be performed on the two lower boundaries.
     for e1 in range(0, len(V_p1)):
         for e2 in range(0, len(V_p2)):
             ## The contribution of self-fragmentation
             b = B_F[e1,e2,e1,e2]
             S = B_R[e1,e2]
             if e1 == 0:
-                # S = 1
                 b_int = b_integrate(V_p2[e2], V_e2[e2], b=b)
-                ## The boundary is treated as 1d
                 yb_int = xb_integrate(V_p2[e2], V_e2[e2], b=b)
                 B_c_y[e2] += S*b_int*N[e1,e2]
                 M_c_y[e2] += S*yb_int*N[e1,e2]
-                # B_c[e1,e2] += S*b_int*N[e1,e2]
-                # M2_c[e1,e2] += S*yb_int*N[e1,e2]
-                D_M[e1,e2] = -S*N[e1,e2]*(V_p2[e2])
+                # D_M[e1,e2] = -S*N[e1,e2]*(V_p2[e2])
             elif e2 == 0:
-                # S = 1
                 b_int = b_integrate(V_p1[e1], V_e1[e1], b=b)
-                ## The boundary is treated as 1d
                 xb_int = xb_integrate(V_p1[e1], V_e1[e1], b=b)
                 B_c_x[e1] += S*b_int*N[e1,e2]
                 M_c_x[e1] += S*xb_int*N[e1,e2]
-                # B_c[e1,e2] += S*b_int*N[e1,e2]
-                # M1_c[e1,e2] += S*xb_int*N[e1,e2]
-                D_M[e1,e2] = -S*N[e1,e2]*(V_p1[e1])
+                # D_M[e1,e2] = -S*N[e1,e2]*(V_p1[e1])
             else:
                 b_int = b_integrate(V_p1[e1], V_e1[e1], V_p2[e2], V_e2[e2], b)
                 xb_int = xb_integrate(V_p1[e1], V_e1[e1], V_p2[e2], V_e2[e2], b)
@@ -226,8 +219,8 @@ def dNdt_2D(t,NN,V_p1,V_p2,V_e1,V_e2,B_R,B_F,BREAKFVAL):
                 B_c[e1,e2] += S*b_int*N[e1,e2]
                 M1_c[e1,e2] += S*xb_int*N[e1,e2]
                 M2_c[e1,e2] += S*yb_int*N[e1,e2]
-                D_M[e1,e2] = -S*N[e1,e2]*(V_p1[e1]+V_p2[e2])
-            
+                # D_M[e1,e2] = -S*N[e1,e2]*(V_p1[e1]+V_p2[e2])
+            # calculate death rate    
             D[e1,e2] = -S*N[e1,e2]
             
             ## The contributions of fragments on the same y-axis
@@ -236,12 +229,10 @@ def dNdt_2D(t,NN,V_p1,V_p2,V_e1,V_e2,B_R,B_F,BREAKFVAL):
                 S = B_R[i,e2]
                 if e2 == 0:
                     b_int = b_integrate(V_e1[e1+1], V_e1[e1], b=b)
-                    ## The boundary is treated as 1d
                     xb_int = xb_integrate(V_e1[e1+1], V_e1[e1], b=b)
                     B_c_x[e1] += S*b_int*N[i,e2]
                     M_c_x[e1] += S*xb_int*N[i,e2]
-                    # B_c[e1,e2] += S*b_int*N[i,e2]
-                    # M1_c[e1,e2] += S*xb_int*N[i,e2]
+
                 else:
                     b_int = b_integrate(V_e1[e1+1], V_e1[e1], V_p2[e2], V_e2[e2], b)
                     xb_int = xb_integrate(V_e1[e1+1], V_e1[e1], V_p2[e2], V_e2[e2], b)
@@ -258,8 +249,7 @@ def dNdt_2D(t,NN,V_p1,V_p2,V_e1,V_e2,B_R,B_F,BREAKFVAL):
                     yb_int = xb_integrate(V_e2[e2+1], V_e2[e2], b=b)
                     B_c_y[e2] += S*b_int*N[e1,j]
                     M_c_y[e2] += S*yb_int*N[e1,j] 
-                    # B_c[e1,e2] += S*b_int*N[e1,j]
-                    # M2_c[e1,e2] += S*yb_int*N[e1,j]
+
                 else:
                     b_int = b_integrate(V_p1[e1], V_e1[e1], V_e2[e2+1], V_e2[e2], b)
                     xb_int = xb_integrate(V_p1[e1], V_e1[e1], V_e2[e2+1], V_e2[e2], b)
@@ -286,157 +276,62 @@ def dNdt_2D(t,NN,V_p1,V_p2,V_e1,V_e2,B_R,B_F,BREAKFVAL):
             if B_c_y[e2] !=0:
                 vy[e2] = M_c_y[e2] / B_c_y[e2]
     
-    volume_erro_xy = M1_c.sum() + M2_c.sum() + M_c_x.sum() + M_c_y.sum() + D_M.sum()
+    # volume_erro_xy = M1_c.sum() + M2_c.sum() + M_c_x.sum() + M_c_y.sum() + D_M.sum()
     # volume_erro = M1_c.sum() + M2_c.sum() + D_M.sum()
-    print(volume_erro_xy)
+    # print(volume_erro_xy)
     # print(volume_erro)
+    
     # Assign BIRTH on each pivot
     for i in range(len(V_p1)):
         for j in range(len(V_p2)): 
             for p in range(2):
                 for q in range(2):
-                # Actual modification calculation
-                # if (i!=0) and (j!=0):
                     B[i,j] += B_c[i-p,j-q] \
                         *lam_2d(v1[i-p,j-q],v2[i-p,j-q],V_p1,V_p2,i,j,"-","-") \
                         *heaviside_jit((-1)**p*(V_p1[i-p]-v1[i-p,j-q]),0.5) \
                         *heaviside_jit((-1)**q*(V_p2[j-q]-v2[i-p,j-q]),0.5) 
-                    ## PRINTS FOR DEBUGGING / TESTING
-                    # if i==2 and j==0:
-                    #     print('B1', B[i,j])
-                # if (i!=0) and (j!=len(V_p[0,:])-1):                           
+                          
                     B[i,j] += B_c[i-p,j+q] \
                         *lam_2d(v1[i-p,j+q],v2[i-p,j+q],V_p1,V_p2,i,j,"-","+") \
                         *heaviside_jit((-1)**p*(V_p1[i-p]-v1[i-p,j+q]),0.5) \
                         *heaviside_jit((-1)**(q+1)*(V_p2_ex[j+q]-v2[i-p,j+q]),0.5) 
-                    ## PRINTS FOR DEBUGGING / TESTING
-                    # if i==2 and j==0:
-                    #     print('B2', B[i,j])
-                # if (i!=len(V_p[:,0])-1) and (j!=0):
+
                     B[i,j] += B_c[i+p,j-q] \
                         *lam_2d(v1[i+p,j-q],v2[i+p,j-q],V_p1,V_p2,i,j,"+","-") \
                         *heaviside_jit((-1)**(p+1)*(V_p1_ex[i+p]-v1[i+p,j-q]),0.5) \
                         *heaviside_jit((-1)**q*(V_p2[j-q]-v2[i+p,j-q]),0.5)
-                    ## PRINTS FOR DEBUGGING / TESTING
-                    # if i==2 and j==0:
-                    #     print('B3', B[i,j])
-                # if (i!=len(V_p[:,0])-1) and (j!=len(V_p[0,:])-1): 
+
                     B[i,j] += B_c[i+p,j+q] \
                         *lam_2d(v1[i+p,j+q],v2[i+p,j+q],V_p1,V_p2,i,j,"+","+") \
                         *heaviside_jit((-1)**(p+1)*(V_p1_ex[i+p]-v1[i+p,j+q]),0.5) \
                         *heaviside_jit((-1)**(q+1)*(V_p2_ex[j+q]-v2[i+p,j+q]),0.5)
-                    ## PRINTS FOR DEBUGGING / TESTING
-                    # if i==2 and j==0:
-                    #     print('B4', B[i,j])
+
     e1 = 0
     for j in range(0,len(V_p2)): 
         B_tem = 0
-    # Add contribution from LEFT cell (if existent)
-    # if j != 0:
-        # Same Cell, left half
         B_tem += B_c_y[j]*lam(vy[j], V_p2, j, 'm')*heaviside_jit(V_p2[j]-vy[j],0.5)
-        # Left Cell, right half
         B_tem += B_c_y[j-1]*lam(vy[j-1], V_p2, j, 'm')*heaviside_jit(vy[j-1]-V_p2[j-1],0.5)
-        
-    # Add contribution from RIGHT cell (if existent)
-    # if j != len(V_p)-1:
-        # Same Cell, right half
         B_tem += B_c_y[j]*lam(vy[j], V_p2, j, 'p')*heaviside_jit(vy[j]-V_p2[j],0.5)
-        # Right Cell, left half
         B_tem += B_c_y[j+1]*lam(vy[j+1], V_p2, j, 'p')*heaviside_jit(V_p2_ex[j+1]-vy[j+1],0.5)
         if j == 0:
+            ## It seems that the calculation of 1d will be repeated on the 
+            ## smallest particle(for two axis). 
+            ## The case that the x and y coordinates are the same can be 
+            ## handled by dividing by 2. 
+            ## But other cases are not clear!
             B_tem /= 2
         B[e1,j] += B_tem
     e2 = 0
     for i in range(0,len(V_p1)):  
         B_tem = 0          
-    # Add contribution from LEFT cell (if existent)
-    # if i != 0:
-        # Same Cell, left half
         B_tem += B_c_x[i]*lam(vx[i], V_p1, i, 'm')*heaviside_jit(V_p1[i]-vx[i],0.5)
-        # Left Cell, right half
         B_tem += B_c_x[i-1]*lam(vx[i-1], V_p1, i, 'm')*heaviside_jit(vx[i-1]-V_p1[i-1],0.5)
-        
-    # Add contribution from RIGHT cell (if existent)
-    # if j != len(V_p)-1:
-        # Same Cell, right half
         B_tem += B_c_x[i]*lam(vx[i], V_p1, i, 'p')*heaviside_jit(vx[i]-V_p1[i],0.5)
-        # Right Cell, left half
         B_tem += B_c_x[i+1]*lam(vx[i+1], V_p1, i, 'p')*heaviside_jit(V_p1_ex[i+1]-vx[i+1],0.5)  
         if i == 0:
             B_tem /= 2
         B[i,e2] += B_tem
-    # e1 = 0
-    # B_c[:] = 0
-    # M2_c[:] = 0
-    # for e2 in range(len(V_p)):
-    #     b = B_F[e1,e2,e1,e2]
-    #     S = B_R[e1,e2]
-    #     b_int = b_integrate(V_p2[e2], V_e2[e2], b=b)
-    #     yb_int = xb_integrate(V_p2[e2], V_e2[e2], b=b)
-    #     B_c[e1,e2] += S*b_int*N[e1,e2]
-    #     M2_c[e1,e2] += S*yb_int*N[e1,e2]       
-    #     D[e1,e2] = -S*N[e1,e2]
-    #     for j in range(e2+1,len(V_p2)):
-    #         b = B_F[e1,e2,e1,j]
-    #         S = B_R[e1,j]
-    #         b_int = b_integrate(V_e2[e2+1], V_e2[e2], b=b)
-    #         yb_int = xb_integrate(V_e2[e2+1], V_e2[e2], b=b)
-    #         B_c[e1,e2] += S*b_int*N[e1,j]
-    #         M2_c[e1,e2] += S*yb_int*N[e1,j] 
-    #     if B_c[e1,e2]!=0:
-    #         v2[e1,e2] = M2_c[e1,e2]/B_c[e1,e2]
-    # for j in range(0,len(V_p)):            
-    #     # Add contribution from LEFT cell (if existent)
-    #     # if j != 0:
-    #         # Same Cell, left half
-    #         B[e1,j] += B_c[e1,j]*lam(v2[e1,j], V_p2, j, 'm')*heaviside_jit(V_p2[j]-v2[e1,j],0.5)
-    #         # Left Cell, right half
-    #         B[e1,j] += B_c[e1,j-1]*lam(v2[e1,j-1], V_p2, j, 'm')*heaviside_jit(v2[e1,j-1]-V_p2[j-1],0.5)
-            
-    #     # Add contribution from RIGHT cell (if existent)
-    #     # if j != len(V_p)-1:
-    #         # Same Cell, right half
-    #         B[e1,j] += B_c[e1,j]*lam(v2[e1,j], V_p2, j, 'p')*heaviside_jit(v2[e1,j]-V_p2[j],0.5)
-    #         # Right Cell, left half
-    #         B[e1,j] += B_c[e1,j+1]*lam(v2[e1,j+1], V_p2, j, 'p')*heaviside_jit(V_p2_ex[j+1]-v2[e1,j+1],0.5)
-    
-    # e2 = 0
-    # B_c[:] = 0
-    # M1_c[:] = 0
-    # for e1 in range(len(V_p)):
-    #     b = B_F[e1,e2,e1,e2]
-    #     S = B_R[e1,e2]
-    #     b_int = b_integrate(V_p1[e1], V_e1[e1], b=b)
-    #     xb_int = xb_integrate(V_p1[e1], V_e1[e1], b=b)
-    #     B_c[e1,e2] += S*b_int*N[e1,e2]
-    #     M1_c[e1,e2] += S*xb_int*N[e1,e2]       
-    #     D[e1,e2] = -S*N[e1,e2]
-    #     for i in range(e1+1,len(V_p1)):
-    #         b = B_F[e1,e2,i,e2]
-    #         S = B_R[i,e2]
-    #         b_int = b_integrate(V_e1[e1+1], V_e1[e1], b=b)
-    #         xb_int = xb_integrate(V_e1[e1+1], V_e1[e1], b=b)
-    #         B_c[e1,e2] += S*b_int*N[i,e2]
-    #         M1_c[e1,e2] += S*xb_int*N[i,e2] 
-    #     if B_c[e1,e2]!=0:
-    #         v1[e1,e2] = M1_c[e1,e2]/B_c[e1,e2]
-    # for i in range(0,len(V_p)):            
-    #     # Add contribution from LEFT cell (if existent)
-    #     # if i != 0:
-    #         # Same Cell, left half
-    #         B[i,e2] += B_c[i,e2]*lam(v1[i,e2], V_p1, i, 'm')*heaviside_jit(V_p1[i]-v1[i,e2],0.5)
-    #         # Left Cell, right half
-    #         B[i,e2] += B_c[i-1,e2]*lam(v1[i-1,e2], V_p1, i, 'm')*heaviside_jit(v1[i-1,e2]-V_p1[i-1],0.5)
-            
-    #     # Add contribution from RIGHT cell (if existent)
-    #     # if j != len(V_p)-1:
-    #         # Same Cell, right half
-    #         B[i,e2] += B_c[i,e2]*lam(v1[i,e2], V_p1, i, 'p')*heaviside_jit(v1[i,e2]-V_p1[i],0.5)
-    #         # Right Cell, left half
-    #         B[i,e2] += B_c[i+1,e2]*lam(v1[i+1,e2], V_p1, i, 'p')*heaviside_jit(V_p1_ex[i+1]-v1[i+1,e2],0.5)  
-            
-    # Combine birth and death
+
     dNdt = B + D
     
     return dNdt.reshape(-1)  
