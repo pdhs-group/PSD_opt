@@ -22,14 +22,14 @@ pt.plot_init(mrksze=8,lnewdth=1)
     
 #%% PARAM
 t = np.arange(0, 11, 1, dtype=float)
-NS = 16
-S = 3.9811
+NS = 30
+S = 2.5
 R01, R02 = 1, 1
 V01, V02 = 2e-9, 2e-9
 dim = 2
 ## BREAKRVAL == 1: 1, constant breakage rate
 ## BREAKRVAL == 2: x*y or x + y, breakage rate is related to particle size
-BREAKRVAL = 1
+BREAKRVAL = 2
 ## BREAKFVAL == 1: 4/x'y', meet the first cross moment
 ## BREAKFVAL == 1: 2/x'y', meet the first moment/ mass conversation
 BREAKFVAL = 2
@@ -44,6 +44,9 @@ def dNdt_1D(t,N,V_p,V_e,B_R,B_F,BREAKFVAL):
     D = np.zeros(N.shape)
     B = np.zeros(N.shape)
     V_p_ex = np.zeros(NS+1)
+    
+    ## only to check volume conservation
+    D_M = np.zeros(N.shape)
     
     # e = 1
     # # b = B_F[e,e]
@@ -84,9 +87,12 @@ def dNdt_1D(t,N,V_p,V_e,B_R,B_F,BREAKFVAL):
         if B_c[e] != 0:
             v[e] = M_c[e] / B_c[e]
     # v[B_c != 0] = M_c[B_c != 0]/B_c[B_c != 0]
+        
+        ## only to check volume conservation
+        D_M[e] = -B_R[e]*N[e]*V_p[e]
+    volume_erro = M_c.sum() + D_M.sum()
+    print(f'the erro of mass conservation = {volume_erro}')
     
-    
-    # print(B_c)
     V_p_ex[:-1] = V_p
     # Assign BIRTH on each pivot
     for i in range(0,len(V_p)):            
@@ -112,16 +118,16 @@ def b_integrate(x_up,x_low,y_up=None,y_low=None,b=None):
     if y_up is None or y_low is None:
         return (x_up - x_low)*b
     else:
-        return (x_up*y_up - x_low*y_low)*b
+        return (x_up- x_low)*(y_up - y_low)*b
 @jit(nopython=True)    
 def xb_integrate(x_up,x_low,y_up=None,y_low=None,b=None):
     if y_up is None or y_low is None:
         return (x_up**2 - x_low**2)*0.5*b
     else:
-        return (x_up**2*y_up- x_low**2*y_low)*0.5*b
+        return (x_up**2- x_low**2)*(y_up - y_low)*0.5*b
 @jit(nopython=True)    
 def yb_integrate(x_up,x_low,y_up=None,y_low=None,b=None):
-    return (x_up*y_up**2 - x_low*y_low**2)*0.5*b    
+    return (y_up**2 - y_low**2)*(x_up-x_low)*0.5*b    
     
 @jit(nopython=True)
 def lam(v, V_p, i, case):
@@ -162,7 +168,7 @@ def heaviside_jit(x1, x2):
     else:
         return x2
     
-# @jit(nopython=True)    
+@jit(nopython=True)    
 def dNdt_2D(t,NN,V_p1,V_p2,V_e1,V_e2,B_R,B_F,BREAKFVAL):
     N = np.copy(NN) 
     N = np.reshape(N,(NS,NS))
@@ -185,23 +191,34 @@ def dNdt_2D(t,NN,V_p1,V_p2,V_e1,V_e2,B_R,B_F,BREAKFVAL):
     V_p1_ex[:-1] = V_p1
     V_p2_ex[:-1] = V_p2
     
+    ## only to check volume conservation
+    D_M = np.zeros(N.shape)
+    
     for e1 in range(0, len(V_p1)):
         for e2 in range(0, len(V_p2)):
             ## The contribution of self-fragmentation
             b = B_F[e1,e2,e1,e2]
             S = B_R[e1,e2]
             if e1 == 0:
+                # S = 1
                 b_int = b_integrate(V_p2[e2], V_e2[e2], b=b)
                 ## The boundary is treated as 1d
                 yb_int = xb_integrate(V_p2[e2], V_e2[e2], b=b)
                 B_c_y[e2] += S*b_int*N[e1,e2]
                 M_c_y[e2] += S*yb_int*N[e1,e2]
+                # B_c[e1,e2] += S*b_int*N[e1,e2]
+                # M2_c[e1,e2] += S*yb_int*N[e1,e2]
+                D_M[e1,e2] = -S*N[e1,e2]*(V_p2[e2])
             elif e2 == 0:
+                # S = 1
                 b_int = b_integrate(V_p1[e1], V_e1[e1], b=b)
                 ## The boundary is treated as 1d
                 xb_int = xb_integrate(V_p1[e1], V_e1[e1], b=b)
                 B_c_x[e1] += S*b_int*N[e1,e2]
                 M_c_x[e1] += S*xb_int*N[e1,e2]
+                # B_c[e1,e2] += S*b_int*N[e1,e2]
+                # M1_c[e1,e2] += S*xb_int*N[e1,e2]
+                D_M[e1,e2] = -S*N[e1,e2]*(V_p1[e1])
             else:
                 b_int = b_integrate(V_p1[e1], V_e1[e1], V_p2[e2], V_e2[e2], b)
                 xb_int = xb_integrate(V_p1[e1], V_e1[e1], V_p2[e2], V_e2[e2], b)
@@ -209,8 +226,10 @@ def dNdt_2D(t,NN,V_p1,V_p2,V_e1,V_e2,B_R,B_F,BREAKFVAL):
                 B_c[e1,e2] += S*b_int*N[e1,e2]
                 M1_c[e1,e2] += S*xb_int*N[e1,e2]
                 M2_c[e1,e2] += S*yb_int*N[e1,e2]
+                D_M[e1,e2] = -S*N[e1,e2]*(V_p1[e1]+V_p2[e2])
             
             D[e1,e2] = -S*N[e1,e2]
+            
             ## The contributions of fragments on the same y-axis
             for i in range(e1+1,len(V_p1)):
                 b = B_F[e1,e2,i,e2]
@@ -221,6 +240,8 @@ def dNdt_2D(t,NN,V_p1,V_p2,V_e1,V_e2,B_R,B_F,BREAKFVAL):
                     xb_int = xb_integrate(V_e1[e1+1], V_e1[e1], b=b)
                     B_c_x[e1] += S*b_int*N[i,e2]
                     M_c_x[e1] += S*xb_int*N[i,e2]
+                    # B_c[e1,e2] += S*b_int*N[i,e2]
+                    # M1_c[e1,e2] += S*xb_int*N[i,e2]
                 else:
                     b_int = b_integrate(V_e1[e1+1], V_e1[e1], V_p2[e2], V_e2[e2], b)
                     xb_int = xb_integrate(V_e1[e1+1], V_e1[e1], V_p2[e2], V_e2[e2], b)
@@ -237,6 +258,8 @@ def dNdt_2D(t,NN,V_p1,V_p2,V_e1,V_e2,B_R,B_F,BREAKFVAL):
                     yb_int = xb_integrate(V_e2[e2+1], V_e2[e2], b=b)
                     B_c_y[e2] += S*b_int*N[e1,j]
                     M_c_y[e2] += S*yb_int*N[e1,j] 
+                    # B_c[e1,e2] += S*b_int*N[e1,j]
+                    # M2_c[e1,e2] += S*yb_int*N[e1,j]
                 else:
                     b_int = b_integrate(V_p1[e1], V_e1[e1], V_e2[e2+1], V_e2[e2], b)
                     xb_int = xb_integrate(V_p1[e1], V_e1[e1], V_e2[e2+1], V_e2[e2], b)
@@ -255,7 +278,6 @@ def dNdt_2D(t,NN,V_p1,V_p2,V_e1,V_e2,B_R,B_F,BREAKFVAL):
                     B_c[e1,e2] += S*b_int*N[i,j]
                     M1_c[e1,e2] += S*xb_int*N[i,j]
                     M2_c[e1,e2] += S*yb_int*N[i,j]  
-                
             if B_c[e1,e2]!=0:
                 v1[e1,e2] = M1_c[e1,e2]/B_c[e1,e2]
                 v2[e1,e2] = M2_c[e1,e2]/B_c[e1,e2]
@@ -264,7 +286,10 @@ def dNdt_2D(t,NN,V_p1,V_p2,V_e1,V_e2,B_R,B_F,BREAKFVAL):
             if B_c_y[e2] !=0:
                 vy[e2] = M_c_y[e2] / B_c_y[e2]
     
-    # print(B_c)
+    volume_erro_xy = M1_c.sum() + M2_c.sum() + M_c_x.sum() + M_c_y.sum() + D_M.sum()
+    # volume_erro = M1_c.sum() + M2_c.sum() + D_M.sum()
+    print(volume_erro_xy)
+    # print(volume_erro)
     # Assign BIRTH on each pivot
     for i in range(len(V_p1)):
         for j in range(len(V_p2)): 
@@ -303,37 +328,44 @@ def dNdt_2D(t,NN,V_p1,V_p2,V_e1,V_e2,B_R,B_F,BREAKFVAL):
                     ## PRINTS FOR DEBUGGING / TESTING
                     # if i==2 and j==0:
                     #     print('B4', B[i,j])
-    # e1 = 0
-    # for j in range(0,len(V_p)):            
-    #     # Add contribution from LEFT cell (if existent)
-    #     # if j != 0:
-    #         # Same Cell, left half
-    #         B[e1,j] += B_c_y[j]*lam(vy[j], V_p2, j, 'm')*heaviside_jit(V_p2[j]-vy[j],0.5)
-    #         # Left Cell, right half
-    #         B[e1,j] += B_c_y[j-1]*lam(vy[j-1], V_p2, j, 'm')*heaviside_jit(vy[j-1]-V_p2[j-1],0.5)
-            
-    #     # Add contribution from RIGHT cell (if existent)
-    #     # if j != len(V_p)-1:
-    #         # Same Cell, right half
-    #         B[e1,j] += B_c_y[j]*lam(vy[j], V_p2, j, 'p')*heaviside_jit(vy[j]-V_p2[j],0.5)
-    #         # Right Cell, left half
-    #         B[e1,j] += B_c_y[j+1]*lam(vy[j+1], V_p2, j, 'p')*heaviside_jit(V_p2_ex[j+1]-vy[j+1],0.5)
-    # e2 = 0
-    # for i in range(0,len(V_p)):            
-    #     # Add contribution from LEFT cell (if existent)
-    #     # if i != 0:
-    #         # Same Cell, left half
-    #         B[i,e2] += B_c_x[i]*lam(vx[i], V_p1, i, 'm')*heaviside_jit(V_p1[i]-vx[i],0.5)
-    #         # Left Cell, right half
-    #         B[i,e2] += B_c_x[i-1]*lam(vx[i-1], V_p1, i, 'm')*heaviside_jit(vx[i-1]-V_p1[i-1],0.5)
-            
-    #     # Add contribution from RIGHT cell (if existent)
-    #     # if j != len(V_p)-1:
-    #         # Same Cell, right half
-    #         B[i,e2] += B_c_x[i]*lam(vx[i], V_p1, i, 'p')*heaviside_jit(vx[i]-V_p1[i],0.5)
-    #         # Right Cell, left half
-    #         B[i,e2] += B_c_x[i+1]*lam(vx[i+1], V_p1, i, 'p')*heaviside_jit(V_p1_ex[i+1]-vx[i+1],0.5)  
-            
+    e1 = 0
+    for j in range(0,len(V_p2)): 
+        B_tem = 0
+    # Add contribution from LEFT cell (if existent)
+    # if j != 0:
+        # Same Cell, left half
+        B_tem += B_c_y[j]*lam(vy[j], V_p2, j, 'm')*heaviside_jit(V_p2[j]-vy[j],0.5)
+        # Left Cell, right half
+        B_tem += B_c_y[j-1]*lam(vy[j-1], V_p2, j, 'm')*heaviside_jit(vy[j-1]-V_p2[j-1],0.5)
+        
+    # Add contribution from RIGHT cell (if existent)
+    # if j != len(V_p)-1:
+        # Same Cell, right half
+        B_tem += B_c_y[j]*lam(vy[j], V_p2, j, 'p')*heaviside_jit(vy[j]-V_p2[j],0.5)
+        # Right Cell, left half
+        B_tem += B_c_y[j+1]*lam(vy[j+1], V_p2, j, 'p')*heaviside_jit(V_p2_ex[j+1]-vy[j+1],0.5)
+        if j == 0:
+            B_tem /= 2
+        B[e1,j] += B_tem
+    e2 = 0
+    for i in range(0,len(V_p1)):  
+        B_tem = 0          
+    # Add contribution from LEFT cell (if existent)
+    # if i != 0:
+        # Same Cell, left half
+        B_tem += B_c_x[i]*lam(vx[i], V_p1, i, 'm')*heaviside_jit(V_p1[i]-vx[i],0.5)
+        # Left Cell, right half
+        B_tem += B_c_x[i-1]*lam(vx[i-1], V_p1, i, 'm')*heaviside_jit(vx[i-1]-V_p1[i-1],0.5)
+        
+    # Add contribution from RIGHT cell (if existent)
+    # if j != len(V_p)-1:
+        # Same Cell, right half
+        B_tem += B_c_x[i]*lam(vx[i], V_p1, i, 'p')*heaviside_jit(vx[i]-V_p1[i],0.5)
+        # Right Cell, left half
+        B_tem += B_c_x[i+1]*lam(vx[i+1], V_p1, i, 'p')*heaviside_jit(V_p1_ex[i+1]-vx[i+1],0.5)  
+        if i == 0:
+            B_tem /= 2
+        B[i,e2] += B_tem
     # e1 = 0
     # B_c[:] = 0
     # M2_c[:] = 0

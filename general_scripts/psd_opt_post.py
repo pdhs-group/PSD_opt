@@ -24,8 +24,8 @@ def visualize_results(data_paths, labels):
         rel_agg_diff = data['corr_agg_diff'][0]
         data.close()
         
-        # agg_diff = abs(corr_agg_opt - corr_agg)
-        agg_diff = rel_agg_diff
+        agg_diff = abs(corr_agg_opt - corr_agg)
+        # agg_diff = rel_agg_diff
         para_diff_mean = np.mean(agg_diff)
         para_diff_std = np.std(agg_diff)
         para_diff_var = np.var(agg_diff)
@@ -35,10 +35,8 @@ def visualize_results(data_paths, labels):
         para_diff_vars.append(para_diff_var)
     
     x_pos = np.arange(len(labels))
-    values = [para_diff_mean]
-    
     fig, ax = plt.subplots()
-    ax.bar(x_pos, values, yerr=para_diff_std, align='center', alpha=0.7, ecolor='black', capsize=10)
+    ax.bar(x_pos, para_diff_means, yerr=para_diff_stds, align='center', alpha=0.7, ecolor='black', capsize=10)
     
     ax.set_ylabel('para_diff_mean')
     ax.set_xticks(x_pos)
@@ -48,14 +46,24 @@ def visualize_results(data_paths, labels):
     plt.show()
     
     
-data_paths1 = ['Parameter_study/multi_q3_BO_KL_wight_1_iter_50.npz',
+data_paths1 = ['Parameter_study/multi_q3_BO_KL_wight_1_iter_1.npz',
+              'Parameter_study/multi_q3_BO_KL_wight_1_iter_5.npz',
+              'Parameter_study/multi_q3_BO_KL_wight_1_iter_10.npz',
+              'Parameter_study/multi_q3_BO_KL_wight_1_iter_20.npz',
+              'Parameter_study/multi_q3_BO_KL_wight_1_iter_40.npz',
+              'Parameter_study/multi_q3_BO_KL_wight_1_iter_50.npz',
               'Parameter_study/multi_q3_BO_KL_wight_1_iter_100.npz',
               'Parameter_study/multi_q3_BO_KL_wight_1_iter_200.npz',
               'Parameter_study/multi_q3_BO_KL_wight_1_iter_400.npz',
               'Parameter_study/multi_q3_BO_KL_wight_1_iter_800.npz',
               ]
 
-labels1 = ['iter_50',
+labels1 = ['iter_1',
+          'iter_5',
+          'iter_10',
+          'iter_20',
+          'iter_40',
+          'iter_50',
           'iter_100',
           'iter_200',
           'iter_400',

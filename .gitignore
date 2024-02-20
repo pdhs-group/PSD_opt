@@ -3,6 +3,7 @@
 *.xlsx
 *.png
 *.npz
+*.tar.gz
 
 # ignore ordner
 __pycache__
