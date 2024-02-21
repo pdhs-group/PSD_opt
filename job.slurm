@@ -2,7 +2,7 @@
 
 #SBATCH --job-name=Opt
 #SBATCH --output=res.txt
-#SBATCH --nodes=4
+#SBATCH --nodes=8
 #SBATCH --time=48:00:00
 #SBATCH --mem=2000
 

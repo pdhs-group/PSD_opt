@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>opt_algo_multi &mdash; dPBE: Discrete Population Balance Equations 1.0.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css" />
+
+  
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../_static/jquery.js"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+        <script src="../_static/doctools.js"></script>
+        <script src="../_static/sphinx_highlight.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            dPBE: Discrete Population Balance Equations
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../quickstart.html">Quick Start</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../attributes.html">Attributes of the dPBE Class</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../advanced_guide.html">Advanced Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../references.html">References</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../pop.html">pop module</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">dPBE: Discrete Population Balance Equations</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">Module code</a></li>
+      <li class="breadcrumb-item active">opt_algo_multi</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for opt_algo_multi</h1><div class="highlight"><pre>
+<span></span><span class="c1"># -*- coding: utf-8 -*-</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Created on Mon Dec 11 09:05:42 2023</span>
+
+<span class="sd">@author: px2030</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span> <span class="nn">opt_algo</span> <span class="kn">import</span> <span class="n">opt_algo</span>        
+
+<div class="viewcode-block" id="opt_algo_multi"><a class="viewcode-back" href="../opt_algo_multi.html#opt_algo_multi.opt_algo_multi">[docs]</a><span class="k">class</span> <span class="nc">opt_algo_multi</span><span class="p">(</span><span class="n">opt_algo</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">weight_2d</span> <span class="o">=</span> <span class="mi">1</span>
+        
+        
+<div class="viewcode-block" id="opt_algo_multi.calc_delta"><a class="viewcode-back" href="../opt_algo_multi.html#opt_algo_multi.opt_algo_multi.calc_delta">[docs]</a>    <span class="k">def</span> <span class="nf">calc_delta</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">corr_beta</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">alpha_prim</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">sample_num</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">exp_data_path</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>  
+        <span class="bp">self</span><span class="o">.</span><span class="n">calc_all_pop</span><span class="p">(</span><span class="n">corr_beta</span><span class="p">,</span> <span class="n">alpha_prim</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">t_vec</span><span class="p">)</span>
+        
+        <span class="n">delta</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">calc_delta_tem</span><span class="p">(</span><span class="n">sample_num</span><span class="p">,</span> <span class="n">exp_data_path</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">scale</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">p</span><span class="p">)</span>
+        <span class="n">delta_NM</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">calc_delta_tem</span><span class="p">(</span><span class="n">sample_num</span><span class="p">,</span> <span class="n">exp_data_path</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">scale</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">p_NM</span><span class="p">)</span>
+        <span class="n">delta_M</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">calc_delta_tem</span><span class="p">(</span><span class="n">sample_num</span><span class="p">,</span> <span class="n">exp_data_path</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="n">scale</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">p_M</span><span class="p">)</span>
+        <span class="c1"># increase the weight of the 2D case</span>
+        <span class="n">delta_sum</span> <span class="o">=</span> <span class="n">delta</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">weight_2d</span> <span class="o">+</span> <span class="n">delta_NM</span> <span class="o">+</span> <span class="n">delta_M</span>
+            
+        <span class="k">return</span> <span class="n">delta_sum</span></div>
+    
+<div class="viewcode-block" id="opt_algo_multi.calc_delta_agg"><a class="viewcode-back" href="../opt_algo_multi.html#opt_algo_multi.opt_algo_multi.calc_delta_agg">[docs]</a>    <span class="k">def</span> <span class="nf">calc_delta_agg</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">corr_agg</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">sample_num</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">exp_data_path</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span> 
+        <span class="n">corr_beta</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">return_syth_beta</span><span class="p">(</span><span class="n">corr_agg</span><span class="p">)</span>
+        <span class="n">alpha_prim</span> <span class="o">=</span> <span class="n">corr_agg</span> <span class="o">/</span> <span class="n">corr_beta</span>
+        
+        <span class="bp">self</span><span class="o">.</span><span class="n">calc_all_pop</span><span class="p">(</span><span class="n">corr_beta</span><span class="p">,</span> <span class="n">alpha_prim</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">t_vec</span><span class="p">)</span>
+        
+        <span class="n">delta</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">calc_delta_tem</span><span class="p">(</span><span class="n">sample_num</span><span class="p">,</span> <span class="n">exp_data_path</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">scale</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">p</span><span class="p">)</span>
+        <span class="n">delta_NM</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">calc_delta_tem</span><span class="p">(</span><span class="n">sample_num</span><span class="p">,</span> <span class="n">exp_data_path</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">scale</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">p_NM</span><span class="p">)</span>
+        <span class="n">delta_M</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">calc_delta_tem</span><span class="p">(</span><span class="n">sample_num</span><span class="p">,</span> <span class="n">exp_data_path</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="n">scale</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">p_M</span><span class="p">)</span>
+        <span class="c1"># increase the weight of the 2D case</span>
+        <span class="n">delta_sum</span> <span class="o">=</span> <span class="n">delta</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">weight_2d</span> <span class="o">+</span> <span class="n">delta_NM</span> <span class="o">+</span> <span class="n">delta_M</span>
+            
+        <span class="k">return</span> <span class="n">delta_sum</span></div>
+        
+<div class="viewcode-block" id="opt_algo_multi.calc_all_pop"><a class="viewcode-back" href="../opt_algo_multi.html#opt_algo_multi.opt_algo_multi.calc_all_pop">[docs]</a>    <span class="k">def</span> <span class="nf">calc_all_pop</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">corr_beta</span><span class="p">,</span> <span class="n">alpha_prim</span><span class="p">,</span> <span class="n">t_vec</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">calc_pop</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">p_NM</span><span class="p">,</span> <span class="n">corr_beta</span><span class="p">,</span> <span class="n">alpha_prim</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">t_vec</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">calc_pop</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">p_M</span><span class="p">,</span> <span class="n">corr_beta</span><span class="p">,</span> <span class="n">alpha_prim</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="n">t_vec</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">calc_pop</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">p</span><span class="p">,</span> <span class="n">corr_beta</span><span class="p">,</span> <span class="n">alpha_prim</span><span class="p">,</span> <span class="n">t_vec</span><span class="p">)</span>       </div></div>
+        
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Frank Rhein, Haoran Ji.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

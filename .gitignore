@@ -3,6 +3,8 @@
 *.xlsx
 *.png
 *.npz
+*.npy
+*.pdf
 *.tar.gz
 
 # ignore ordner

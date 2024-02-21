@@ -1,8 +1,5 @@
-# -*- coding: utf-8 -*-
-"""
-Solving 1D, 2D and 3D DISCRETE population balance equations for agglomerating systems.
-@author: Frank Rhein, frank.rhein@kit.edu, Institute of Mechanical Process Engineering and Mechanics
-"""
+""" Solving 1D, 2D and 3D discrete population balance equations for agglomerating systems. """
+
 ### ------ IMPORTS ------ ###
 ## General
 import os
@@ -20,12 +17,37 @@ from func.func_math import float_in_list, float_equal, isZero
 
 ### ------ POPULATION CLASS DEFINITION ------ ###
 class population():
+    """Class definition for (discrete) population class
     
-    ## BASELINE PATH
-    pth = os.path.dirname( __file__ )
+    Parameters
+    ----------
+    dim : `int`
+        Dimension of PBE in [1, 2, 3].
+    disc : `str`, optional
+        Discretization strategy in ['uni', 'geo'].
+    file : `str`, optional
+        Path to initialization file.
+    t_exp : `float`, optional
+        Agglomeration time in minutes.
+    attr : 
+        Additional attributes to initialize. Can be any of the class attributes.
+        
+    Methods
+    -------
+    """
     
     ## Solve ODE with Scipy methods:
     def solve_PBE(self, t_max=None, t_vec=None):
+        """Method for solving the (previously initialized) population with scipy.solve_ivp.
+        
+        Parameters
+        ----------
+        t_max : `float`, optional
+            Final agglomeration time in seconds.
+        t_vec : `array_like`, optional
+            Points in time (in seconds) at which to export the numerical solution.
+        """
+        
         # If t_vec is not given (=None), let solver decide where to export time data
         if t_max is None and t_vec is None:
             t_max = self.NUM_T*self.DEL_T
@@ -88,6 +110,7 @@ class population():
              
     ## Solve ODE (forward Euler scheme):
     def solve_PBE_Euler(self):
+        """ `(Legacy)` Simple solver with forward Euler. Use ``solve_PBE( )`` instead. """
         
         # 2-D case
         if self.dim == 2:
@@ -116,6 +139,22 @@ class population():
     ## Full initialization of population instance (calc_R, init_N, calc_alpha_prim,
     ##        calc_F_M, calc_B_M)
     def full_init(self, calc_alpha=True):
+        """Fully initialize a population instance.
+        
+        This method calls     
+            * ``pop.calc_R( )`` 
+            * ``pop.init_N( )``   
+            * ``pop.calc_alpha_prim( )`` (optional)
+            * ``pop.calc_F_M( )`` 
+            * ``pop.calc_B_M( )`` 
+        
+        Parameters
+        ----------
+        calc_alpha : `bool`, optional
+            If ``True``, calculate collision efficiency values from provided material data.     
+            If ``False``, use pop.alpha_prim (initialize beforehand!)
+        """
+        
         self.calc_R()
         # self.calc_R_new()
         self.init_N()        
@@ -126,7 +165,13 @@ class population():
      
     ## Calculate R, V and X matrices (radii, total and partial volumes and volume fractions)
     def calc_R(self):
-            
+        """Initialize discrete calculation grid. 
+        
+        Creates the following class attributes: 
+            * ``pop.V``: Total Volume of each class 
+            * ``pop.R``: Radius of each class
+            * ``pop.Xi_vol``: Volume fraction material i of each class
+        """
         # 1-D case
         if self.dim == 1:
             
@@ -265,6 +310,11 @@ class population():
     
     ## Initialize concentration matrix N
     def init_N(self): 
+        """Initialize discrete number concentration array. 
+        
+        Creates the following class attributes: 
+            * ``pop.N``: Number concentration of each class 
+        """
         
         # 1-D case
         if self.dim == 1:
@@ -299,7 +349,11 @@ class population():
     ## Calculate agglomeration rate matrix.
     ## JIT_FM controls whether the pre-compiled function is used or not. 
     def calc_F_M(self):
+        """Initialize agglomeration frequency array. 
         
+        Creates the following class attributes: 
+            * ``pop.F_M``: Agglomeration frequency between two classes ij and ab is stored in ``F_M[i,j,a,b]`` 
+        """
         # 1-D case
         if self.dim == 1:
             # Initialize F_M Matrix. NOTE: F_M is defined without the border around the calculation grid
@@ -562,6 +616,8 @@ class population():
     
     ## Calculate alphas of primary particles
     def calc_alpha_prim(self):
+        """Calculate collision efficiency between primary particles based on material data."""
+        
         # Use reduced model if EFFEVAL==2. Only primary agglomeration efficiencies are calculated. 
         # Due to numerical issues it may occur that the integral is 0, thus dividing by zero
         # This appears to be the case in fully destabilized systems --> set the integral to 1
@@ -1310,11 +1366,14 @@ class population():
         np.save(file,vars(self))
             
     ## Initialize:
-    def __init__(self, dim, t_exp=10, file=None, disc='geo'):
+    def __init__(self, dim, t_exp=10, file=None, disc='geo', **attr):
         
         # Check if given dimension and discretization is valid
         if not (dim in [1,2,3] and disc in ['geo','uni']):
             print('Given dimension and/or discretization are not valid. Exiting..')
+            
+        # BASELINE PATH
+        self.pth = os.path.dirname( __file__ )
         
         ## MODEL parameters
         self.dim = dim                        # Dimension (1=1D, 2=2D, 3=3D)
@@ -1361,6 +1420,7 @@ class population():
         self.DIST1 = os.path.join(self.pth,"data\\PSD_data\\")+'PSD_x50_1.0E-6_r01_2.9E-7.npy'
         self.DIST2 = os.path.join(self.pth,"data\\PSD_data\\")+'PSD_x50_1.0E-6_r01_2.9E-7.npy'
         self.DIST3 = os.path.join(self.pth,"data\\PSD_data\\")+'PSD_x50_1.0E-6_r01_2.9E-7.npy'
+        self.alpha_prim = np.ones(dim**2)
         self.PSI1 = 1*1e-3                   # Surface potential component 1 [V] - NM1
         self.PSI2 = 1*1e-3                    # Surface potential component 2 [V] - NM2
         self.PSI3 = -40*1e-3                  # Surface potential component 3 [V] - M
@@ -1439,13 +1499,17 @@ class population():
         self.NUM_T = round(self.t_exp*60/self.DEL_T)      # Number of timesteps for calculation [-]
         self.t_vec = np.arange(self.NUM_T+1)*self.DEL_T        
         
+        # Initialize **attr
+        for key, value in attr.items():
+            setattr(self, key, value)
+            
         # Initialize from file
         if file is not None:
             
             params = np.load(file, allow_pickle=True).item()        
             for i in params.keys(): 
                 setattr(self,i,params[i])
-            
+
             # Reset dimension
             self.dim = dim
             

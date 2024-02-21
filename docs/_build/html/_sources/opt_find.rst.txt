@@ -1,0 +1,7 @@
+opt\_find module
+================
+
+.. automodule:: opt_find
+   :members:
+   :undoc-members:
+   :show-inheritance:

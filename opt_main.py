@@ -73,13 +73,13 @@ def optimization_process(args):
     find.algo.corr_beta = corr_beta
     find.algo.alpha_prim = alpha_prim
 
-    start_time = time.time()
+    
     results = \
         find.find_opt_kernels(sample_num=sample_num, method='delta', data_name=data_name)
-    end_time = time.time()
-    elapsed_time[i,j] = end_time - start_time
     
-    return i, j, results, elapsed_time
+
+    
+    return i, j, results
 
 if __name__ == '__main__':
     noise_type = conf.config['noise_type']
@@ -113,7 +113,7 @@ if __name__ == '__main__':
     ## The case of all zero α is meaningless, that means no Agglomeration occurs
     var_alpha_prim = var_alpha_prim[~np.all(var_alpha_prim == 0, axis=1)]
     
-    pool = multiprocessing.Pool(processes=4)
+    pool = multiprocessing.Pool(processes=8)
     tasks = []
     for i, corr_beta in enumerate(var_corr_beta):
         for j, alpha_prim in enumerate(var_alpha_prim):
@@ -129,19 +129,19 @@ if __name__ == '__main__':
     alpha_prim_opt = np.zeros((*data_size, 3))
     para_diff = np.zeros(data_size)
     delta_opt = np.zeros(data_size)
-    elapsed_time = np.zeros(data_size)
+
     corr_agg = np.zeros((*data_size, 3))
     corr_agg_opt = np.zeros((*data_size, 3))
     corr_agg_diff = np.zeros((*data_size, 3))
     
     for result in results:
         i, j, (corr_beta_opt_res, alpha_prim_opt_res, para_diff_res, delta_opt_res, \
-               corr_agg_res, corr_agg_opt_res, corr_agg_diff_res), elapsed = result
+               corr_agg_res, corr_agg_opt_res, corr_agg_diff_res) = result
         corr_beta_opt[i,j] = corr_beta_opt_res
         alpha_prim_opt[i,j,:] = alpha_prim_opt_res
         para_diff[i,j] = para_diff_res
         delta_opt[i,j] = delta_opt_res
-        elapsed_time[i,j] = elapsed
+        
         corr_agg[i,j,:] = corr_agg_res
         corr_agg_opt[i,j,:] = corr_agg_opt_res
         corr_agg_diff[i,j,:] = corr_agg_diff_res
@@ -160,7 +160,7 @@ if __name__ == '__main__':
          corr_agg = corr_agg,
          corr_agg_opt = corr_agg_opt,
          corr_agg_diff = corr_agg_diff,
-         elapsed_time=elapsed_time)
+         )
     
     
     

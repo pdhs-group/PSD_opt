@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>opt_find &mdash; dPBE: Discrete Population Balance Equations 1.0.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css" />
+
+  
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../_static/jquery.js"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+        <script src="../_static/doctools.js"></script>
+        <script src="../_static/sphinx_highlight.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            dPBE: Discrete Population Balance Equations
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../quickstart.html">Quick Start</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../attributes.html">Attributes of the dPBE Class</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../advanced_guide.html">Advanced Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../references.html">References</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../pop.html">pop module</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">dPBE: Discrete Population Balance Equations</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">Module code</a></li>
+      <li class="breadcrumb-item active">opt_find</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for opt_find</h1><div class="highlight"><pre>
+<span></span><span class="c1"># -*- coding: utf-8 -*-</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Created on Tue Dec  5 09:22:00 2023</span>
+
+<span class="sd">@author: px2030</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">warnings</span>
+<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+<span class="kn">from</span> <span class="nn">pop</span> <span class="kn">import</span> <span class="n">population</span>
+<span class="kn">from</span> <span class="nn">opt_algo</span> <span class="kn">import</span> <span class="n">opt_algo</span> 
+<span class="kn">from</span> <span class="nn">opt_algo_multi</span> <span class="kn">import</span> <span class="n">opt_algo_multi</span>
+<span class="kn">from</span> <span class="nn">func.func_read_exp</span> <span class="kn">import</span> <span class="n">write_read_exp</span>
+<span class="c1">## For plots</span>
+<span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="k">as</span> <span class="nn">plt</span>
+<span class="kn">import</span> <span class="nn">plotter.plotter</span> <span class="k">as</span> <span class="nn">pt</span>          
+
+<div class="viewcode-block" id="opt_find"><a class="viewcode-back" href="../opt_find.html#opt_find.opt_find">[docs]</a><span class="k">class</span> <span class="nc">opt_find</span><span class="p">():</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">multi_flag</span><span class="o">=</span><span class="kc">True</span>
+        
+<div class="viewcode-block" id="opt_find.init_opt_algo"><a class="viewcode-back" href="../opt_find.html#opt_find.opt_find.init_opt_algo">[docs]</a>    <span class="k">def</span> <span class="nf">init_opt_algo</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">t_init</span><span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">t_vec</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">add_noise</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">noise_type</span><span class="o">=</span><span class="s1">&#39;Gaus&#39;</span><span class="p">,</span>
+                      <span class="n">noise_strength</span><span class="o">=</span><span class="mf">0.01</span><span class="p">,</span><span class="n">smoothing</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">multi_flag</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">algo</span> <span class="o">=</span> <span class="n">opt_algo</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">dim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s2">&quot;The multi algorithm does not support 1-D pop!&quot;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">algo</span> <span class="o">=</span> <span class="n">opt_algo_multi</span><span class="p">()</span>  
+        <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">add_noise</span> <span class="o">=</span> <span class="n">add_noise</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">smoothing</span> <span class="o">=</span> <span class="n">smoothing</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">dim</span> <span class="o">=</span> <span class="n">dim</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">noise_type</span> <span class="o">=</span> <span class="n">noise_type</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">noise_strength</span> <span class="o">=</span> <span class="n">noise_strength</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">t_init</span> <span class="o">=</span> <span class="n">t_init</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">num_t_init</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">t_init</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">t_vec</span> <span class="o">=</span> <span class="n">t_vec</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">num_t_steps</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">t_vec</span><span class="p">)</span>
+        <span class="c1">## Get the complete simulation time and get the indices corresponding </span>
+        <span class="c1">## to the vec and init time vectors</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">t_all</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">t_init</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">t_vec</span><span class="p">)))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">idt_vec</span> <span class="o">=</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">t_all</span> <span class="o">==</span> <span class="n">t_time</span><span class="p">)[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">t_time</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">t_vec</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">idt_init</span> <span class="o">=</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">t_all</span> <span class="o">==</span> <span class="n">t_time</span><span class="p">)[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">t_time</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">t_init</span><span class="p">]</span>
+        
+        <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">method</span><span class="o">=</span><span class="s1">&#39;BO&#39;</span>
+        
+        <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">p</span> <span class="o">=</span> <span class="n">population</span><span class="p">(</span><span class="n">dim</span><span class="o">=</span><span class="n">dim</span><span class="p">,</span> <span class="n">disc</span><span class="o">=</span><span class="s1">&#39;geo&#39;</span><span class="p">)</span>
+        <span class="c1">## The 1D-pop data is also used when calculating the initial N of 2/3D-pop.</span>
+        <span class="k">if</span> <span class="n">dim</span> <span class="o">&gt;=</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">create_1d_pop</span><span class="p">(</span><span class="n">disc</span><span class="o">=</span><span class="s1">&#39;geo&#39;</span><span class="p">)</span>
+        <span class="c1"># Set the base path for exp_data_path</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">base_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">p</span><span class="o">.</span><span class="n">pth</span><span class="p">,</span> <span class="s2">&quot;data&quot;</span><span class="p">)</span></div>
+        
+<div class="viewcode-block" id="opt_find.generate_data"><a class="viewcode-back" href="../opt_find.html#opt_find.opt_find.generate_data">[docs]</a>    <span class="k">def</span> <span class="nf">generate_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sample_num</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">add_info</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">add_noise</span><span class="p">:</span>
+            <span class="c1"># Modify the file name to include noise type and strength</span>
+            <span class="n">filename</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Sim_</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">noise_type</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">noise_strength</span><span class="si">}</span><span class="s2">&quot;</span><span class="o">+</span><span class="n">add_info</span><span class="o">+</span><span class="s2">&quot;.xlsx&quot;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Use the default file name</span>
+            <span class="n">filename</span> <span class="o">=</span> <span class="s2">&quot;Sim&quot;</span><span class="o">+</span><span class="n">add_info</span><span class="o">+</span><span class="s2">&quot;.xlsx&quot;</span>
+
+        <span class="c1"># Combine the base path with the modified file name</span>
+        <span class="n">exp_data_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">base_path</span><span class="p">,</span> <span class="n">filename</span><span class="p">)</span>
+        
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">multi_flag</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">calc_pop</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">p</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">corr_beta</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">alpha_prim</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">t_all</span><span class="p">)</span>
+            
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">sample_num</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">sample_num</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="n">exp_data_path</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">traverse_path</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">exp_data_path</span><span class="p">)</span>
+                <span class="c1"># print(self.algo.exp_data_path)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">write_new_data</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">p</span><span class="p">,</span> <span class="n">exp_data_path</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">exp_data_paths</span> <span class="o">=</span> <span class="p">[</span>
+                <span class="n">exp_data_path</span><span class="p">,</span>
+                <span class="n">exp_data_path</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;.xlsx&quot;</span><span class="p">,</span> <span class="s2">&quot;_NM.xlsx&quot;</span><span class="p">),</span>
+                <span class="n">exp_data_path</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;.xlsx&quot;</span><span class="p">,</span> <span class="s2">&quot;_M.xlsx&quot;</span><span class="p">)</span>
+            <span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">calc_all_pop</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">corr_beta</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">alpha_prim</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">t_all</span><span class="p">)</span>
+            
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">sample_num</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">sample_num</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="n">exp_data_paths</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">traverse_path</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">exp_data_paths</span><span class="p">)</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">write_new_data</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">p</span><span class="p">,</span> <span class="n">exp_data_paths</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">write_new_data</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">p_NM</span><span class="p">,</span> <span class="n">exp_data_paths</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">write_new_data</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">p_M</span><span class="p">,</span> <span class="n">exp_data_paths</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span></div>
+            
+<div class="viewcode-block" id="opt_find.find_opt_kernels"><a class="viewcode-back" href="../opt_find.html#opt_find.opt_find.find_opt_kernels">[docs]</a>    <span class="k">def</span> <span class="nf">find_opt_kernels</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sample_num</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;kernels&#39;</span><span class="p">,</span> <span class="n">data_name</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">data_name</span> <span class="o">==</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s2">&quot;Please specify the name of the training data without labels!&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">exp_data_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">base_path</span><span class="p">,</span> <span class="n">data_name</span><span class="p">)</span>
+
+            <span class="n">exp_data_paths</span> <span class="o">=</span> <span class="p">[</span>
+                <span class="n">exp_data_path</span><span class="p">,</span>
+                <span class="n">exp_data_path</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;.xlsx&quot;</span><span class="p">,</span> <span class="s2">&quot;_NM.xlsx&quot;</span><span class="p">),</span>
+                <span class="n">exp_data_path</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;.xlsx&quot;</span><span class="p">,</span> <span class="s2">&quot;_M.xlsx&quot;</span><span class="p">)</span>
+            <span class="p">]</span>
+            
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">multi_flag</span><span class="p">:</span>
+                <span class="c1"># Because manual initialization N always requires 1D data(use exp_data_paths), </span>
+                <span class="c1"># and only multi-optimization process requires 1D data.</span>
+                <span class="n">exp_data_path</span> <span class="o">=</span> <span class="n">exp_data_paths</span>
+            
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">calc_init_N</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">set_init_N</span><span class="p">(</span><span class="n">sample_num</span><span class="p">,</span> <span class="n">exp_data_paths</span><span class="p">,</span> <span class="n">init_flag</span><span class="o">=</span><span class="s1">&#39;mean&#39;</span><span class="p">)</span>
+                
+            <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;kernels&#39;</span><span class="p">:</span>
+                <span class="n">delta_opt_sample</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">sample_num</span><span class="p">)</span>
+                <span class="n">corr_beta_sample</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">sample_num</span><span class="p">)</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">p</span><span class="o">.</span><span class="n">dim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="n">alpha_prim_sample</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">sample_num</span><span class="p">)</span>
+                    
+                <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">p</span><span class="o">.</span><span class="n">dim</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+                    <span class="n">alpha_prim_sample</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="mi">3</span><span class="p">,</span> <span class="n">sample_num</span><span class="p">))</span>
+                
+                <span class="k">if</span> <span class="n">sample_num</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="n">delta_opt</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">optimierer_agg</span><span class="p">(</span><span class="n">exp_data_path</span><span class="o">=</span><span class="n">exp_data_path</span><span class="p">)</span>
+                    <span class="n">corr_beta</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">corr_beta_opt</span>
+                    <span class="n">alpha_prim</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">alpha_prim_opt</span>
+                    
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">sample_num</span><span class="p">):</span>
+                        <span class="n">exp_data_path</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">traverse_path</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">exp_data_path</span><span class="p">)</span>
+                        <span class="n">delta_opt_sample</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> \
+                            <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">optimierer_agg</span><span class="p">(</span><span class="n">exp_data_path</span><span class="o">=</span><span class="n">exp_data_path</span><span class="p">)</span>
+                            
+                        <span class="n">corr_beta_sample</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">corr_beta_opt</span>
+                        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">p</span><span class="o">.</span><span class="n">dim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                            <span class="n">alpha_prim_sample</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">alpha_prim_opt</span>
+                            
+                        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">p</span><span class="o">.</span><span class="n">dim</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+                            <span class="n">alpha_prim_sample</span><span class="p">[:,</span> <span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">alpha_prim_opt</span>
+
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">sample_num</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="n">delta_opt</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">delta_opt_sample</span><span class="p">)</span>
+                    <span class="n">corr_beta</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">corr_beta_sample</span><span class="p">)</span>
+                    <span class="n">alpha_prim</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">alpha_prim_sample</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">p</span><span class="o">.</span><span class="n">dim</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">corr_beta_opt</span> <span class="o">=</span> <span class="n">corr_beta</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">alpha_prim_opt</span> <span class="o">=</span> <span class="n">alpha_prim</span>
+                
+            <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;delta&#39;</span><span class="p">:</span>
+                <span class="n">delta_opt</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">optimierer_agg</span><span class="p">(</span><span class="n">sample_num</span><span class="o">=</span><span class="n">sample_num</span><span class="p">,</span> 
+                                      <span class="n">exp_data_path</span><span class="o">=</span><span class="n">exp_data_path</span><span class="p">)</span>
+                <span class="c1"># delta_opt = self.algo.optimierer(sample_num=sample_num, </span>
+                <span class="c1">#                       exp_data_path=exp_data_path)</span>
+                
+                
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">p</span><span class="o">.</span><span class="n">dim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">para_diff_i</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+                <span class="n">para_diff_i</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="nb">abs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">corr_beta_opt</span><span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">corr_beta</span><span class="p">)</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">corr_beta</span>
+                <span class="n">para_diff_i</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="nb">abs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">alpha_prim_opt</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">alpha_prim</span><span class="p">)</span>
+                
+            <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">p</span><span class="o">.</span><span class="n">dim</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="n">para_diff_i</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+                <span class="n">para_diff_i</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="nb">abs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">corr_beta_opt</span><span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">corr_beta</span><span class="p">)</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">corr_beta</span>
+                <span class="n">para_diff_i</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span> <span class="o">=</span> <span class="nb">abs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">alpha_prim_opt</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">alpha_prim</span><span class="p">)</span>
+            
+            <span class="n">corr_agg</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">corr_beta</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">alpha_prim</span>
+            <span class="n">corr_agg_opt</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">corr_beta_opt</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">alpha_prim_opt</span>
+            <span class="n">corr_agg_diff</span> <span class="o">=</span> <span class="nb">abs</span><span class="p">(</span><span class="n">corr_agg_opt</span> <span class="o">-</span> <span class="n">corr_agg</span><span class="p">)</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">corr_agg</span> <span class="o">==</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">corr_agg</span><span class="p">)</span>
+            <span class="n">para_diff</span><span class="o">=</span><span class="n">para_diff_i</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">corr_beta_opt</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">alpha_prim_opt</span><span class="p">,</span> <span class="n">para_diff</span><span class="p">,</span> <span class="n">delta_opt</span><span class="p">,</span> \
+                <span class="n">corr_agg</span><span class="p">,</span> <span class="n">corr_agg_opt</span><span class="p">,</span> <span class="n">corr_agg_diff</span></div>
+                
+            <span class="c1"># return self.algo.corr_beta_opt, self.algo.alpha_prim_opt, para_diff, delta_opt</span>
+        
+        
+<div class="viewcode-block" id="opt_find.write_new_data"><a class="viewcode-back" href="../opt_find.html#opt_find.opt_find.write_new_data">[docs]</a>    <span class="k">def</span> <span class="nf">write_new_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pop</span><span class="p">,</span> <span class="n">exp_data_path</span><span class="p">):</span>
+        <span class="c1"># save the calculation result in experimental data form</span>
+        <span class="n">x_uni</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">calc_x_uni</span><span class="p">(</span><span class="n">pop</span><span class="p">)</span>
+        <span class="n">v_uni</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">calc_v_uni</span><span class="p">(</span><span class="n">pop</span><span class="p">)</span>
+        <span class="n">formatted_times</span> <span class="o">=</span> <span class="n">write_read_exp</span><span class="o">.</span><span class="n">convert_seconds_to_time</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">t_all</span><span class="p">)</span>
+        <span class="n">sumN_uni</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="n">x_uni</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">t_all</span><span class="p">)))</span>
+        <span class="n">sumvol_uni</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">x_uni</span><span class="p">))</span>
+        
+        <span class="k">for</span> <span class="n">idt</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">idt_vec</span><span class="p">:</span>
+            <span class="n">sumvol_uni</span> <span class="o">=</span> <span class="n">pop</span><span class="o">.</span><span class="n">return_distribution</span><span class="p">(</span><span class="n">t</span><span class="o">=</span><span class="n">idt</span><span class="p">,</span> <span class="n">flag</span><span class="o">=</span><span class="s1">&#39;sumvol_uni&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">kde</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">KDE_fit</span><span class="p">(</span><span class="n">x_uni</span><span class="p">,</span>  <span class="n">sumvol_uni</span><span class="p">)</span>
+            <span class="c1">## Recalculate the values of after smoothing</span>
+            <span class="n">q3</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">KDE_score</span><span class="p">(</span><span class="n">kde</span><span class="p">,</span> <span class="n">x_uni</span><span class="p">)</span>
+            <span class="n">Q3</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">calc_Q3</span><span class="p">(</span><span class="n">x_uni</span><span class="p">,</span> <span class="n">q3</span><span class="p">)</span>
+            <span class="n">sumvol_uni</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">calc_sum_uni</span><span class="p">(</span><span class="n">Q3</span><span class="p">,</span> <span class="n">sumvol_uni</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
+            <span class="n">sumN_uni</span><span class="p">[</span><span class="mi">1</span><span class="p">:,</span> <span class="n">idt</span><span class="p">]</span> <span class="o">=</span> <span class="n">sumvol_uni</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span> <span class="o">/</span> <span class="n">v_uni</span>
+        <span class="c1">## Data used for initialization should not be smoothed</span>
+        <span class="k">for</span> <span class="n">idt</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">idt_init</span><span class="p">:</span>
+            <span class="n">sumN_uni</span><span class="p">[:,</span> <span class="n">idt</span><span class="p">]</span> <span class="o">=</span> <span class="n">pop</span><span class="o">.</span><span class="n">return_num_distribution</span><span class="p">(</span><span class="n">t</span><span class="o">=</span><span class="n">idt</span><span class="p">,</span> <span class="n">flag</span><span class="o">=</span><span class="s1">&#39;sumN_uni&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">add_noise</span><span class="p">:</span>
+            <span class="n">sumN_uni</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">function_noise</span><span class="p">(</span><span class="n">sumN_uni</span><span class="p">)</span>
+
+        <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="n">sumN_uni</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="n">x_uni</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="n">formatted_times</span><span class="p">)</span>
+        <span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="s1">&#39;Circular Equivalent Diameter&#39;</span>
+        <span class="c1"># save DataFrame as Excel file</span>
+        <span class="n">df</span><span class="o">.</span><span class="n">to_excel</span><span class="p">(</span><span class="n">exp_data_path</span><span class="p">)</span>
+        
+        <span class="k">return</span> </div>
+    
+    <span class="c1"># Visualize only the last time step of the specified time vector and the last used experimental data</span>
+<div class="viewcode-block" id="opt_find.visualize_distribution"><a class="viewcode-back" href="../opt_find.html#opt_find.opt_find.visualize_distribution">[docs]</a>    <span class="k">def</span> <span class="nf">visualize_distribution</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pop</span><span class="p">,</span> <span class="n">corr_beta_ori</span><span class="p">,</span> <span class="n">alpha_prim_ori</span><span class="p">,</span> <span class="n">corr_beta_opt</span><span class="p">,</span> 
+                               <span class="n">alpha_prim_opt</span><span class="p">,</span> <span class="n">exp_data_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span><span class="n">ax</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span><span class="n">fig</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                               <span class="n">close_all</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span><span class="n">clr</span><span class="o">=</span><span class="s1">&#39;k&#39;</span><span class="p">,</span><span class="n">scl_a4</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span><span class="n">figsze</span><span class="o">=</span><span class="p">[</span><span class="mf">12.8</span><span class="p">,</span><span class="mf">6.4</span><span class="o">*</span><span class="mf">1.5</span><span class="p">]):</span>
+        <span class="c1">## Recalculate PSD using original parameter</span>
+        <span class="c1">## Todo: set_comp_para with original parameter</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">calc_pop</span><span class="p">(</span><span class="n">pop</span><span class="p">,</span> <span class="n">corr_beta</span><span class="o">=</span><span class="n">corr_beta_ori</span><span class="p">,</span> <span class="n">alpha_prim</span><span class="o">=</span><span class="n">alpha_prim_ori</span><span class="p">)</span>
+
+        <span class="n">x_uni_ori</span><span class="p">,</span> <span class="n">sumvol_uni_ori</span> <span class="o">=</span> <span class="n">pop</span><span class="o">.</span><span class="n">return_distribution</span><span class="p">(</span><span class="n">t</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">flag</span><span class="o">=</span><span class="s1">&#39;x_uni, sumvol_uni&#39;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">smoothing</span><span class="p">:</span>
+            <span class="n">kde</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">KDE_fit</span><span class="p">(</span><span class="n">x_uni_ori</span><span class="p">,</span> <span class="n">sumvol_uni_ori</span><span class="p">)</span>
+            <span class="n">q3_ori</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">KDE_score</span><span class="p">(</span><span class="n">kde</span><span class="p">,</span> <span class="n">x_uni_ori</span><span class="p">)</span>
+            <span class="n">Q3_ori</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">calc_Q3</span><span class="p">(</span><span class="n">x_uni_ori</span><span class="p">,</span> <span class="n">q3_ori</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">calc_pop</span><span class="p">(</span><span class="n">pop</span><span class="p">,</span> <span class="n">corr_beta_opt</span><span class="p">,</span> <span class="n">alpha_prim_opt</span><span class="p">)</span>  
+            
+        <span class="n">x_uni</span><span class="p">,</span> <span class="n">sumvol_uni</span><span class="o">=</span> <span class="n">pop</span><span class="o">.</span><span class="n">return_distribution</span><span class="p">(</span><span class="n">t</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">flag</span><span class="o">=</span><span class="s1">&#39;x_uni, sumvol_uni&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">smoothing</span><span class="p">:</span>
+            <span class="n">kde</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">KDE_fit</span><span class="p">(</span><span class="n">x_uni</span><span class="p">,</span> <span class="n">sumvol_uni</span><span class="p">)</span>
+            <span class="n">q3</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">KDE_score</span><span class="p">(</span><span class="n">kde</span><span class="p">,</span> <span class="n">x_uni</span><span class="p">)</span>
+            <span class="n">Q3</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">calc_Q3</span><span class="p">(</span><span class="n">x_uni</span><span class="p">,</span> <span class="n">q3</span><span class="p">)</span>
+        
+        <span class="n">pt</span><span class="o">.</span><span class="n">plot_init</span><span class="p">(</span><span class="n">scl_a4</span><span class="o">=</span><span class="n">scl_a4</span><span class="p">,</span><span class="n">figsze</span><span class="o">=</span><span class="n">figsze</span><span class="p">,</span><span class="n">lnewdth</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span><span class="n">mrksze</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span><span class="n">use_locale</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span><span class="n">scl</span><span class="o">=</span><span class="mf">1.2</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">close_all</span><span class="p">:</span>
+            <span class="n">plt</span><span class="o">.</span><span class="n">close</span><span class="p">(</span><span class="s1">&#39;all&#39;</span><span class="p">)</span>
+            
+        <span class="k">if</span> <span class="n">fig</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">ax</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">fig</span><span class="o">=</span><span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">()</span>    
+            <span class="n">axq3</span><span class="o">=</span><span class="n">fig</span><span class="o">.</span><span class="n">add_subplot</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">1</span><span class="p">)</span>   
+            <span class="n">axQ3</span><span class="o">=</span><span class="n">fig</span><span class="o">.</span><span class="n">add_subplot</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">2</span><span class="p">)</span>   
+        
+        <span class="n">axq3</span><span class="p">,</span> <span class="n">fig</span> <span class="o">=</span> <span class="n">pt</span><span class="o">.</span><span class="n">plot_data</span><span class="p">(</span><span class="n">x_uni</span><span class="p">,</span> <span class="n">q3</span><span class="p">,</span> <span class="n">fig</span><span class="o">=</span><span class="n">fig</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="n">axq3</span><span class="p">,</span>
+                               <span class="n">xlbl</span><span class="o">=</span><span class="s1">&#39;Agglomeration size $x_\mathrm</span><span class="si">{A}</span><span class="s1">$ / $-$&#39;</span><span class="p">,</span>
+                               <span class="n">ylbl</span><span class="o">=</span><span class="s1">&#39;number distribution of agglomerates $q3$ / $-$&#39;</span><span class="p">,</span>
+                               <span class="n">lbl</span><span class="o">=</span><span class="s1">&#39;q3_mod&#39;</span><span class="p">,</span><span class="n">clr</span><span class="o">=</span><span class="s1">&#39;b&#39;</span><span class="p">,</span><span class="n">mrk</span><span class="o">=</span><span class="s1">&#39;o&#39;</span><span class="p">)</span>
+        
+
+        <span class="n">axq3</span><span class="p">,</span> <span class="n">fig</span> <span class="o">=</span> <span class="n">pt</span><span class="o">.</span><span class="n">plot_data</span><span class="p">(</span><span class="n">x_uni_ori</span><span class="p">,</span> <span class="n">q3_ori</span><span class="p">,</span> <span class="n">fig</span><span class="o">=</span><span class="n">fig</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="n">axq3</span><span class="p">,</span>
+                               <span class="n">lbl</span><span class="o">=</span><span class="s1">&#39;q3_ori&#39;</span><span class="p">,</span><span class="n">clr</span><span class="o">=</span><span class="s1">&#39;r&#39;</span><span class="p">,</span><span class="n">mrk</span><span class="o">=</span><span class="s1">&#39;v&#39;</span><span class="p">)</span>
+        
+        <span class="n">axQ3</span><span class="p">,</span> <span class="n">fig</span> <span class="o">=</span> <span class="n">pt</span><span class="o">.</span><span class="n">plot_data</span><span class="p">(</span><span class="n">x_uni</span><span class="p">,</span> <span class="n">Q3</span><span class="p">,</span> <span class="n">fig</span><span class="o">=</span><span class="n">fig</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="n">axQ3</span><span class="p">,</span>
+                               <span class="n">xlbl</span><span class="o">=</span><span class="s1">&#39;Agglomeration size $x_\mathrm</span><span class="si">{A}</span><span class="s1">$ / $-$&#39;</span><span class="p">,</span>
+                               <span class="n">ylbl</span><span class="o">=</span><span class="s1">&#39;accumulated number distribution of agglomerates $Q3$ / $-$&#39;</span><span class="p">,</span>
+                               <span class="n">lbl</span><span class="o">=</span><span class="s1">&#39;Q3_mod&#39;</span><span class="p">,</span><span class="n">clr</span><span class="o">=</span><span class="s1">&#39;b&#39;</span><span class="p">,</span><span class="n">mrk</span><span class="o">=</span><span class="s1">&#39;o&#39;</span><span class="p">)</span>
+
+        <span class="n">axQ3</span><span class="p">,</span> <span class="n">fig</span> <span class="o">=</span> <span class="n">pt</span><span class="o">.</span><span class="n">plot_data</span><span class="p">(</span><span class="n">x_uni_ori</span><span class="p">,</span> <span class="n">Q3_ori</span><span class="p">,</span> <span class="n">fig</span><span class="o">=</span><span class="n">fig</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="n">axQ3</span><span class="p">,</span>
+                               <span class="n">lbl</span><span class="o">=</span><span class="s1">&#39;Q3_ori&#39;</span><span class="p">,</span><span class="n">clr</span><span class="o">=</span><span class="s1">&#39;r&#39;</span><span class="p">,</span><span class="n">mrk</span><span class="o">=</span><span class="s1">&#39;v&#39;</span><span class="p">)</span>
+        
+        <span class="n">axq3</span><span class="o">.</span><span class="n">grid</span><span class="p">(</span><span class="s1">&#39;minor&#39;</span><span class="p">)</span>
+        <span class="n">axQ3</span><span class="o">.</span><span class="n">grid</span><span class="p">(</span><span class="s1">&#39;minor&#39;</span><span class="p">)</span>
+        <span class="n">plt</span><span class="o">.</span><span class="n">tight_layout</span><span class="p">()</span>   
+        
+        <span class="k">return</span> <span class="n">fig</span></div>
+    
+<div class="viewcode-block" id="opt_find.save_as_png"><a class="viewcode-back" href="../opt_find.html#opt_find.opt_find.save_as_png">[docs]</a>    <span class="k">def</span> <span class="nf">save_as_png</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fig</span><span class="p">,</span> <span class="n">file_name</span><span class="p">):</span>
+        <span class="n">file_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">base_path</span><span class="p">,</span> <span class="n">file_name</span><span class="p">)</span>
+        <span class="n">fig</span><span class="o">.</span><span class="n">savefig</span><span class="p">(</span><span class="n">file_path</span><span class="p">,</span> <span class="n">dpi</span><span class="o">=</span><span class="mi">150</span><span class="p">)</span>
+        <span class="k">return</span> <span class="mi">0</span></div></div>
+    
+        
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Frank Rhein, Haoran Ji.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
