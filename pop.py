@@ -160,7 +160,8 @@ class population():
         self.init_N()        
         if calc_alpha: self.calc_alpha_prim()
         self.calc_F_M()
-        if self.dim == 1: self.calc_B_M()
+        self.calc_B_R()
+        self.calc_B_F()
      
     ## Calculate R, V and X matrices (radii, total and partial volumes and volume fractions)
     def calc_R(self):
@@ -702,19 +703,73 @@ class population():
             self.alpha_prim[8] = (2*tmp)**(-1)    
     
     ## Calculate breakage rate matrix. 
-    def calc_B_M(self):
+    def calc_B_R(self):
         
         # 1-D case
         if self.dim == 1:
-            
-            self.B_M = np.zeros(len(self.V))
+            self.B_R = np.zeros(self.NS)
             # Power Law Pandy and Spielmann --> See Jeldres2018 (28)
             # for i in range(2,len(self.V)):
             #     self.B_M[i] = self.P1*self.G*(self.V[i]/self.V[2])**self.P2
             
-        else:
-            print('Only 1-D case currently coded.')
+            # Size independent breakage rate --> See Leong2023 (10)
+            # only for validation with analytical results
+            if self.BREAKRVAL == 1:
+                self.B_R = 1
+                
+            # Size dependent breakage rate --> See Leong2023 (10)
+            # only for validation with analytical results
+            elif self.BREAKRVAL == 2:
+                for idx, tmp in np.ndenumerate(self.B_R):
+                    self.B_R[idx] = self.V[idx]
+        # 2-D case            
+        if self.dim == 2:
+            self.B_R = np.zeros((self.NS, self.NS))
             
+            # Size independent breakage rate --> See Leong2023 (10)
+            # only for validation with analytical results
+            if self.BREAKRVAL == 1:
+                self.B_R = 1
+                
+            # Size dependent breakage rate --> See Leong2023 (10)
+            elif self.BREAKRVAL == 2:
+                for idx, tmp in np.ndenumerate(self.B_R):
+                    a = idx[0]; b = idx[1]
+                    if self.BREAKFVAL == 1:
+                        self.B_R[idx] = self.V1[a] * self.V3[b]  
+                    elif self.BREAKFVAL == 2:
+                        # self.B_R[idx] = self.V1[a] + self.V3[b]  
+                        self.B_R[idx] = self.V[idx] 
+                        
+            
+    ## Calculate breakage function matrix.         
+    def calc_B_F(self):
+        # 1-D case
+        if self.dim == 1:
+            self.B_F = np.zeros((self.NS, self.NS))
+            for idx, tmp in np.ndenumerate(self.B_F):
+                a = idx[0]; i = idx[1]
+            # Conservation of Hypervolume, random breakage into four fragments --> See Leong2023 (10)
+            # only for validation with analytical results
+                if self.BREAKFVAL == 1:
+                    self.B_F[idx] = 4 / (self.V[i])
+            # Conservation of First-Order Moments, random breakage into two fragments --> See Leong2023 (10)
+            # only for validation with analytical results        
+                if self.BREAKFVAL == 2:
+                    self.B_F[idx] = 2 / (self.V[i])
+        # 2-D case
+        if self.dim == 2:
+            self.B_F = np.zeros((self.NS, self.NS, self.NS, self.NS))
+            for idx, tmp in np.ndenumerate(self.B_F):
+                a = idx[0] ; b = idx[1]; i = idx[2]; j = idx[3]
+            # Conservation of Hypervolume, random breakage into four fragments --> See Leong2023 (10)
+            # only for validation with analytical results
+                if self.BREAKFVAL == 1:
+                    self.B_F = 4 / (self.V1[i] * self.V3[j])
+            # Conservation of First-Order Moments, random breakage into two fragments --> See Leong2023 (10)
+            # only for validation with analytical results        
+                if self.BREAKFVAL == 2:
+                    self.B_F = 2 / (self.V1[i] * self.V3[j])     
         
     ## Visualize / plot population:
     def visualize_distN_t(self,t_plot=None,t_pause=0.5,close_all=False,scl_a4=1,figsze=[12.8,6.4*1.5]):
@@ -1332,6 +1387,9 @@ class population():
         self.EFFEVAL = 2                      # Case for calculation of alpha. 1 = Full calculation, 2 = Reduced model (only based on primary particle interactions)
                                             # Case 2 massively faster and legit acc. to Kusters1997 and Bäbler2008
                                             # Case 3 to use pre-defines alphas (e.g. from ANN) --> alphas need to be provided at some point
+        self.BREAKFVAL = 1                    # Case for calculation breakage function. 1 = conservation of Hypervolume, 2 = conservation of 0 Moments 
+        self.BREAKRVAL = 1                    # Case for calculation breakage rate. 1 = constant, 2 = size dependent
+                       
         self.SIZEEVAL = 2                     # Case for implementation of size dependency. 1 = No size dependency, 2 = Model from Soos2007 
         self.POTEVAL = 1                      # Case for the set of used interaction potentials. See int_fun_Xd for infos.
         self.USE_PSD = True                   # Define wheter or not the PSD should be initializes (False = monodisperse primary particles)
@@ -1669,7 +1727,7 @@ class population():
 # Define np.heaviside for JIT compilation
     
 @jit(nopython=True)
-def get_dNdt_1d_geo_jit(t,N,V_p,V_e, F_M,B_M,NS,THR):
+def get_dNdt_1d_geo_jit(t,N,V_p,V_e,F_M,B_M,NS,THR,B_R,B_F):
   
     dNdt = np.zeros(N.shape)
     B_c = np.zeros(N.shape)
@@ -1702,8 +1760,8 @@ def get_dNdt_1d_geo_jit(t,N,V_p,V_e, F_M,B_M,NS,THR):
                     M_c[e] += F*N[i]*N[j]*(V_p[i]+V_p[j])/zeta
                     
                     # Track death 
-                    D[i] -= F*N[i]*N[j]/zeta
-                    D[j] -= F*N[i]*N[j]/zeta
+                    D[i] -= F*N[i]*N[j]
+                    # D[j] -= F*N[i]*N[j]/zeta
                 
     v[B_c != 0] = M_c[B_c != 0]/B_c[B_c != 0]
     
