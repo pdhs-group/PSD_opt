@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="writer-html5" lang="en">
 <head>
-  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>pop_MC module &mdash; dPBE: Discrete Population Balance Equations 1.0.0 documentation</title>
@@ -20,7 +20,8 @@
         <script src="_static/sphinx_highlight.js"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
-    <link rel="search" title="Search" href="search.html" /> 
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="prev" title="opt_main module" href="opt_main.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -43,9 +44,46 @@
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="pop.html">pop module</a></li>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quick Start</a></li>
 <li class="toctree-l1"><a class="reference internal" href="attributes.html">Attributes of the dPBE Class</a></li>
+<li class="toctree-l1"><a class="reference internal" href="advanced_guide.html">Advanced Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="references.html">References</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pop.html">pop module</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="modules.html">PSD_opt</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="func.html">func package</a></li>
+<li class="toctree-l2"><a class="reference internal" href="func_test.html">func_test package</a></li>
+<li class="toctree-l2"><a class="reference internal" href="opt_algo.html">opt_algo module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="opt_algo_multi.html">opt_algo_multi module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="opt_config.html">opt_config module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="opt_find.html">opt_find module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="opt_main.html">opt_main module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="pop.html">pop module</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">pop_MC module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#pop_MC.population_MC"><code class="docutils literal notranslate"><span class="pre">population_MC</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#pop_MC.population_MC.init_calc"><code class="docutils literal notranslate"><span class="pre">population_MC.init_calc()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#pop_MC.population_MC.solve_MC_N"><code class="docutils literal notranslate"><span class="pre">population_MC.solve_MC_N()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#pop_MC.population_MC.solve_MC"><code class="docutils literal notranslate"><span class="pre">population_MC.solve_MC()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#pop_MC.population_MC.select_random"><code class="docutils literal notranslate"><span class="pre">population_MC.select_random()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#pop_MC.population_MC.select_size"><code class="docutils literal notranslate"><span class="pre">population_MC.select_size()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#pop_MC.population_MC.calc_inter_event_time"><code class="docutils literal notranslate"><span class="pre">population_MC.calc_inter_event_time()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#pop_MC.population_MC.calc_alpha_ccm"><code class="docutils literal notranslate"><span class="pre">population_MC.calc_alpha_ccm()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#pop_MC.population_MC.calc_mom_t"><code class="docutils literal notranslate"><span class="pre">population_MC.calc_mom_t()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#pop_MC.population_MC.combine_MC"><code class="docutils literal notranslate"><span class="pre">population_MC.combine_MC()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#pop_MC.population_MC.visualize_qQ_t"><code class="docutils literal notranslate"><span class="pre">population_MC.visualize_qQ_t()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#pop_MC.population_MC.visualize_mom_t"><code class="docutils literal notranslate"><span class="pre">population_MC.visualize_mom_t()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#pop_MC.population_MC.return_distribution"><code class="docutils literal notranslate"><span class="pre">population_MC.return_distribution()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#pop_MC.population_MC.ceck_dim_consistency"><code class="docutils literal notranslate"><span class="pre">population_MC.ceck_dim_consistency()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#pop_MC.calc_betaarray_jit"><code class="docutils literal notranslate"><span class="pre">calc_betaarray_jit()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pop_MC.calc_alpha_ccm_jit"><code class="docutils literal notranslate"><span class="pre">calc_alpha_ccm_jit()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pop_MC.calc_inter_event_time_array"><code class="docutils literal notranslate"><span class="pre">calc_inter_event_time_array()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pop_MC.select_size_jit"><code class="docutils literal notranslate"><span class="pre">select_size_jit()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
 </ul>
 
         </div>
@@ -62,6 +100,7 @@
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="modules.html">PSD_opt</a></li>
       <li class="breadcrumb-item active">pop_MC module</li>
       <li class="wy-breadcrumbs-aside">
             <a href="_sources/pop_MC.md.txt" rel="nofollow"> View page source</a>
@@ -149,22 +188,22 @@
 
 <dl class="py function">
 <dt class="sig sig-object py" id="pop_MC.calc_betaarray_jit">
-<span class="sig-prename descclassname"><span class="pre">pop_MC.</span></span><span class="sig-name descname"><span class="pre">calc_betaarray_jit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">BETACALC</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">a</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">G</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">X</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">beta0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">V</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pop_MC.calc_betaarray_jit" title="Permalink to this definition"></a></dt>
+<span class="sig-prename descclassname"><span class="pre">pop_MC.</span></span><span class="sig-name descname"><span class="pre">calc_betaarray_jit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">BETACALC</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">a</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">G</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">X</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">beta0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">V</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pop_MC.html#calc_betaarray_jit"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pop_MC.calc_betaarray_jit" title="Permalink to this definition"></a></dt>
 <dd></dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="pop_MC.calc_alpha_ccm_jit">
-<span class="sig-prename descclassname"><span class="pre">pop_MC.</span></span><span class="sig-name descname"><span class="pre">calc_alpha_ccm_jit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">V</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_prim</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">idx1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">idx2</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pop_MC.calc_alpha_ccm_jit" title="Permalink to this definition"></a></dt>
+<span class="sig-prename descclassname"><span class="pre">pop_MC.</span></span><span class="sig-name descname"><span class="pre">calc_alpha_ccm_jit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">V</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_prim</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">idx1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">idx2</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pop_MC.html#calc_alpha_ccm_jit"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pop_MC.calc_alpha_ccm_jit" title="Permalink to this definition"></a></dt>
 <dd></dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="pop_MC.calc_inter_event_time_array">
-<span class="sig-prename descclassname"><span class="pre">pop_MC.</span></span><span class="sig-name descname"><span class="pre">calc_inter_event_time_array</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">Vc</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">a_tot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">betaarray</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pop_MC.calc_inter_event_time_array" title="Permalink to this definition"></a></dt>
+<span class="sig-prename descclassname"><span class="pre">pop_MC.</span></span><span class="sig-name descname"><span class="pre">calc_inter_event_time_array</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">Vc</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">a_tot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">betaarray</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pop_MC.html#calc_inter_event_time_array"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pop_MC.calc_inter_event_time_array" title="Permalink to this definition"></a></dt>
 <dd></dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="pop_MC.select_size_jit">
-<span class="sig-prename descclassname"><span class="pre">pop_MC.</span></span><span class="sig-name descname"><span class="pre">select_size_jit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">betaarray</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pop_MC.select_size_jit" title="Permalink to this definition"></a></dt>
+<span class="sig-prename descclassname"><span class="pre">pop_MC.</span></span><span class="sig-name descname"><span class="pre">select_size_jit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">betaarray</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/pop_MC.html#select_size_jit"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pop_MC.select_size_jit" title="Permalink to this definition"></a></dt>
 <dd></dd></dl>
 
 </section>
@@ -172,7 +211,9 @@
 
            </div>
           </div>
-          <footer>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="opt_main.html" class="btn btn-neutral float-left" title="opt_main module" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+    </div>
 
   <hr/>
 

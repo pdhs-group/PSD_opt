@@ -290,199 +290,200 @@ def delta(i,j,a,b):
         return 0.5
     else:
         return 1
-    
-#%% NEW 1D
-if dim == 1:
-    # V_e: Volume of EDGES
-    V_e = np.zeros(NS+1) 
-    V_e[0] = -V01
-    # V_p: Volume of PIVOTS
-    V_p = np.zeros(NS)
-    # SOLUTION N is saved on pivots
-    N = np.zeros((NS,len(t)))
-    #N[0,0] = 0.1
-    N[1,0] = 0.3
-    #N[2,0] = 0.2
-    
-    for i in range(1,NS+1):
-        V_e[i] = S**(i-1)*V01
-        # ith pivot is mean between ith and (i+1)th edge
-        V_p[i-1] = (V_e[i] + V_e[i-1])/2
-        
-    F_M = np.zeros((NS,NS))
-    ## constant kernal
-    # F_M[:,:] = 1
-    ## sum kernal
-    for idx, tmp in np.ndenumerate(F_M):
-        if idx[0]==0 or idx[1]==0:
-            continue
-        a = idx[0]
-        b = idx[1]
-        F_M[idx] = (V_p[a] + V_p[b])/V_p[1]
-        
-    # SOLVE    
-    import scipy.integrate as integrate
-    RES = integrate.solve_ivp(dNdt_1D,
-                              [0, max(t)], 
-                              N[:,0], t_eval=t,
-                              args=(V_p,V_e,F_M),
-                              method='LSODA',first_step=0.1,rtol=1e-1)
-    
-    # Reshape and save result to N and t_vec
-    N = RES.y
-    t = RES.t
-    
-    N0 = N[:,0]
-    NE = N[:,-1]
-    print('### Total Volume before and after..')
-    print(np.sum(N0*V_p), np.sum(NE*V_p))
-    
-    print('### Initial dNdt..')
-    dNdt0=dNdt_1D(0,N[:,0],V_p,V_e,F_M)
-    print(dNdt0)   
-    
-    fig=plt.figure(figsize=[10,2])    
-    ax=fig.add_subplot(1,1,1) 
-    ax.scatter(V_e, np.ones(V_e.shape), marker='|', color='k', label='edges')    
-    ax.scatter(V_p, np.ones(V_p.shape), marker='d', color=c_KIT_green, label='pivots')
-    ax.set_xscale('log')
-    ax.set_ylim([0.99,1.02])
-    ax.legend()
-    plt.tight_layout()
-    
-    fig2=plt.figure(figsize=[4,3])    
-    ax2=fig2.add_subplot(1,1,1) 
-    
-    mu1 = np.zeros(t.shape)
-    mu0 = np.zeros(t.shape)
-    for ti in range(len(t)): 
-        mu1[ti] = np.sum(V_p*N[:,ti])/np.sum(V_p*N[:,0])
-        mu0[ti] = np.sum(N[:,ti])/np.sum(N[:,0]) 
-    
-    ax2.plot(t, mu0, color=c_KIT_green, label='$\mu_0$ (numerical)') 
-    
-    # mu0_as = 2/(2+np.sum(N[:,0])*t)
-    mu0_as = np.exp(-np.sum(N[:,0])*t)  
-    
-    ax2.plot(t, mu0_as, color='k', linestyle='-.', label='$\mu_0$ (analytical)')
-    ax2.plot(t, mu1, color=c_KIT_red, label='$\mu_1$')     
-    # ax2.set_xscale('log')
-    # ax2.set_yscale('log')
-    ax2.legend()
-    plt.tight_layout()
 
-#%% NEW 2D    
-if dim == 2:
-    # V_e: Volume of EDGES
-    V_e1 = np.zeros(NS+1) #np.zeros(NS+1)
-    V_e2 = np.zeros(NS+1) #np.zeros(NS+1)    
-    # Make first cell symmetric --> pivots fall on 0
-    V_e1[0], V_e2[0] = -V01, -V02
-    
-    # V_p: Volume of PIVOTS
-    V_p1 = np.zeros(NS)#np.zeros(NS)
-    V_p2 = np.zeros(NS)#np.zeros(NS)
-    V_p = np.ones((NS,NS))#np.zeros((NS,NS)) 
-    
-    # Volume fractions
-    X1 = np.zeros((NS,NS))#np.zeros((NS,NS)) 
-    X2 = np.zeros((NS,NS))#np.zeros((NS,NS)) 
-    
-    # SOLUTION N is saved on pivots
-    N = np.zeros((NS,NS,len(t)))#np.zeros((NS,NS,len(t)))
-    
-    F_M_tem=1
-    F = np.zeros((NS,NS,NS,NS))
-    for idx, tmp in np.ndenumerate(F):
-        if idx[0]+idx[1]==0 or idx[2]+idx[3]==0:
-            continue
-        F[idx] = F_M_tem
-    
-    # for i in range(0,NS-1):#range(1,NS+1)
-        # ith pivot is mean between ith and (i+1)th edge
-        # V_p1[i+1] = S**(i)*V01
-        # V_p2[i+1] = S**(i)*V02
-        # V_e1[i+1] = (V_p1[i] + V_p1[i+1]) / 2#S**(i-1)*V01
-        # V_e2[i+1] = (V_p2[i] + V_p2[i+1]) / 2#S**(i-1)*V02
-    for i in range(0,NS):#range(1,NS+1)
-        # ith pivot is mean between ith and (i+1)th edge
-        V_e1[i+1] = S**(i)*V01
-        V_e2[i+1] = S**(i)*V02
-        V_p1[i] = (V_e1[i] + V_e1[i+1]) / 2#S**(i-1)*V01
-        V_p2[i] = (V_e2[i] + V_e2[i+1]) / 2#S**(i-1)*V02
+if __name__ == "__main__":    
+    #%% NEW 1D
+    if dim == 1:
+        # V_e: Volume of EDGES
+        V_e = np.zeros(NS+1) 
+        V_e[0] = -V01
+        # V_p: Volume of PIVOTS
+        V_p = np.zeros(NS)
+        # SOLUTION N is saved on pivots
+        N = np.zeros((NS,len(t)))
+        #N[0,0] = 0.1
+        N[1,0] = 0.3
+        #N[2,0] = 0.2
+        
+        for i in range(1,NS+1):
+            V_e[i] = S**(i-1)*V01
+            # ith pivot is mean between ith and (i+1)th edge
+            V_p[i-1] = (V_e[i] + V_e[i-1])/2
             
-    # V_e1[-1] = V_p1[-1] * (1 + S) / 2
-    # V_e2[-1] = V_p2[-1] * (1 + S) / 2
-    # Write V1 and V3 in respective "column" of V
-    #V_e[:,0] = V_e1 
-    #V_e[0,:] = V_e2
-    V_p[:,0] = V_p1 #V_p[:,0] = V_p1  
-    V_p[0,:] = V_p2 #V_p[0,:] = V_p2
-    # N[0,1,0] = 0.3
-    # N[1,0,0] = 0.3
-    N[0,1:,0] = np.exp(-V_p1[1:])
-    N[1:,0,0] = np.exp(-V_p2[1:])
-    # Calculate remaining entries of V_e and V_p and other matrices
-    for i in range(NS): #range(NS)
-        for j in range(NS): #range(NS)
-            V_p[i,j] = V_p1[i]+V_p2[j]
-            if i==0 and j==0: #i==0 and j==0
-                X1[i,j] = 0
-                X2[i,j] = 0
-            else:
-                X1[i,j] = V_p1[i]/V_p[i,j]
-                X2[i,j] = V_p2[j]/V_p[i,j]
-    
-    # SOLVE    
-    import scipy.integrate as integrate
-    RES = integrate.solve_ivp(dNdt_2D,
-                              [0, max(t)], 
-                              N[:,:,0].reshape(-1), t_eval=t,
-                              args=(V_p, V_e1, V_e2, NS, F),
-                              method='RK23',first_step=0.1,rtol=1e-3)
-    
-    # Reshape and save result to N and t_vec
-    N = RES.y.reshape((NS,NS,len(t))) #RES.y.reshape((NS,NS,len(t)))
-    t = RES.t
-    
-    N0 = N[:,:,0]
-    NE = N[:,:,-1]
-    print('### Total Volume before and after..')
-    print(np.sum(N0*V_p), np.sum(NE*V_p))
-    
-    print('### Initial dNdt..')
-    dNdt0=dNdt_2D(0,N[:,:,0].reshape(-1),V_p,V_e1,V_e2,NS, F).reshape(NS,NS)#.reshape(NS,NS)
-    print(dNdt0)
-    
-    VE2, VE1 = np.meshgrid(V_e2, V_e1)
-    VP2, VP1 = np.meshgrid(V_p2, V_p1)
-
-    fig=plt.figure(figsize=[5,5])    
-    ax=fig.add_subplot(1,1,1) 
-    ax.scatter(VE2.flatten(), VE1.flatten(), marker='x', color='k', label='edges')    
-    ax.scatter(VP2.flatten(), VP1.flatten(), marker='d', color=c_KIT_green, label='pivots')
-    # ax.set_xscale('log')
-    # ax.set_yscale('log')
-    ax.legend()
-    plt.tight_layout()
-         
-    fig2=plt.figure(figsize=[4,3])    
-    ax2=fig2.add_subplot(1,1,1) 
-    
-    mu1 = np.zeros(t.shape)
-    mu0 = np.zeros(t.shape)
-    for ti in range(len(t)): 
-        mu1[ti] = np.sum(V_p*N[:,:,ti])/np.sum(V_p*N[:,:,0])  
-        mu0[ti] = np.sum(N[:,:,ti])/np.sum(N[:,:,0]) 
+        F_M = np.zeros((NS,NS))
+        ## constant kernal
+        # F_M[:,:] = 1
+        ## sum kernal
+        for idx, tmp in np.ndenumerate(F_M):
+            if idx[0]==0 or idx[1]==0:
+                continue
+            a = idx[0]
+            b = idx[1]
+            F_M[idx] = (V_p[a] + V_p[b])/V_p[1]
+            
+        # SOLVE    
+        import scipy.integrate as integrate
+        RES = integrate.solve_ivp(dNdt_1D,
+                                  [0, max(t)], 
+                                  N[:,0], t_eval=t,
+                                  args=(V_p,V_e,F_M),
+                                  method='LSODA',first_step=0.1,rtol=1e-1)
         
-    ax2.plot(t, mu0, color=c_KIT_green, label='$\mu_0$ (numerical)') 
-    mu0_as = 2/(2+F_M_tem*np.sum(N[:,:,0])*t)  
-
-    ax2.plot(t, mu0_as, color='k', linestyle='-.', label='$\mu_0$ (analytical)')
-    ax2.plot(t, mu1, color=c_KIT_red, label='$\mu_1$')     
-    # ax2.set_xscale('log')
-    # ax2.set_yscale('log')
-    ax2.legend()
-    plt.tight_layout()
+        # Reshape and save result to N and t_vec
+        N = RES.y
+        t = RES.t
+        
+        N0 = N[:,0]
+        NE = N[:,-1]
+        print('### Total Volume before and after..')
+        print(np.sum(N0*V_p), np.sum(NE*V_p))
+        
+        print('### Initial dNdt..')
+        dNdt0=dNdt_1D(0,N[:,0],V_p,V_e,F_M)
+        print(dNdt0)   
+        
+        fig=plt.figure(figsize=[10,2])    
+        ax=fig.add_subplot(1,1,1) 
+        ax.scatter(V_e, np.ones(V_e.shape), marker='|', color='k', label='edges')    
+        ax.scatter(V_p, np.ones(V_p.shape), marker='d', color=c_KIT_green, label='pivots')
+        ax.set_xscale('log')
+        ax.set_ylim([0.99,1.02])
+        ax.legend()
+        plt.tight_layout()
+        
+        fig2=plt.figure(figsize=[4,3])    
+        ax2=fig2.add_subplot(1,1,1) 
+        
+        mu1 = np.zeros(t.shape)
+        mu0 = np.zeros(t.shape)
+        for ti in range(len(t)): 
+            mu1[ti] = np.sum(V_p*N[:,ti])/np.sum(V_p*N[:,0])
+            mu0[ti] = np.sum(N[:,ti])/np.sum(N[:,0]) 
+        
+        ax2.plot(t, mu0, color=c_KIT_green, label='$\mu_0$ (numerical)') 
+        
+        # mu0_as = 2/(2+np.sum(N[:,0])*t)
+        mu0_as = np.exp(-np.sum(N[:,0])*t)  
+        
+        ax2.plot(t, mu0_as, color='k', linestyle='-.', label='$\mu_0$ (analytical)')
+        ax2.plot(t, mu1, color=c_KIT_red, label='$\mu_1$')     
+        # ax2.set_xscale('log')
+        # ax2.set_yscale('log')
+        ax2.legend()
+        plt.tight_layout()
+    
+    #%% NEW 2D    
+    if dim == 2:
+        # V_e: Volume of EDGES
+        V_e1 = np.zeros(NS+1) #np.zeros(NS+1)
+        V_e2 = np.zeros(NS+1) #np.zeros(NS+1)    
+        # Make first cell symmetric --> pivots fall on 0
+        V_e1[0], V_e2[0] = -V01, -V02
+        
+        # V_p: Volume of PIVOTS
+        V_p1 = np.zeros(NS)#np.zeros(NS)
+        V_p2 = np.zeros(NS)#np.zeros(NS)
+        V_p = np.ones((NS,NS))#np.zeros((NS,NS)) 
+        
+        # Volume fractions
+        X1 = np.zeros((NS,NS))#np.zeros((NS,NS)) 
+        X2 = np.zeros((NS,NS))#np.zeros((NS,NS)) 
+        
+        # SOLUTION N is saved on pivots
+        N = np.zeros((NS,NS,len(t)))#np.zeros((NS,NS,len(t)))
+        
+        F_M_tem=1
+        F = np.zeros((NS,NS,NS,NS))
+        for idx, tmp in np.ndenumerate(F):
+            if idx[0]+idx[1]==0 or idx[2]+idx[3]==0:
+                continue
+            F[idx] = F_M_tem
+        
+        # for i in range(0,NS-1):#range(1,NS+1)
+            # ith pivot is mean between ith and (i+1)th edge
+            # V_p1[i+1] = S**(i)*V01
+            # V_p2[i+1] = S**(i)*V02
+            # V_e1[i+1] = (V_p1[i] + V_p1[i+1]) / 2#S**(i-1)*V01
+            # V_e2[i+1] = (V_p2[i] + V_p2[i+1]) / 2#S**(i-1)*V02
+        for i in range(0,NS):#range(1,NS+1)
+            # ith pivot is mean between ith and (i+1)th edge
+            V_e1[i+1] = S**(i)*V01
+            V_e2[i+1] = S**(i)*V02
+            V_p1[i] = (V_e1[i] + V_e1[i+1]) / 2#S**(i-1)*V01
+            V_p2[i] = (V_e2[i] + V_e2[i+1]) / 2#S**(i-1)*V02
+                
+        # V_e1[-1] = V_p1[-1] * (1 + S) / 2
+        # V_e2[-1] = V_p2[-1] * (1 + S) / 2
+        # Write V1 and V3 in respective "column" of V
+        #V_e[:,0] = V_e1 
+        #V_e[0,:] = V_e2
+        V_p[:,0] = V_p1 #V_p[:,0] = V_p1  
+        V_p[0,:] = V_p2 #V_p[0,:] = V_p2
+        # N[0,1,0] = 0.3
+        # N[1,0,0] = 0.3
+        N[0,1:,0] = np.exp(-V_p1[1:])
+        N[1:,0,0] = np.exp(-V_p2[1:])
+        # Calculate remaining entries of V_e and V_p and other matrices
+        for i in range(NS): #range(NS)
+            for j in range(NS): #range(NS)
+                V_p[i,j] = V_p1[i]+V_p2[j]
+                if i==0 and j==0: #i==0 and j==0
+                    X1[i,j] = 0
+                    X2[i,j] = 0
+                else:
+                    X1[i,j] = V_p1[i]/V_p[i,j]
+                    X2[i,j] = V_p2[j]/V_p[i,j]
+        
+        # SOLVE    
+        import scipy.integrate as integrate
+        RES = integrate.solve_ivp(dNdt_2D,
+                                  [0, max(t)], 
+                                  N[:,:,0].reshape(-1), t_eval=t,
+                                  args=(V_p, V_e1, V_e2, NS, F),
+                                  method='RK23',first_step=0.1,rtol=1e-3)
+        
+        # Reshape and save result to N and t_vec
+        N = RES.y.reshape((NS,NS,len(t))) #RES.y.reshape((NS,NS,len(t)))
+        t = RES.t
+        
+        N0 = N[:,:,0]
+        NE = N[:,:,-1]
+        print('### Total Volume before and after..')
+        print(np.sum(N0*V_p), np.sum(NE*V_p))
+        
+        print('### Initial dNdt..')
+        dNdt0=dNdt_2D(0,N[:,:,0].reshape(-1),V_p,V_e1,V_e2,NS, F).reshape(NS,NS)#.reshape(NS,NS)
+        print(dNdt0)
+        
+        VE2, VE1 = np.meshgrid(V_e2, V_e1)
+        VP2, VP1 = np.meshgrid(V_p2, V_p1)
+    
+        fig=plt.figure(figsize=[5,5])    
+        ax=fig.add_subplot(1,1,1) 
+        ax.scatter(VE2.flatten(), VE1.flatten(), marker='x', color='k', label='edges')    
+        ax.scatter(VP2.flatten(), VP1.flatten(), marker='d', color=c_KIT_green, label='pivots')
+        # ax.set_xscale('log')
+        # ax.set_yscale('log')
+        ax.legend()
+        plt.tight_layout()
+             
+        fig2=plt.figure(figsize=[4,3])    
+        ax2=fig2.add_subplot(1,1,1) 
+        
+        mu1 = np.zeros(t.shape)
+        mu0 = np.zeros(t.shape)
+        for ti in range(len(t)): 
+            mu1[ti] = np.sum(V_p*N[:,:,ti])/np.sum(V_p*N[:,:,0])  
+            mu0[ti] = np.sum(N[:,:,ti])/np.sum(N[:,:,0]) 
+            
+        ax2.plot(t, mu0, color=c_KIT_green, label='$\mu_0$ (numerical)') 
+        mu0_as = 2/(2+F_M_tem*np.sum(N[:,:,0])*t)  
+    
+        ax2.plot(t, mu0_as, color='k', linestyle='-.', label='$\mu_0$ (analytical)')
+        ax2.plot(t, mu1, color=c_KIT_red, label='$\mu_1$')     
+        # ax2.set_xscale('log')
+        # ax2.set_yscale('log')
+        ax2.legend()
+        plt.tight_layout()
 
 

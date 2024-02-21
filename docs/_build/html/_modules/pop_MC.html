@@ -48,6 +48,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../advanced_guide.html">Advanced Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../references.html">References</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../pop.html">pop module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../modules.html">PSD_opt</a></li>
 </ul>
 
         </div>
@@ -621,7 +622,7 @@
         <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="n">check</span><span class="p">[</span><span class="n">check</span><span class="o">==</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">c</span><span class="p">)])</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">check</span><span class="p">)</span></div></div>
 
 <span class="c1">## JIT-compiled calculation of beta array </span>
-<span class="nd">@jit</span><span class="p">(</span><span class="n">nopython</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<div class="viewcode-block" id="calc_betaarray_jit"><a class="viewcode-back" href="../pop_MC.html#pop_MC.calc_betaarray_jit">[docs]</a><span class="nd">@jit</span><span class="p">(</span><span class="n">nopython</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <span class="k">def</span> <span class="nf">calc_betaarray_jit</span><span class="p">(</span><span class="n">BETACALC</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">G</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">beta0</span><span class="p">,</span> <span class="n">V</span><span class="p">):</span>            
     <span class="c1">## There are a*(a-1) possible collisions, however all are counted twice (e.g [1,0]=[0,1])</span>
     <span class="n">num</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">a</span><span class="o">*</span><span class="p">(</span><span class="n">a</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span><span class="o">/</span><span class="mi">2</span><span class="p">)</span>
@@ -651,26 +652,26 @@
                 <span class="n">beta</span><span class="p">[</span><span class="mi">2</span><span class="p">,</span><span class="n">cnt</span><span class="p">]</span> <span class="o">=</span> <span class="n">j</span>
                 <span class="n">cnt</span> <span class="o">+=</span> <span class="mi">1</span>        
                 
-    <span class="k">return</span> <span class="n">beta</span>
+    <span class="k">return</span> <span class="n">beta</span></div>
 
-<span class="nd">@jit</span><span class="p">(</span><span class="n">nopython</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<div class="viewcode-block" id="calc_alpha_ccm_jit"><a class="viewcode-back" href="../pop_MC.html#pop_MC.calc_alpha_ccm_jit">[docs]</a><span class="nd">@jit</span><span class="p">(</span><span class="n">nopython</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <span class="k">def</span> <span class="nf">calc_alpha_ccm_jit</span><span class="p">(</span><span class="n">V</span><span class="p">,</span> <span class="n">alpha_prim</span><span class="p">,</span> <span class="n">idx1</span><span class="p">,</span> <span class="n">idx2</span><span class="p">):</span>
     <span class="n">dim</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">V</span><span class="p">[:,</span><span class="mi">0</span><span class="p">])</span>
     <span class="n">P</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">dim</span><span class="p">,</span><span class="n">dim</span><span class="p">))</span>
     <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">dim</span><span class="p">):</span>
         <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">dim</span><span class="p">):</span>
             <span class="n">P</span><span class="p">[</span><span class="n">i</span><span class="p">,</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">V</span><span class="p">[</span><span class="n">i</span><span class="p">,</span><span class="n">idx1</span><span class="p">]</span><span class="o">/</span><span class="n">V</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="n">idx1</span><span class="p">])</span><span class="o">*</span><span class="p">(</span><span class="n">V</span><span class="p">[</span><span class="n">j</span><span class="p">,</span><span class="n">idx2</span><span class="p">]</span><span class="o">/</span><span class="n">V</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="n">idx2</span><span class="p">])</span>
-    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">P</span><span class="o">*</span><span class="n">alpha_prim</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">P</span><span class="o">*</span><span class="n">alpha_prim</span><span class="p">)</span></div>
 
 <span class="c1">## JIT-compiled calculation of inter-event-time   </span>
-<span class="nd">@jit</span><span class="p">(</span><span class="n">nopython</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>       
+<div class="viewcode-block" id="calc_inter_event_time_array"><a class="viewcode-back" href="../pop_MC.html#pop_MC.calc_inter_event_time_array">[docs]</a><span class="nd">@jit</span><span class="p">(</span><span class="n">nopython</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>       
 <span class="k">def</span> <span class="nf">calc_inter_event_time_array</span><span class="p">(</span><span class="n">Vc</span><span class="p">,</span><span class="n">a_tot</span><span class="p">,</span><span class="n">betaarray</span><span class="p">):</span>
-    <span class="k">return</span> <span class="mi">2</span><span class="o">*</span><span class="n">Vc</span><span class="o">/</span><span class="p">(</span><span class="n">a_tot</span><span class="o">**</span><span class="mi">2</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">betaarray</span><span class="p">[</span><span class="mi">0</span><span class="p">,:]))</span>
+    <span class="k">return</span> <span class="mi">2</span><span class="o">*</span><span class="n">Vc</span><span class="o">/</span><span class="p">(</span><span class="n">a_tot</span><span class="o">**</span><span class="mi">2</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">betaarray</span><span class="p">[</span><span class="mi">0</span><span class="p">,:]))</span></div>
 
-<span class="nd">@jit</span><span class="p">(</span><span class="n">nopython</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<div class="viewcode-block" id="select_size_jit"><a class="viewcode-back" href="../pop_MC.html#pop_MC.select_size_jit">[docs]</a><span class="nd">@jit</span><span class="p">(</span><span class="n">nopython</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <span class="k">def</span> <span class="nf">select_size_jit</span><span class="p">(</span><span class="n">betaarray</span><span class="p">):</span>
     <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">betaarray</span><span class="p">))[</span><span class="n">np</span><span class="o">.</span><span class="n">searchsorted</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="n">betaarray</span><span class="o">/</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">betaarray</span><span class="p">)),</span>
-                                                     <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">random</span><span class="p">(),</span> <span class="n">side</span><span class="o">=</span><span class="s2">&quot;right&quot;</span><span class="p">)]</span>
+                                                     <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">random</span><span class="p">(),</span> <span class="n">side</span><span class="o">=</span><span class="s2">&quot;right&quot;</span><span class="p">)]</span></div>
     
             
     

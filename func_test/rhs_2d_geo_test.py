@@ -313,107 +313,108 @@ def lam_2d(x,y,Vx,Vy,i,j,m1,m2):
     
     return lam    
 
-F_M_tem=1e-5
-F = np.zeros((NS,NS,NS,NS))
-for idx, tmp in np.ndenumerate(F):
-    if idx[0]+idx[1]==0 or idx[2]+idx[3]==0:
-        continue
-    F[idx] = F_M_tem
+if __name__ == "__main__":    
+    F_M_tem=1e-5
+    F = np.zeros((NS,NS,NS,NS))
+    for idx, tmp in np.ndenumerate(F):
+        if idx[0]+idx[1]==0 or idx[2]+idx[3]==0:
+            continue
+        F[idx] = F_M_tem
+        
+    normal_dist = np.random.normal(0.5, 0.3, NS-1)
+    normal_dist[ normal_dist<0 ] = 0
+    #%% BOUNDARY  
+    # SOLUTION N is saved on pivots
+    N = np.zeros((NS+1,NS+1,len(t)))#np.zeros((NS,NS,len(t)))
+    N[1,2:,0] = normal_dist
+    N[2:,1,0] = normal_dist
+        
+    # V_e: Volume of EDGES
+    V_e1 = np.zeros(NS+2) #np.zeros(NS+1)
+    V_e2 = np.zeros(NS+2) #np.zeros(NS+1)    
+    # Make first cell symmetric --> pivots fall on 0
+    #V_e1[0], V_e2[0] = -V01, -V02
+    V_e1[0], V_e2[0] = -2*V01, -2*V02
+    V_e1[1], V_e2[1] = -V01, -V02
     
-normal_dist = np.random.normal(0.5, 0.3, NS-1)
-normal_dist[ normal_dist<0 ] = 0
-#%% BOUNDARY  
-# SOLUTION N is saved on pivots
-N = np.zeros((NS+1,NS+1,len(t)))#np.zeros((NS,NS,len(t)))
-N[1,2:,0] = normal_dist
-N[2:,1,0] = normal_dist
+    # V_p: Volume of PIVOTS
+    V_p1 = np.zeros(NS+1)#np.zeros(NS)
+    V_p2 = np.zeros(NS+1)#np.zeros(NS)
+    V_p = -1.5*np.ones((NS+1,NS+1))#np.zeros((NS,NS)) 
+    V_p1[0], V_p2[0] = -1.5*V01, -1.5*V02
+    V_p[1,1] = 0
     
-# V_e: Volume of EDGES
-V_e1 = np.zeros(NS+2) #np.zeros(NS+1)
-V_e2 = np.zeros(NS+2) #np.zeros(NS+1)    
-# Make first cell symmetric --> pivots fall on 0
-#V_e1[0], V_e2[0] = -V01, -V02
-V_e1[0], V_e2[0] = -2*V01, -2*V02
-V_e1[1], V_e2[1] = -V01, -V02
-
-# V_p: Volume of PIVOTS
-V_p1 = np.zeros(NS+1)#np.zeros(NS)
-V_p2 = np.zeros(NS+1)#np.zeros(NS)
-V_p = -1.5*np.ones((NS+1,NS+1))#np.zeros((NS,NS)) 
-V_p1[0], V_p2[0] = -1.5*V01, -1.5*V02
-V_p[1,1] = 0
-
-# Volume fractions
-X1 = np.zeros((NS+1,NS+1))#np.zeros((NS,NS)) 
-X2 = np.zeros((NS+1,NS+1))#np.zeros((NS,NS)) 
-
-
-for i in range(2,NS+2):#range(1,NS+1)
-    V_e1[i] = S**(i-2)*V01#S**(i-1)*V01
-    V_e2[i] = S**(i-2)*V01#S**(i-1)*V02
-    # ith pivot is mean between ith and (i+1)th edge
-    V_p1[i-1] = (V_e1[i] + V_e1[i-1])/2
-    V_p2[i-1] = (V_e2[i] + V_e2[i-1])/2
-
-# Write V1 and V3 in respective "column" of V
-#V_e[:,0] = V_e1 
-#V_e[0,:] = V_e2
-V_p[:,1] = V_p1 #V_p[:,0] = V_p1  
-V_p[1,:] = V_p2 #V_p[0,:] = V_p2
-
-# Calculate remaining entries of V_e and V_p and other matrices
-for i in range(1,NS+1): #range(NS)
-    for j in range(1,NS+1): #range(NS)
-        V_p[i,j] = V_p1[i]+V_p2[j]
-        if i==0 or j == 0 or (i==1 and j==1): #i==0 and j==0
-            X1[i,j] = 0
-            X2[i,j] = 0
-        else:
-            X1[i,j] = V_p1[i]/V_p[i,j]
-            X2[i,j] = V_p2[j]/V_p[i,j]
-
-dNdt_b, B_C_b=dNdt_2D_b(0,N[:,:,0],V_p,V_e1,V_e2,NS,F)#.reshape(NS,NS)
+    # Volume fractions
+    X1 = np.zeros((NS+1,NS+1))#np.zeros((NS,NS)) 
+    X2 = np.zeros((NS+1,NS+1))#np.zeros((NS,NS)) 
     
-#%% NOBOUNDARY 
-# SOLUTION N is saved on pivots
-N = np.zeros((NS,NS,len(t)))#np.zeros((NS,NS,len(t)))
-N[0,1:,0] = normal_dist
-N[1:,0,0] = normal_dist
-# V_e: Volume of EDGES
-V_e1 = np.zeros(NS+1)
-V_e2 = np.zeros(NS+1)    
-# Make first cell symmetric --> pivots fall on 0
-V_e1[0], V_e2[0] = -V01, -V02
-
-# V_p: Volume of PIVOTS
-V_p1 = np.zeros(NS)
-V_p2 = np.zeros(NS)
-V_p = np.zeros((NS,NS)) 
-
-# Volume fractions
-X1 = np.zeros((NS,NS)) 
-X2 = np.zeros((NS,NS)) 
-
-for i in range(1,NS+1):
-    V_e1[i] = S**(i-1)*V01
-    V_e2[i] = S**(i-1)*V02
-    # ith pivot is mean between ith and (i+1)th edge
-    V_p1[i-1] = (V_e1[i] + V_e1[i-1])/2
-    V_p2[i-1] = (V_e2[i] + V_e2[i-1])/2
-
-# Write V1 and V3 in respective "column" of V
-#V_e[:,0] = V_e1 
-#V_e[0,:] = V_e2
-
-# Calculate remaining entries of V_e and V_p and other matrices
-for i in range(NS):
-    for j in range(NS):
-        V_p[i,j] = V_p1[i]+V_p2[j]
-        if i==0 and j==0:
-            X1[i,j] = 0
-            X2[i,j] = 0
-        else:
-            X1[i,j] = V_p1[i]/V_p[i,j]
-            X2[i,j] = V_p2[j]/V_p[i,j]
-
-dNdt_nob, B_C_nob=dNdt_2D_nob(0,N[:,:,0],V_p,V_e1,V_e2,NS,F)
+    
+    for i in range(2,NS+2):#range(1,NS+1)
+        V_e1[i] = S**(i-2)*V01#S**(i-1)*V01
+        V_e2[i] = S**(i-2)*V01#S**(i-1)*V02
+        # ith pivot is mean between ith and (i+1)th edge
+        V_p1[i-1] = (V_e1[i] + V_e1[i-1])/2
+        V_p2[i-1] = (V_e2[i] + V_e2[i-1])/2
+    
+    # Write V1 and V3 in respective "column" of V
+    #V_e[:,0] = V_e1 
+    #V_e[0,:] = V_e2
+    V_p[:,1] = V_p1 #V_p[:,0] = V_p1  
+    V_p[1,:] = V_p2 #V_p[0,:] = V_p2
+    
+    # Calculate remaining entries of V_e and V_p and other matrices
+    for i in range(1,NS+1): #range(NS)
+        for j in range(1,NS+1): #range(NS)
+            V_p[i,j] = V_p1[i]+V_p2[j]
+            if i==0 or j == 0 or (i==1 and j==1): #i==0 and j==0
+                X1[i,j] = 0
+                X2[i,j] = 0
+            else:
+                X1[i,j] = V_p1[i]/V_p[i,j]
+                X2[i,j] = V_p2[j]/V_p[i,j]
+    
+    dNdt_b, B_C_b=dNdt_2D_b(0,N[:,:,0],V_p,V_e1,V_e2,NS,F)#.reshape(NS,NS)
+        
+    #%% NOBOUNDARY 
+    # SOLUTION N is saved on pivots
+    N = np.zeros((NS,NS,len(t)))#np.zeros((NS,NS,len(t)))
+    N[0,1:,0] = normal_dist
+    N[1:,0,0] = normal_dist
+    # V_e: Volume of EDGES
+    V_e1 = np.zeros(NS+1)
+    V_e2 = np.zeros(NS+1)    
+    # Make first cell symmetric --> pivots fall on 0
+    V_e1[0], V_e2[0] = -V01, -V02
+    
+    # V_p: Volume of PIVOTS
+    V_p1 = np.zeros(NS)
+    V_p2 = np.zeros(NS)
+    V_p = np.zeros((NS,NS)) 
+    
+    # Volume fractions
+    X1 = np.zeros((NS,NS)) 
+    X2 = np.zeros((NS,NS)) 
+    
+    for i in range(1,NS+1):
+        V_e1[i] = S**(i-1)*V01
+        V_e2[i] = S**(i-1)*V02
+        # ith pivot is mean between ith and (i+1)th edge
+        V_p1[i-1] = (V_e1[i] + V_e1[i-1])/2
+        V_p2[i-1] = (V_e2[i] + V_e2[i-1])/2
+    
+    # Write V1 and V3 in respective "column" of V
+    #V_e[:,0] = V_e1 
+    #V_e[0,:] = V_e2
+    
+    # Calculate remaining entries of V_e and V_p and other matrices
+    for i in range(NS):
+        for j in range(NS):
+            V_p[i,j] = V_p1[i]+V_p2[j]
+            if i==0 and j==0:
+                X1[i,j] = 0
+                X2[i,j] = 0
+            else:
+                X1[i,j] = V_p1[i]/V_p[i,j]
+                X2[i,j] = V_p2[j]/V_p[i,j]
+    
+    dNdt_nob, B_C_nob=dNdt_2D_nob(0,N[:,:,0],V_p,V_e1,V_e2,NS,F)

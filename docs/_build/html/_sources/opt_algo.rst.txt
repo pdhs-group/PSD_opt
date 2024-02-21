@@ -1,7 +1,0 @@
-opt\_algo module
-================
-
-.. automodule:: opt_algo
-   :members:
-   :undoc-members:
-   :show-inheritance:

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="writer-html5" lang="en">
 <head>
-  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>pop module &mdash; dPBE: Discrete Population Balance Equations 1.0.0 documentation</title>
@@ -21,7 +21,8 @@
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="prev" title="Attributes of the dPBE Class" href="attributes.html" /> 
+    <link rel="next" title="PSD_opt" href="modules.html" />
+    <link rel="prev" title="References" href="references.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -47,6 +48,8 @@
 <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quick Start</a></li>
 <li class="toctree-l1"><a class="reference internal" href="attributes.html">Attributes of the dPBE Class</a></li>
+<li class="toctree-l1"><a class="reference internal" href="advanced_guide.html">Advanced Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="references.html">References</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">pop module</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#pop.population"><code class="docutils literal notranslate"><span class="pre">population</span></code></a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#pop.population.solve_PBE"><code class="docutils literal notranslate"><span class="pre">population.solve_PBE()</span></code></a></li>
@@ -56,7 +59,8 @@
 <li class="toctree-l3"><a class="reference internal" href="#pop.population.init_N"><code class="docutils literal notranslate"><span class="pre">population.init_N()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#pop.population.calc_F_M"><code class="docutils literal notranslate"><span class="pre">population.calc_F_M()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#pop.population.calc_alpha_prim"><code class="docutils literal notranslate"><span class="pre">population.calc_alpha_prim()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="#pop.population.calc_B_M"><code class="docutils literal notranslate"><span class="pre">population.calc_B_M()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pop.population.calc_B_R"><code class="docutils literal notranslate"><span class="pre">population.calc_B_R()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pop.population.calc_B_F"><code class="docutils literal notranslate"><span class="pre">population.calc_B_F()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#pop.population.visualize_distN_t"><code class="docutils literal notranslate"><span class="pre">population.visualize_distN_t()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#pop.population.visualize_qQ_t"><code class="docutils literal notranslate"><span class="pre">population.visualize_qQ_t()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#pop.population.visualize_sumN_t"><code class="docutils literal notranslate"><span class="pre">population.visualize_sumN_t()</span></code></a></li>
@@ -86,6 +90,59 @@
 <li class="toctree-l2"><a class="reference internal" href="#pop.get_lam_3d"><code class="docutils literal notranslate"><span class="pre">get_lam_3d()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="#pop.calc_F_M_2D_jit"><code class="docutils literal notranslate"><span class="pre">calc_F_M_2D_jit()</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="#pop.calc_F_M_3D_jit"><code class="docutils literal notranslate"><span class="pre">calc_F_M_3D_jit()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1 current"><a class="reference internal" href="modules.html">PSD_opt</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="func.html">func package</a></li>
+<li class="toctree-l2"><a class="reference internal" href="func_test.html">func_test package</a></li>
+<li class="toctree-l2"><a class="reference internal" href="opt_algo.html">opt_algo module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="opt_algo_multi.html">opt_algo_multi module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="opt_config.html">opt_config module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="opt_find.html">opt_find module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="opt_main.html">opt_main module</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">pop module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#pop.population"><code class="docutils literal notranslate"><span class="pre">population</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#pop.population.solve_PBE"><code class="docutils literal notranslate"><span class="pre">population.solve_PBE()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#pop.population.solve_PBE_Euler"><code class="docutils literal notranslate"><span class="pre">population.solve_PBE_Euler()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#pop.population.full_init"><code class="docutils literal notranslate"><span class="pre">population.full_init()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#pop.population.calc_R"><code class="docutils literal notranslate"><span class="pre">population.calc_R()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#pop.population.init_N"><code class="docutils literal notranslate"><span class="pre">population.init_N()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#pop.population.calc_F_M"><code class="docutils literal notranslate"><span class="pre">population.calc_F_M()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#pop.population.calc_alpha_prim"><code class="docutils literal notranslate"><span class="pre">population.calc_alpha_prim()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#pop.population.calc_B_R"><code class="docutils literal notranslate"><span class="pre">population.calc_B_R()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#pop.population.calc_B_F"><code class="docutils literal notranslate"><span class="pre">population.calc_B_F()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#pop.population.visualize_distN_t"><code class="docutils literal notranslate"><span class="pre">population.visualize_distN_t()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#pop.population.visualize_qQ_t"><code class="docutils literal notranslate"><span class="pre">population.visualize_qQ_t()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#pop.population.visualize_sumN_t"><code class="docutils literal notranslate"><span class="pre">population.visualize_sumN_t()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#pop.population.visualize_sumvol_t"><code class="docutils literal notranslate"><span class="pre">population.visualize_sumvol_t()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#pop.population.visualize_distribution"><code class="docutils literal notranslate"><span class="pre">population.visualize_distribution()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#pop.population.return_distribution"><code class="docutils literal notranslate"><span class="pre">population.return_distribution()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#pop.population.return_num_distribution"><code class="docutils literal notranslate"><span class="pre">population.return_num_distribution()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#pop.population.return_N_t"><code class="docutils literal notranslate"><span class="pre">population.return_N_t()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#pop.population.calc_mom_t"><code class="docutils literal notranslate"><span class="pre">population.calc_mom_t()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#pop.population.mag_sep"><code class="docutils literal notranslate"><span class="pre">population.mag_sep()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#pop.population.int_fun"><code class="docutils literal notranslate"><span class="pre">population.int_fun()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#pop.population.save_vars"><code class="docutils literal notranslate"><span class="pre">population.save_vars()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#pop.population.initialize_psd"><code class="docutils literal notranslate"><span class="pre">population.initialize_psd()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#pop.population.new_initialize_psd"><code class="docutils literal notranslate"><span class="pre">population.new_initialize_psd()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#pop.population.plot_N2D"><code class="docutils literal notranslate"><span class="pre">population.plot_N2D()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#pop.get_dNdt_1d_geo_jit"><code class="docutils literal notranslate"><span class="pre">get_dNdt_1d_geo_jit()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pop.get_dNdt_2d_geo_jit"><code class="docutils literal notranslate"><span class="pre">get_dNdt_2d_geo_jit()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pop.get_dNdt_3d_geo_jit"><code class="docutils literal notranslate"><span class="pre">get_dNdt_3d_geo_jit()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pop.get_dNdt_1d_uni_jit"><code class="docutils literal notranslate"><span class="pre">get_dNdt_1d_uni_jit()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pop.get_dNdt_2d_uni_jit"><code class="docutils literal notranslate"><span class="pre">get_dNdt_2d_uni_jit()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pop.get_dNdt_3d_uni_jit"><code class="docutils literal notranslate"><span class="pre">get_dNdt_3d_uni_jit()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pop.lam"><code class="docutils literal notranslate"><span class="pre">lam()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pop.lam_2d"><code class="docutils literal notranslate"><span class="pre">lam_2d()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pop.heaviside_jit"><code class="docutils literal notranslate"><span class="pre">heaviside_jit()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pop.get_lam_3d"><code class="docutils literal notranslate"><span class="pre">get_lam_3d()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pop.calc_F_M_2D_jit"><code class="docutils literal notranslate"><span class="pre">calc_F_M_2D_jit()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pop.calc_F_M_3D_jit"><code class="docutils literal notranslate"><span class="pre">calc_F_M_3D_jit()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="pop_MC.html">pop_MC module</a></li>
 </ul>
 </li>
 </ul>
@@ -229,8 +286,13 @@ If <code class="docutils literal notranslate"><span class="pre">False</span></co
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="pop.population.calc_B_M">
-<span class="sig-name descname"><span class="pre">calc_B_M</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pop.html#population.calc_B_M"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pop.population.calc_B_M" title="Permalink to this definition"></a></dt>
+<dt class="sig sig-object py" id="pop.population.calc_B_R">
+<span class="sig-name descname"><span class="pre">calc_B_R</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pop.html#population.calc_B_R"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pop.population.calc_B_R" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="pop.population.calc_B_F">
+<span class="sig-name descname"><span class="pre">calc_B_F</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/pop.html#population.calc_B_F"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#pop.population.calc_B_F" title="Permalink to this definition"></a></dt>
 <dd></dd></dl>
 
 <dl class="py method">
@@ -313,7 +375,7 @@ If <code class="docutils literal notranslate"><span class="pre">False</span></co
 
 <dl class="py function">
 <dt class="sig sig-object py" id="pop.get_dNdt_1d_geo_jit">
-<span class="sig-prename descclassname"><span class="pre">pop.</span></span><span class="sig-name descname"><span class="pre">get_dNdt_1d_geo_jit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">t</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">N</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">V_p</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">V_e</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">F_M</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">B_M</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">NS</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">THR</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pop.get_dNdt_1d_geo_jit" title="Permalink to this definition"></a></dt>
+<span class="sig-prename descclassname"><span class="pre">pop.</span></span><span class="sig-name descname"><span class="pre">get_dNdt_1d_geo_jit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">t</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">N</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">V_p</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">V_e</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">F_M</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">B_M</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">NS</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">THR</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">B_R</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">B_F</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#pop.get_dNdt_1d_geo_jit" title="Permalink to this definition"></a></dt>
 <dd></dd></dl>
 
 <dl class="py function">
@@ -377,7 +439,8 @@ If <code class="docutils literal notranslate"><span class="pre">False</span></co
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="attributes.html" class="btn btn-neutral float-left" title="Attributes of the dPBE Class" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="references.html" class="btn btn-neutral float-left" title="References" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="modules.html" class="btn btn-neutral float-right" title="PSD_opt" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

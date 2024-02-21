@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="writer-html5" lang="en">
 <head>
-  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PSD_opt &mdash; dPBE: Discrete Population Balance Equations 1.0.0 documentation</title>
@@ -20,7 +20,9 @@
         <script src="_static/sphinx_highlight.js"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
-    <link rel="search" title="Search" href="search.html" /> 
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="func package" href="func.html" />
+    <link rel="prev" title="pop module" href="pop.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -43,12 +45,24 @@
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
-<ul>
+<ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quick Start</a></li>
 <li class="toctree-l1"><a class="reference internal" href="attributes.html">Attributes of the dPBE Class</a></li>
 <li class="toctree-l1"><a class="reference internal" href="advanced_guide.html">Advanced Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="references.html">References</a></li>
 <li class="toctree-l1"><a class="reference internal" href="pop.html">pop module</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">PSD_opt</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="func.html">func package</a></li>
+<li class="toctree-l2"><a class="reference internal" href="func_test.html">func_test package</a></li>
+<li class="toctree-l2"><a class="reference internal" href="opt_algo.html">opt_algo module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="opt_algo_multi.html">opt_algo_multi module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="opt_config.html">opt_config module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="opt_find.html">opt_find module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="opt_main.html">opt_main module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="pop.html">pop module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="pop_MC.html">pop_MC module</a></li>
+</ul>
+</li>
 </ul>
 
         </div>
@@ -79,7 +93,107 @@
 <h1>PSD_opt<a class="headerlink" href="#psd-opt" title="Permalink to this heading"></a></h1>
 <div class="toctree-wrapper compound">
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="cell_average_debug.html">cell_average_debug module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="func.html">func package</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="func.html#submodules">Submodules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="func.html#module-func.func_math">func.func_math module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="func.html#func.func_math.float_equal"><code class="docutils literal notranslate"><span class="pre">float_equal()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func.html#func.func_math.float_in_list"><code class="docutils literal notranslate"><span class="pre">float_in_list()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func.html#func.func_math.isZero"><code class="docutils literal notranslate"><span class="pre">isZero()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="func.html#module-func.func_read_exp">func.func_read_exp module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="func.html#func.func_read_exp.write_read_exp"><code class="docutils literal notranslate"><span class="pre">write_read_exp</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="func.html#func.func_read_exp.write_read_exp.convert_time_to_seconds"><code class="docutils literal notranslate"><span class="pre">write_read_exp.convert_time_to_seconds()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="func.html#func.func_read_exp.write_read_exp.convert_seconds_to_time"><code class="docutils literal notranslate"><span class="pre">write_read_exp.convert_seconds_to_time()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="func.html#func.func_read_exp.write_read_exp.merge_duplicate_time_columns"><code class="docutils literal notranslate"><span class="pre">write_read_exp.merge_duplicate_time_columns()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="func.html#func.func_read_exp.write_read_exp.get_exp_data"><code class="docutils literal notranslate"><span class="pre">write_read_exp.get_exp_data()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="func.html#module-func">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="func_test.html">func_test package</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="func_test.html#submodules">Submodules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="func_test.html#module-func_test.Dependency_Test">func_test.Dependency_Test module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.Dependency_Test.return_results"><code class="docutils literal notranslate"><span class="pre">return_results()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.Dependency_Test.return_all_results"><code class="docutils literal notranslate"><span class="pre">return_all_results()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.Dependency_Test.depend_test"><code class="docutils literal notranslate"><span class="pre">depend_test()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.Dependency_Test.visualize_results"><code class="docutils literal notranslate"><span class="pre">visualize_results()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="func_test.html#module-func_test.base_opt_test">func_test.base_opt_test module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.base_opt_test.normal_test"><code class="docutils literal notranslate"><span class="pre">normal_test()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.base_opt_test.calc_N_test"><code class="docutils literal notranslate"><span class="pre">calc_N_test()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.base_opt_test.return_pop_num_distribution"><code class="docutils literal notranslate"><span class="pre">return_pop_num_distribution()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.base_opt_test.return_pop_distribution"><code class="docutils literal notranslate"><span class="pre">return_pop_distribution()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.base_opt_test.calc_delta_test"><code class="docutils literal notranslate"><span class="pre">calc_delta_test()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="func_test.html#module-func_test.bond_break">func_test.bond_break module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.bond_break.float_gcd"><code class="docutils literal notranslate"><span class="pre">float_gcd()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.bond_break.generate_grid_2D"><code class="docutils literal notranslate"><span class="pre">generate_grid_2D()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.bond_break.plot_G"><code class="docutils literal notranslate"><span class="pre">plot_G()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.bond_break.break_one_bond"><code class="docutils literal notranslate"><span class="pre">break_one_bond()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.bond_break.recursive_fun"><code class="docutils literal notranslate"><span class="pre">recursive_fun()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.bond_break.analyze_fragments"><code class="docutils literal notranslate"><span class="pre">analyze_fragments()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.bond_break.check_idx_hist"><code class="docutils literal notranslate"><span class="pre">check_idx_hist()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.bond_break.check_deadend"><code class="docutils literal notranslate"><span class="pre">check_deadend()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.bond_break.single_sim"><code class="docutils literal notranslate"><span class="pre">single_sim()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.bond_break.MC_breakage"><code class="docutils literal notranslate"><span class="pre">MC_breakage()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="func_test.html#module-func_test.bond_break_jit">func_test.bond_break_jit module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.bond_break_jit.MC_breakage"><code class="docutils literal notranslate"><span class="pre">MC_breakage()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.bond_break_jit.rand_choice_nb"><code class="docutils literal notranslate"><span class="pre">rand_choice_nb()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.bond_break_jit.float_gcd"><code class="docutils literal notranslate"><span class="pre">float_gcd()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.bond_break_jit.generate_grid_2D"><code class="docutils literal notranslate"><span class="pre">generate_grid_2D()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.bond_break_jit.break_one_bond"><code class="docutils literal notranslate"><span class="pre">break_one_bond()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.bond_break_jit.recursive_fun"><code class="docutils literal notranslate"><span class="pre">recursive_fun()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.bond_break_jit.analyze_fragments"><code class="docutils literal notranslate"><span class="pre">analyze_fragments()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.bond_break_jit.check_idx_hist"><code class="docutils literal notranslate"><span class="pre">check_idx_hist()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.bond_break_jit.check_deadend"><code class="docutils literal notranslate"><span class="pre">check_deadend()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.bond_break_jit.single_sim"><code class="docutils literal notranslate"><span class="pre">single_sim()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.bond_break_jit.plot_G"><code class="docutils literal notranslate"><span class="pre">plot_G()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.bond_break_jit.plot_F"><code class="docutils literal notranslate"><span class="pre">plot_F()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="func_test.html#module-func_test.cell_average_agglomeration_debug">func_test.cell_average_agglomeration_debug module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.cell_average_agglomeration_debug.dNdt_1D"><code class="docutils literal notranslate"><span class="pre">dNdt_1D()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.cell_average_agglomeration_debug.heaviside_jit"><code class="docutils literal notranslate"><span class="pre">heaviside_jit()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.cell_average_agglomeration_debug.dNdt_2D"><code class="docutils literal notranslate"><span class="pre">dNdt_2D()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.cell_average_agglomeration_debug.lam"><code class="docutils literal notranslate"><span class="pre">lam()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.cell_average_agglomeration_debug.lam_2d"><code class="docutils literal notranslate"><span class="pre">lam_2d()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.cell_average_agglomeration_debug.delta"><code class="docutils literal notranslate"><span class="pre">delta()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="func_test.html#module-func_test.cell_average_breakage_debug">func_test.cell_average_breakage_debug module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.cell_average_breakage_debug.dNdt_1D"><code class="docutils literal notranslate"><span class="pre">dNdt_1D()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.cell_average_breakage_debug.b_integrate"><code class="docutils literal notranslate"><span class="pre">b_integrate()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.cell_average_breakage_debug.xb_integrate"><code class="docutils literal notranslate"><span class="pre">xb_integrate()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.cell_average_breakage_debug.yb_integrate"><code class="docutils literal notranslate"><span class="pre">yb_integrate()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.cell_average_breakage_debug.lam"><code class="docutils literal notranslate"><span class="pre">lam()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.cell_average_breakage_debug.lam_2d"><code class="docutils literal notranslate"><span class="pre">lam_2d()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.cell_average_breakage_debug.heaviside_jit"><code class="docutils literal notranslate"><span class="pre">heaviside_jit()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.cell_average_breakage_debug.dNdt_2D"><code class="docutils literal notranslate"><span class="pre">dNdt_2D()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="func_test.html#module-func_test.psd_read_and_smoothing_test">func_test.psd_read_and_smoothing_test module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.psd_read_and_smoothing_test.visualize_distribution_smoothing"><code class="docutils literal notranslate"><span class="pre">visualize_distribution_smoothing()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.psd_read_and_smoothing_test.visualize_distribution_smoothing_v"><code class="docutils literal notranslate"><span class="pre">visualize_distribution_smoothing_v()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="func_test.html#module-func_test.rhs_2d_geo_test">func_test.rhs_2d_geo_test module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.rhs_2d_geo_test.dNdt_2D_b"><code class="docutils literal notranslate"><span class="pre">dNdt_2D_b()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.rhs_2d_geo_test.dNdt_2D_nob"><code class="docutils literal notranslate"><span class="pre">dNdt_2D_nob()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.rhs_2d_geo_test.heaviside_jit"><code class="docutils literal notranslate"><span class="pre">heaviside_jit()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="func_test.html#func_test.rhs_2d_geo_test.lam_2d"><code class="docutils literal notranslate"><span class="pre">lam_2d()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="func_test.html#module-func_test">Module contents</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="opt_algo.html">opt_algo module</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="opt_algo.html#opt_algo.opt_algo"><code class="docutils literal notranslate"><span class="pre">opt_algo</span></code></a><ul>
 <li class="toctree-l3"><a class="reference internal" href="opt_algo.html#opt_algo.opt_algo.calc_delta"><code class="docutils literal notranslate"><span class="pre">opt_algo.calc_delta()</span></code></a></li>
@@ -145,7 +259,8 @@
 <li class="toctree-l3"><a class="reference internal" href="pop.html#pop.population.init_N"><code class="docutils literal notranslate"><span class="pre">population.init_N()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="pop.html#pop.population.calc_F_M"><code class="docutils literal notranslate"><span class="pre">population.calc_F_M()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="pop.html#pop.population.calc_alpha_prim"><code class="docutils literal notranslate"><span class="pre">population.calc_alpha_prim()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="pop.html#pop.population.calc_B_M"><code class="docutils literal notranslate"><span class="pre">population.calc_B_M()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="pop.html#pop.population.calc_B_R"><code class="docutils literal notranslate"><span class="pre">population.calc_B_R()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="pop.html#pop.population.calc_B_F"><code class="docutils literal notranslate"><span class="pre">population.calc_B_F()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="pop.html#pop.population.visualize_distN_t"><code class="docutils literal notranslate"><span class="pre">population.visualize_distN_t()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="pop.html#pop.population.visualize_qQ_t"><code class="docutils literal notranslate"><span class="pre">population.visualize_qQ_t()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="pop.html#pop.population.visualize_sumN_t"><code class="docutils literal notranslate"><span class="pre">population.visualize_sumN_t()</span></code></a></li>
@@ -207,7 +322,10 @@
 
            </div>
           </div>
-          <footer>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="pop.html" class="btn btn-neutral float-left" title="pop module" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="func.html" class="btn btn-neutral float-right" title="func package" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
 
   <hr/>
 

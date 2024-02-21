@@ -48,6 +48,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../advanced_guide.html">Advanced Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../references.html">References</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../pop.html">pop module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../modules.html">PSD_opt</a></li>
 </ul>
 
         </div>
@@ -237,7 +238,8 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">init_N</span><span class="p">()</span>        
         <span class="k">if</span> <span class="n">calc_alpha</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">calc_alpha_prim</span><span class="p">()</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">calc_F_M</span><span class="p">()</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">dim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">calc_B_M</span><span class="p">()</span></div>
+        <span class="bp">self</span><span class="o">.</span><span class="n">calc_B_R</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">calc_B_F</span><span class="p">()</span></div>
      
     <span class="c1">## Calculate R, V and X matrices (radii, total and partial volumes and volume fractions)</span>
 <div class="viewcode-block" id="population.calc_R"><a class="viewcode-back" href="../pop.html#pop.population.calc_R">[docs]</a>    <span class="k">def</span> <span class="nf">calc_R</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
@@ -779,19 +781,73 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">alpha_prim</span><span class="p">[</span><span class="mi">8</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="mi">2</span><span class="o">*</span><span class="n">tmp</span><span class="p">)</span><span class="o">**</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>    </div>
     
     <span class="c1">## Calculate breakage rate matrix. </span>
-<div class="viewcode-block" id="population.calc_B_M"><a class="viewcode-back" href="../pop.html#pop.population.calc_B_M">[docs]</a>    <span class="k">def</span> <span class="nf">calc_B_M</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<div class="viewcode-block" id="population.calc_B_R"><a class="viewcode-back" href="../pop.html#pop.population.calc_B_R">[docs]</a>    <span class="k">def</span> <span class="nf">calc_B_R</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         
         <span class="c1"># 1-D case</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">dim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
-            
-            <span class="bp">self</span><span class="o">.</span><span class="n">B_M</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">V</span><span class="p">))</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">B_R</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">NS</span><span class="p">)</span>
             <span class="c1"># Power Law Pandy and Spielmann --&gt; See Jeldres2018 (28)</span>
             <span class="c1"># for i in range(2,len(self.V)):</span>
             <span class="c1">#     self.B_M[i] = self.P1*self.G*(self.V[i]/self.V[2])**self.P2</span>
             
-        <span class="k">else</span><span class="p">:</span>
-            <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Only 1-D case currently coded.&#39;</span><span class="p">)</span></div>
+            <span class="c1"># Size independent breakage rate --&gt; See Leong2023 (10)</span>
+            <span class="c1"># only for validation with analytical results</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">BREAKRVAL</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">B_R</span> <span class="o">=</span> <span class="mi">1</span>
+                
+            <span class="c1"># Size dependent breakage rate --&gt; See Leong2023 (10)</span>
+            <span class="c1"># only for validation with analytical results</span>
+            <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">BREAKRVAL</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">tmp</span> <span class="ow">in</span> <span class="n">np</span><span class="o">.</span><span class="n">ndenumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">B_R</span><span class="p">):</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">B_R</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">V</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+        <span class="c1"># 2-D case            </span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">dim</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">B_R</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">NS</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">NS</span><span class="p">))</span>
             
+            <span class="c1"># Size independent breakage rate --&gt; See Leong2023 (10)</span>
+            <span class="c1"># only for validation with analytical results</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">BREAKRVAL</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">B_R</span> <span class="o">=</span> <span class="mi">1</span>
+                
+            <span class="c1"># Size dependent breakage rate --&gt; See Leong2023 (10)</span>
+            <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">BREAKRVAL</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">tmp</span> <span class="ow">in</span> <span class="n">np</span><span class="o">.</span><span class="n">ndenumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">B_R</span><span class="p">):</span>
+                    <span class="n">a</span> <span class="o">=</span> <span class="n">idx</span><span class="p">[</span><span class="mi">0</span><span class="p">];</span> <span class="n">b</span> <span class="o">=</span> <span class="n">idx</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+                    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">BREAKFVAL</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">B_R</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">V1</span><span class="p">[</span><span class="n">a</span><span class="p">]</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">V3</span><span class="p">[</span><span class="n">b</span><span class="p">]</span>  
+                    <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">BREAKFVAL</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+                        <span class="c1"># self.B_R[idx] = self.V1[a] + self.V3[b]  </span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">B_R</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">V</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> </div>
+                        
+            
+    <span class="c1">## Calculate breakage function matrix.         </span>
+<div class="viewcode-block" id="population.calc_B_F"><a class="viewcode-back" href="../pop.html#pop.population.calc_B_F">[docs]</a>    <span class="k">def</span> <span class="nf">calc_B_F</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># 1-D case</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">dim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">B_F</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">NS</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">NS</span><span class="p">))</span>
+            <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">tmp</span> <span class="ow">in</span> <span class="n">np</span><span class="o">.</span><span class="n">ndenumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">B_F</span><span class="p">):</span>
+                <span class="n">a</span> <span class="o">=</span> <span class="n">idx</span><span class="p">[</span><span class="mi">0</span><span class="p">];</span> <span class="n">i</span> <span class="o">=</span> <span class="n">idx</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+            <span class="c1"># Conservation of Hypervolume, random breakage into four fragments --&gt; See Leong2023 (10)</span>
+            <span class="c1"># only for validation with analytical results</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">BREAKFVAL</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">B_F</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="mi">4</span> <span class="o">/</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">V</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+            <span class="c1"># Conservation of First-Order Moments, random breakage into two fragments --&gt; See Leong2023 (10)</span>
+            <span class="c1"># only for validation with analytical results        </span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">BREAKFVAL</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">B_F</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">/</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">V</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+        <span class="c1"># 2-D case</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">dim</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">B_F</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">NS</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">NS</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">NS</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">NS</span><span class="p">))</span>
+            <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">tmp</span> <span class="ow">in</span> <span class="n">np</span><span class="o">.</span><span class="n">ndenumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">B_F</span><span class="p">):</span>
+                <span class="n">a</span> <span class="o">=</span> <span class="n">idx</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="p">;</span> <span class="n">b</span> <span class="o">=</span> <span class="n">idx</span><span class="p">[</span><span class="mi">1</span><span class="p">];</span> <span class="n">i</span> <span class="o">=</span> <span class="n">idx</span><span class="p">[</span><span class="mi">2</span><span class="p">];</span> <span class="n">j</span> <span class="o">=</span> <span class="n">idx</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span>
+            <span class="c1"># Conservation of Hypervolume, random breakage into four fragments --&gt; See Leong2023 (10)</span>
+            <span class="c1"># only for validation with analytical results</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">BREAKFVAL</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">B_F</span> <span class="o">=</span> <span class="mi">4</span> <span class="o">/</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">V1</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">V3</span><span class="p">[</span><span class="n">j</span><span class="p">])</span>
+            <span class="c1"># Conservation of First-Order Moments, random breakage into two fragments --&gt; See Leong2023 (10)</span>
+            <span class="c1"># only for validation with analytical results        </span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">BREAKFVAL</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">B_F</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">/</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">V1</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">V3</span><span class="p">[</span><span class="n">j</span><span class="p">])</span>     </div>
         
     <span class="c1">## Visualize / plot population:</span>
 <div class="viewcode-block" id="population.visualize_distN_t"><a class="viewcode-back" href="../pop.html#pop.population.visualize_distN_t">[docs]</a>    <span class="k">def</span> <span class="nf">visualize_distN_t</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span><span class="n">t_plot</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span><span class="n">t_pause</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span><span class="n">close_all</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span><span class="n">scl_a4</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span><span class="n">figsze</span><span class="o">=</span><span class="p">[</span><span class="mf">12.8</span><span class="p">,</span><span class="mf">6.4</span><span class="o">*</span><span class="mf">1.5</span><span class="p">]):</span>
@@ -1409,6 +1465,9 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">EFFEVAL</span> <span class="o">=</span> <span class="mi">2</span>                      <span class="c1"># Case for calculation of alpha. 1 = Full calculation, 2 = Reduced model (only based on primary particle interactions)</span>
                                             <span class="c1"># Case 2 massively faster and legit acc. to Kusters1997 and Bäbler2008</span>
                                             <span class="c1"># Case 3 to use pre-defines alphas (e.g. from ANN) --&gt; alphas need to be provided at some point</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">BREAKFVAL</span> <span class="o">=</span> <span class="mi">1</span>                    <span class="c1"># Case for calculation breakage function. 1 = conservation of Hypervolume, 2 = conservation of 0 Moments </span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">BREAKRVAL</span> <span class="o">=</span> <span class="mi">1</span>                    <span class="c1"># Case for calculation breakage rate. 1 = constant, 2 = size dependent</span>
+                       
         <span class="bp">self</span><span class="o">.</span><span class="n">SIZEEVAL</span> <span class="o">=</span> <span class="mi">2</span>                     <span class="c1"># Case for implementation of size dependency. 1 = No size dependency, 2 = Model from Soos2007 </span>
         <span class="bp">self</span><span class="o">.</span><span class="n">POTEVAL</span> <span class="o">=</span> <span class="mi">1</span>                      <span class="c1"># Case for the set of used interaction potentials. See int_fun_Xd for infos.</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">USE_PSD</span> <span class="o">=</span> <span class="kc">True</span>                   <span class="c1"># Define wheter or not the PSD should be initializes (False = monodisperse primary particles)</span>
@@ -1746,7 +1805,7 @@
 <span class="c1"># Define np.heaviside for JIT compilation</span>
     
 <span class="nd">@jit</span><span class="p">(</span><span class="n">nopython</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<span class="k">def</span> <span class="nf">get_dNdt_1d_geo_jit</span><span class="p">(</span><span class="n">t</span><span class="p">,</span><span class="n">N</span><span class="p">,</span><span class="n">V_p</span><span class="p">,</span><span class="n">V_e</span><span class="p">,</span> <span class="n">F_M</span><span class="p">,</span><span class="n">B_M</span><span class="p">,</span><span class="n">NS</span><span class="p">,</span><span class="n">THR</span><span class="p">):</span>
+<span class="k">def</span> <span class="nf">get_dNdt_1d_geo_jit</span><span class="p">(</span><span class="n">t</span><span class="p">,</span><span class="n">N</span><span class="p">,</span><span class="n">V_p</span><span class="p">,</span><span class="n">V_e</span><span class="p">,</span><span class="n">F_M</span><span class="p">,</span><span class="n">B_M</span><span class="p">,</span><span class="n">NS</span><span class="p">,</span><span class="n">THR</span><span class="p">,</span><span class="n">B_R</span><span class="p">,</span><span class="n">B_F</span><span class="p">):</span>
   
     <span class="n">dNdt</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">N</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
     <span class="n">B_c</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">N</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
@@ -1779,8 +1838,8 @@
                     <span class="n">M_c</span><span class="p">[</span><span class="n">e</span><span class="p">]</span> <span class="o">+=</span> <span class="n">F</span><span class="o">*</span><span class="n">N</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">*</span><span class="n">N</span><span class="p">[</span><span class="n">j</span><span class="p">]</span><span class="o">*</span><span class="p">(</span><span class="n">V_p</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">+</span><span class="n">V_p</span><span class="p">[</span><span class="n">j</span><span class="p">])</span><span class="o">/</span><span class="n">zeta</span>
                     
                     <span class="c1"># Track death </span>
-                    <span class="n">D</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-=</span> <span class="n">F</span><span class="o">*</span><span class="n">N</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">*</span><span class="n">N</span><span class="p">[</span><span class="n">j</span><span class="p">]</span><span class="o">/</span><span class="n">zeta</span>
-                    <span class="n">D</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">-=</span> <span class="n">F</span><span class="o">*</span><span class="n">N</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">*</span><span class="n">N</span><span class="p">[</span><span class="n">j</span><span class="p">]</span><span class="o">/</span><span class="n">zeta</span>
+                    <span class="n">D</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-=</span> <span class="n">F</span><span class="o">*</span><span class="n">N</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">*</span><span class="n">N</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
+                    <span class="c1"># D[j] -= F*N[i]*N[j]/zeta</span>
                 
     <span class="n">v</span><span class="p">[</span><span class="n">B_c</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">M_c</span><span class="p">[</span><span class="n">B_c</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">]</span><span class="o">/</span><span class="n">B_c</span><span class="p">[</span><span class="n">B_c</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">]</span>
     

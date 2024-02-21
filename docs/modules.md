@@ -3,7 +3,8 @@
 ```{toctree}
 :maxdepth: 4
 
-cell_average_debug
+func
+func_test
 opt_algo
 opt_algo_multi
 opt_config

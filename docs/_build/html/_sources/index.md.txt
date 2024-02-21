@@ -23,6 +23,7 @@ attributes
 advanced_guide
 references
 pop
+modules
 ```
 
 <!-- # Indices and tables

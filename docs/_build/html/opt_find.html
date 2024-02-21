@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="writer-html5" lang="en">
 <head>
-  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>opt_find module &mdash; dPBE: Discrete Population Balance Equations 1.0.0 documentation</title>
@@ -20,7 +20,9 @@
         <script src="_static/sphinx_highlight.js"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
-    <link rel="search" title="Search" href="search.html" /> 
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="opt_main module" href="opt_main.html" />
+    <link rel="prev" title="opt_config module" href="opt_config.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -43,10 +45,35 @@
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
-<ul>
+<ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quick Start</a></li>
 <li class="toctree-l1"><a class="reference internal" href="attributes.html">Attributes of the dPBE Class</a></li>
+<li class="toctree-l1"><a class="reference internal" href="advanced_guide.html">Advanced Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="references.html">References</a></li>
 <li class="toctree-l1"><a class="reference internal" href="pop.html">pop module</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="modules.html">PSD_opt</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="func.html">func package</a></li>
+<li class="toctree-l2"><a class="reference internal" href="func_test.html">func_test package</a></li>
+<li class="toctree-l2"><a class="reference internal" href="opt_algo.html">opt_algo module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="opt_algo_multi.html">opt_algo_multi module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="opt_config.html">opt_config module</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">opt_find module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#opt_find.opt_find"><code class="docutils literal notranslate"><span class="pre">opt_find</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#opt_find.opt_find.init_opt_algo"><code class="docutils literal notranslate"><span class="pre">opt_find.init_opt_algo()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#opt_find.opt_find.generate_data"><code class="docutils literal notranslate"><span class="pre">opt_find.generate_data()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#opt_find.opt_find.find_opt_kernels"><code class="docutils literal notranslate"><span class="pre">opt_find.find_opt_kernels()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#opt_find.opt_find.write_new_data"><code class="docutils literal notranslate"><span class="pre">opt_find.write_new_data()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#opt_find.opt_find.visualize_distribution"><code class="docutils literal notranslate"><span class="pre">opt_find.visualize_distribution()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#opt_find.opt_find.save_as_png"><code class="docutils literal notranslate"><span class="pre">opt_find.save_as_png()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="opt_main.html">opt_main module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="pop.html">pop module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="pop_MC.html">pop_MC module</a></li>
+</ul>
+</li>
 </ul>
 
         </div>
@@ -63,6 +90,7 @@
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="modules.html">PSD_opt</a></li>
       <li class="breadcrumb-item active">opt_find module</li>
       <li class="wy-breadcrumbs-aside">
             <a href="_sources/opt_find.md.txt" rel="nofollow"> View page source</a>
@@ -118,7 +146,10 @@
 
            </div>
           </div>
-          <footer>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="opt_config.html" class="btn btn-neutral float-left" title="opt_config module" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="opt_main.html" class="btn btn-neutral float-right" title="opt_main module" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
 
   <hr/>
 

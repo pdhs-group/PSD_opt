@@ -10,3 +10,4 @@
 # ignore ordner
 __pycache__
 myenv
+docs/_build/

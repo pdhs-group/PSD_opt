@@ -1,7 +1,0 @@
-pop\_MC module
-==============
-
-.. automodule:: pop_MC
-   :members:
-   :undoc-members:
-   :show-inheritance:
