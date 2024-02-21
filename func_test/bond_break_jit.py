@@ -137,6 +137,11 @@ def float_gcd(a, b, rtol = 1e-3, atol = 1e-8):
 # Generate 2D grid containing both pivots and edges
 @jit(nopython=True)
 def generate_grid_2D(A, X1, X2, A0=0):
+    """
+    Generate a two-dimensional grid to represent the distribution 
+    of two materials and the contact (bond) between them. The distribution 
+    is randomly assigned based on the volume fraction X1 und X2 of the two materials.
+    """
     if A0 == 0 or (A0>(A*X1/2) and A0>(A*X2/2)):
         A0 = float_gcd(A*X1, A*X2)
 
@@ -217,9 +222,32 @@ def generate_grid_2D(A, X1, X2, A0=0):
 
 @jit(nopython=True)
 def break_one_bond(G, STR, idx=None, init_break_random=False):
-    # STR: Array containing the strength of bonds [11,12,22]
-    # idx: np.array([i,j]) indicating the index of current edge to propagate breakge
-    #      None indicates that we start a new rupture (from the outside edge)
+    """
+    Simulates the process of breaking a bond in a given 2D mesh.
+    
+    Parameters
+    ----------
+    G : 2d-array
+        Represents the mesh model of the material, which contains the material's pivot unit (1 or 2), 
+        connected bonds (-1, 11, 12, 22), and edges (0).
+    STR : 1d-array
+        Contains the strength of different types of bonds (11, 12, 22). 
+        These values ​​are used to calculate the probability of breakage.
+    idx : np.array([i,j])
+        Indicating the index of current edge to propagate breakge.
+        None indicates that we start a new rupture (from the outside edge)
+        
+    Returns
+    -------
+    G_new : 2d-array
+        The updated mesh, showing the state after fracture.
+    idx_new : np.array([i,j])
+        The index of the new fracture edge, providing a starting point for the next fracture.
+    fracture_flag : Bool
+        Indicating whether a complete fracture has occurred.
+    str_array[b_idx] : float
+        The strength of the broken connection.
+    """
     
     G_new = np.copy(G)
     
@@ -608,8 +636,10 @@ if __name__ == '__main__':
     ########### -----------
     
     # %% TESTS DEBUG
-    TEST = True
+    TEST = False
     if TEST:
+        import sys, os
+        sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),".."))
         import matplotlib.pyplot as plt
         from matplotlib.colors import to_rgba
         import plotter.plotter as pt          
