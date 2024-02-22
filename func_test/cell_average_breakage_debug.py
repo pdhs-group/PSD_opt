@@ -25,7 +25,7 @@ t = np.arange(0, 11, 1, dtype=float)
 NS = 30
 S = 2.5
 V01, V02 = 2e-9, 2e-9
-dim = 2
+dim = 1
 ## BREAKRVAL == 1: 1, constant breakage rate
 ## BREAKRVAL == 2: x*y or x + y, breakage rate is related to particle size
 BREAKRVAL = 2
@@ -45,27 +45,10 @@ def dNdt_1D(t,N,V_p,V_e,B_R,B_F,BREAKFVAL):
     V_p_ex = np.zeros(NS+1)
     
     ## only to check volume conservation
-    D_M = np.zeros(N.shape)
-    
-    # e = 1
-    # # b = B_F[e,e]
-    # # b_int = b_integrate(V_p[e], V_e[e], b=b)
-    # # xb_int = xb_integrate(V_p[e], V_e[e], b=b)
-    # # B_c[e] += B_R[e]*b_int*N[e]
-    # # M_c[e] += B_R[e]*xb_int*N[e]
-    # for i in range(e+1, len(V_p)):
-    #     b = B_F[e,i]
-    #     b_int = b_integrate(V_e[e+1], V_p[e], b=b)
-    #     xb_int = xb_integrate(V_e[e+1], V_p[e], b=b)
-    #     B_c[e] += B_R[i]*b_int*N[i]
-    #     M_c[e] += B_R[i]*xb_int*N[i]
-    # if B_c[e] != 0:
-    #     v[e] = M_c[e] / B_c[e]
+    # D_M = np.zeros(N.shape)
                 
     # Loop through all edges
-    # -1 to make sure nothing overshoots (?) CHECK THIS
-    for e in range(0, len(V_p)):
-
+    for e in range(len(V_p)):
         b = B_F[e,e]
         b_int = b_integrate(V_p[e], V_e[e], b=b)
         xb_int = xb_integrate(V_p[e], V_e[e], b=b)
@@ -85,29 +68,24 @@ def dNdt_1D(t,N,V_p,V_e,B_R,B_F,BREAKFVAL):
         D[e] = -B_R[e]*N[e]
         if B_c[e] != 0:
             v[e] = M_c[e] / B_c[e]
-    # v[B_c != 0] = M_c[B_c != 0]/B_c[B_c != 0]
         
         ## only to check volume conservation
-        D_M[e] = -B_R[e]*N[e]*V_p[e]
-    volume_erro = M_c.sum() + D_M.sum()
-    print(f'the erro of mass conservation = {volume_erro}')
+        # D_M[e] = -B_R[e]*N[e]*V_p[e]
+    # volume_erro = M_c.sum() + D_M.sum()
+    # print(f'the erro of mass conservation = {volume_erro}')
     
     V_p_ex[:-1] = V_p
     # Assign BIRTH on each pivot
-    for i in range(0,len(V_p)):            
+    for i in range(len(V_p)):            
         # Add contribution from LEFT cell (if existent)
-        # if i != 0:
-            # Same Cell, left half
-            B[i] += B_c[i]*lam(v[i], V_p, i, 'm')*heaviside_jit(V_p[i]-v[i],0.5)
-            # Left Cell, right half
-            B[i] += B_c[i-1]*lam(v[i-1], V_p, i, 'm')*heaviside_jit(v[i-1]-V_p[i-1],0.5)
-            
+        B[i] += B_c[i]*lam(v[i], V_p, i, 'm')*heaviside_jit(V_p[i]-v[i],0.5)
+        # Left Cell, right half
+        B[i] += B_c[i-1]*lam(v[i-1], V_p, i, 'm')*heaviside_jit(v[i-1]-V_p[i-1],0.5)
         # Add contribution from RIGHT cell (if existent)
-        # if i != len(V_p)-1:
-            # Same Cell, right half
-            B[i] += B_c[i]*lam(v[i], V_p, i, 'p')*heaviside_jit(v[i]-V_p[i],0.5)
-            # Right Cell, left half
-            B[i] += B_c[i+1]*lam(v[i+1], V_p, i, 'p')*heaviside_jit(V_p_ex[i+1]-v[i+1],0.5)
+        # Same Cell, right half
+        B[i] += B_c[i]*lam(v[i], V_p_ex, i, 'p')*heaviside_jit(v[i]-V_p[i],0.5)
+        # Right Cell, left half
+        B[i] += B_c[i+1]*lam(v[i+1], V_p_ex, i, 'p')*heaviside_jit(V_p_ex[i+1]-v[i+1],0.5)
             
     dNdt = B + D
     
@@ -175,8 +153,8 @@ def dNdt_2D(t,NN,V_p1,V_p2,V_e1,V_e2,B_R,B_F,BREAKFVAL):
     B_c = np.zeros((NS+1,NS+1))
     B_c_x = np.zeros(NS+1)
     B_c_y = np.zeros(NS+1)
-    M_c_x = np.zeros(NS+1)
-    M_c_y = np.zeros(NS+1)
+    M_c_x = np.zeros(NS)
+    M_c_y = np.zeros(NS)
     vx = np.zeros(NS+1)
     vy = np.zeros(NS+1)
     M1_c = np.zeros(np.shape(N))

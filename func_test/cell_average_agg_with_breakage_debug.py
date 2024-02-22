@@ -21,88 +21,98 @@ pt.close()
 pt.plot_init(mrksze=8,lnewdth=1)
     
 #%% PARAM
-t = np.arange(0, 601, 60, dtype=float)
-NS = 12
+t = np.arange(0, 1001, 100, dtype=float)
+NS = 23
 S = 2
 R01, R02 = 1, 1
-V01, V02 = 1, 1
-dim = 2
+V01, V02 = 1e-9, 1e-9
+dim = 1
+## BREAKRVAL == 1: 1, constant breakage rate
+## BREAKRVAL == 2: x*y or x + y, breakage rate is related to particle size
+BREAKRVAL = 2
+## BREAKFVAL == 1: 4/x'y', meet the first cross moment
+## BREAKFVAL == 1: 2/x'y', meet the first moment/ mass conversation
+BREAKFVAL = 2
+# art_flag = "agglomeration"
+# art_flag = "breakage"
+art_flag = "mix"
 
 #%% FUNCTIONS
-def dNdt_1D(t,N,V_p,V_e,F_M):
-    dNdt = np.zeros(N.shape)
-    B_c = np.zeros(V_e.shape)
-    M_c = np.zeros(V_e.shape)
-    v = np.zeros(V_e.shape)
-    D = np.zeros(N.shape)
-    B = np.zeros(N.shape)
-    
-    # Loop through all edges
-    # -1 to make sure nothing overshoots (?) CHECK THIS
-    for e in range(1, len(V_e)-1):
+# @jit(nopython=True)
+def calc_1d_agglomeration(N,V_p,V_e,F_M,B_c,M_c,D):
+    for e in range(1,len(V_p)-1):
         # Loop through all pivots (twice)
         for i in range(len(V_p)):
-            for j in range(len(V_p)):
-                # Unequal sized processes are counted double --> Set zeta to 2
-                # if i==j:
-                #     zeta = 1
-                # else:
-                #     zeta = 2
-                
-                # Setting zeta=2 for all combinations seems correct
-                # See commented code above, I though we need to set it to 1 sometimes..
-                zeta = 2
-                
-                F=F_M[i,j]
-                # Check if the agglomeration of i and j produce an 
-                # agglomerate inside the current cell 
-                # Use upper edge as "reference point"
-                if V_e[e-1] <= V_p[i]+V_p[j] < V_e[e]:
-                    # Total birthed agglomerates
-                    B_c[e] += F*N[i]*N[j]/zeta
-                    M_c[e] += F*N[i]*N[j]*(V_p[i]+V_p[j])/(zeta)
-                    
-                    # Track death 
-                    D[i] -= F*N[i]*N[j]/zeta
-                    D[j] -= F*N[i]*N[j]/zeta
-                    
-                v[B_c != 0] = M_c[B_c != 0]/B_c[B_c != 0]
+                for j in range(len(V_p)):
+                    F=F_M[i,j]
+                    # Check if the agglomeration of i and j produce an 
+                    # agglomerate inside the current cell 
+                    # Use upper edge as "reference point"
+                    if V_e[e] <= V_p[i]+V_p[j] < V_e[e+1]:
+                        # Total birthed agglomerates
+                        B_c[e] += F*N[i]*N[j]/2
+                        M_c[e] += F*N[i]*N[j]*(V_p[i]+V_p[j])/2
+                        D[j] -= F*N[i]*N[j]
+    return B_c, M_c, D
+# @jit(nopython=True)
+def calc_1d_breakage(N,V_p,V_e,B_R,B_F,B_c,M_c,D):
+    ## if breakage function is independent of parent particle, 
+    ## then the its integral only needs to be calculated once
+    V_e_tem = np.copy(V_e)
+    V_e_tem[1] = 0.0
     
-    # print(B_c)
+    #  Loop through all pivots
+    for e in range(1,len(V_p)):
+        b = B_F[e,e]
+        b_int = b_integrate(V_p[e], V_e_tem[e], b=b)
+        xb_int = xb_integrate(V_p[e], V_e_tem[e], b=b)
+        B_c[e] += B_R[e]*b_int*N[e]
+        M_c[e] += B_R[e]*xb_int*N[e]
+        for i in range(e+1, len(V_p)):
+            b = B_F[e,i]
+            b_int = b_integrate(V_e_tem[e+1], V_e_tem[e], b=b)
+            xb_int = xb_integrate(V_e_tem[e+1], V_e_tem[e], b=b)
+            B_c[e] += B_R[i]*b_int*N[i]
+            M_c[e] += B_R[i]*xb_int*N[i]
+        D[e] = -B_R[e]*N[e]
+    return B_c, M_c, D
+        
+def dNdt_1D(t,N,V_p,V_e,F_M,B_R,B_F,art_flag):
+    dNdt = np.zeros(N.shape)
+    M_c = np.zeros(V_e.shape)
+    D = np.zeros(N.shape)
+    B = np.zeros(N.shape)
+    B_c = np.zeros(NS+1)
+    v = np.zeros(NS+1)
+    V_p_ex = np.zeros(NS+1)
+    V_p_ex[:-1] = V_p
+    
+    if art_flag == "agglomeration":
+        B_c, M_c, D = calc_1d_agglomeration(N,V_p,V_e,F_M,B_c,M_c,D)
+    elif art_flag == "breakage":
+        B_c, M_c, D = calc_1d_breakage(N,V_p,V_e,B_R,B_F,B_c,M_c,D)
+    elif art_flag == "mix":
+        B_c, M_c, D = calc_1d_agglomeration(N, V_p, V_e, F_M, B_c, M_c, D)
+        B_c, M_c, D = calc_1d_breakage(N, V_p, V_e, B_R, B_F, B_c, M_c, D)
+    else:
+        raise Exception("Current art_flag is not supported")
+                    
+    v[B_c != 0] = M_c[B_c != 0]/B_c[B_c != 0]
     
     # Assign BIRTH on each pivot
     for i in range(len(V_p)):            
         # Add contribution from LEFT cell (if existent)
-        if i != 0:
-            # Same Cell, left half
-            B[i] += B_c[i+1]*lam(v[i+1], V_p, i, 'm')*np.heaviside(V_p[i]-v[i+1],0.5)
-            # Left Cell, right half
-            B[i] += B_c[i]*lam(v[i], V_p, i, 'm')*np.heaviside(v[i]-V_p[i-1],0.5)
-            
-        # Add contribution from RIGHT cell (if existent)
-        if i != len(V_p)-1:
-            # Same Cell, right half
-            B[i] += B_c[i+1]*lam(v[i+1], V_p, i, 'p')*np.heaviside(v[i+1]-V_p[i],0.5)
-            # Right Cell, left half
-            B[i] += B_c[i+2]*lam(v[i+2], V_p, i, 'p')*np.heaviside(V_p[i+1]-v[i+2],0.5)
+        B[i] += B_c[i]*lam(v[i], V_p, i, 'm')*np.heaviside(V_p[i]-v[i],0.5)
+        # Left Cell, right half
+        B[i] += B_c[i-1]*lam(v[i-1], V_p, i, 'm')*np.heaviside(v[i-1]-V_p[i-1],0.5)
+        # Same Cell, right half
+        B[i] += B_c[i]*lam(v[i], V_p_ex, i, 'p')*np.heaviside(v[i]-V_p[i],0.5)
+        # Right Cell, left half
+        B[i] += B_c[i+1]*lam(v[i+1], V_p_ex, i, 'p')*np.heaviside(V_p_ex[i+1]-v[i+1],0.5)
             
     dNdt = B + D
     
     return dNdt    
-
-# Define np.heaviside for JIT compilation
-# @overload(np.heaviside)
-# def np_heaviside(x1, x2):
-#     @register_jitable
-#     def heaviside_impl(x1, x2):
-#         if x1 < 0:
-#             return 0.0
-#         elif x1 > 0:
-#             return 1.0
-#         else:
-#             return x2
-
-#     return heaviside_impl 
 
 @jit(nopython=True)
 def heaviside_jit(x1, x2):
@@ -130,8 +140,13 @@ def dNdt_2D(t,NN,V_p,V1_e,V3_e,NS,F_M):
     v2 = np.zeros((NS+1,NS+1))
     V_p_ex = np.zeros((NS+1,NS+1))
     V_p_ex[:-1,:-1] = V_p
-    
-    
+    ## variable for 1d-breakage on the left and low boundary
+    M_c_x = np.zeros(NS)
+    M_c_y = np.zeros(NS)
+    B_c_x = np.zeros(NS+1)
+    B_c_y = np.zeros(NS+1)
+    vx = np.zeros(NS+1)
+    vy = np.zeros(NS+1)
     
     # Loop through all edges
     # Go till len()-1 to make sure nothing is collected in the BORDER
@@ -259,6 +274,7 @@ def dNdt_2D(t,NN,V_p,V1_e,V3_e,NS,F_M):
     
     return dNdt.reshape(-1)   
 
+@jit(nopython=True) 
 def lam(v, V_p, i, case):
     if case == 'm':
         return (v-V_p[i-1])/(V_p[i]-V_p[i-1])
@@ -294,6 +310,22 @@ def delta(i,j,a,b):
         return 0.5
     else:
         return 1
+    
+@jit(nopython=True)
+def b_integrate(x_up,x_low,y_up=None,y_low=None,b=None):
+    if y_up is None or y_low is None:
+        return (x_up - x_low)*b
+    else:
+        return (x_up- x_low)*(y_up - y_low)*b
+@jit(nopython=True)    
+def xb_integrate(x_up,x_low,y_up=None,y_low=None,b=None):
+    if y_up is None or y_low is None:
+        return (x_up**2 - x_low**2)*0.5*b
+    else:
+        return (x_up**2- x_low**2)*(y_up - y_low)*0.5*b
+@jit(nopython=True)    
+def yb_integrate(x_up,x_low,y_up=None,y_low=None,b=None):
+    return (y_up**2 - y_low**2)*(x_up-x_low)*0.5*b  
 
 if __name__ == "__main__":    
     #%% NEW 1D
@@ -306,7 +338,13 @@ if __name__ == "__main__":
         # SOLUTION N is saved on pivots
         N = np.zeros((NS,len(t)))
         #N[0,0] = 0.1
-        N[1,0] = 0.3
+        if art_flag == "agglomeration":
+            N[1,0] = 0.3
+        elif art_flag == "breakage":
+            N[-1,0] = 1
+        else:
+            N[1,0] = 0.3
+            N[-1,0] = 1
         #N[2,0] = 0.2
         
         for i in range(1,NS+1):
@@ -321,17 +359,33 @@ if __name__ == "__main__":
         for idx, tmp in np.ndenumerate(F_M):
             if idx[0]==0 or idx[1]==0:
                 continue
-            a = idx[0]
-            b = idx[1]
-            F_M[idx] = (V_p[a] + V_p[b])/V_p[1]
-            
+            a = idx[0]; b = idx[1]
+            F_M[idx] = (V_p[a] + V_p[b])#/V_p[1]
+        
+        B_R = np.zeros(NS)
+        B_F = np.zeros((NS,NS))
+        if BREAKRVAL == 1:
+            B_R[2:] = 1
+        elif BREAKRVAL == 2:
+            for idx, tmp in np.ndenumerate(B_R):
+                if idx[0] > 1:
+                    B_R[idx] = V_p[idx]
+                
+        ## Validation: breakage function dependent only on parent particle
+        for idx, tmp in np.ndenumerate(B_F):
+            a = idx[0]; i = idx[1]
+            if i > 1:
+                if BREAKFVAL == 1:  
+                    B_F[idx] = 4 / (V_p[i])
+                elif BREAKFVAL == 2:
+                    B_F[idx] = 2 / (V_p[i])
         # SOLVE    
         import scipy.integrate as integrate
         RES = integrate.solve_ivp(dNdt_1D,
                                   [0, max(t)], 
                                   N[:,0], t_eval=t,
-                                  args=(V_p,V_e,F_M),
-                                  method='LSODA',first_step=0.1,rtol=1e-1)
+                                  args=(V_p,V_e,F_M,B_R,B_F,art_flag),
+                                  method='RK45',first_step=0.1,rtol=1e-3)
         
         # Reshape and save result to N and t_vec
         N = RES.y
@@ -343,7 +397,7 @@ if __name__ == "__main__":
         print(np.sum(N0*V_p), np.sum(NE*V_p))
         
         print('### Initial dNdt..')
-        dNdt0=dNdt_1D(0,N[:,0],V_p,V_e,F_M)
+        dNdt0=dNdt_1D(0,N[:,0],V_p,V_e,F_M,B_R,B_F,art_flag)
         print(dNdt0)   
         
         fig=plt.figure(figsize=[10,2])    
@@ -367,13 +421,48 @@ if __name__ == "__main__":
         ax2.plot(t, mu0, color=c_KIT_green, label='$\mu_0$ (numerical)') 
         
         # mu0_as = 2/(2+np.sum(N[:,0])*t)
-        mu0_as = np.exp(-np.sum(N[:,0])*t)  
+        if art_flag == "agglomeration":
+            mu0_as = np.exp(-np.sum(N[:,0])*t)  
+        elif art_flag == "breakage":
+            if BREAKFVAL == 2 and BREAKRVAL == 2:
+                # see Kumar Dissertation A.1
+                N_as = np.zeros((NS,len(t)))
+                V_sum = np.zeros((NS,len(t)))
+                delta = np.zeros(NS)
+                theta = np.zeros(NS)
+                delta[-1] = 1
+                theta[:-1] = 1
+                for i in range(0, len(V_p)):
+                    for j in range(len(t)):
+                        ## integrate the analytical solution for n(t,x) with exp-distribution initial condition
+                        # N_as[i,j] = np.exp(-V_e[i+1]*(1+t[j]))*(-t[j]-1) -\
+                        #     np.exp(-V_e[i]*(1+t[j]))*(-t[j]-1)
+                        # V_sum[i,j] = N_as[i,j] * V_p[i]
+                        ## integrate the analytical solution for n(t,x) with mono-disperse initial condition
+                        if i != len(V_p)-1:
+                            N_as[i,j] = (-(t[j]*V_p[-1]+1)+t[j]*V_e[i+1])*np.exp(-V_e[i+1]*t[j])-\
+                                (-(t[j]*V_p[-1]+1)+t[j]*V_e[i])*np.exp(-V_e[i]*t[j])
+                        else:
+                            N_as[i,j] = (-(t[j]*V_p[-1]+1)+t[j]*V_p[i])*np.exp(-V_p[i]*t[j])-\
+                                (-(t[j]*V_p[-1]+1)+t[j]*V_e[i])*np.exp(-V_e[i]*t[j]) + \
+                                (np.exp(-t[j]*V_p[i]))
+                        V_sum[i,j] = N_as[i,j] * V_p[i]
+            mu0_as = N_as.sum(axis=0)
+        else:
+            mu0_as = 1*t
         
         ax2.plot(t, mu0_as, color='k', linestyle='-.', label='$\mu_0$ (analytical)')
         ax2.plot(t, mu1, color=c_KIT_red, label='$\mu_1$')     
         # ax2.set_xscale('log')
         # ax2.set_yscale('log')
         ax2.legend()
+        plt.tight_layout()
+        
+        nE = NE #/ (V_e[1:] - V_e[:-1])
+        fig3=plt.figure(figsize=[4,3])    
+        ax3=fig3.add_subplot(1,1,1) 
+        ax3.plot(V_p, nE, color=c_KIT_green, label='$\Particle numerber$ (numerical)')
+        # ax3.set_xscale('log')
         plt.tight_layout()
     
     #%% NEW 2D    
