@@ -78,9 +78,9 @@
   <h1>Source code for opt_find</h1><div class="highlight"><pre>
 <span></span><span class="c1"># -*- coding: utf-8 -*-</span>
 <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">Created on Tue Dec  5 09:22:00 2023</span>
-
-<span class="sd">@author: px2030</span>
+<span class="sd">This script is to instantiate the :class:`opt_algo` or :class:`opt_algo_multi()` classes, pass parameters to them, </span>
+<span class="sd">and return optimization results. It includes additional functionalities for generating synthetic data and </span>
+<span class="sd">visualizing results.</span>
 <span class="sd">&quot;&quot;&quot;</span>
 
 <span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
@@ -96,11 +96,44 @@
 <span class="kn">import</span> <span class="nn">plotter.plotter</span> <span class="k">as</span> <span class="nn">pt</span>          
 
 <div class="viewcode-block" id="opt_find"><a class="viewcode-back" href="../opt_find.html#opt_find.opt_find">[docs]</a><span class="k">class</span> <span class="nc">opt_find</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A class to manage the optimization process for finding the kernel of PBE.</span>
+<span class="sd">    </span>
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    multi_flag : bool</span>
+<span class="sd">        Flag to choose between single dimension optimization (False) and multi-dimensional optimization (True).</span>
+<span class="sd">    </span>
+<span class="sd">    Methods</span>
+<span class="sd">    -------</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">multi_flag</span><span class="o">=</span><span class="kc">True</span>
         
 <div class="viewcode-block" id="opt_find.init_opt_algo"><a class="viewcode-back" href="../opt_find.html#opt_find.opt_find.init_opt_algo">[docs]</a>    <span class="k">def</span> <span class="nf">init_opt_algo</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">t_init</span><span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">t_vec</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">add_noise</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">noise_type</span><span class="o">=</span><span class="s1">&#39;Gaus&#39;</span><span class="p">,</span>
                       <span class="n">noise_strength</span><span class="o">=</span><span class="mf">0.01</span><span class="p">,</span><span class="n">smoothing</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initializes the optimization algorithm with specified parameters and configurations.</span>
+<span class="sd">        </span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        dim : `int`, optional</span>
+<span class="sd">            Dimensionality of the population to optimize. Default is 1.</span>
+<span class="sd">        t_init : `array`, optional</span>
+<span class="sd">            Time points used to calculate the initial conditions for the simulation. Default is None.</span>
+<span class="sd">        t_vec : `array`, optional</span>
+<span class="sd">            Time vector over which to perform the optimization. Default is None.</span>
+<span class="sd">        add_noise : `bool`, optional</span>
+<span class="sd">            Flag to determine whether to add noise to the data. Default is False.</span>
+<span class="sd">        noise_type : `str`, optional</span>
+<span class="sd">            Type of noise to add: Gaussian (&#39;Gaus&#39;), Uniform (&#39;Uni&#39;), </span>
+<span class="sd">            Poisson (&#39;Po&#39;), and Multiplicative (&#39;Mul&#39;). Default is &#39;Gaus&#39;.</span>
+<span class="sd">        noise_strength : `float`, optional</span>
+<span class="sd">            Strength of the noise to add. Default is 0.01.</span>
+<span class="sd">        smoothing : `bool`, optional</span>
+<span class="sd">            Flag to determine whether to apply smoothing(KDE) to the data. Default is False.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">multi_flag</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">algo</span> <span class="o">=</span> <span class="n">opt_algo</span><span class="p">()</span>
         <span class="k">else</span><span class="p">:</span>
@@ -132,6 +165,16 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">base_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">p</span><span class="o">.</span><span class="n">pth</span><span class="p">,</span> <span class="s2">&quot;data&quot;</span><span class="p">)</span></div>
         
 <div class="viewcode-block" id="opt_find.generate_data"><a class="viewcode-back" href="../opt_find.html#opt_find.opt_find.generate_data">[docs]</a>    <span class="k">def</span> <span class="nf">generate_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sample_num</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">add_info</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Generates synthetic data based on simulation results, optionally adding noise.</span>
+<span class="sd">        </span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        sample_num : `int`, optional</span>
+<span class="sd">            Number of synthetic data samples to generate. Default is 1.</span>
+<span class="sd">        add_info : `str`, optional</span>
+<span class="sd">            Additional information to append to the file name. Default is an empty string.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">add_noise</span><span class="p">:</span>
             <span class="c1"># Modify the file name to include noise type and strength</span>
             <span class="n">filename</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Sim_</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">noise_type</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">noise_strength</span><span class="si">}</span><span class="s2">&quot;</span><span class="o">+</span><span class="n">add_info</span><span class="o">+</span><span class="s2">&quot;.xlsx&quot;</span>
@@ -166,6 +209,26 @@
                     <span class="bp">self</span><span class="o">.</span><span class="n">write_new_data</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">p_M</span><span class="p">,</span> <span class="n">exp_data_paths</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span></div>
             
 <div class="viewcode-block" id="opt_find.find_opt_kernels"><a class="viewcode-back" href="../opt_find.html#opt_find.opt_find.find_opt_kernels">[docs]</a>    <span class="k">def</span> <span class="nf">find_opt_kernels</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sample_num</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;kernels&#39;</span><span class="p">,</span> <span class="n">data_name</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Finds optimal kernels for the PBE model by minimizing the difference between </span>
+<span class="sd">        simulation results and experimental data.</span>
+<span class="sd">        </span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        sample_num : `int`</span>
+<span class="sd">            Number of samples to use in the optimization process.</span>
+<span class="sd">        method : `str`, optional</span>
+<span class="sd">            Optimization method to use.</span>
+<span class="sd">                - &#39;kernels&#39;: Optimizes kernel parameters for each data set individually and then computes the average of the resulting kernel parameters across all data sets.</span>
+<span class="sd">                - &#39;delta&#39; : Averages the delta values across data sets before optimization, leading to a single kernel that optimizes the average delta.</span>
+<span class="sd">        data_name : `str`, optional</span>
+<span class="sd">            Name of the experimental data file (without labels).</span>
+<span class="sd">        </span>
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        `tuple`</span>
+<span class="sd">            A tuple containing optimized kernels in PBE and their difference to original kernels(if given).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="n">data_name</span> <span class="o">==</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s2">&quot;Please specify the name of the training data without labels!&quot;</span><span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
@@ -247,6 +310,16 @@
         
         
 <div class="viewcode-block" id="opt_find.write_new_data"><a class="viewcode-back" href="../opt_find.html#opt_find.opt_find.write_new_data">[docs]</a>    <span class="k">def</span> <span class="nf">write_new_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pop</span><span class="p">,</span> <span class="n">exp_data_path</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Saves the calculation results in the format of experimental data.</span>
+<span class="sd">    </span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        pop : :class:`pop.population`</span>
+<span class="sd">            The population instance for which data is being generated.</span>
+<span class="sd">        exp_data_path : `str`</span>
+<span class="sd">            The file path where the experimental data will be saved.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
         <span class="c1"># save the calculation result in experimental data form</span>
         <span class="n">x_uni</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">calc_x_uni</span><span class="p">(</span><span class="n">pop</span><span class="p">)</span>
         <span class="n">v_uni</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">calc_v_uni</span><span class="p">(</span><span class="n">pop</span><span class="p">)</span>
@@ -280,6 +353,10 @@
 <div class="viewcode-block" id="opt_find.visualize_distribution"><a class="viewcode-back" href="../opt_find.html#opt_find.opt_find.visualize_distribution">[docs]</a>    <span class="k">def</span> <span class="nf">visualize_distribution</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pop</span><span class="p">,</span> <span class="n">corr_beta_ori</span><span class="p">,</span> <span class="n">alpha_prim_ori</span><span class="p">,</span> <span class="n">corr_beta_opt</span><span class="p">,</span> 
                                <span class="n">alpha_prim_opt</span><span class="p">,</span> <span class="n">exp_data_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span><span class="n">ax</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span><span class="n">fig</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
                                <span class="n">close_all</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span><span class="n">clr</span><span class="o">=</span><span class="s1">&#39;k&#39;</span><span class="p">,</span><span class="n">scl_a4</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span><span class="n">figsze</span><span class="o">=</span><span class="p">[</span><span class="mf">12.8</span><span class="p">,</span><span class="mf">6.4</span><span class="o">*</span><span class="mf">1.5</span><span class="p">]):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Visualizes the distribution at the last time step.</span>
+<span class="sd">        </span>
+<span class="sd">        &quot;&quot;&quot;</span>
         <span class="c1">## Recalculate PSD using original parameter</span>
         <span class="c1">## Todo: set_comp_para with original parameter</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">algo</span><span class="o">.</span><span class="n">calc_pop</span><span class="p">(</span><span class="n">pop</span><span class="p">,</span> <span class="n">corr_beta</span><span class="o">=</span><span class="n">corr_beta_ori</span><span class="p">,</span> <span class="n">alpha_prim</span><span class="o">=</span><span class="n">alpha_prim_ori</span><span class="p">)</span>
@@ -332,6 +409,10 @@
         <span class="k">return</span> <span class="n">fig</span></div>
     
 <div class="viewcode-block" id="opt_find.save_as_png"><a class="viewcode-back" href="../opt_find.html#opt_find.opt_find.save_as_png">[docs]</a>    <span class="k">def</span> <span class="nf">save_as_png</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fig</span><span class="p">,</span> <span class="n">file_name</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Saves a figure as a PNG file.</span>
+<span class="sd">        </span>
+<span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">file_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">base_path</span><span class="p">,</span> <span class="n">file_name</span><span class="p">)</span>
         <span class="n">fig</span><span class="o">.</span><span class="n">savefig</span><span class="p">(</span><span class="n">file_path</span><span class="p">,</span> <span class="n">dpi</span><span class="o">=</span><span class="mi">150</span><span class="p">)</span>
         <span class="k">return</span> <span class="mi">0</span></div></div>

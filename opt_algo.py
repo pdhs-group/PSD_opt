@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-Created on Wed Nov 15 14:38:56 2023
-
-@author: px2030
+Calculate the difference between the PSD of the simulation results and the experimental data.
+Minimize the difference by optimization algorithm to obtain the kernel of PBE.
 """
 import numpy as np
 import math
@@ -15,6 +14,31 @@ from func.func_read_exp import write_read_exp
 from scipy.interpolate import interp1d
 
 class opt_algo():
+    """
+    Class definition for calculations within optimization process class.
+
+    Attributes
+    ----------
+    n_iter : `int`, optional
+        Number of iterations of the optimization process. Default is 100.
+    delta_flag : `str`, optional
+        Which data from the PSD is used for the calculation. Default is 'q3'. Options include:
+        
+        - 'q3': Number density distribution
+        - 'Q3': Cumulative distribution
+        - 'x_10': Particle size corresponding to 10% cumulative distribution
+        - 'x_50': Particle size corresponding to 50% cumulative distribution
+        - 'x_90': Particle size corresponding to 90% cumulative distribution
+    cost_func_type : `str`, optional
+        Method for calculating the PSD difference. Default is 'MSE'. Options include:
+        
+        - 'MSE': Mean Squared Error
+        - 'RMSE': Root Mean Squared Error
+        - 'MAE': Mean Absolute Error
+        - 'KL': Kullback–Leibler divergence (Only q3 and Q3 are compatible with KL)
+    calc_init_N : `bool`, optional
+        Whether to use experimental data to calculate initial conditions. If False, the initial conditions for PBE need to be defined manually. Default is False.
+    """
     def __init__(self):
         self.n_iter = 100
         ## delta_flag = 1: use q3
@@ -22,7 +46,7 @@ class opt_algo():
         ## delta_flag = 3: use x_10
         ## delta_flag = 4: use x_50
         ## delta_flag = 5: use x_90
-        self.delta_flag = 1     
+        self.delta_flag = 'q3'    
         ## 'MSE': Mean Squared Error
         ## 'RMSE': Root Mean Squared Error
         ## 'MAE': Mean Absolute Error
@@ -32,11 +56,50 @@ class opt_algo():
         self.calc_init_N = False
     #%%  Optimierer    
     def calc_delta(self, corr_beta=None, alpha_prim=None, scale=1, sample_num=1, exp_data_path=None):
+        """
+        Calculate the difference (delta) of PSD.
+        
+        - This method first calls :meth:`~.calc_pop` to calculate the PBE under the current kernel.
+        - Then calls :meth:`~.calc_delta_tem` to calculate delta corresponding to experimental data.
+        
+        Parameters
+        ----------
+        corr_beta : `float`
+            Collision frequency correction factor for agglomeration in PBE.
+        alpha_prim : `array`
+            Collision efficiency for agglomeration in PBE.
+        scale : `int`, optional. Default 1.
+            The actual return result is delta*scale. delta is absolute and always positive. 
+            Setting scale to 1 is suitable for optimizers that look for minimum values, 
+            and -1 is suitable for those that look for maximum values.
+        sample_num : `int`, optional. Default 1.
+            Set how many sets of experimental data are used simultaneously for optimization.
+        exp_data_path : `str`
+            path for experimental data.
+        """
         self.calc_pop(self.p, corr_beta, alpha_prim, self.t_vec)
 
         return self.calc_delta_tem(sample_num, exp_data_path, scale, self.p)
     
     def calc_delta_agg(self, corr_agg=None, scale=1, sample_num=1, exp_data_path=None):
+        """
+        Calculate the difference (delta) of PSD.
+        
+        - The function is exactly the same as :meth:`~.calc_delta`, but receives corr_agg (agglomeration rate). Then calls `~.return_syth_beta` to compute the equivalent corr_beta and alpha_prim.
+        
+        Parameters
+        ----------
+        corr_agg : `array`
+            Agglomeration rate in PBE.
+        scale : `int`, optional. Default 1.
+            The actual return result is delta*scale. delta is absolute and always positive. 
+            Setting scale to 1 is suitable for optimizers that look for minimum values, 
+            and -1 is suitable for those that look for maximum values.
+        sample_num : `int`, optional. Default 1.
+            Set how many sets of experimental data are used simultaneously for optimization.
+        exp_data_path : `str`
+            path for experimental data.
+        """
         corr_beta = self.return_syth_beta(corr_agg)
         alpha_prim = corr_agg / corr_beta
 
@@ -45,6 +108,23 @@ class opt_algo():
         return self.calc_delta_tem(sample_num, exp_data_path, scale, self.p)
 
     def calc_delta_tem(self, sample_num, exp_data_path, scale, pop):
+        """
+        Loop through all the experimental data and calculate the average diffences.
+        
+        Parameters
+        ----------
+        sample_num : `int`, optional. Default 1.
+            Set how many sets of experimental data are used simultaneously for optimization.
+        exp_data_path : `str`
+            path for experimental data.
+        pop : :class:`pop.population`
+            Instance of the PBE.
+            
+        Returns   
+        -------
+        (delta_sum * scale) / x_uni_num : `float`
+            Average value of PSD's difference for corresponding to all particle sizes. 
+        """
         kde_list = []
         x_uni = self.calc_x_uni(pop)
         for idt in range(self.num_t_steps):
@@ -96,8 +176,28 @@ class opt_algo():
             x_uni_num = len(x_uni_exp)  
             return (delta_sum * scale) / x_uni_num
     
-    def optimierer(self, init_points=4, sample_num=1, hyperparameter=None, exp_data_path=None):
-        if self.method == 'BO':
+    def optimierer(self, method='BO', init_points=4, sample_num=1, hyperparameter=None, exp_data_path=None):
+        """
+        Optimize the corr_beta and alpha_prim based on :meth:`~.calc_delta`. 
+        Results are saved in corr_beta_opt and alpha_prim_opt.
+        
+        Parameters
+        ----------
+        method : `str`
+            Which algorithm to use for optimization.
+        init_points : `int`, optional. Default 4.
+            Number of steps for random exploration in BayesianOptimization.
+        sample_num : `int`, optional. Default 1.
+            Set how many sets of experimental data are used simultaneously for optimization.
+        exp_data_path : `str`
+            path for experimental data.
+            
+        Returns   
+        -------
+        delta_opt : `float`
+            Optimized value of the objective.
+        """
+        if method == 'BO':
             if self.p.dim == 1:
                 pbounds = {'corr_beta_log': (-3, 3), 'alpha_prim': (0, 1)}
                 objective = lambda corr_beta_log, alpha_prim: self.calc_delta(
@@ -138,6 +238,26 @@ class opt_algo():
         return delta_opt  
     
     def optimierer_agg(self, method='BO', init_points=4, sample_num=1, hyperparameter=None, exp_data_path=None):
+        """
+        Optimize the corr_agg based on :meth:`~.calc_delta_agg`. 
+        Results are saved in corr_agg_opt.
+        
+        Parameters
+        ----------
+        method : `str`
+            Which algorithm to use for optimization.
+        init_points : `int`, optional. Default 4.
+            Number of steps for random exploration in BayesianOptimization.
+        sample_num : `int`, optional. Default 1.
+            Set how many sets of experimental data are used simultaneously for optimization.
+        exp_data_path : `str`
+            path for experimental data.
+            
+        Returns   
+        -------
+        delta_opt : `float`
+            Optimized value of the objective.
+        """
         if method == 'BO':
             if self.p.dim == 1:
                 pbounds = {'corr_agg_log': (-3, 3)}
@@ -181,12 +301,46 @@ class opt_algo():
         return delta_opt  
     
     def return_syth_beta(self,corr_agg):
+        """
+        Calculate and return a synthetic beta value.
+
+        This method calculates the maximum value of `corr_agg`, takes its logarithm to base 10, 
+        rounds it up to the nearest integer, and returns 10 raised to the power of this integer.
+        
+        Parameters
+        ----------
+        corr_agg : `array`
+            The correction factors for aggregation.
+    
+        Returns
+        -------
+        float
+            The synthetic beta value
+        """
         max_val = max(corr_agg)
         power = np.log10(max_val)
         power = np.ceil(power)
         return 10**power
     
     def cost_fun(self, data_exp, data_mod):
+        """
+        Calculate the difference(cost) between experimental and model data.
+        
+        This method supports multiple cost function types including Mean Squared Error (MSE), 
+        Root Mean Squared Error (RMSE), Mean Absolute Error (MAE), and Kullback-Leibler (KL) divergence. 
+        
+        Parameters
+        ----------
+        data_exp : `array`
+            The experimental data.
+        data_mod : `array`
+            The data generated by the simulation.
+        
+        Returns
+        -------
+        float
+            The calculated cost based on the specified cost function type.
+        """
         if self.cost_func_type == 'MSE':
             return mean_squared_error(data_mod, data_exp)
         elif self.cost_func_type == 'RMSE':
@@ -203,7 +357,21 @@ class opt_algo():
     #%% Data Process  
     ## Read the experimental data and re-interpolate the particle distribution 
     ## of the experimental data according to the simulation results.
-    def read_exp(self, exp_data_path):      
+    def read_exp(self, exp_data_path):  
+        """
+        Reads experimental data from a specified path and processes it.
+    
+        Parameters
+        ----------
+        exp_data_path : `str`
+            Path to the experimental data.
+    
+        Returns
+        -------
+        `tuple of array`
+            - `x_uni_exp`: An array of unique particle sizes.
+            - `sumN_uni_exp`: An array of sum of number concentrations for the unique particle sizes.
+        """
         exp_data = write_read_exp(exp_data_path, read=True)
         df = exp_data.get_exp_data(self.t_all)
         x_uni_exp = df.index.to_numpy()
@@ -211,6 +379,31 @@ class opt_algo():
         return x_uni_exp, sumN_uni_exp
     
     def function_noise(self, ori_data):
+        """
+        Adds noise to the original data based on the specified noise type.
+        
+        The method supports four types of noise: Gaussian ('Gaus'), Uniform ('Uni'), 
+        Poisson ('Po'), and Multiplicative ('Mul'). The type of noise and its strength 
+        are determined by the `noise_type` and `noise_strength` attributes, respectively.
+        
+        Parameters
+        ----------
+        ori_data : `array`
+            The original data to which noise will be added.
+        
+        Returns
+        -------
+        `array`
+            The noised data.
+        
+        Notes
+        -----
+        - Gaussian noise is added with mean 0 and standard deviation `noise_strength`.
+        - Uniform noise is distributed over [-`noise_strength`/2, `noise_strength`/2).
+        - Poisson noise uses `noise_strength` as lambda (expected value of interval).
+        - Multiplicative noise is Gaussian with mean 1 and standard deviation `noise_strength`,
+          and it is multiplied by the original data instead of being added.
+        """
         rows, cols = ori_data.shape
         noise = np.zeros((rows, cols))
         if self.noise_type == 'Gaus':
@@ -242,7 +435,27 @@ class opt_algo():
     ## Kernel density estimation
     ## data_ori must be a quantity rather than a relative value!
     def KDE_fit(self, x_uni_ori, data_ori, bandwidth='scott', kernel_func='epanechnikov'):
-            
+        """
+        Fit a Kernel Density Estimation (KDE) to the original data.
+        
+        This method applies KDE to the original data using specified bandwidth and kernel function. 
+        
+        Parameters
+        ----------
+        x_uni_ori : `array`
+            The unique values of the data variable, must be a one-dimensional array.
+        data_ori : `array`
+            The original data corresponding to `x_uni_ori`.
+        bandwidth : `str`, optional
+            The bandwidth to use for the kernel density estimation. Defaults to 'scott'.
+        kernel_func : `str`, optional
+            The kernel function to use for KDE. Defaults to 'epanechnikov'.
+        
+        Returns
+        -------
+        sklearn.neighbors.kde.KernelDensity
+            The fitted KDE model.
+        """    
         # KernelDensity requires input to be a column vector
         # So x_uni_re must be reshaped
         x_uni_ori_re = x_uni_ori.reshape(-1, 1)
@@ -253,6 +466,21 @@ class opt_algo():
         return kde
     
     def KDE_score(self, kde, x_uni_new):
+        """
+        Evaluate the KDE model on new data points and normalize the results.
+        
+        Parameters
+        ----------
+        kde : sklearn.neighbors.kde.KernelDensity
+            The fitted KDE model from :meth:`~.KDE_fit`.
+        x_uni_new :`array`
+            New unique data points where the KDE model is evaluated.
+        
+        Returns
+        -------
+        `array`
+            The smoothed and normalized data based on the KDE model.
+        """
         x_uni_new_re = x_uni_new.reshape(-1, 1) 
         data_smoothing = np.exp(kde.score_samples(x_uni_new_re))
         
@@ -265,6 +493,21 @@ class opt_algo():
         return data_smoothing
     
     def traverse_path(self, label, path_ori):
+        """
+        Update the file path or list of paths based on the label.
+        
+        Parameters
+        ----------
+        label : `int`
+            The label to update in the file path(s).
+        path_ori : `str` or `list` of `str`
+            The original file path or list of file paths to be updated.
+        
+        Returns
+        -------
+        `str` or `list` of `str`
+            The updated file path.
+        """
         def update_path(path, label):
             if label == 0:
                 return path.replace(".xlsx", f"_{label}.xlsx")
@@ -277,11 +520,16 @@ class opt_algo():
             return update_path(path_ori, label)        
     #%% PBE    
     def create_1d_pop(self, disc='geo'):
-        
+        """
+        Instantiate one-dimensional populations for both non-magnetic (NM) and magnetic (M) particles.
+        """
         self.p_NM = population(dim=1,disc=disc)
         self.p_M = population(dim=1,disc=disc)
             
     def calc_pop(self, pop, corr_beta, alpha_prim, t_vec=None):
+        """
+        Configure and calculate the PBE.
+        """
         pop.COLEVAL = 2
         pop.EFFEVAL = 2
         pop.CORR_BETA = corr_beta
@@ -304,6 +552,27 @@ class opt_algo():
         
     def set_comp_para(self, R01_0='r0_005', R03_0='r0_005', dist_path_NM=None, dist_path_M=None,
                       R_NM=2.9e-7, R_M=2.9e-7):
+        """
+        Set component parameters for non-magnetic and magnetic particle.
+        
+        Configures the particle size distribution (PSD) parameters from provided paths or sets
+        default values.
+        
+        Parameters
+        ----------
+        R01_0 : `str`, optional
+            Key for accessing the initial radius of NM particles from the PSD dictionary. Defaults to 'r0_005'.
+        R03_0 : `str`, optional
+            Key for accessing the initial radius of M particles from the PSD dictionary. Defaults to 'r0_005'.
+        dist_path_NM : `str`, optional
+            Path to the file containing the PSD dictionary for NM particles. If None, default radii are used.
+        dist_path_M : `str`, optional
+            Path to the file containing the PSD dictionary for M particles. If None, default radii are used.
+        R_NM : `float`, optional
+            Default radius for NM particles if `dist_path_NM` is not provided. Defaults to 2.9e-7.
+        R_M : `float`, optional
+            Default radius for M particles if `dist_path_M` is not provided. Defaults to 2.9e-7.
+        """
         if (not self.calc_init_N) and (dist_path_NM is not None and dist_path_M is not None):
             self.p.USE_PSD = True
             psd_dict_NM = np.load(dist_path_NM,allow_pickle=True).item()
@@ -327,12 +596,28 @@ class opt_algo():
         self.p_M.DIST1 = self.p.DIST3
         
     def calc_all_R(self):
+        """
+        Calculate the radius for particles in all PBEs.
+        """
         self.p.calc_R()
         self.p_NM.calc_R()
         self.p_M.calc_R()
     
     ## only for 1D-pop, 
     def set_init_N(self, sample_num, exp_data_paths, init_flag):
+        """
+        Initialize the number concentration N for 1D populations based on experimental data.
+        
+        Parameters
+        ----------
+        sample_num : `int`
+            The number of sets of experimental data used for initialization.
+        exp_data_paths : `list of str`
+            Paths to the experimental data for initialization.
+        init_flag : `str`
+            The method to use for initialization: 'int' for interpolation or 'mean' for averaging
+            the initial sets.
+        """
         self.calc_all_R()
         self.set_init_N_1D(self.p_NM, sample_num, exp_data_paths[1], init_flag)
         self.set_init_N_1D(self.p_M, sample_num, exp_data_paths[2], init_flag)
@@ -341,6 +626,24 @@ class opt_algo():
         self.p.N[1, 1:, 0] = self.p_M.N[1:, 0]
     
     def set_init_N_1D(self, pop, sample_num, exp_data_path, init_flag):
+        """
+        Initialize the number concentration N for a single 1D population using experimental data.
+        
+        It processes the experimental data to align with the population's discrete size grid,
+        using either interpolation or averaging based on the `init_flag`. Supports processing
+        multiple samples of experimental data for averaging purposes.
+        
+        Parameters
+        ----------
+        pop : :class:`pop.population`
+            The population instance (either NM or M) to initialize.
+        sample_num : `int`
+            Number of experimental data sets used for initialization.
+        exp_data_path : `str`
+            Path to the experimental data file.
+        init_flag : `str`
+            Initialization method: 'int' for interpolation, 'mean' for averaging.
+        """
         x_uni = self.calc_x_uni(pop)
         if sample_num == 1:
             x_uni_exp, sumN_uni_init_sets = self.read_exp(exp_data_path)
@@ -380,9 +683,15 @@ class opt_algo():
         pop.N[pop.N < (thr * pop.N[1:, 0].max())]=0     
         
     def calc_v_uni(self, pop):
+        """
+        Calculate unique volume values for a given population.
+        """
         return np.setdiff1d(pop.V, [-1, 0])*1e18
     
     def calc_x_uni(self, pop):
+        """
+        Calculate unique particle diameters from volume values for a given population.
+        """
         v_uni = self.calc_v_uni(pop)
         # Because the length unit in the experimental data is millimeters 
         # and in the simulation it is meters, so it needs to be converted 
@@ -392,6 +701,30 @@ class opt_algo():
         return x_uni
         
     def re_calc_distribution(self, x_uni, q3=None, sum_uni=None, flag='all'):
+        """
+        Recalculate distribution metrics for a given population and distribution data.
+        
+        Can operate on either q3 or sum_uni distribution data to calculate Q3, q3, and particle
+        diameters corresponding to specific percentiles (x_10, x_50, x_90).
+        
+        Parameters
+        ----------
+        x_uni : `array`
+            Unique particle diameters.
+        q3 : `array`, optional
+            q3 distribution data.
+        sum_uni : `array`, optional
+            sum_uni distribution data.
+        flag : `str`, optional
+            Specifies which metrics to return. Defaults to 'all', can be a comma-separated list
+            of 'q3', 'Q3', 'x_10', 'x_50', 'x_90'.
+        
+        Returns
+        -------
+        `tuple`
+            Selected distribution metrics based on the `flag`. Can include q3, Q3, x_10, x_50,
+            and x_90 values.
+        """
         if q3 is not None:
             q3_new = q3
             Q3_new = np.apply_along_axis(lambda q3_slice: 
@@ -426,6 +759,9 @@ class opt_algo():
             return tuple(outputs[f.strip()] for f in flags if f.strip() in outputs)
         
     def calc_Q3(self, x_uni, q3=None, sum_uni=None):
+        """
+        Calculate the cumulative distribution Q3 from q3 or sum_uni distribution data.
+        """
         Q3 = np.zeros_like(q3) if q3 is not None else np.zeros_like(sum_uni)
         if q3 is None:
             Q3 = np.cumsum(sum_uni)/sum_uni.sum()
@@ -436,11 +772,17 @@ class opt_algo():
                     Q3[i] = Q3[i-1] + q3[i] * (x_uni[i] - x_uni[i-1])
         return Q3
     def calc_sum_uni(self, Q3, sum_total):
+        """
+        Calculate the sum_uni distribution from the Q3 cumulative distribution and total sum.
+        """
         sum_uni = np.zeros_like(Q3)
         for i in range(1, len(Q3)):
             sum_uni[i] = sum_total * max((Q3[i] -Q3[i-1] ), 0)
         return sum_uni
     def calc_q3(self, Q3, x_uni):
+        """
+        Calculate the q3 distribution from the Q3 cumulative distribution.
+        """
         q3 = np.zeros_like(Q3)
         q3[1:] = np.diff(Q3) / np.diff(x_uni)
         return q3

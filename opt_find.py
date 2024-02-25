@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-Created on Tue Dec  5 09:22:00 2023
-
-@author: px2030
+This script is to instantiate the :class:`opt_algo` or :class:`opt_algo_multi()` classes, pass parameters to them, 
+and return optimization results. It includes additional functionalities for generating synthetic data and 
+visualizing results.
 """
 
 import numpy as np
@@ -18,11 +18,44 @@ import matplotlib.pyplot as plt
 import plotter.plotter as pt          
 
 class opt_find():
+    """
+    A class to manage the optimization process for finding the kernel of PBE.
+    
+    Attributes
+    ----------
+    multi_flag : bool
+        Flag to choose between single dimension optimization (False) and multi-dimensional optimization (True).
+    
+    Methods
+    -------
+
+    """
     def __init__(self):
         self.multi_flag=True
         
     def init_opt_algo(self, dim=1, t_init= None, t_vec=None, add_noise=False, noise_type='Gaus',
                       noise_strength=0.01,smoothing=False):
+        """
+        Initializes the optimization algorithm with specified parameters and configurations.
+        
+        Parameters
+        ----------
+        dim : `int`, optional
+            Dimensionality of the population to optimize. Default is 1.
+        t_init : `array`, optional
+            Time points used to calculate the initial conditions for the simulation. Default is None.
+        t_vec : `array`, optional
+            Time vector over which to perform the optimization. Default is None.
+        add_noise : `bool`, optional
+            Flag to determine whether to add noise to the data. Default is False.
+        noise_type : `str`, optional
+            Type of noise to add: Gaussian ('Gaus'), Uniform ('Uni'), 
+            Poisson ('Po'), and Multiplicative ('Mul'). Default is 'Gaus'.
+        noise_strength : `float`, optional
+            Strength of the noise to add. Default is 0.01.
+        smoothing : `bool`, optional
+            Flag to determine whether to apply smoothing(KDE) to the data. Default is False.
+        """
         if not self.multi_flag:
             self.algo = opt_algo()
         else:
@@ -54,6 +87,16 @@ class opt_find():
         self.base_path = os.path.join(self.algo.p.pth, "data")
         
     def generate_data(self, sample_num=1, add_info=""):
+        """
+        Generates synthetic data based on simulation results, optionally adding noise.
+        
+        Parameters
+        ----------
+        sample_num : `int`, optional
+            Number of synthetic data samples to generate. Default is 1.
+        add_info : `str`, optional
+            Additional information to append to the file name. Default is an empty string.
+        """
         if self.algo.add_noise:
             # Modify the file name to include noise type and strength
             filename = f"Sim_{self.algo.noise_type}_{self.algo.noise_strength}"+add_info+".xlsx"
@@ -88,6 +131,26 @@ class opt_find():
                     self.write_new_data(self.algo.p_M, exp_data_paths[2])
             
     def find_opt_kernels(self, sample_num, method='kernels', data_name=None):
+        """
+        Finds optimal kernels for the PBE model by minimizing the difference between 
+        simulation results and experimental data.
+        
+        Parameters
+        ----------
+        sample_num : `int`
+            Number of samples to use in the optimization process.
+        method : `str`, optional
+            Optimization method to use.
+                - 'kernels': Optimizes kernel parameters for each data set individually and then computes the average of the resulting kernel parameters across all data sets.
+                - 'delta' : Averages the delta values across data sets before optimization, leading to a single kernel that optimizes the average delta.
+        data_name : `str`, optional
+            Name of the experimental data file (without labels).
+        
+        Returns
+        -------
+        `tuple`
+            A tuple containing optimized kernels in PBE and their difference to original kernels(if given).
+        """
         if data_name == None:
             warnings.warn("Please specify the name of the training data without labels!")
         else:
@@ -169,6 +232,16 @@ class opt_find():
         
         
     def write_new_data(self, pop, exp_data_path):
+        """
+        Saves the calculation results in the format of experimental data.
+    
+        Parameters
+        ----------
+        pop : :class:`pop.population`
+            The population instance for which data is being generated.
+        exp_data_path : `str`
+            The file path where the experimental data will be saved.
+        """
         # save the calculation result in experimental data form
         x_uni = self.algo.calc_x_uni(pop)
         v_uni = self.algo.calc_v_uni(pop)
@@ -202,6 +275,10 @@ class opt_find():
     def visualize_distribution(self, pop, corr_beta_ori, alpha_prim_ori, corr_beta_opt, 
                                alpha_prim_opt, exp_data_path=None,ax=None,fig=None,
                                close_all=False,clr='k',scl_a4=1,figsze=[12.8,6.4*1.5]):
+        """
+        Visualizes the distribution at the last time step.
+        
+        """
         ## Recalculate PSD using original parameter
         ## Todo: set_comp_para with original parameter
         self.algo.calc_pop(pop, corr_beta=corr_beta_ori, alpha_prim=alpha_prim_ori)
@@ -254,6 +331,10 @@ class opt_find():
         return fig
     
     def save_as_png(self, fig, file_name):
+        """
+        Saves a figure as a PNG file.
+        
+        """
         file_path = os.path.join(self.base_path, file_name)
         fig.savefig(file_path, dpi=150)
         return 0

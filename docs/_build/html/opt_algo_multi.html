@@ -109,12 +109,53 @@
 <dl class="py method">
 <dt class="sig sig-object py" id="opt_algo_multi.opt_algo_multi.calc_delta">
 <span class="sig-name descname"><span class="pre">calc_delta</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">corr_beta</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_prim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_num</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exp_data_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/opt_algo_multi.html#opt_algo_multi.calc_delta"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_algo_multi.opt_algo_multi.calc_delta" title="Permalink to this definition"></a></dt>
-<dd></dd></dl>
+<dd><p>Calculate the difference (delta) of PSD.</p>
+<ul class="simple">
+<li><p>This method first calls <a class="reference internal" href="opt_algo.html#opt_algo.opt_algo.calc_pop" title="opt_algo.opt_algo.calc_pop"><code class="xref py py-meth docutils literal notranslate"><span class="pre">calc_pop()</span></code></a> to calculate the PBE under the current kernel.</p></li>
+<li><p>Then calls <a class="reference internal" href="opt_algo.html#opt_algo.opt_algo.calc_delta_tem" title="opt_algo.opt_algo.calc_delta_tem"><code class="xref py py-meth docutils literal notranslate"><span class="pre">calc_delta_tem()</span></code></a> to calculate delta corresponding to experimental data.</p></li>
+</ul>
+<section id="parameters">
+<h2>Parameters<a class="headerlink" href="#parameters" title="Permalink to this heading"></a></h2>
+<dl>
+<dt>corr_beta<span class="classifier"><cite>float</cite></span></dt><dd><p>Collision frequency correction factor for agglomeration in PBE.</p>
+</dd>
+<dt>alpha_prim<span class="classifier"><cite>array</cite></span></dt><dd><p>Collision efficiency for agglomeration in PBE.</p>
+</dd>
+<dt>scale<span class="classifier"><cite>int</cite>, optional. Default 1.</span></dt><dd><p>The actual return result is delta*scale. delta is absolute and always positive. 
+Setting scale to 1 is suitable for optimizers that look for minimum values, 
+and -1 is suitable for those that look for maximum values.</p>
+</dd>
+<dt>sample_num<span class="classifier"><cite>int</cite>, optional. Default 1.</span></dt><dd><p>Set how many sets of experimental data are used simultaneously for optimization.</p>
+</dd>
+<dt>exp_data_path<span class="classifier"><cite>str</cite></span></dt><dd><p>path for experimental data.</p>
+</dd>
+</dl>
+</section>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="opt_algo_multi.opt_algo_multi.calc_delta_agg">
 <span class="sig-name descname"><span class="pre">calc_delta_agg</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">corr_agg</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_num</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exp_data_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/opt_algo_multi.html#opt_algo_multi.calc_delta_agg"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_algo_multi.opt_algo_multi.calc_delta_agg" title="Permalink to this definition"></a></dt>
-<dd></dd></dl>
+<dd><p>Calculate the difference (delta) of PSD.</p>
+<ul class="simple">
+<li><p>The function is exactly the same as <a class="reference internal" href="#opt_algo_multi.opt_algo_multi.calc_delta" title="opt_algo_multi.opt_algo_multi.calc_delta"><code class="xref py py-meth docutils literal notranslate"><span class="pre">calc_delta()</span></code></a>, but receives corr_agg (agglomeration rate). Then calls <cite>~.return_syth_beta</cite> to compute the equivalent corr_beta and alpha_prim.</p></li>
+</ul>
+<section id="id1">
+<h2>Parameters<a class="headerlink" href="#id1" title="Permalink to this heading"></a></h2>
+<dl>
+<dt>corr_agg<span class="classifier"><cite>array</cite></span></dt><dd><p>Agglomeration rate in PBE.</p>
+</dd>
+<dt>scale<span class="classifier"><cite>int</cite>, optional. Default 1.</span></dt><dd><p>The actual return result is delta*scale. delta is absolute and always positive. 
+Setting scale to 1 is suitable for optimizers that look for minimum values, 
+and -1 is suitable for those that look for maximum values.</p>
+</dd>
+<dt>sample_num<span class="classifier"><cite>int</cite>, optional. Default 1.</span></dt><dd><p>Set how many sets of experimental data are used simultaneously for optimization.</p>
+</dd>
+<dt>exp_data_path<span class="classifier"><cite>str</cite></span></dt><dd><p>path for experimental data.</p>
+</dd>
+</dl>
+</section>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="opt_algo_multi.opt_algo_multi.calc_all_pop">
