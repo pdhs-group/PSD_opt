@@ -23,9 +23,9 @@ pt.plot_init(mrksze=8,lnewdth=1)
 #%% PARAM
 t = np.arange(0, 11, 1, dtype=float)
 NS = 30
-S = 2.5
+S = 2
 V01, V02 = 2e-9, 2e-9
-dim = 1
+dim = 2
 ## BREAKRVAL == 1: 1, constant breakage rate
 ## BREAKRVAL == 2: x*y or x + y, breakage rate is related to particle size
 BREAKRVAL = 2
