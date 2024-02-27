@@ -26,7 +26,7 @@ NS = 30
 S = 2
 R01, R02 = 1, 1
 V01, V02 = 1e-9, 1e-9
-V_crit = 1e-5
+V_crit = 1e-6
 corr_beta = 1
 dim = 2
 ## BREAKRVAL == 1: 1, constant breakage rate
@@ -41,16 +41,16 @@ art_flag = "mix"
 
 #%% FUNCTIONS
 @jit(nopython=True)
-def calc_1d_agglomeration(N,V_p,V_e,F_M,B_c,M_c,D):
-    for e in range(1,len(V_p)-1):
+def calc_1d_agglomeration(N,V_p,V_e,F_M,B_c,M_c,D,agg_crit):
+    for e in range(1,agg_crit):
         # Loop through all pivots (twice)
-        for i in range(len(V_p)):
-                for j in range(len(V_p)):
+        for i in range(agg_crit):
+                for j in range(agg_crit):
                     F=F_M[i,j]
                     # Check if the agglomeration of i and j produce an 
                     # agglomerate inside the current cell 
                     # Use upper edge as "reference point"
-                    if V_p[i]+V_p[j] > V_crit:
+                    if V_p[i]+V_p[j] >= V_p[agg_crit]:
                         continue
                     if V_e[e] <= V_p[i]+V_p[j] < V_e[e+1]:
                         # Total birthed agglomerates
@@ -59,30 +59,25 @@ def calc_1d_agglomeration(N,V_p,V_e,F_M,B_c,M_c,D):
                         D[j] -= F*N[i]*N[j]
     return B_c, M_c, D
 @jit(nopython=True)
-def calc_1d_breakage(N,V_p,V_e,B_R,B_F,B_c,M_c,D):
-    ## if breakage function is independent of parent particle, 
-    ## then the its integral only needs to be calculated once
-    V_e_tem = np.copy(V_e)
-    V_e_tem[1] = 0.0
-    
+def calc_1d_breakage(N,V_p,V_e,B_R,bf_int,xbf_int,B_c,M_c,D):
     #  Loop through all pivots
     for e in range(1,len(V_p)):
-        b = B_F[e-1,e-1]
-        b_int = b_integrate(V_p[e], V_e_tem[e], b=b)
-        xb_int = xb_integrate(V_p[e], V_e_tem[e], b=b)
-        B_c[e] += B_R[e-1]*b_int*N[e]
-        M_c[e] += B_R[e-1]*xb_int*N[e]
+        b = bf_int[e-1,e-1]
+        xb = xbf_int[e-1,e-1]
+        S = B_R[e-1]
+        B_c[e] += S*b*N[e]
+        M_c[e] += S*xb*N[e]
+        D[e] = -S*N[e]
         for i in range(e+1, len(V_p)):
-            b = B_F[e-1,i-1]
-            b_int = b_integrate(V_e_tem[e+1], V_e_tem[e], b=b)
-            xb_int = xb_integrate(V_e_tem[e+1], V_e_tem[e], b=b)
-            B_c[e] += B_R[i-1]*b_int*N[i]
-            M_c[e] += B_R[i-1]*xb_int*N[i]
-        D[e] = -B_R[e-1]*N[e]
+            b = bf_int[e-1,i-1]
+            xb = xbf_int[e-1,i-1]
+            S = B_R[i-1]
+            B_c[e] += S*b*N[i]
+            M_c[e] += S*xb*N[i]
     return B_c, M_c, D
   
 @jit(nopython=True)      
-def dNdt_1D(t,N,NS,V_p,V_e,F_M,B_R,B_F,art_flag):
+def dNdt_1D(t,N,NS,V_p,V_e,F_M,B_R,bf_int,xbf_int,art_flag,agg_crit):
     dNdt = np.zeros(N.shape)
     M_c = np.zeros(V_e.shape)
     D = np.zeros(N.shape)
@@ -93,19 +88,19 @@ def dNdt_1D(t,N,NS,V_p,V_e,F_M,B_R,B_F,art_flag):
     V_p_ex[:-1] = V_p
     
     if art_flag == "agglomeration":
-        B_c, M_c, D = calc_1d_agglomeration(N,V_p,V_e,F_M,B_c,M_c,D)
+        B_c, M_c, D = calc_1d_agglomeration(N,V_p,V_e,F_M,B_c,M_c,D,agg_crit)
     elif art_flag == "breakage":
-        B_c, M_c, D = calc_1d_breakage(N,V_p,V_e,B_R,B_F,B_c,M_c,D)
+        B_c, M_c, D = calc_1d_breakage(N,V_p,V_e,B_R,bf_int,xbf_int,B_c,M_c,D)
     elif art_flag == "mix":
-        B_c, M_c, D = calc_1d_agglomeration(N, V_p, V_e, F_M, B_c, M_c, D)
-        B_c, M_c, D = calc_1d_breakage(N, V_p, V_e, B_R, B_F, B_c, M_c, D)
+        B_c, M_c, D = calc_1d_agglomeration(N, V_p, V_e, F_M, B_c, M_c, D,agg_crit)
+        B_c, M_c, D = calc_1d_breakage(N, V_p, V_e, B_R, bf_int,xbf_int, B_c, M_c, D)
     else:
         raise Exception("Current art_flag is not supported")
                     
     v[B_c != 0] = M_c[B_c != 0]/B_c[B_c != 0]
     
     # Assign BIRTH on each pivot
-    for i in range(len(V_p)):            
+    for i in range(len(V_p)):
         # Add contribution from LEFT cell (if existent)
         B[i] += B_c[i]*lam(v[i], V_p, i, 'm')*heaviside_jit(V_p[i]-v[i],0.5)
         # Left Cell, right half
@@ -128,113 +123,91 @@ def heaviside_jit(x1, x2):
     else:
         return x2
 @jit(nopython=True)
-def calc_2d_agglomeration(N,V_p,V_e1,V_e2,F_M,B_c,M1_c,M2_c,D):
+def calc_2d_agglomeration(N,V_p,V_e1,V_e2,F_M,B_c,M1_c,M2_c,D,agg_crit):
+    x_crit = agg_crit[0]
+    y_crit = agg_crit[1]
     # Loop through all edges
     # Go till len()-1 to make sure nothing is collected in the BORDER
     # This automatically solves border issues. If B_c is 0 in the border, nothing has to be distributed
-    for e1 in range(len(V_p[:,0])-1):
-        for e2 in range(len(V_p[0,:])-1):
+    for e1 in range(x_crit):
+        for e2 in range(y_crit):
             # Loop through all pivots (twice)
-            for i in range(len(V_p[:,0])):
-                for j in range(len(V_p[0,:])):
+            for i in range(x_crit):
+                for j in range(y_crit):
                     # a <= i and b <= j (equal is allowed!) 
-                    for a in range(len(V_p[:,0])): #i+1
-                        for b in range(len(V_p[:,0])): #j+1
-                            if V_p[i,j] + V_p[a,b] > V_crit:
+                    for a in range(x_crit): #i+1
+                        for b in range(y_crit): #j+1
+                            if V_p[i,j] + V_p[a,b] >= V_p[x_crit,y_crit]:
                                 continue
                             # Check if the agglomeration of ij and ab produce an 
                             # agglomerate inside the current cell 
                             # Use upper edge as "reference point"
                             if (V_e1[e1] <= V_p[i,0]+V_p[a,0] < V_e1[e1+1]) and \
                                 (V_e2[e2] <= V_p[0,j]+V_p[0,b] < V_e2[e2+1]):
-                                # if abs(V_p[a,b]+V_p[i,j]-V_p[e1,e2]) < 1e-5*V_p[1,0]:
-                                #     #print(i,a,c,'|',j,b,d)
-                                #     zeta = 1
-                                # else:
-                                #     zeta = 2
-                                zeta = 2    
                                 F = F_M[i,j,a,b]
-                                # Total birthed agglomerates
-                                # e1 and e2 start at 1 (upper edge) --> corresponds to cell "below"
-                                # Use B_c[e1-1, e2-1] (e.g. e1=1, e2=1 corresponds to the first CELL [0,0])
-                                B_c[e1,e2] += F*N[i,j]*N[a,b]/zeta
-                                M1_c[e1,e2] += F*N[i,j]*N[a,b]*(V_p[i,0]+V_p[a,0])/zeta
-                                M2_c[e1,e2] += F*N[i,j]*N[a,b]*(V_p[0,j]+V_p[0,b])/zeta
-     
+                                B_c[e1,e2] += F*N[i,j]*N[a,b]/2
+                                M1_c[e1,e2] += F*N[i,j]*N[a,b]*(V_p[i,0]+V_p[a,0])/2
+                                M2_c[e1,e2] += F*N[i,j]*N[a,b]*(V_p[0,j]+V_p[0,b])/2
                                 # Track death 
                                 D[i,j] -= F*N[i,j]*N[a,b]
-                                # D[a,b] -= F*N[i,j]*N[a,b]/zeta
-                                #print(D)
+
     return B_c,M1_c,M2_c,D
 @jit(nopython=True)
-def calc_2d_breakage(N,V_p,V_e1,V_e2,B_R,B_F,B_c,M1_c,M2_c,D):
-    V_e1_tem = np.copy(V_e1)
-    V_e2_tem = np.copy(V_e2)
-    V_e1_tem[1] = 0.0
-    V_e2_tem[1] = 0.0
-    V_p1 = V_p[:,0]
-    V_p2 = V_p[0,:]
-    
+def calc_2d_breakage(N,V_p,V_e1,V_e2,B_R,bf_int,xbf_int,ybf_int,B_c,M1_c,M2_c,D):
     ## only to check volume conservation
     # D_M = np.zeros(N.shape)
-    ## Because the cells on the lower boundary (e1=0 or e2=0)are not allowed to break outward, 
-    ## 1d calculations need to be performed on the two lower boundaries.
     for e1 in range(1, len(V_p1)):
         for e2 in range(1, len(V_p2)):
             ## The contribution of self-fragmentation
-            b = B_F[e1-1,e2-1,e1-1,e2-1]
+            b = bf_int[e1-1,e2-1,e1-1,e2-1]
+            xb = xbf_int[e1-1,e2-1,e1-1,e2-1]
+            yb = ybf_int[e1-1,e2-1,e1-1,e2-1]
             S = B_R[e1-1,e2-1]
             if e1 != 1 and e2 != 1:
-                b_int = b_integrate(V_p1[e1], V_e1_tem[e1], V_p2[e2], V_e2_tem[e2], b)
-                xb_int = xb_integrate(V_p1[e1], V_e1_tem[e1], V_p2[e2], V_e2_tem[e2], b)
-                yb_int = yb_integrate(V_p1[e1], V_e1_tem[e1], V_p2[e2], V_e2_tem[e2], b)
-                B_c[e1,e2] += S*b_int*N[e1,e2]
-                M1_c[e1,e2] += S*xb_int*N[e1,e2]
-                M2_c[e1,e2] += S*yb_int*N[e1,e2]
+                B_c[e1,e2] += S*b*N[e1,e2]
+                M1_c[e1,e2] += S*xb*N[e1,e2]
+                M2_c[e1,e2] += S*yb*N[e1,e2]
                 # D_M[e1,e2] = -S*N[e1,e2]*(V_p1[e1]+V_p2[e2])
             # calculate death rate    
                 D[e1,e2] = -S*N[e1,e2]
             
-            ## The contributions of fragments on the same y-axis
+            ## The contributions of fragments on the same horizontal axis
             for i in range(e1+1,len(V_p1)):
-                b = B_F[e1-1,e2-1,i-1,e2-1]
+                b = bf_int[e1-1,e2-1,i-1,e2-1]
+                xb = xbf_int[e1-1,e2-1,i-1,e2-1]
+                yb = ybf_int[e1-1,e2-1,i-1,e2-1]
                 S = B_R[i-1,e2-1]
                 if e2 != 1:
-                    b_int = b_integrate(V_e1_tem[e1+1], V_e1_tem[e1], V_p2[e2], V_e2_tem[e2], b)
-                    xb_int = xb_integrate(V_e1_tem[e1+1], V_e1_tem[e1], V_p2[e2], V_e2_tem[e2], b)
-                    yb_int = yb_integrate(V_e1_tem[e1+1], V_e1_tem[e1], V_p2[e2], V_e2_tem[e2], b)
-                    B_c[e1,e2] += S*b_int*N[i,e2] 
-                    M1_c[e1,e2] += S*xb_int*N[i,e2]
-                    M2_c[e1,e2] += S*yb_int*N[i,e2]
-            ## The contributions of fragments on the same x-axis
+                    B_c[e1,e2] += S*b*N[i,e2] 
+                    M1_c[e1,e2] += S*xb*N[i,e2]
+                    M2_c[e1,e2] += S*yb*N[i,e2]
+            ## The contributions of fragments on the same vertical axis
             for j in range(e2+1,len(V_p2)):
-                b = B_F[e1-1,e2-1,e1-1,j-1]
+                b = bf_int[e1-1,e2-1,e1-1,j-1]
+                xb = xbf_int[e1-1,e2-1,e1-1,j-1]
+                yb = ybf_int[e1-1,e2-1,e1-1,j-1]
                 S = B_R[e1-1,j-1]
                 if e1 != 1:
-                    b_int = b_integrate(V_p1[e1], V_e1_tem[e1], V_e2_tem[e2+1], V_e2_tem[e2], b)
-                    xb_int = xb_integrate(V_p1[e1], V_e1_tem[e1], V_e2_tem[e2+1], V_e2_tem[e2], b)
-                    yb_int = yb_integrate(V_p1[e1], V_e1_tem[e1], V_e2_tem[e2+1], V_e2_tem[e2], b)
-                    B_c[e1,e2] += S*b_int*N[e1,j]
-                    M1_c[e1,e2] += S*xb_int*N[e1,j]
-                    M2_c[e1,e2] += S*yb_int*N[e1,j] 
+                    B_c[e1,e2] += S*b*N[e1,j]
+                    M1_c[e1,e2] += S*xb*N[e1,j]
+                    M2_c[e1,e2] += S*yb*N[e1,j] 
             ## The contribution from the fragments of large particles on the upper right side         
             for i in range(e1+1, len(V_p1)):
                 for j in range(e2+1,len(V_p2)):  
-                    b = B_F[e1-1,e2-1,i-1,j-1]
+                    b = bf_int[e1-1,e2-1,i-1,j-1]
+                    xb = xbf_int[e1-1,e2-1,i-1,j-1]
+                    yb = ybf_int[e1-1,e2-1,i-1,j-1]
                     S = B_R[i-1,j-1]
-                    b_int = b_integrate(V_e1_tem[e1+1], V_e1_tem[e1], V_e2_tem[e2+1], V_e2_tem[e2], b)
-                    xb_int = xb_integrate(V_e1_tem[e1+1], V_e1_tem[e1], V_e2_tem[e2+1], V_e2_tem[e2], b)
-                    yb_int = yb_integrate(V_e1_tem[e1+1], V_e1_tem[e1], V_e2_tem[e2+1], V_e2_tem[e2], b)
-                    B_c[e1,e2] += S*b_int*N[i,j]
-                    M1_c[e1,e2] += S*xb_int*N[i,j]
-                    M2_c[e1,e2] += S*yb_int*N[i,j]    
+                    B_c[e1,e2] += S*b*N[i,j]
+                    M1_c[e1,e2] += S*xb*N[i,j]
+                    M2_c[e1,e2] += S*yb*N[i,j]    
     # volume_erro = M1_c.sum() + M2_c.sum() + D_M.sum()    
     # print(volume_erro)            
     return B_c,M1_c,M2_c,D
 
 
 @jit(nopython=True)
-def dNdt_2D(t,NN,NS,V_p,V_e1,V_e2,F_M,B_R,B_F,art_flag):
+def dNdt_2D(t,NN,NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,art_flag,agg_crit):
   
     N = np.copy(NN) 
     N = np.reshape(N,(NS,NS))
@@ -254,22 +227,26 @@ def dNdt_2D(t,NN,NS,V_p,V_e1,V_e2,F_M,B_R,B_F,art_flag):
     dNdt_bound_y = np.zeros(NS)
     
     if art_flag == "agglomeration":
-        B_c, M1_c,M2_c, D = calc_2d_agglomeration(N,V_p,V_e1,V_e2,F_M,B_c,M1_c,M2_c,D)
+        B_c, M1_c,M2_c, D = calc_2d_agglomeration(N,V_p,V_e1,V_e2,F_M,B_c,M1_c,M2_c,D,agg_crit)
     elif art_flag == "breakage":
-        dNdt_bound_x = dNdt_1D(t,N[:,1],NS,V_p[:,0],V_e1,F_M[:,0,:,0],B_R[:,0],B_F[:,0,:,0],"breakage")
-        dNdt_bound_y = dNdt_1D(t,N[1,:],NS,V_p[0,:],V_e2,F_M[:,0,:,0],B_R[0,:],B_F[0,:,0,:],"breakage")
+        ## Because the cells on the lower boundary (e1=0 or e2=0)are not allowed to break outward, 
+        ## 1d calculations need to be performed on the two lower boundaries.
+        dNdt_bound_x = dNdt_1D(t,N[:,1],NS,V_p[:,0],V_e1,F_M[:,0,:,0],B_R[:,0],bf_int[:,0,:,0],xbf_int[:,0,:,0],"breakage",agg_crit[0])
+        dNdt_bound_y = dNdt_1D(t,N[1,:],NS,V_p[0,:],V_e2,F_M[:,0,:,0],B_R[0,:],bf_int[0,:,0,:],ybf_int[0,:,0,:],"breakage",agg_crit[1])
         ## the same to B /= 2, because there is no death on primary particle
         dNdt_bound_x[1] /= 2
         dNdt_bound_y[1] /= 2
-        B_c, M1_c,M2_c, D = calc_2d_breakage(N,V_p,V_e1,V_e2,B_R,B_F,B_c,M1_c,M2_c,D)
+        B_c, M1_c,M2_c, D = calc_2d_breakage(N,V_p,V_e1,V_e2,B_R,bf_int,xbf_int,ybf_int,B_c,M1_c,M2_c,D)
     elif art_flag == "mix":
-        B_c, M1_c,M2_c, D = calc_2d_agglomeration(N,V_p,V_e1,V_e2,F_M,B_c,M1_c,M2_c,D)
-        dNdt_bound_x = dNdt_1D(t,N[:,1],NS,V_p[:,0],V_e1,F_M[:,0,:,0],B_R[:,0],B_F[:,0,:,0],"breakage")
-        dNdt_bound_y = dNdt_1D(t,N[1,:],NS,V_p[0,:],V_e2,F_M[:,0,:,0],B_R[0,:],B_F[0,:,0,:],"breakage")
+        B_c, M1_c,M2_c, D = calc_2d_agglomeration(N,V_p,V_e1,V_e2,F_M,B_c,M1_c,M2_c,D,agg_crit)
+        ## Because the cells on the lower boundary (e1=0 or e2=0)are not allowed to break outward, 
+        ## 1d calculations need to be performed on the two lower boundaries.
+        dNdt_bound_x = dNdt_1D(t,N[:,1],NS,V_p[:,0],V_e1,F_M[:,0,:,0],B_R[:,0],bf_int[:,0,:,0],xbf_int[:,0,:,0],"breakage",agg_crit[0])
+        dNdt_bound_y = dNdt_1D(t,N[1,:],NS,V_p[0,:],V_e2,F_M[:,0,:,0],B_R[0,:],bf_int[0,:,0,:],ybf_int[0,:,0,:],"breakage",agg_crit[1])
         ## the same to B /= 2, because there is no death on primary particle
         dNdt_bound_x[1] /= 2
         dNdt_bound_y[1] /= 2
-        B_c, M1_c,M2_c, D = calc_2d_breakage(N,V_p,V_e1,V_e2,B_R,B_F,B_c,M1_c,M2_c,D)
+        B_c, M1_c,M2_c, D = calc_2d_breakage(N,V_p,V_e1,V_e2,B_R,bf_int,xbf_int,ybf_int,B_c,M1_c,M2_c,D)
     else:
         raise Exception("Current art_flag is not supported")
     
@@ -358,20 +335,20 @@ def delta(i,j,a,b):
         return 1
     
 @jit(nopython=True)
-def b_integrate(x_up,x_low,y_up=None,y_low=None,b=None):
+def b_integrate(x_up,x_low,y_up=None,y_low=None,bf=None):
     if y_up is None or y_low is None:
-        return (x_up - x_low)*b
+        return (x_up - x_low)*bf
     else:
-        return (x_up- x_low)*(y_up - y_low)*b
+        return (x_up- x_low)*(y_up - y_low)*bf
 @jit(nopython=True)    
-def xb_integrate(x_up,x_low,y_up=None,y_low=None,b=None):
+def xb_integrate(x_up,x_low,y_up=None,y_low=None,bf=None):
     if y_up is None or y_low is None:
-        return (x_up**2 - x_low**2)*0.5*b
+        return (x_up**2 - x_low**2)*0.5*bf
     else:
-        return (x_up**2- x_low**2)*(y_up - y_low)*0.5*b
+        return (x_up**2- x_low**2)*(y_up - y_low)*0.5*bf
 @jit(nopython=True)    
-def yb_integrate(x_up,x_low,y_up=None,y_low=None,b=None):
-    return (y_up**2 - y_low**2)*(x_up-x_low)*0.5*b  
+def yb_integrate(x_up,x_low,y_up=None,y_low=None,bf=None):
+    return (y_up**2 - y_low**2)*(x_up-x_low)*0.5*bf  
 
 if __name__ == "__main__":    
     #%% NEW 1D
@@ -398,6 +375,15 @@ if __name__ == "__main__":
             # ith pivot is mean between ith and (i+1)th edge
             V_p[i-1] = (V_e[i] + V_e[i-1])/2
             
+        index_crit = np.where(V_p < V_crit)[0]
+        agg_crit = index_crit[-1] if (index_crit.size > 0 and index_crit.size < len(V_p)) else (len(V_p) -1)
+        agg_crit = agg_crit
+        ## Let the integration range associated with the breakage function start from zero 
+        ## to ensure mass conservation  
+        V_e_tem = np.zeros(NS) 
+        V_e_tem[:] = V_e[1:]
+        V_e_tem[0] = 0.0
+        
         F_M = np.zeros((NS-1,NS-1))
         ## constant kernal
         # F_M[:,:] = 1
@@ -410,6 +396,9 @@ if __name__ == "__main__":
         
         B_R = np.zeros(NS-1)
         B_F = np.zeros((NS-1,NS-1))
+        bf_int = np.zeros((NS-1,NS-1))
+        xbf_int = np.zeros((NS-1,NS-1))
+        
         if BREAKRVAL == 1:
             B_R[1:] = 1
         elif BREAKRVAL == 2:
@@ -421,17 +410,24 @@ if __name__ == "__main__":
         ## Validation: breakage function dependent only on parent particle
         for idx, tmp in np.ndenumerate(B_F):
             a = idx[0]; i = idx[1]
-            if i != 0:
+            if i != 0 and a <= i:
                 if BREAKFVAL == 1:  
                     B_F[idx] = 4 / (V_p[i+1])
                 elif BREAKFVAL == 2:
-                    B_F[idx] = 2 / (V_p[i+1])
+                    # B_F[idx] = 2 / (V_p[i+1])
+                    bf = 2 / (V_p[i+1])
+                    if a == i:
+                        bf_int[idx] = b_integrate(V_p[a+1],V_e_tem[a],bf=bf)
+                        xbf_int[idx] = xb_integrate(V_p[a+1],V_e_tem[a],bf=bf)
+                    else:
+                        bf_int[idx] = b_integrate(V_e_tem[a+1],V_e_tem[a],bf=bf)
+                        xbf_int[idx] = xb_integrate(V_e_tem[a+1],V_e_tem[a],bf=bf)
         # SOLVE    
         import scipy.integrate as integrate
         RES = integrate.solve_ivp(dNdt_1D,
                                   [0, max(t)], 
                                   N[:,0], t_eval=t,
-                                  args=(NS,V_p,V_e,F_M,B_R,B_F,art_flag),
+                                  args=(NS,V_p,V_e,F_M,B_R,bf_int,xbf_int,art_flag,agg_crit),
                                   method='RK45',first_step=0.1,rtol=1e-3)
         
         # Reshape and save result to N and t_vec
@@ -444,7 +440,7 @@ if __name__ == "__main__":
         print(np.sum(N0*V_p), np.sum(NE*V_p))
         
         print('### Initial dNdt..')
-        dNdt0=dNdt_1D(0,N[:,0],NS,V_p,V_e,F_M,B_R,B_F,art_flag)
+        dNdt0=dNdt_1D(0,N[:,0],NS,V_p,V_e,F_M,B_R,bf_int,xbf_int,art_flag,agg_crit)
         print(dNdt0)   
         
         fig=plt.figure(figsize=[10,2])    
@@ -547,9 +543,24 @@ if __name__ == "__main__":
             N[-1,-1,0] = 1   
             N[0,1,0] = 0.3
             N[1,0,0] = 0.3
+        
+        ## Let the integration range associated with the breakage function start from zero 
+        ## to ensure mass conservation   
+        V_e1_tem = np.zeros(NS) 
+        V_e2_tem = np.zeros(NS) 
+        V_e1_tem[:] = V_e1[1:]
+        V_e2_tem[:] = V_e2[1:]
+        V_e1_tem[0] = 0.0
+        V_e2_tem[0] = 0.0
 
         V_p[:,0] = V_p1 
         V_p[0,:] = V_p2 
+        index1_crit = np.where(V_p1 < V_crit)[0]
+        index2_crit = np.where(V_p2 < V_crit)[0]
+        agg_crit = np.zeros(2, dtype=int)
+        agg_crit[0] = index1_crit[-1] if (index1_crit.size > 0 and index1_crit.size < len(V_p1)) else (len(V_p1) -1)
+        agg_crit[1] = index2_crit[-1] if (index2_crit.size > 0 and index2_crit.size < len(V_p2)) else (len(V_p2) -1)
+        
         # Calculate remaining entries of V_e and V_p and other matrices
         for i in range(NS): #range(NS)
             for j in range(NS): #range(NS)
@@ -567,33 +578,72 @@ if __name__ == "__main__":
         F_M = np.zeros((NS-1,NS-1,NS-1,NS-1))
         B_R = np.zeros((NS-1,NS-1))
         B_F = np.zeros((NS-1,NS-1,NS-1,NS-1))
+        bf_int = np.zeros((NS-1,NS-1,NS-1,NS-1))
+        xbf_int = np.zeros((NS-1,NS-1,NS-1,NS-1))
+        ybf_int = np.zeros((NS-1,NS-1,NS-1,NS-1))
         
         F_M_tem=1
         for idx, tmp in np.ndenumerate(B_F):
             a = idx[0]; b = idx[1] ; i = idx[2]; j = idx[3] 
-            if a+b == 0 or i+j==0:
-                continue
-            
+            if a + b != 0 and i + j != 0:
+                F_M[idx] = F_M_tem
             # F_M[idx] = (V_p[a,b] + V_p[i,j]) * corr_beta
-            F_M[idx] = F_M_tem
- 
-            if BREAKFVAL == 1: 
-                # if i == 0 and j == 0:
-                #     continue
-                # elif i == 0:
-                #     B_F[idx] = 4 / (V_p2[j])
-                # elif j == 0:
-                #     B_F[idx] = 4 / (V_p1[i])
-                # else:
-                B_F[idx] = 4 / (V_p1[i+1]*V_p2[j+1])
-            elif BREAKFVAL == 2:
-                if i == 0:
-                    B_F[idx] = 2 / (V_p2[j+1])
-                elif j == 0:
-                    B_F[idx] = 2 / (V_p1[i+1])
-                else:
-                    B_F[idx] = 2 / (V_p1[i+1]*V_p2[j+1])
-                    
+            if i + j != 0 and a<=i or b <= j:
+                if BREAKFVAL == 1: 
+                    # if i == 0 and j == 0:
+                    #     continue
+                    # elif i == 0:
+                    #     B_F[idx] = 4 / (V_p2[j])
+                    # elif j == 0:
+                    #     B_F[idx] = 4 / (V_p1[i])
+                    # else:
+                    B_F[idx] = 4 / (V_p1[i+1]*V_p2[j+1])
+                elif BREAKFVAL == 2:
+                    if i == 0:
+                        ## for left boundary/y
+                        # B_F[idx] = 2 / (V_p2[j+1])
+                        bf = 2 / (V_p2[j+1])
+                        if j == 0:
+                            continue
+                        elif b == j:
+                            bf_int[idx] = b_integrate(V_p2[b+1],V_e2_tem[b],bf=bf)
+                            ybf_int[idx] = xb_integrate(V_p2[b+1],V_e2_tem[b],bf=bf)
+                        else:
+                            bf_int[idx] = b_integrate(V_e2_tem[b+1],V_e2_tem[b],bf=bf)
+                            ybf_int[idx] = xb_integrate(V_e2_tem[b+1],V_e2_tem[b],bf=bf)
+                    elif j == 0:
+                        ## for low boundary/x
+                        # B_F[idx] = 2 / (V_p1[i+1])
+                        bf = 2 / (V_p1[i+1])
+                        if a == i:
+                            bf_int[idx] = b_integrate(V_p1[a+1],V_e1_tem[a],bf=bf)
+                            xbf_int[idx] = xb_integrate(V_p1[a+1],V_e1_tem[a],bf=bf)
+                        else:
+                            bf_int[idx] = b_integrate(V_e1_tem[a+1],V_e1_tem[a],bf=bf)
+                            xbf_int[idx] = xb_integrate(V_e1_tem[a+1],V_e1_tem[a],bf=bf)
+                    else:
+                        # B_F[idx] = 2 / (V_p1[i+1]*V_p2[j+1])
+                        bf = 2 / (V_p1[i+1]*V_p2[j+1])
+                        ## The contributions of fragments on the same vertical axis
+                        if a == i and b == j:
+                            bf_int[idx] = b_integrate(V_p1[a+1], V_e1_tem[a], V_p2[b+1], V_e2_tem[b], bf)
+                            xbf_int[idx] = xb_integrate(V_p1[a+1], V_e1_tem[a], V_p2[b+1], V_e2_tem[b], bf)
+                            ybf_int[idx] = yb_integrate(V_p1[a+1], V_e1_tem[a], V_p2[b+1], V_e2_tem[b], bf)
+                        elif a == i:
+                            bf_int[idx] = b_integrate(V_p1[a+1], V_e1_tem[a], V_e2_tem[b+1], V_e2_tem[b], bf)
+                            xbf_int[idx] = xb_integrate(V_p1[a+1], V_e1_tem[a], V_e2_tem[b+1], V_e2_tem[b], bf)
+                            ybf_int[idx] = yb_integrate(V_p1[a+1], V_e1_tem[a], V_e2_tem[b+1], V_e2_tem[b], bf)
+                        ## The contributions of fragments on the same horizontal axis
+                        elif b == j:   
+                            bf_int[idx] = b_integrate(V_e1_tem[a+1], V_e1_tem[a], V_p2[b+1], V_e2_tem[b], bf)
+                            xbf_int[idx] = xb_integrate(V_e1_tem[a+1], V_e1_tem[a], V_p2[b+1], V_e2_tem[b], bf)
+                            ybf_int[idx] = yb_integrate(V_e1_tem[a+1], V_e1_tem[a], V_p2[b+1], V_e2_tem[b], bf)
+                        ## The contribution from the fragments of large particles on the upper right side 
+                        else:
+                            bf_int[idx] = b_integrate(V_e1_tem[a+1], V_e1_tem[a], V_e2_tem[b+1], V_e2_tem[b], bf)
+                            xbf_int[idx] = xb_integrate(V_e1_tem[a+1], V_e1_tem[a], V_e2_tem[b+1], V_e2_tem[b], bf)
+                            ybf_int[idx] = yb_integrate(V_e1_tem[a+1], V_e1_tem[a], V_e2_tem[b+1], V_e2_tem[b], bf)
+                        
         if BREAKRVAL == 1:
             B_R[:,:] = 1
             B_R[0,0] = 0
@@ -617,7 +667,7 @@ if __name__ == "__main__":
         RES = integrate.solve_ivp(dNdt_2D,
                                   [0, max(t)], 
                                   N[:,:,0].reshape(-1), t_eval=t,
-                                  args=(NS,V_p,V_e1,V_e2,F_M,B_R,B_F,art_flag),
+                                  args=(NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,art_flag,agg_crit),
                                   method='RK23',first_step=0.1,rtol=1e-3)
         
         # Reshape and save result to N and t_vec
@@ -630,7 +680,7 @@ if __name__ == "__main__":
         print(np.sum(N0*V_p), np.sum(NE*V_p))
         
         print('### Initial dNdt..')
-        dNdt0=dNdt_2D(0,N[:,:,0].reshape(-1),NS,V_p,V_e1,V_e2,F_M,B_R,B_F,art_flag).reshape(NS,NS)#.reshape(NS,NS)
+        dNdt0=dNdt_2D(0,N[:,:,0].reshape(-1),NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,art_flag,agg_crit).reshape(NS,NS)#.reshape(NS,NS)
         print(dNdt0)
         
         VE2, VE1 = np.meshgrid(V_e2, V_e1)

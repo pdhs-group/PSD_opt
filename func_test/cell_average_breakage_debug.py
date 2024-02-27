@@ -200,7 +200,7 @@ def dNdt_2D(t,NN,V_p1,V_p2,V_e1,V_e2,B_R,B_F,BREAKFVAL):
             # calculate death rate    
             D[e1,e2] = -S*N[e1,e2]
             
-            ## The contributions of fragments on the same y-axis
+            ## The contributions of fragments on the same horizontal axis
             for i in range(e1+1,len(V_p1)):
                 b = B_F[e1,e2,i,e2]
                 S = B_R[i,e2]
@@ -217,7 +217,7 @@ def dNdt_2D(t,NN,V_p1,V_p2,V_e1,V_e2,B_R,B_F,BREAKFVAL):
                     B_c[e1,e2] += S*b_int*N[i,e2] 
                     M1_c[e1,e2] += S*xb_int*N[i,e2]
                     M2_c[e1,e2] += S*yb_int*N[i,e2]
-            ## The contributions of fragments on the same x-axis
+            ## The contributions of fragments on the same vertical axis
             for j in range(e2+1,len(V_p2)):
                 b = B_F[e1,e2,e1,j]
                 S = B_R[e1,j]
