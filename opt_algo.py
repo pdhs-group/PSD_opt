@@ -545,7 +545,6 @@ class opt_algo():
             pop.full_init(calc_alpha=False)
         else:
             pop.calc_F_M()
-        if pop.dim == 1: pop.calc_B_M()
         
         if t_vec is None: pop.solve_PBE(t_vec=self.t_vec)      
         else: pop.solve_PBE(t_vec=t_vec)  

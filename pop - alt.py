@@ -6,8 +6,8 @@ import os
 import numpy as np
 import math
 import scipy.integrate as integrate
-## jit function
-import func.jit_pop as jit
+from numba import jit
+from numba.extending import overload, register_jitable
 ## For plots
 import matplotlib.pyplot as plt
 import plotter.plotter as pt          
@@ -58,12 +58,11 @@ class population():
         if self.dim == 1:
             # Define right-hand-side function depending on discretization
             if self.disc == 'geo':
-                rhs = jit.get_dNdt_1d_geo
-                args=(self.NS,self.V,self.V_e,self.F_M,self.B_R,self.int_B_F,
-                      self.intx_B_F,self.process_art,self.aggl_crit_id)
+                rhs = get_dNdt_1d_geo_jit
+                args=(self.V,self.V_e,self.F_M,self.B_M,self.NS,self.THR_DN)
             elif self.disc == 'uni':
-                rhs = jit.get_dNdt_1d_uni                
-                args=(self.V,self.F_M,self.NS,self.THR_DN)
+                rhs = get_dNdt_1d_uni_jit                
+                args=(self.V,self.F_M,self.B_M,self.NS,self.THR_DN)
             self.RES = integrate.solve_ivp(rhs, 
                                            [0, t_max], 
                                            self.N[:,0], t_eval=t_vec,
@@ -77,17 +76,16 @@ class population():
         elif self.dim == 2:
             # Define right-hand-side function depending on discretization
             if self.disc == 'geo':
-                rhs = jit.get_dNdt_2d_geo
-                args=(self.NS,self.V,self.V_e1,self.V_e3,self.F_M,self.B_R,self.int_B_F,
-                      self.intx_B_F,self.inty_B_F,self.process_art,self.aggl_crit_id)
+                rhs = get_dNdt_2d_geo_jit
+                args=(self.V,self.V1_e,self.V3_e,self.F_M,self.NS,self.THR_DN)
             elif self.disc == 'uni':
-                rhs = jit.get_dNdt_2d_uni   
+                rhs = get_dNdt_2d_uni_jit   
                 args=(self.V,self.V1,self.V3,self.F_M,self.NS,self.THR_DN)
             self.RES = integrate.solve_ivp(rhs, 
                                            [0, t_max], 
                                            np.reshape(self.N[:,:,0],-1), t_eval=t_vec,
                                            args=args,
-                                           method='RK23',first_step=0.1,rtol=1e-3)
+                                           method='RK23',first_step=0.1,rtol=1e-1)
             
             # Reshape and save result to N and t_vec
             self.N = self.RES.y.reshape((self.NS,self.NS,len(self.RES.t)))
@@ -96,9 +94,9 @@ class population():
         elif self.dim == 3:
             # Define right-hand-side function depending on discretization
             if self.disc == 'geo':
-                rhs = jit.get_dNdt_3d_geo
+                rhs = get_dNdt_3d_geo_jit
             elif self.disc == 'uni':
-                rhs = jit.get_dNdt_3d_uni   
+                rhs = get_dNdt_3d_uni_jit   
                 
             self.RES = integrate.solve_ivp(rhs, 
                                            [0, t_max], 
@@ -118,7 +116,7 @@ class population():
         if self.dim == 2:
             for tt in range(0,self.NUM_T): 
                 # Calculate concentration change matrix depending on given timestep
-                DN = jit.get_dNdt_2d_geo(tt,np.reshape(self.N[:,:,tt],-1),self.V,self.V1,self.V3,self.F_M,self.NS,self.THR_DN)
+                DN = get_dNdt_2d_geo_jit(tt,np.reshape(self.N[:,:,tt],-1),self.V,self.V1,self.V3,self.F_M,self.NS,self.THR_DN)
                 DN = DN.reshape((self.NS+3,self.NS+3))       
                 
                 # If timestep is too large, negative concentrations can occur!
@@ -163,7 +161,7 @@ class population():
         if calc_alpha: self.calc_alpha_prim()
         self.calc_F_M()
         self.calc_B_R()
-        self.calc_int_B_F()
+        self.calc_B_F()
      
     ## Calculate R, V and X matrices (radii, total and partial volumes and volume fractions)
     def calc_R(self):
@@ -186,22 +184,16 @@ class population():
                     self.V[i] = i*4*math.pi*self.R01**3/3
                 
             if self.disc == 'geo':
-                self.V_e = np.zeros(self.NS+1)
-                self.V_e[0] = -4*math.pi*self.R01**3/3
-                for i in range(self.NS):         
-                    self.V_e[i+1] = self.S**(i)*4*math.pi*self.R01**3/3
-                    self.V[i] = (self.V_e[i] + self.V_e[i+1]) / 2                    
+                self.V_e = np.zeros(self.NS+1)-1
+                for i in range(len(self.V)-1):         
+                    self.V[i+1] = self.S**(i)*4*math.pi*self.R01**3/3
+                    self.V_e[i+1] = (self.V[i] + self.V[i+1]) / 2
+                self.V_e[-1] = self.V[-1] * (1 + self.S) / 2 
+                        
             # Initialize V, R and ratio matrices
             self.R[1:] = (self.V[1:]*3/(4*math.pi))**(1/3)
             self.X1_vol = np.ones(self.NS) 
             self.X1_a = np.ones(self.NS) 
-            ## Large particle agglomeration may cause the integration to not converge. 
-            ## A Limit can be placed on the particle size.
-            aggl_crit_ids = np.where(self.V < self.aggl_crit)[0]
-            if (aggl_crit_ids.size > 0 and aggl_crit_ids.size < len(self.V)):
-                self.aggl_crit_id = aggl_crit_ids[-1]  
-            else: 
-                self.aggl_crit_id = (len(self.V) -1)
                         
         # 2-D case
         elif self.dim == 2:
@@ -217,15 +209,15 @@ class population():
                     self.V3[i] = i*4*math.pi*self.R03**3/3
             
             if self.disc == 'geo': 
-                self.V_e1 = np.zeros(self.NS+1)
-                self.V_e3 = np.zeros(self.NS+1)
-                self.V_e1[0] = -4*math.pi*self.R01**3/3
-                self.V_e3[0] = -4*math.pi*self.R03**3/3
-                for i in range(self.NS):
-                    self.V_e1[i+1] = self.S**(i)*4*math.pi*self.R01**3/3
-                    self.V_e3[i+1] = self.S**(i)*4*math.pi*self.R03**3/3
-                    self.V1[i] = (self.V_e1[i] + self.V_e1[i+1]) / 2
-                    self.V3[i] = (self.V_e3[i] + self.V_e3[i+1]) / 2
+                self.V1_e = np.zeros(self.NS+1)-1
+                self.V3_e = np.zeros(self.NS+1)-1
+                for i in range(len(self.V1)-1):
+                    self.V1[i+1] = self.S**(i)*4*math.pi*self.R01**3/3
+                    self.V3[i+1] = self.S**(i)*4*math.pi*self.R03**3/3
+                    self.V1_e[i+1] = (self.V1[i] + self.V1[i+1]) / 2
+                    self.V3_e[i+1] = (self.V3[i] + self.V3[i+1]) / 2
+                self.V1_e[-1] = self.V1[-1] * (1 + self.S) / 2 
+                self.V3_e[-1] = self.V3[-1] * (1 + self.S) / 2 
 
             A1 = 3*self.V1/self.R01
             A3 = 3*self.V3/self.R03
@@ -242,8 +234,8 @@ class population():
             
             # Calculate remaining entries of V and other matrices
             # range(1,X) excludes X itself -> self.NS+2
-            for i in range(self.NS):
-                for j in range(self.NS):
+            for i in range(len(self.V1)):
+                for j in range(len(self.V3)):
                     self.V[i,j] = self.V1[i]+self.V3[j]
                     self.R[i,j] = (self.V[i,j]*3/(4*math.pi))**(1/3)
                     if i==0 and j==0:
@@ -256,20 +248,6 @@ class population():
                         self.X3_vol[i,j] = self.V3[j]/self.V[i,j]
                         self.X1_a[i,j] = A1[i]/(A1[i]+A3[j])
                         self.X3_a[i,j] = A3[j]/(A1[i]+A3[j])
-            ## Large particle agglomeration may cause the integration to not converge. 
-            ## A Limit can be placed on the particle size.
-            aggl_crit_ids1 = np.where(self.V1 < self.aggl_crit)[0]
-            aggl_crit_ids2 = np.where(self.V3 < self.aggl_crit)[0]
-            self.aggl_crit_id = np.zeros(2, dtype=int)
-            if (aggl_crit_ids1.size > 0 and aggl_crit_ids1.size < len(self.V1)):
-                self.aggl_crit_id[0] = aggl_crit_ids1[-1]  
-            else: 
-                self.aggl_crit_id[0] = (len(self.V1) -1)
-            if (aggl_crit_ids2.size > 0 and aggl_crit_ids2.size < len(self.V3)):
-                self.aggl_crit_id[1] = aggl_crit_ids2[-1]  
-            else: 
-                self.aggl_crit_id[1] = (len(self.V3) -1)
-                
         # 3-D case                
         elif self.dim == 3:
             
@@ -344,15 +322,7 @@ class population():
             if self.USE_PSD:
                 self.N[1:,0] = self.new_initialize_psd(2*self.R[1:],self.DIST1,self.V01)
             else:
-                if self.process_art == "agglomeration":
-                    self.N[1,0] = self.N01
-                elif self.process_art == "breakage":
-                    self.N[-1,0] = self.N01
-                elif self.process_art == "mix":
-                    self.N[1,0] = self.N01
-                    self.N[-1,0] = self.N01
-                else:
-                    raise Exception("Current process_art not allowed!")
+                self.N[1,0] = self.N01
         
         # 2-D case
         elif self.dim == 2:
@@ -361,16 +331,8 @@ class population():
                 self.N[1:,1,0] = self.new_initialize_psd(2*self.R[1:,0],self.DIST1,self.V01)
                 self.N[1,1:,0] = self.new_initialize_psd(2*self.R[0,1:],self.DIST3,self.V03)
             else:
-                if self.process_art == "agglomeration":
-                    self.N[1,0,0] = self.N01
-                    self.N[0,1,0] = self.N03
-                elif self.process_art == "breakage":
-                    self.N[-1,-1,0] = self.N01
-                elif self.process_art == "mix":
-                    self.N[1,0,0] = self.N01
-                    self.N[0,1,0] = self.N03  
-                    self.N[-1,-1,0] = self.N01
-                
+                self.N[1,0,0] = self.N01
+                self.N[0,1,0] = self.N03
         
         # 3-D case
         elif self.dim == 3:
@@ -394,9 +356,12 @@ class population():
         """
         # 1-D case
         if self.dim == 1:
-            # To avoid mass leakage at the boundary in CAT, boundary cells are not directly involved in the calculation. 
-            # So there is no need to define the corresponding F_M at boundary. F_M is (NS-1)^2 instead (NS)^2
-            self.F_M = np.zeros((self.NS-1,self.NS-1))
+            # Initialize F_M Matrix. NOTE: F_M is defined without the border around the calculation grid
+            # as e.g. N or V are (saving memory and calculations). 
+            # Thus, F_M is (NS+1)^2 instead of (NS+3)^2. As reference, V is (NS+3)^1.
+            self.F_M = np.zeros((self.NS,self.NS))
+            # self.alpha = np.zeros((self.NS+1,self.NS+1))
+            # self.beta = np.zeros((self.NS+1,self.NS+1))
             
             # Go through all agglomeration partners 1 [a] and 2 [i]
             # The current index tuple idx stores them as (a,i)
@@ -462,15 +427,16 @@ class population():
         elif self.dim == 2:
             
             if self.JIT_FM:
-                self.F_M = jit.calc_F_M_2D(self.NS,self.disc,self.COLEVAL,self.CORR_BETA,
+                self.F_M = calc_F_M_2D_jit(self.NS,self.disc,self.COLEVAL,self.CORR_BETA,
                                            self.G,self.R,self.X1_vol,self.X3_vol,
                                            self.EFFEVAL,self.alpha_prim,self.SIZEEVAL,
                                            self.X_SEL,self.Y_SEL)
             
             else:
-                # To avoid mass leakage at the boundary in CAT, boundary cells are not directly involved in the calculation. 
-                # So there is no need to define the corresponding F_M at boundary. F_M is (NS-1)^4 instead (NS)^4
-                self.F_M = np.zeros((self.NS-1,self.NS-1,self.NS-1,self.NS-1))
+                # Initialize F_M Matrix. NOTE: F_M is defined without the border around the calculation grid
+                # as e.g. N or V are (saving memory and calculations). 
+                # Thus, F_M is (NS+1)^4 instead of (NS+3)^4. As reference, V is (NS+3)^2.
+                self.F_M = np.zeros((self.NS,self.NS,self.NS,self.NS))
                 
                 # Go through all agglomeration partners 1 [a,b] and 2 [i,j]
                 # The current index tuple idx stores them as (a,b,i,j)
@@ -551,7 +517,7 @@ class population():
         elif self.dim == 3:
             
             if self.JIT_FM: 
-                self.F_M = jit.calc_F_M_3D(self.NS,self.disc,self.COLEVAL,self.CORR_BETA,
+                self.F_M = calc_F_M_3D_jit(self.NS,self.disc,self.COLEVAL,self.CORR_BETA,
                                            self.G,self.R,self.X1_vol,self.X2_vol,self.X3_vol,
                                            self.EFFEVAL,self.alpha_prim,self.SIZEEVAL,
                                            self.X_SEL,self.Y_SEL)
@@ -738,14 +704,10 @@ class population():
     
     ## Calculate breakage rate matrix. 
     def calc_B_R(self):
-        ## In breakage is not allowed to define parameter of particle without volume
-        ## So B_R is (NS-1) instead (NS)
+        
         # 1-D case
         if self.dim == 1:
-            ## Note: The breakage rate of the smallest particle is 0. 
-            ## Note: Because particles with a volume of zero are skipped, 
-            ##       calculation with V requires (index+1)
-            self.B_R = np.zeros(self.NS-1)
+            self.B_R = np.zeros(self.NS)
             # Power Law Pandy and Spielmann --> See Jeldres2018 (28)
             # for i in range(2,len(self.V)):
             #     self.B_M[i] = self.P1*self.G*(self.V[i]/self.V[2])**self.P2
@@ -753,148 +715,62 @@ class population():
             # Size independent breakage rate --> See Leong2023 (10)
             # only for validation with analytical results
             if self.BREAKRVAL == 1:
-                self.B_R[1:] = 1
+                self.B_R = 1
                 
             # Size dependent breakage rate --> See Leong2023 (10)
             # only for validation with analytical results
             elif self.BREAKRVAL == 2:
                 for idx, tmp in np.ndenumerate(self.B_R):
-                    a = idx[0]
-                    if a != 0:
-                        self.B_R[a] = self.V[a+1]
+                    self.B_R[idx] = self.V[idx]
         # 2-D case            
         if self.dim == 2:
-            self.B_R = np.zeros((self.NS-1, self.NS-1))
+            self.B_R = np.zeros((self.NS, self.NS))
             
             # Size independent breakage rate --> See Leong2023 (10)
             # only for validation with analytical results
             if self.BREAKRVAL == 1:
-                self.B_R[:,:] = 1
-                self.B_R[0,0] = 0
+                self.B_R = 1
                 
             # Size dependent breakage rate --> See Leong2023 (10)
             elif self.BREAKRVAL == 2:
                 for idx, tmp in np.ndenumerate(self.B_R):
                     a = idx[0]; b = idx[1]
-                    ## Note: Because of the conditional restrictions of breakage on the boundary, 
-                    ##       1d calculation needs to be performed on the boundary.
-                    if a == 0 and b == 0:
-                        continue
-                    elif a == 0:
-                        self.B_R[idx] = self.V3[b+1]
-                    elif b == 0:
-                        self.B_R[idx] = self.V1[a+1]
-                    else:
-                        if self.BREAKFVAL == 1:
-                            self.B_R[idx] = self.V1[a+1]*self.V3[b+1]
-                        elif self.BREAKFVAL == 2:
-                            self.B_R[idx] = self.V1[a+1] + self.V3[b+1]
+                    if self.BREAKFVAL == 1:
+                        self.B_R[idx] = self.V1[a] * self.V3[b]  
+                    elif self.BREAKFVAL == 2:
+                        # self.B_R[idx] = self.V1[a] + self.V3[b]  
+                        self.B_R[idx] = self.V[idx] 
                         
             
-    ## Calculate integrated breakage function matrix.         
-    def calc_int_B_F(self):
-        ## In breakage is not allowed to define parameter of particle without volume
-        ## So int_B_F and intx_B_F is (NS-1)^2 instead (NS)^2
+    ## Calculate breakage function matrix.         
+    def calc_B_F(self):
         # 1-D case
         if self.dim == 1:
-            ## Note: The breakage function of the smallest particle is 0. 
-            ##       And small particle can not break into large one. 
-            ## Note: Because particles with a volume of zero are skipped, 
-            ##       calculation with V requires (index+1)
-            self.int_B_F = np.zeros((self.NS-1, self.NS-1))
-            self.intx_B_F = np.zeros((self.NS-1, self.NS-1))
-            ## Let the integration range associated with the breakage function start from zero 
-            ## to ensure mass conservation  
-            V_e_tem = np.zeros(self.NS) 
-            V_e_tem[:] = self.V_e[1:]
-            V_e_tem[0] = 0.0
-            for idx, tmp in np.ndenumerate(self.int_B_F):
+            self.B_F = np.zeros((self.NS, self.NS))
+            for idx, tmp in np.ndenumerate(self.B_F):
                 a = idx[0]; i = idx[1]
             # Conservation of Hypervolume, random breakage into four fragments --> See Leong2023 (10)
             # only for validation with analytical results
                 if self.BREAKFVAL == 1:
-                    B_F = 4 / (self.V[i]+1)
+                    self.B_F[idx] = 4 / (self.V[i])
             # Conservation of First-Order Moments, random breakage into two fragments --> See Leong2023 (10)
             # only for validation with analytical results        
-                elif self.BREAKFVAL == 2:
-                    B_F = 2 / (self.V[i+1])
-                if a == i:
-                    self.int_B_F[idx] = jit.b_integrate(self.V[a+1], V_e_tem[a],bf=B_F)
-                    self.intx_B_F[idx] = jit.xb_integrate(self.V[a+1], V_e_tem[a],bf=B_F)
-                else:
-                    self.int_B_F[idx] = jit.b_integrate(V_e_tem[a+1], V_e_tem[a],bf=B_F)
-                    self.intx_B_F[idx] = jit.xb_integrate(V_e_tem[a+1], V_e_tem[a],bf=B_F)
-                    
+                if self.BREAKFVAL == 2:
+                    self.B_F[idx] = 2 / (self.V[i])
         # 2-D case
-        elif self.dim == 2:
-            if self.JIT_BF == True:
-                self.int_B_F, self.intx_B_F, self.inty_B_F = jit.calc_int_B_F_2D(
-                    self.NS,self.V1,self.V3,self.V_e1,self.V_e3,self.BREAKFVAL)
-            else:
-                self.int_B_F = np.zeros((self.NS-1, self.NS-1, self.NS-1, self.NS-1))
-                self.intx_B_F = np.zeros((self.NS-1, self.NS-1, self.NS-1, self.NS-1))
-                self.inty_B_F = np.zeros((self.NS-1, self.NS-1, self.NS-1, self.NS-1))
-                V_e1_tem = np.zeros(self.NS) 
-                V_e1_tem[:] = self.V_e1[1:]
-                V_e1_tem[0] = 0.0
-                V_e3_tem = np.zeros(self.NS) 
-                V_e3_tem[:] = self.V_e3[1:]
-                V_e3_tem[0] = 0.0
-                for idx, tmp in np.ndenumerate(self.int_B_F):
-                    a = idx[0] ; b = idx[1]; i = idx[2]; j = idx[3]
-                    if i + j != 0 and a<=i or b <= j:
-                        if i == 0:
-                            ## for left boundary/y
-                            if self.BREAKFVAL == 1:
-                                B_F = 4 / (self.V3[j+1])
-                            elif self.BREAKFVAL == 2:
-                                B_F = 2 / (self.V3[j+1])
-                            if j == 0:
-                                continue
-                            elif b == j:
-                                self.int_B_F[idx] = jit.b_integrate(self.V3[b+1],V_e3_tem[b],bf=B_F)
-                                self.inty_B_F[idx] = jit.xb_integrate(self.V3[b+1],V_e3_tem[b],bf=B_F)
-                            else:
-                                self.int_B_F[idx] = jit.b_integrate(V_e3_tem[b+1],V_e3_tem[b],bf=B_F)
-                                self.inty_B_F[idx] = jit.xb_integrate(V_e3_tem[b+1],V_e3_tem[b],bf=B_F)
-                        elif j == 0:
-                            ## for low boundary/x
-                            if self.BREAKFVAL == 1:
-                                B_F = 4 / (self.V1[j+1])
-                            elif self.BREAKFVAL == 2:
-                                B_F = 2 / (self.V1[j+1])
-                            if a == i:
-                                self.int_B_F[idx] = jit.b_integrate(self.V1[a+1],V_e1_tem[a],bf=B_F)
-                                self.intx_B_F[idx] = jit.xb_integrate(self.V1[a+1],V_e1_tem[a],bf=B_F)
-                            else:
-                                self.int_B_F[idx] = jit.b_integrate(V_e1_tem[a+1],V_e1_tem[a],bf=B_F)
-                                self.intx_B_F[idx] = jit.xb_integrate(V_e1_tem[a+1],V_e1_tem[a],bf=B_F)
-                        else:
-                            if self.BREAKFVAL == 1:
-                                B_F = 4 / (self.V1[i+1]*self.V3[j+1])
-                            elif self.BREAKFVAL == 2:
-                                B_F = 2 / (self.V1[i+1]*self.V3[j+1])
-                            ## The contributions of fragments on the same vertical axis
-                            if a == i and b == j:
-                                self.int_B_F[idx] = jit.b_integrate(self.V1[a+1], V_e1_tem[a], self.V3[b+1], V_e3_tem[b], B_F)
-                                self.intx_B_F[idx] = jit.xb_integrate(self.V1[a+1], V_e1_tem[a], self.V3[b+1], V_e3_tem[b], B_F)
-                                self.inty_B_F[idx] = jit.yb_integrate(self.V1[a+1], V_e1_tem[a], self.V3[b+1], V_e3_tem[b], B_F)
-                            elif a == i:
-                                self.int_B_F[idx] = jit.b_integrate(self.V1[a+1], V_e1_tem[a], V_e3_tem[b+1], V_e3_tem[b], B_F)
-                                self.intx_B_F[idx] = jit.xb_integrate(self.V1[a+1], V_e1_tem[a], V_e3_tem[b+1], V_e3_tem[b], B_F)
-                                self.inty_B_F[idx] = jit.yb_integrate(self.V1[a+1], V_e1_tem[a], V_e3_tem[b+1], V_e3_tem[b], B_F)
-                            ## The contributions of fragments on the same horizontal axis
-                            elif b == j:   
-                                self.int_B_F[idx] = jit.b_integrate(V_e1_tem[a+1], V_e1_tem[a], self.V3[b+1], V_e3_tem[b], B_F)
-                                self.intx_B_F[idx] = jit.xb_integrate(V_e1_tem[a+1], V_e1_tem[a], self.V3[b+1], V_e3_tem[b], B_F)
-                                self.inty_B_F[idx] = jit.yb_integrate(V_e1_tem[a+1], V_e1_tem[a], self.V3[b+1], V_e3_tem[b], B_F)
-                            ## The contribution from the fragments of large particles on the upper right side 
-                            else:
-                                self.int_B_F[idx] = jit.b_integrate(V_e1_tem[a+1], V_e1_tem[a], V_e3_tem[b+1], V_e3_tem[b], B_F)
-                                self.intx_B_F[idx] = jit.xb_integrate(V_e1_tem[a+1], V_e1_tem[a], V_e3_tem[b+1], V_e3_tem[b], B_F)
-                                self.inty_B_F[idx] = jit.yb_integrate(V_e1_tem[a+1], V_e1_tem[a], V_e3_tem[b+1], V_e3_tem[b], B_F)
-                
-            
+        if self.dim == 2:
+            self.B_F = np.zeros((self.NS, self.NS, self.NS, self.NS))
+            for idx, tmp in np.ndenumerate(self.B_F):
+                a = idx[0] ; b = idx[1]; i = idx[2]; j = idx[3]
+            # Conservation of Hypervolume, random breakage into four fragments --> See Leong2023 (10)
+            # only for validation with analytical results
+                if self.BREAKFVAL == 1:
+                    self.B_F = 4 / (self.V1[i] * self.V3[j])
+            # Conservation of First-Order Moments, random breakage into two fragments --> See Leong2023 (10)
+            # only for validation with analytical results        
+                if self.BREAKFVAL == 2:
+                    self.B_F = 2 / (self.V1[i] * self.V3[j])     
+        
     ## Visualize / plot population:
     def visualize_distN_t(self,t_plot=None,t_pause=0.5,close_all=False,scl_a4=1,figsze=[12.8,6.4*1.5]):
         # Definition of t_plot:
@@ -1507,15 +1383,12 @@ class population():
         self.S = 2                            # Geometric grid ratio (V[i] = S*V[i-1])
         self.JIT_DN = True                    # Define wheter or not the DN calculation (timeloop) should be precompiled
         self.JIT_FM = True                    # Define wheter or not the FM calculation should be precompiled
-        self.JIT_BF = True
         self.COLEVAL = 1                      # Case for calculation of beta. 1 = Orthokinetic, 2 = Perikinetic
         self.EFFEVAL = 2                      # Case for calculation of alpha. 1 = Full calculation, 2 = Reduced model (only based on primary particle interactions)
                                             # Case 2 massively faster and legit acc. to Kusters1997 and Bäbler2008
                                             # Case 3 to use pre-defines alphas (e.g. from ANN) --> alphas need to be provided at some point
-        self.BREAKFVAL = 2                    # Case for calculation breakage function. 1 = conservation of Hypervolume, 2 = conservation of 0 Moments 
-        self.BREAKRVAL = 2                    # Case for calculation breakage rate. 1 = constant, 2 = size dependent
-        self.aggl_crit = 1e3                  # Maximum aggregate volume allowed to further agglomeration
-        self.process_art = "agglomeration"    # "agglomeration": only calculate agglomeration, "breakage": only calculate breakage, "mix": calculate both agglomeration and breakage
+        self.BREAKFVAL = 1                    # Case for calculation breakage function. 1 = conservation of Hypervolume, 2 = conservation of 0 Moments 
+        self.BREAKRVAL = 1                    # Case for calculation breakage rate. 1 = constant, 2 = size dependent
                        
         self.SIZEEVAL = 2                     # Case for implementation of size dependency. 1 = No size dependency, 2 = Model from Soos2007 
         self.POTEVAL = 1                      # Case for the set of used interaction potentials. See int_fun_Xd for infos.
@@ -1525,7 +1398,6 @@ class population():
         self.GC_EXPSTR = ''                   # Full exportstring of GC (only initialization, gets real value upon export)
         self.GV_EXPSTR = ''                   # Full exportstring of GV (only initialization, gets real value upon export)
         self.REPORT = True                    # When true, population informs about current calculation and reports results
-        
         
         # NOTE: The following two parameters define the magnetic separation step.
         self.TC1 = 1e-3                       # Separation efficiency of nonmagnetic particles. 0 and 1 not allowed!    
@@ -1854,5 +1726,755 @@ class population():
  
 # Define np.heaviside for JIT compilation
     
+@jit(nopython=True)
+def get_dNdt_1d_geo_jit(t,N,V_p,V_e,F_M,B_M,NS,THR,B_R,B_F):
+  
+    dNdt = np.zeros(N.shape)
+    B_c = np.zeros(N.shape)
+    M_c = np.zeros(N.shape)
+    v = np.zeros(N.shape)
+    D = np.zeros(N.shape)
+    B = np.zeros(N.shape)
+    
+    # Loop through all edges
+    # -1 to make sure nothing overshoots (?) CHECK THIS
+    for e in range(1, len(V_p)-1):
+        # Loop through all pivots (twice)
+        for i in range(len(V_p)):
+            for j in range(len(V_p)):
+                # if abs(V_p[i]+V_p[j]-V_p[e]) < 1e-5*V_p[1]:
+                #     zeta = 1
+                # else:
+                #     zeta = 2
+                zeta = 2
+                # Check if the agglomeration of i and j produce an 
+                # agglomerate inside the current cell 
+                # Use upper edge as "reference point"
+                if V_e[e] <= V_p[i]+V_p[j] < V_e[e+1]:
+                    
+                    F = F_M[i,j]
+                    
+                    # Total birthed agglomerates
+
+                    B_c[e] += F*N[i]*N[j]/zeta
+                    M_c[e] += F*N[i]*N[j]*(V_p[i]+V_p[j])/zeta
+                    
+                    # Track death 
+                    D[i] -= F*N[i]*N[j]
+                    # D[j] -= F*N[i]*N[j]/zeta
+                
+    v[B_c != 0] = M_c[B_c != 0]/B_c[B_c != 0]
+    
+    # print(B_c)
+    
+    # Assign BIRTH on each pivot
+    for i in range(len(V_p)):            
+        # Add contribution from LEFT cell (if existent)
+        if i != 0:
+            # Same Cell, left half
+            B[i] += B_c[i]*lam(v[i], V_p, i, 'm')*heaviside_jit(V_p[i]-v[i],0.5)
+            # Left Cell, right half
+            B[i] += B_c[i-1]*lam(v[i-1], V_p, i, 'm')*heaviside_jit(v[i-1]-V_p[i-1],0.5)
+            
+        # Add contribution from RIGHT cell (if existent)
+        if i != len(V_p)-1:
+            # Same Cell, right half
+            B[i] += B_c[i]*lam(v[i], V_p, i, 'p')*heaviside_jit(v[i]-V_p[i],0.5)
+            # Right Cell, left half
+            B[i] += B_c[i+1]*lam(v[i+1], V_p, i, 'p')*heaviside_jit(V_p[i+1]-v[i+1],0.5)
+            
+    dNdt = B + D
+    
+    return dNdt   
+
+@jit(nopython=True)
+def get_dNdt_2d_geo_jit(t,NN,V_p,V1_e,V3_e,F_M,NS,THR):       
+  
+    N = np.copy(NN) 
+    N = np.reshape(N,(NS,NS))
+    dNdt = np.zeros(np.shape(N))
+    D = np.zeros(np.shape(N))
+    # shape_mit_boundary = tuple(dim + 1 for dim in N.shape)
+    B_c = np.zeros(np.shape(N)) #np.shape(V_e) (old)
+    M1_c = np.zeros(np.shape(N))
+    M2_c = np.zeros(np.shape(N))
+    v1 = np.zeros(np.shape(N))
+    v2 = np.zeros(np.shape(N))
+    D = np.zeros(np.shape(N))
+    B = np.zeros(np.shape(N))
+    
+    # Loop through all edges
+    # Go from 2 till len()-1 to make sure nothing is collected in the BORDER
+    # This automatically solves border issues. If B_c is 0 in the border, nothing has to be distributed
+    for e1 in range(len(V_p[:,0])-1):
+        for e2 in range(len(V_p[0,:])-1):
+            # Loop through all pivots (twice)
+            for i in range(len(V_p[:,0])):
+                for j in range(len(V_p[0,:])):
+                    # a <= i and b <= j (equal is allowed!) 
+                    for a in range(len(V_p[:,0])): #i+1
+                        for b in range(len(V_p[:,0])): #j+1
+                            # Check if the agglomeration of ij and ab produce an 
+                            # agglomerate inside the current cell 
+                            # Use upper edge as "reference point"
+                            if (V1_e[e1] <= V_p[i,0]+V_p[a,0] < V1_e[e1+1]) and \
+                                (V3_e[e2] <= V_p[0,j]+V_p[0,b] < V3_e[e2+1]):
+                                # if abs(V_p[a,b]+V_p[i,j]-V_p[e1,e2]) < 1e-5*V_p[1,0]:
+                                #     #print(i,a,c,'|',j,b,d)
+                                #     zeta = 1
+                                # else:
+                                #     zeta = 2
+                                zeta = 2    
+                                F = F_M[i,j,a,b]
+                                # Total birthed agglomerates
+                                # e1 and e2 start at 1 (upper edge) --> corresponds to cell "below"
+                                # Use B_c[e1-1, e2-1] (e.g. e1=1, e2=1 corresponds to the first CELL [0,0])
+                                B_c[e1,e2] += F*N[i,j]*N[a,b]/zeta
+                                M1_c[e1,e2] += F*N[i,j]*N[a,b]*(V_p[i,0]+V_p[a,0])/zeta
+                                M2_c[e1,e2] += F*N[i,j]*N[a,b]*(V_p[0,j]+V_p[0,b])/zeta
+     
+                                # Track death 
+                                D[i,j] -= F*N[i,j]*N[a,b]
+                                # D[a,b] -= F*N[i,j]*N[a,b]/zeta
+                                #print(D)
+            # Average volume 
+            if B_c[e1,e2]!=0:
+                v1[e1,e2] = M1_c[e1,e2]/B_c[e1,e2]
+                v2[e1,e2] = M2_c[e1,e2]/B_c[e1,e2]
+                                
+    # 30.01.24 B_c, D and v1 seem correct (judging from first dNdt)
+    # print(B_c)
+    # print(D)
+    # print(v1)
+    
+    # # Assign BIRTH on each pivot
+    for i in range(len(V_p[:,0])-1):
+        for j in range(len(V_p[0,:])-1): 
+            for p in range(2):
+                for q in range(2):
+                    # Actual modification calculation
+                    # if (i!=0) and (j!=0):
+                        B[i,j] += B_c[i-p,j-q] \
+                            *lam_2d(v1[i-p,j-q],v2[i-p,j-q],V_p[:,0],V_p[0,:],i,j,"-","-") \
+                            *heaviside_jit((-1)**p*(V_p[i-p,0]-v1[i-p,j-q]),0.5) \
+                            *heaviside_jit((-1)**q*(V_p[0,j-q]-v2[i-p,j-q]),0.5) 
+                        ## PRINTS FOR DEBUGGING / TESTING
+                        # if i==2 and j==0:
+                        #     print('B1', B[i,j])
+                    # if (i!=0) and (j!=len(V_p[0,:])-1):                           
+                        B[i,j] += B_c[i-p,j+q] \
+                            *lam_2d(v1[i-p,j+q],v2[i-p,j+q],V_p[:,0],V_p[0,:],i,j,"-","+") \
+                            *heaviside_jit((-1)**p*(V_p[i-p,0]-v1[i-p,j+q]),0.5) \
+                            *heaviside_jit((-1)**(q+1)*(V_p[0,j+q]-v2[i-p,j+q]),0.5) 
+                        ## PRINTS FOR DEBUGGING / TESTING
+                        # if i==2 and j==0:
+                        #     print('B2', B[i,j])
+                    # if (i!=len(V_p[:,0])-1) and (j!=0):
+                        B[i,j] += B_c[i+p,j-q] \
+                            *lam_2d(v1[i+p,j-q],v2[i+p,j-q],V_p[:,0],V_p[0,:],i,j,"+","-") \
+                            *heaviside_jit((-1)**(p+1)*(V_p[i+p,0]-v1[i+p,j-q]),0.5) \
+                            *heaviside_jit((-1)**q*(V_p[0,j-q]-v2[i+p,j-q]),0.5)
+                        ## PRINTS FOR DEBUGGING / TESTING
+                        # if i==2 and j==0:
+                        #     print('B3', B[i,j])
+                    # if (i!=len(V_p[:,0])-1) and (j!=len(V_p[0,:])-1): 
+                        B[i,j] += B_c[i+p,j+q] \
+                            *lam_2d(v1[i+p,j+q],v2[i+p,j+q],V_p[:,0],V_p[0,:],i,j,"+","+") \
+                            *heaviside_jit((-1)**(p+1)*(V_p[i+p,0]-v1[i+p,j+q]),0.5) \
+                            *heaviside_jit((-1)**(q+1)*(V_p[0,j+q]-v2[i+p,j+q]),0.5)
+    i = len(V_p[0,:]) - 1
+    for j in range(len(V_p[0,:])-1):
+        for p in range(2):
+            for q in range(2):
+                B[i,j] += B_c[i-p,j-q] \
+                    *lam_2d(v1[i-p,j-q],v2[i-p,j-q],V_p[:,0],V_p[0,:],i,j,"-","-") \
+                    *heaviside_jit((-1)**p*(V_p[i-p,0]-v1[i-p,j-q]),0.5) \
+                    *heaviside_jit((-1)**q*(V_p[0,j-q]-v2[i-p,j-q]),0.5)  
+                B[i,j] += B_c[i-p,j+q] \
+                    *lam_2d(v1[i-p,j+q],v2[i-p,j+q],V_p[:,0],V_p[0,:],i,j,"-","+") \
+                    *heaviside_jit((-1)**p*(V_p[i-p,0]-v1[i-p,j+q]),0.5) \
+                    *heaviside_jit((-1)**(q+1)*(V_p[0,j+q]-v2[i-p,j+q]),0.5) 
+    j = len(V_p[0,:]) - 1
+    for i in range(len(V_p[0,:])-1):
+       for p in range(2):
+           for q in range(2):
+              B[i,j] += B_c[i-p,j-q] \
+                  *lam_2d(v1[i-p,j-q],v2[i-p,j-q],V_p[:,0],V_p[0,:],i,j,"-","-") \
+                  *heaviside_jit((-1)**p*(V_p[i-p,0]-v1[i-p,j-q]),0.5) \
+                  *heaviside_jit((-1)**q*(V_p[0,j-q]-v2[i-p,j-q]),0.5)  
+              B[i,j] += B_c[i+p,j-q] \
+                  *lam_2d(v1[i+p,j-q],v2[i+p,j-q],V_p[:,0],V_p[0,:],i,j,"+","-") \
+                  *heaviside_jit((-1)**(p+1)*(V_p[i+p,0]-v1[i+p,j-q]),0.5) \
+                  *heaviside_jit((-1)**q*(V_p[0,j-q]-v2[i+p,j-q]),0.5) 
+    i = len(V_p[0,:]) - 1
+    j = len(V_p[0,:]) - 1
+    for p in range(2):
+        for q in range(2):     
+           B[i,j] += B_c[i-p,j-q] \
+               *lam_2d(v1[i-p,j-q],v2[i-p,j-q],V_p[:,0],V_p[0,:],i,j,"-","-") \
+               *heaviside_jit((-1)**p*(V_p[i-p,0]-v1[i-p,j-q]),0.5) \
+               *heaviside_jit((-1)**q*(V_p[0,j-q]-v2[i-p,j-q]),0.5)  
+                        ## PRINTS FOR DEBUGGING / TESTING
+                        # if i==3 and j==0:
+                        #     print('B4', B[i,j])
+                        # if i==3 and j==1 and p==1 and q==0:
+                        #     print(f'i={i}, j={j}, p={p}, q={q} (transfer from B_c[{i+p},{j+q}]')
+                        #     print('B_c', B_c[i+p,j+q])                            
+                        #     print('lam', lam_2d(v1[i+p,j+q],v2[i+p,j+q],V_p[:,1],V_p[1,:],i,j,"+","+"))
+                        #     print('heavi 1',heaviside_jit((-1)**(p+1)*(V_p[i+p,1]-v1[i+p,j+q]),0.5))
+                        #     print('heavi 2',heaviside_jit((-1)**(q+1)*(V_p[1,j+q]-v2[i+p,j+q]),0.5))
+    
+    # Combine birth and death
+    dNdt = B + D
+    
+    return dNdt.reshape(-1)  
+
+@jit(nopython=True)
+def get_dNdt_3d_geo_jit(t,NN,V,V1,V2,V3,F_M,NS,THR):       
+        
+    N = NN.copy() 
+    N = N.reshape((NS+3,NS+3,NS+3))
+    
+    # Initialize DN with zeros
+    DN = np.zeros(np.shape(N))
+    #NS = len(N[:,1])-3
+        
+    # Initialize other temporary variables
+    B_3D = np.copy(DN); D_3D = np.copy(DN); Bmod_3D = np.copy(DN) 
+    Mx_3D = np.copy(DN); My_3D = np.copy(DN); Mz_3D=np.copy(DN)
+    xx_3D = np.copy(DN); yy_3D = np.copy(DN); zz_3D = np.copy(DN)
+    
+    # Go through all possible combinations to calculate B, M and D matrix
+    # First loop: All indices of DN to sum and reference actual concentration change
+    for i in range(1,NS+2):
+        for j in range(1,NS+2):
+            for k in range(1,NS+2):
+            
+                # Second loop: All agglomeration partners 1 [a,c,e] and 2 [b,d,f] 
+                # with index (<=i,<=j)
+                for a in range(1,i+1):
+                    for c in range(1,j+1):
+                        for e in range(1,k+1):
+                            for b in range(1,i+1): 
+                                for d in range(1,j+1):
+                                    for f in range(1,k+1):
+                                                    
+                                        # Only calculate if result of (a,c)+(b,d) yields agglomerate in 
+                                        # range(i-1:i+1,j-1:j+1) with respect to total volume
+                                        if V1[i-1]<V1[a]+V1[b]<V1[i+1] and V2[j-1]<V2[c]+V2[d]<V2[j+1] and V3[k-1]<V3[e]+V3[f]<V3[k+1]:
+                                                                   
+                                            # When birth exactly collides with [i,j,k] set zeta to 1, otherwise
+                                            # set zeta to 2 (zeta defines whether B needs further distribution)
+                                            #if V[a,c,e]+V[b,d,f]==V[i,j,k]:
+                                            if abs(V[a,c,e]+V[b,d,f]-V[i,j,k]) < 1e-5*(V[2,1,1]):
+                                                zeta = 1
+                                            else:
+                                                zeta = 2
+                                        
+                                            # Get corresponding F from F_M. Attention: F_M is defined without -1 borders
+                                            # and ist a (NS+1)^6 matrix. a-f represent "real" indices of the N or V
+                                            # matrix --> It is necessary to subtract 1 in order to get the right entry
+                                            F = F_M[a-1,c-1,e-1,b-1,d-1,f-1]
+                                            
+                                            # Calculate raw birth term as well as volumetric fluxes M.
+                                            # Division by 2 resulting from loop definition (don't count processes double)
+                                            B_3D[i,j,k] = B_3D[i,j,k]+F*N[a,c,e]*N[b,d,f]/(2*zeta)
+                                            Mx_3D[i,j,k] = Mx_3D[i,j,k]+F*N[a,c,e]*N[b,d,f]*(V1[a]+V1[b])/(2*zeta)
+                                            My_3D[i,j,k] = My_3D[i,j,k]+F*N[a,c,e]*N[b,d,f]*(V2[c]+V2[d])/(2*zeta)
+                                            Mz_3D[i,j,k] = Mz_3D[i,j,k]+F*N[a,c,e]*N[b,d,f]*(V3[e]+V3[f])/(2*zeta)
+                                            
+                                            # Average volume of all newborn agglomerates in the [i,j,k]th cell
+                                            if not B_3D[i,j,k]==0:
+                                                xx_3D[i,j,k] = Mx_3D[i,j,k]/B_3D[i,j,k]
+                                                yy_3D[i,j,k] = My_3D[i,j,k]/B_3D[i,j,k]
+                                                zz_3D[i,j,k] = Mz_3D[i,j,k]/B_3D[i,j,k]
+                                                
+                                            # Calculate death term of [a,c,e] and [b,d,f]. 
+                                            # D_3D is defined positively (addition) and subtracted later
+                                            D_3D[a,c,e]=D_3D[a,c,e]+F*N[a,c,e]*N[b,d,f]/(2*zeta)
+                                            D_3D[b,d,f]=D_3D[b,d,f]+F*N[a,c,e]*N[b,d,f]/(2*zeta)  
+                    
+    # Modification of the birth term. Currently mass conservation is not given. 
+    # The generated agglomerate mass needs to be distributed to neighboring nodes.
+    # Loop: All indices of B_2D need to be modified + get all combinations of p and q 
+    # element of  [0,1]: 
+    for i in range(1,NS+2):
+        for j in range(1,NS+2):
+            for k in range(1,NS+2):
+                for p in range(2):
+                    for q in range(2):
+                        for r in range(2):
+                        
+                            # Actual modification calculation
+                            Bmod_3D[i,j,k]=Bmod_3D[i,j,k] \
+                                + B_3D[i-p,j-q,k-r] \
+                                    *get_lam_3d(xx_3D[i-p,j-q,k-r],yy_3D[i-p,j-q,k-r],zz_3D[i-p,j-q,k-r],V1,V2,V3,i,j,k,"-","-","-") \
+                                    *np.heaviside((-1)**p*(V1[i-p]-xx_3D[i-p,j-q,k-r]),0.5) \
+                                    *np.heaviside((-1)**q*(V2[j-q]-yy_3D[i-p,j-q,k-r]),0.5) \
+                                    *np.heaviside((-1)**r*(V3[k-r]-zz_3D[i-p,j-q,k-r]),0.5) \
+                                + B_3D[i-p,j-q,k+r] \
+                                    *get_lam_3d(xx_3D[i-p,j-q,k+r],yy_3D[i-p,j-q,k+r],zz_3D[i-p,j-q,k+r],V1,V2,V3,i,j,k,"-","-","+") \
+                                    *np.heaviside((-1)**p*(V1[i-p]-xx_3D[i-p,j-q,k+r]),0.5) \
+                                    *np.heaviside((-1)**q*(V2[j-q]-yy_3D[i-p,j-q,k+r]),0.5) \
+                                    *np.heaviside((-1)**(r+1)*(V3[k+r]-zz_3D[i-p,j-q,k+r]),0.5) \
+                                + B_3D[i-p,j+q,k-r] \
+                                    *get_lam_3d(xx_3D[i-p,j+q,k-r],yy_3D[i-p,j+q,k-r],zz_3D[i-p,j+q,k-r],V1,V2,V3,i,j,k,"-","+","-") \
+                                    *np.heaviside((-1)**p*(V1[i-p]-xx_3D[i-p,j+q,k-r]),0.5) \
+                                    *np.heaviside((-1)**(q+1)*(V2[j+q]-yy_3D[i-p,j+q,k-r]),0.5) \
+                                    *np.heaviside((-1)**r*(V3[k-r]-zz_3D[i-p,j+q,k-r]),0.5) \
+                                + B_3D[i-p,j+q,k+r] \
+                                    *get_lam_3d(xx_3D[i-p,j+q,k+r],yy_3D[i-p,j+q,k+r],zz_3D[i-p,j+q,k+r],V1,V2,V3,i,j,k,"-","+","+") \
+                                    *np.heaviside((-1)**p*(V1[i-p]-xx_3D[i-p,j+q,k+r]),0.5) \
+                                    *np.heaviside((-1)**(q+1)*(V2[j+q]-yy_3D[i-p,j+q,k+r]),0.5) \
+                                    *np.heaviside((-1)**(r+1)*(V3[k+r]-zz_3D[i-p,j+q,k+r]),0.5) \
+                                + B_3D[i+p,j+q,k+r] \
+                                    *get_lam_3d(xx_3D[i+p,j+q,k+r],yy_3D[i+p,j+q,k+r],zz_3D[i+p,j+q,k+r],V1,V2,V3,i,j,k,"+","+","+") \
+                                    *np.heaviside((-1)**(p+1)*(V1[i+p]-xx_3D[i+p,j+q,k+r]),0.5) \
+                                    *np.heaviside((-1)**(q+1)*(V2[j+q]-yy_3D[i+p,j+q,k+r]),0.5) \
+                                    *np.heaviside((-1)**(r+1)*(V3[k+r]-zz_3D[i+p,j+q,k+r]),0.5) \
+                                + B_3D[i+p,j+q,k-r] \
+                                    *get_lam_3d(xx_3D[i+p,j+q,k-r],yy_3D[i+p,j+q,k-r],zz_3D[i+p,j+q,k-r],V1,V2,V3,i,j,k,"+","+","-") \
+                                    *np.heaviside((-1)**(p+1)*(V1[i+p]-xx_3D[i+p,j+q,k-r]),0.5) \
+                                    *np.heaviside((-1)**(q+1)*(V2[j+q]-yy_3D[i+p,j+q,k-r]),0.5) \
+                                    *np.heaviside((-1)**r*(V3[k-r]-zz_3D[i+p,j+q,k-r]),0.5) \
+                                + B_3D[i+p,j-q,k+r] \
+                                    *get_lam_3d(xx_3D[i+p,j-q,k+r],yy_3D[i+p,j-q,k+r],zz_3D[i+p,j-q,k+r],V1,V2,V3,i,j,k,"+","-","+") \
+                                    *np.heaviside((-1)**(p+1)*(V1[i+p]-xx_3D[i+p,j-q,k+r]),0.5) \
+                                    *np.heaviside((-1)**q*(V2[j-q]-yy_3D[i+p,j-q,k+r]),0.5) \
+                                    *np.heaviside((-1)**(r+1)*(V3[k+r]-zz_3D[i+p,j-q,k+r]),0.5) \
+                                + B_3D[i+p,j-q,k-r] \
+                                    *get_lam_3d(xx_3D[i+p,j-q,k-r],yy_3D[i+p,j-q,k-r],zz_3D[i+p,j-q,k-r],V1,V2,V3,i,j,k,"+","-","-") \
+                                    *np.heaviside((-1)**(p+1)*(V1[i+p]-xx_3D[i+p,j-q,k-r]),0.5) \
+                                    *np.heaviside((-1)**q*(V2[j-q]-yy_3D[i+p,j-q,k-r]),0.5) \
+                                    *np.heaviside((-1)**r*(V3[k-r]-zz_3D[i+p,j-q,k-r]),0.5)         
+            
+    # Calculate final result and return 
+    DN = Bmod_3D-D_3D
+    
+    # Due to numerical issues it is necessary to define a threshold for DN
+    for i in range(NS+3): 
+        for j in range(NS+3):
+            for k in range(NS+3):
+                if abs(DN[i,j,k])<THR: DN[i,j,k] = 0
+    
+    return DN.reshape(-1) 
+
+@jit(nopython=True)
+def get_dNdt_1d_uni_jit(t,N,V,F_M,B_M,NS,THR):       
+
+    # Initialize DN with zeros
+    DN = np.zeros(np.shape(N))
+        
+    # Initialize other temporary variables (birth and death term)
+    B = np.copy(DN); D = np.copy(DN); BR = np.copy(DN)
+    
+    # Go through all possible combinations to calculate B and D matrix
+    # First loop: All indices of DN 
+    for i in range(0,NS):
+            
+            # Second loop: All agglomeration partners that are smaller or equally sized
+            for a in range(0,i+1):
+                # Corresponding partner that i is produced (b = i-a + 1, because border) 
+                for b in range(0,i+1):              
+                                        
+                    # Only calculate if result of (a)+(b) yields agglomerate in 
+                    # class i with respect to total volume
+                    # if V[a]+V[b] == V[i]:
+                    if abs(V[a]+V[b]-V[i]) < 1e-5*V[2]:
+                        
+                        # Get corresponding F from F_M. Attention: F_M is defined without -1 borders
+                        # and is a (NS+1)^2 matrix. a and b represent "real" indices of the N or V
+                        # matrix --> It is necessary to subtract 1 in order to get the right entry
+                        F = F_M[a,b]
+                        
+                        # Calculate raw birth term as well as volumetric fluxes M.
+                        # Division by 2 resulting from loop definition (don't count processes double)
+                        B[i] = B[i]+F*N[a]*N[b]/2                       
+                           
+                        # Calculate death term of [a] and [b]. 
+                        # D is defined positively (addition) and subtracted later
+                        D[a] = D[a]+F*N[a]*N[b]/2
+                        D[b] = D[b]+F*N[a]*N[b]/2
+                        
+            # Calculate breakage if current index is larger than 2 (primary particles cannot break)
+            # ATTENTION: This is only valid for binary breakage and s=2! (Test purposes)
+            # if i > 2:
+            #     BR[i] = BD_br_1D[i] - B_M[i]*N[i]
+            #     BR[i-1] = BD_br_1D[i-1] + 2*B_M[i]*N[i]  
+            
+    # Calculate final result and return 
+    DN = B-D+BR
+        
+    # Due to numerical issues it is necessary to define a threshold for DN
+    for i in range(NS+3): 
+        if abs(DN[i])<THR: DN[i] = 0
+    
+    return DN
+
+@jit(nopython=True)
+def get_dNdt_2d_uni_jit(t,NN,V,V1,V3,F_M,NS,THR):       
+  
+    N = NN.copy() 
+    N = N.reshape((NS,NS))
+    
+    # Initialize DN with zeros
+    DN = np.zeros(np.shape(N))
+        
+    # Initialize other temporary variables
+    B = np.copy(DN); D = np.copy(DN)
+    
+    # Go through all possible combinations to calculate B and D matrix
+    # First loop: All indices of DN to sum and reference actual concentration change
+    for i in range(0,NS):
+        for j in range(0,NS):
+            
+            # Second loop: All agglomeration partners 1 [a,c] and 2 [b,d] 
+            # with index (<=i,<=j)
+            for a in range(0,i+1):
+                for c in range(0,j+1):
+                    for b in range(0,i+1): 
+                        for d in range(0,j+1): 
+                                            
+                            # Only calculate if result of (a,c)+(b,d) yields agglomerate in 
+                            # range(i-1:i+1,j-1:j+1) with respect to total volume
+                            #if V1[a]+V1[b] == V1[i] and V3[c]+V3[d] == V3[j]:
+                            if abs(V1[a]+V1[b]-V1[i]) < 1e-5*V1[2] and abs(V3[c]+V3[d]-V3[j]) < 1e-5*V3[2]:
+                                
+                                # Get corresponding F from F_M. Attention: F_M is defined without -1 borders
+                                # and is a (NS+1)^4 matrix. a-d represent "real" indices of the N or V
+                                # matrix --> It is necessary to subtract 1 in order to get the right entry
+                                F = F_M[a,c,b,d]
+                                
+                                # Calculate raw birth term
+                                # Division by 2 resulting from loop definition (don't count processes double)
+                                B[i,j] = B[i,j]+F*N[a,c]*N[b,d]/2
+                                    
+                                # Calculate death term of [a,c] and [b,d]. 
+                                # D is defined positively (addition) and subtracted later
+                                D[a,c] = D[a,c]+F*N[a,c]*N[b,d]/2
+                                D[b,d] = D[b,d]+F*N[a,c]*N[b,d]/2    
+            
+    # Calculate final result and return 
+    DN = B-D
+    
+    # Due to numerical issues it is necessary to define a threshold for DN
+    for i in range(NS): 
+        for j in range(NS):
+            if abs(DN[i,j])<THR: DN[i,j] = 0
+    
+    return DN.reshape(-1) 
+
+@jit(nopython=True)
+def get_dNdt_3d_uni_jit(t,NN,V,V1,V2,V3,F_M,NS,THR):       
+        
+    N = NN.copy() 
+    N = N.reshape((NS+3,NS+3,NS+3))
+    
+    # Initialize DN with zeros
+    DN = np.zeros(np.shape(N))
+        
+    # Initialize other temporary variables
+    B = np.copy(DN); D = np.copy(DN)
+    
+    # Go through all possible combinations to calculate B, M and D matrix
+    # First loop: All indices of DN to sum and reference actual concentration change
+    for i in range(1,NS+2):
+        for j in range(1,NS+2):
+            for k in range(1,NS+2):
+            
+                # Second loop: All agglomeration partners 1 [a,c,e] and 2 [b,d,f] 
+                # with index (<=i,<=j)
+                for a in range(1,i+1):
+                    for c in range(1,j+1):
+                        for e in range(1,k+1):
+                            for b in range(1,i+1): 
+                                for d in range(1,j+1):
+                                    for f in range(1,k+1):
+                                                    
+                                        # Only calculate if result of (a,c,e)+(b,d,f) yields agglomerate (i,j,k)
+                                        #if V1[a]+V1[b]==V1[i] and V2[c]+V2[d]==V2[j] and V3[e]+V3[f]==V3[k]:
+                                        if abs(V1[a]+V1[b]-V1[i]) < 1e-5*V1[2] and abs(V2[c]+V2[d]-V2[j]) < 1e-5*V2[2] and abs(V3[e]+V3[f]-V3[k]) < 1e-5*V3[2]:                                             
+                                            # Get corresponding F from F_M. Attention: F_M is defined without -1 borders
+                                            # and ist a (NS+1)^6 matrix. a-f represent "real" indices of the N or V
+                                            # matrix --> It is necessary to subtract 1 in order to get the right entry
+                                            F = F_M[a-1,c-1,e-1,b-1,d-1,f-1]
+                                            
+                                            # Calculate raw birth term as well as volumetric fluxes M.
+                                            # Division by 2 resulting from loop definition (don't count processes double)
+                                            B[i,j,k] = B[i,j,k]+F*N[a,c,e]*N[b,d,f]/2
+                                            
+                                            # Calculate death term of [a,c,e] and [b,d,f]. 
+                                            # D_3D is defined positively (addition) and subtracted later
+                                            D[a,c,e]=D[a,c,e]+F*N[a,c,e]*N[b,d,f]/2
+                                            D[b,d,f]=D[b,d,f]+F*N[a,c,e]*N[b,d,f]/2 
+                    
+    # Calculate final result and return 
+    DN = B-D
+    
+    # Due to numerical issues it is necessary to define a threshold for DN
+    for i in range(NS+3): 
+        for j in range(NS+3):
+            for k in range(NS+3):
+                if abs(DN[i,j,k])<THR: DN[i,j,k] = 0
+    
+    return DN.reshape(-1) 
+
+@jit(nopython=True)
+def lam(v, V_p, i, case):
+    if case == 'm':
+        return (v-V_p[i-1])/(V_p[i]-V_p[i-1])
+    elif case == 'p':        
+        return (v-V_p[i+1])/(V_p[i]-V_p[i+1])
+    else:
+        print('WRONG CASE FOR LAM')
+        
+@jit(nopython=True)
+def lam_2d(x,y,Vx,Vy,i,j,m1,m2):
+
+    if m1 == "+":
+        if m2 == "+":
+            lam = (x-Vx[i+1])*(y-Vy[j+1])/((Vx[i]-Vx[i+1])*(Vy[j]-Vy[j+1]))
+        else:
+            lam = (x-Vx[i+1])*(y-Vy[j-1])/((Vx[i]-Vx[i+1])*(Vy[j]-Vy[j-1]))
+    else:
+        if m2 == "+":
+            lam = (x-Vx[i-1])*(y-Vy[j+1])/((Vx[i]-Vx[i-1])*(Vy[j]-Vy[j+1]))
+        else:
+            lam = (x-Vx[i-1])*(y-Vy[j-1])/((Vx[i]-Vx[i-1])*(Vy[j]-Vy[j-1]))
+                
+                
+    if math.isnan(lam):
+        lam = 0 
+        print('lam is NaN!')        
+    
+    return lam 
+
+@jit(nopython=True)
+def heaviside_jit(x1, x2):
+    if x1 < 0:
+        return 0.0
+    elif x1 > 0:
+        return 1.0
+    else:
+        return x2
+
+@jit(nopython=True)
+def get_lam_3d(x,y,z,Vx,Vy,Vz,i,j,k,m1,m2,m3):
+
+    if m1 == "+":
+        if m2 == "+":
+            if m3 == "+":
+                # (+,+,+)
+                lam=(x-Vx[i+1])*(y-Vy[j+1])*(z-Vz[k+1])/((Vx[i]-Vx[i+1])*(Vy[j]-Vy[j+1])*(Vz[k]-Vz[k+1]))
+            else:
+                # (+,+,-)
+                lam=(x-Vx[i+1])*(y-Vy[j+1])*(z-Vz[k-1])/((Vx[i]-Vx[i+1])*(Vy[j]-Vy[j+1])*(Vz[k]-Vz[k-1]))
+        else:
+            if m3 == "+":
+                # (+,-,+)
+                lam=(x-Vx[i+1])*(y-Vy[j-1])*(z-Vz[k+1])/((Vx[i]-Vx[i+1])*(Vy[j]-Vy[j-1])*(Vz[k]-Vz[k+1]))
+            else:
+                # (+,-,-)
+                lam=(x-Vx[i+1])*(y-Vy[j-1])*(z-Vz[k-1])/((Vx[i]-Vx[i+1])*(Vy[j]-Vy[j-1])*(Vz[k]-Vz[k-1]))
+    else:
+        if m2 == "+":
+            if m3 == "+":
+                # (-,+,+)
+                lam=(x-Vx[i-1])*(y-Vy[j+1])*(z-Vz[k+1])/((Vx[i]-Vx[i-1])*(Vy[j]-Vy[j+1])*(Vz[k]-Vz[k+1]))
+            else:
+                # (-,+,-)
+                lam=(x-Vx[i-1])*(y-Vy[j+1])*(z-Vz[k-1])/((Vx[i]-Vx[i-1])*(Vy[j]-Vy[j+1])*(Vz[k]-Vz[k-1]))
+        else:
+            if m3 == "+":
+                # (-,-,+)
+                lam=(x-Vx[i-1])*(y-Vy[j-1])*(z-Vz[k+1])/((Vx[i]-Vx[i-1])*(Vy[j]-Vy[j-1])*(Vz[k]-Vz[k+1]))
+            else:
+                # (-,-,-)
+                lam=(x-Vx[i-1])*(y-Vy[j-1])*(z-Vz[k-1])/((Vx[i]-Vx[i-1])*(Vy[j]-Vy[j-1])*(Vz[k]-Vz[k-1]))
+                
+                
+    if math.isnan(lam):
+        lam=0         
+    
+    #print(m1,m2,m3,lam)
+    return lam
+
+@jit(nopython=True)
+def calc_F_M_2D_jit(NS,disc,COLEVAL,CORR_BETA,G,R,X1,X3,EFFEVAL,alpha_prim,SIZEEVAL,X_SEL,Y_SEL):
+    # Initialize F_M Matrix. NOTE: F_M is defined without the border around the calculation grid
+    # as e.g. N or V are (saving memory and calculations). 
+    # Thus, F_M is (NS+1)^4 instead of (NS+3)^4. As reference, V is (NS+3)^2.
+    F_M = np.zeros((NS,NS,NS,NS))
+    # alpha = np.zeros((NS+1,NS+1,NS+1,NS+1))
+    # beta = np.zeros((NS+1,NS+1,NS+1,NS+1))
+    
+    # Go through all agglomeration partners 1 [a,b] and 2 [i,j]
+    # The current index tuple idx stores them as (a,b,i,j)
+    for idx, tmp in np.ndenumerate(F_M):
+        # # Indices [a,b]=[0,0] and [i,j]=[0,0] not allowed!
+        if idx[0]+idx[1]==0 or idx[2]+idx[3]==0:
+            continue
+        
+        # Calculate the corresponding agglomeration efficiency
+        # Add one to indices to account for borders
+        a = idx[0]; b = idx[1]; i = idx[2]; j = idx[3]
+        
+        # Calculate collision frequency beta depending on COLEVAL
+        if COLEVAL == 1:
+            # Chin 1998 (shear induced flocculation in stirred tanks)
+            # Optional reduction factor.
+            # corr_beta=1;
+            beta_ai = CORR_BETA*G*2.3*(R[a,b]+R[i,j])**3 # [m^3/s]
+        if COLEVAL == 2:
+            # Tsouris 1995 Brownian diffusion as controlling mechanism
+            # Optional reduction factor
+            # corr_beta=1;
+            beta_ai = CORR_BETA*2*1.38*(10**-23)*293*(R[a,b]+R[i,j])**2/(3*(10**-3)*(R[a,b]*R[i,j])) #[m^3/s]  | KT= 1.38*(10**-23)*293 | MU_W=10**-3
+        if COLEVAL == 3:
+            # Use a constant collision frequency given by CORR_BETA
+            beta_ai = CORR_BETA
+        if COLEVAL == 4:
+            # Sum-Kernal (for validation) scaled by CORR_BETA
+            beta_ai = CORR_BETA*4*math.pi*(R[a,b]**3+R[i,j]**3)/3
+        
+        # Calculate probabilities, that particle 1 [a,b] is colliding as
+        # nonmagnetic 1 (NM1) or magnetic (M). Repeat for
+        # particle 2 [i,j]. Use area weighted composition.
+        # Calculate probability vector for all combinations. 
+        # Indices: 
+        # 1) a:N1 <-> i:N1  -> X1[a,b]*X1[i,j]
+        # 2) a:N1 <-> i:M   -> X1[a,b]*X3[i,j]
+        # 3) a:M  <-> i:N1  -> X3[a,b]*X1[i,j]
+        # 4) a:M  <-> i:M   -> X3[a,b]*X3[i,j]
+        p=np.array([X1[a,b]*X1[i,j],\
+            X1[a,b]*X3[i,j],\
+            X3[a,b]*X1[i,j],\
+            X3[a,b]*X3[i,j]])
+        
+        # Calculate collision effiecieny depending on EFFEVAL. 
+        # Case(1): "Correct" calculation for given indices. Accounts for size effects in int_fun_2d
+        # Case(2): Reduced model. Calculation only based on primary particles
+        # Case(3): Alphas are pre-fed from ANN or other source.
+        if EFFEVAL == 1:
+            # Not coded here
+            alpha_ai = np.sum(p*alpha_prim)
+        if EFFEVAL == 2 or EFFEVAL == 3:
+            alpha_ai = np.sum(p*alpha_prim)
+        
+        # Calculate a correction factor to account for size dependency of alpha, depending on SIZEEVAL
+        # Calculate lam
+        if R[a,b]<=R[i,j]:
+            lam = R[a,b]/R[i,j]
+        else:
+            lam = R[i,j]/R[a,b]
+            
+        if SIZEEVAL == 1:
+            # No size dependency of alpha
+            corr_size = 1
+        if SIZEEVAL == 2:
+            # Case 3: Soos2007 (developed from Selomuya 2003). Empirical Equation
+            # with model parameters x and y. corr_size is lowered with lowered
+            # value of lambda (numerator) and with increasing particles size (denominator)
+            corr_size = np.exp(-X_SEL*(1-lam)**2)/((R[a,b]*R[i,j]/(np.min(np.array([R[2,1],R[1,2]]))**2))**Y_SEL)
+        
+        # Store result
+        # alpha[idx] = alpha_ai
+        # beta[idx] = beta_ai
+        F_M[idx] = beta_ai*alpha_ai*corr_size
+
+    return F_M
+                
+@jit(nopython=True)
+def calc_F_M_3D_jit(NS,disc,COLEVAL,CORR_BETA,G,R,X1,X2,X3,EFFEVAL,alpha_prim,SIZEEVAL,X_SEL,Y_SEL):
+                       
+    # Initialize F_M Matrix. NOTE: F_M is defined without the border around the calculation grid
+    # as e.g. N or V are (saving memory and calculations). 
+    # Thus, F_M is (NS+1)^6 instead of (NS+3)^6. As reference, V is (NS+3)^3.
+    F_M = np.zeros((NS+1,NS+1,NS+1,NS+1,NS+1,NS+1))
+    
+    # Go through all agglomeration partners 1 [a,b,c] and 2 [i,j,k]
+    # The current index tuple idx stores them as (a,b,c,i,j,k)
+    for idx, tmp in np.ndenumerate(F_M):
+        # # Indices [a,b,c]=[0,0,0] and [i,j,k]=[0,0,0] not allowed!
+        if idx[0]+idx[1]+idx[2]==0 or idx[3]+idx[4]+idx[5]==0:
+            continue
+        
+        # Calculate the corresponding agglomeration efficiency
+        # Add one to indices to account for borders
+        a = idx[0]+1; b = idx[1]+1; c = idx[2]+1;
+        i = idx[3]+1; j = idx[4]+1; k = idx[5]+1;
+        
+        # Calculate collision frequency beta depending on COLEVAL
+        if COLEVAL == 1:
+            # Chin 1998 (shear induced flocculation in stirred tanks)
+            # Optional reduction factor.
+            # corr_beta=1;
+            beta_ai = CORR_BETA*G*2.3*(R[a,b,c]+R[i,j,k])**3 # [m^3/s]
+        if COLEVAL == 2:
+            # Tsouris 1995 Brownian diffusion as controlling mechanism
+            # Optional reduction factor
+            # corr_beta=1;
+            beta_ai = CORR_BETA*2*1.38*(10**-23)*293*(R[a,b,c]+R[i,j,k])**2/(3*(10**-3)*(R[a,b,c]*R[i,j,k])) # [m^3/s] | KT= 1.38*(10**-23)*293 | MU_W=10**-3
+        if COLEVAL == 3:
+            # Use a constant collision frequency given by CORR_BETA
+            beta_ai = CORR_BETA
+        if COLEVAL == 4:
+            # Sum-Kernal (for validation) scaled by CORR_BETA
+            beta_ai = CORR_BETA*4*math.pi*(R[a,b,c]**3+R[i,j,k]**3)/3
+        
+        # Calculate probabilities, that particle 1 [a,b,c] is colliding as
+        # nonmagnetic 1 (NM1), nonmagnetic 2 (NM2) or magnetic (M). Repeat for
+        # particle 2 [i,j,k]. Use area weighted composition.
+        # Calculate probability vector for all combinations. 
+        # Indices: 
+        # 1) a:N1 <-> i:N1  -> X1[a,b,c]*X1[i,j,k]
+        # 2) a:N1 <-> i:N2  -> X1[a,b,c]*X2[i,j,k]
+        # 3) a:N1 <-> i:M   -> X1[a,b,c]*X3[i,j,k]
+        # 4) a:N2 <-> i:N1  -> X2[a,b,c]*X1[i,j,k] 
+        # 5) a:N2 <-> i:N2  -> X2[a,b,c]*X2[i,j,k]
+        # 6) a:N2 <-> i:M   -> X2[a,b,c]*X3[i,j,k]
+        # 7) a:M  <-> i:N1  -> X3[a,b,c]*X1[i,j,k]
+        # 8) a:M  <-> i:N2  -> X3[a,b,c]*X2[i,j,k]
+        # 9) a:M  <-> i:M   -> X3[a,b,c]*X3[i,j,k]
+        p=np.array([X1[a,b,c]*X1[i,j,k],\
+                    X1[a,b,c]*X2[i,j,k],\
+                    X1[a,b,c]*X3[i,j,k],\
+                    X2[a,b,c]*X1[i,j,k],\
+                    X2[a,b,c]*X2[i,j,k],\
+                    X2[a,b,c]*X3[i,j,k],\
+                    X3[a,b,c]*X1[i,j,k],\
+                    X3[a,b,c]*X2[i,j,k],\
+                    X3[a,b,c]*X3[i,j,k]])
+        
+        # Calculate collision effiecieny depending on EFFEVAL. 
+        # Case(1): "Correct" calculation for given indices. Accounts for size effects in int_fun
+        # Case(2): Reduced model. Calculation only based on primary particles
+        # Case(3): Alphas are pre-fed from ANN or other source.
+        if EFFEVAL == 1:
+            # Not coded here
+            alpha_ai = np.sum(p*alpha_prim)
+        if EFFEVAL == 2 or EFFEVAL == 3:
+            alpha_ai = np.sum(p*alpha_prim)
+        
+        # Calculate a correction factor to account for size dependency of alpha, depending on SIZEEVAL
+        # Calculate lam
+        if R[a,b,c]<=R[i,j,k]:
+            lam = R[a,b,c]/R[i,j,k]
+        else:
+            lam = R[i,j,k]/R[a,b,c]
+            
+        if SIZEEVAL == 1:
+            # No size dependency of alpha
+            corr_size = 1
+        if SIZEEVAL == 2:
+            # Case 3: Soos2007 (developed from Selomuya 2003). Empirical Equation
+            # with model parameters x and y. corr_size is lowered with lowered
+            # value of lambda (numerator) and with increasing particles size (denominator)
+            corr_size = np.exp(-X_SEL*(1-lam)**2)/((R[a,b,c]*R[i,j,k]/(np.min(np.array([R[2,1,1],R[1,2,1],R[1,1,2]]))**2))**Y_SEL)
+        
+        # Store result
+        F_M[idx] = beta_ai*alpha_ai*corr_size
+    
+    return F_M
 
    

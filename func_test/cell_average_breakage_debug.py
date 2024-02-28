@@ -22,13 +22,13 @@ pt.plot_init(mrksze=8,lnewdth=1)
     
 #%% PARAM
 t = np.arange(0, 11, 1, dtype=float)
-NS = 30
-S = 2
+NS = 25
+S = 3.8
 V01, V02 = 2e-9, 2e-9
 dim = 2
 ## BREAKRVAL == 1: 1, constant breakage rate
 ## BREAKRVAL == 2: x*y or x + y, breakage rate is related to particle size
-BREAKRVAL = 2
+BREAKRVAL = 1
 ## BREAKFVAL == 1: 4/x'y', meet the first cross moment
 ## BREAKFVAL == 1: 2/x'y', meet the first moment/ mass conversation
 BREAKFVAL = 2

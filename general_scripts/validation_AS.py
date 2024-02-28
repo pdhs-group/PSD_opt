@@ -15,11 +15,10 @@ import plotter.plotter as pt
 from plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
 
 from pop import population as pop_disc
-from pop import get_dNdt_2d_geo_jit as dNdt_2d
 from pop_MC import population_MC as pop_mc 
 
 #%% CASES
-def calculate_case(CASE, PBE=True, MC=True):
+def calculate_case(CASE, PBE=True, MC=False):
     # Initialize mu(i,j,t) matrix (3D, [i,j,t])
     mu_as = np.zeros((3,3,len(t)))
     mu_pbe = np.zeros((3,3,len(t)))
@@ -35,7 +34,8 @@ def calculate_case(CASE, PBE=True, MC=True):
         ### POPULATION BALANCE
         if PBE:
             p = pop_disc(1, disc=grid)
-        
+            
+            p.process_art = process_art
             p.NS = NS  
             p.S = S
             p.COLEVAL = 3                           # Constant beta
@@ -51,7 +51,8 @@ def calculate_case(CASE, PBE=True, MC=True):
             p.init_N()
             p.alpha_prim = 1
             p.calc_F_M()
-            p.calc_B_M()
+            p.calc_B_R()
+            p.calc_int_B_F()
         
             p.solve_PBE(t_vec = t)
             mu_pbe = p.calc_mom_t()
@@ -82,15 +83,36 @@ def calculate_case(CASE, PBE=True, MC=True):
             if N_MC > 1: std_mu_mc = np.std(mu_tmp,ddof=1,axis=0)
         
         ### ANALYTICAL SOLUTION FROM KUMAR DISSERTATION A.7
-        mu_as[0,0,:] = 2*n0/(2+beta0*n0*t)
-        mu_as[1,0,:] = np.ones(t.shape)*c 
+        if process_art == "agglomeration":
+            mu_as[0,0,:] = 2*n0/(2+beta0*n0*t)
+            mu_as[1,0,:] = np.ones(t.shape)*c 
+        elif process_art == "breakage":
+            # see Kumar Dissertation A.1
+            N_as = np.zeros((NS,len(t)))
+            V_sum = np.zeros((NS,len(t)))
+            for i in range(NS):
+                for j in range(len(t)):
+                    if i != NS-1:
+                        N_as[i,j] = (-(t[j]*p.V[-1]+1)+t[j]*p.V_e[i+1])*np.exp(-p.V_e[i+1]*t[j])-\
+                            (-(t[j]*p.V[-1]+1)+t[j]*p.V_e[i])*np.exp(-p.V_e[i]*t[j])
+                    else:
+                        N_as[i,j] = (-(t[j]*p.V[-1]+1)+t[j]*p.V[i])*np.exp(-p.V[i]*t[j])-\
+                            (-(t[j]*p.V[-1]+1)+t[j]*p.V_e[i])*np.exp(-p.V_e[i]*t[j]) + \
+                            (np.exp(-t[j]*p.V[i]))
+                    V_sum[i,j] = N_as[i,j] * p.V[i]
+            mu_as[0,0,:] = N_as.sum(axis=0)
+            mu_as[1,0,:] = np.ones(t.shape)*c 
+        else:
+            mu_as[0,0,:] = np.ones(t.shape)*c 
+            mu_as[1,0,:] = np.ones(t.shape)*c 
     
     #%%% '2D_const_mono': 2D, constant kernel, monodisperse initial conditions
     elif CASE == '2D_const_mono':
         ### POPULATION BALANCE
         if PBE:
             p = pop_disc(2, disc=grid)
-        
+            
+            p.process_art = process_art
             p.NS = NS  
             p.S = S
             p.COLEVAL = 3                           # Constant beta
@@ -101,11 +123,14 @@ def calculate_case(CASE, PBE=True, MC=True):
             p.USE_PSD = False                  
             p.P1=0                                  # No breakage     
             p.N01, p.N03 = n0, n0
+            p.BREAKRVAL = 1
     
             p.calc_R()
             p.init_N()
             p.alpha_prim = np.ones(4)
             p.calc_F_M()
+            p.calc_B_R()
+            p.calc_int_B_F()
         
             p.solve_PBE(t_vec = t)
             mu_pbe = p.calc_mom_t()
@@ -138,13 +163,22 @@ def calculate_case(CASE, PBE=True, MC=True):
             if N_MC > 1: std_mu_mc = np.std(mu_tmp,ddof=1,axis=0)
         
         ### ANALYTICAL SOLUTION FROM KUMAR 2008: Eq. (40), (A.11)-(A.12) 
-        n0_tot = 2*n0
-        mu_as[0,0,:] = 2*n0_tot/(2+beta0*n0_tot*t)
-        mu_as[1,0,:] = np.ones(t.shape)*c         
-        mu_as[0,1,:] = np.ones(t.shape)*c
-        mu_as[1,1,:] = c*c*beta0*n0_tot*t/n0_tot
-        mu_as[2,0,:] = c*(v0+c*beta0*n0_tot*t/n0_tot) 
-        mu_as[0,2,:] = c*(v0+c*beta0*n0_tot*t/n0_tot) 
+        if process_art == "agglomeration":
+            n0_tot = 2*n0
+            mu_as[0,0,:] = 2*n0_tot/(2+beta0*n0_tot*t)
+            mu_as[1,0,:] = np.ones(t.shape)*c         
+            mu_as[0,1,:] = np.ones(t.shape)*c
+            mu_as[1,1,:] = c*c*beta0*n0_tot*t/n0_tot
+            mu_as[2,0,:] = c*(v0+c*beta0*n0_tot*t/n0_tot) 
+            mu_as[0,2,:] = c*(v0+c*beta0*n0_tot*t/n0_tot) 
+        elif process_art == "breakage":
+            for k in range(2):
+                for l in range(2):
+                    mu_as[k,l,:] = np.exp((2/((k+1)*(l+1))-1)*t)
+        else:
+            for k in range(2):
+                for l in range(2):
+                    mu_as[k,l,:] = np.ones(t.shape)*c  
         
     #%%% '3D_const_mono': 3D, constant kernel, monodisperse initial conditions
     elif CASE == '3D_const_mono':
@@ -153,6 +187,7 @@ def calculate_case(CASE, PBE=True, MC=True):
             p = pop_disc(3, disc=grid)
         
             p.NS = NS  
+            p.process_art = process_art
             p.S = S
             p.COLEVAL = 3                           # Constant beta
             p.EFFEVAL = 2                           # Case for calculation of alpha
@@ -209,6 +244,7 @@ def calculate_case(CASE, PBE=True, MC=True):
             p = pop_disc(1, disc=grid)
         
             p.NS = NS  
+            p.process_art = process_art
             p.S = S
             p.COLEVAL = 4                           # Sum kernel
             p.EFFEVAL = 2                           # Case for calculation of alpha
@@ -266,6 +302,7 @@ def calculate_case(CASE, PBE=True, MC=True):
             p = pop_disc(2, disc=grid)
         
             p.NS = NS  
+            p.process_art = process_art
             p.S = S
             p.COLEVAL = 4                           # Sum kernel
             p.EFFEVAL = 2                           # Case for calculation of alpha
@@ -324,7 +361,8 @@ def calculate_case(CASE, PBE=True, MC=True):
         if PBE:
             p = pop_disc(2, disc=grid)
         
-            p.NS = NS  
+            p.NS = NS 
+            p.process_art = process_art
             p.S = S
             p.COLEVAL = 4                           # Sum kernel
             p.EFFEVAL = 2                           # Case for calculation of alpha
@@ -414,6 +452,7 @@ def calculate_case(CASE, PBE=True, MC=True):
             p = pop_disc(2, disc=grid)
         
             p.NS = NS  
+            p.process_art = process_art
             p.S = S
             p.COLEVAL = 1                           # Constant beta
             p.EFFEVAL = 2                           # Case for calculation of alpha
@@ -708,30 +747,32 @@ if __name__ == "__main__":
     # '2D_ortho_mono': 2D, ortho kernel, monodisperse initial conditions, alpha = 1
     # '2D_ortho_mono': 2D, ortho kernel, monodisperse initial conditions, alpha from CCM
     # CASE = '1D_const_mono'
-    # CASE = '2D_const_mono'
+    CASE = '2D_const_mono'
     #CASE = '3D_const_mono'
     # CASE = '1D_sum_mono'
-    CASE = '2D_sum_mono'
+    # CASE = '2D_sum_mono'
     #CASE = '2D_sum_mono_ccm'
     #CASE = '2D_ortho_mono'
     #CASE = '2D_ortho_mono_ccm'
     
     ### General parameters
-    t = np.arange(0, 600, 60, dtype=float)     # Time array [s]
+    t = np.arange(0, 11, 1, dtype=float)     # Time array [s]
     c = 0.1e-2*1e-2                 # Volume concentration [-]
-    x = 1e-6                        # Particle diameter [m]
+    x = 1e-3                       # Particle diameter [m]
     beta0 = 1e-16                   # Collision frequency parameter [m^3/s]
     n0 = 3*c/(4*math.pi*(x/2)**3)   # Total number concentration of primary particles
+    n0 = 1                        # validation for pure breakage
     v0 = 4*math.pi*(x/2)**3/3       # Volume of a primary particle
     MULTI_INTERNAL = False
     
     ### PBE Parameters
     grid = 'geo'
-    NS = 8
-    NS2 = 15
+    NS = 30
+    NS2 = None
     #NS2 = 50
+    process_art = "mix"
     
-    S = 1.5
+    S = 3.5
     # alpha_pbe = np.array([1,0.2,0.2,0])
     alpha_pbe = np.array([1,1,1,1])
     # alpha_pbe = np.array([1,0,0,0])
@@ -745,7 +786,7 @@ if __name__ == "__main__":
     EFFEVAL=2       #dPB
     COLEVAL=3       #dPB
 
-    mu_as, mu_pbe, mu_mc, std_mu_mc, p, m, mu_mc_reps, m_save  = calculate_case(CASE,MC=True)
+    mu_as, mu_pbe, mu_mc, std_mu_mc, p, m, mu_mc_reps, m_save  = calculate_case(CASE,MC=False)
     
     #%% PLOTS
     # pt.close()

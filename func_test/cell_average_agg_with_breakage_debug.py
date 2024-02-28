@@ -23,7 +23,7 @@ pt.plot_init(mrksze=8,lnewdth=1)
 #%% PARAM
 t = np.arange(0, 11, 1, dtype=float)
 NS = 30
-S = 2
+S = 3.5
 R01, R02 = 1, 1
 V01, V02 = 1e-9, 1e-9
 V_crit = 1e-6
@@ -31,13 +31,13 @@ corr_beta = 1
 dim = 2
 ## BREAKRVAL == 1: 1, constant breakage rate
 ## BREAKRVAL == 2: x*y or x + y, breakage rate is related to particle size
-BREAKRVAL = 2
+BREAKRVAL = 1
 ## BREAKFVAL == 1: 4/x'y', meet the first cross moment
 ## BREAKFVAL == 1: 2/x'y', meet the first moment/ mass conversation
 BREAKFVAL = 2
 # art_flag = "agglomeration"
-# art_flag = "breakage"
-art_flag = "mix"
+art_flag = "breakage"
+# art_flag = "mix"
 
 #%% FUNCTIONS
 @jit(nopython=True)
@@ -471,10 +471,6 @@ if __name__ == "__main__":
                 # see Kumar Dissertation A.1
                 N_as = np.zeros((NS,len(t)))
                 V_sum = np.zeros((NS,len(t)))
-                delta = np.zeros(NS)
-                theta = np.zeros(NS)
-                delta[-1] = 1
-                theta[:-1] = 1
                 for i in range(0, len(V_p)):
                     for j in range(len(t)):
                         ## integrate the analytical solution for n(t,x) with exp-distribution initial condition
