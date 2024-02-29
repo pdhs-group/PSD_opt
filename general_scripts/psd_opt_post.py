@@ -24,8 +24,8 @@ def visualize_results(data_paths, labels):
         rel_agg_diff = data['corr_agg_diff'][0]
         data.close()
         
-        # agg_diff = abs(corr_agg_opt - corr_agg)
-        agg_diff = rel_agg_diff
+        agg_diff = abs(corr_agg_opt - corr_agg)
+        # agg_diff = rel_agg_diff
         para_diff_mean = np.mean(agg_diff)
         para_diff_std = np.std(agg_diff)
         para_diff_var = np.var(agg_diff)
@@ -90,5 +90,18 @@ labels2 = ['q3_KL',
           'q3_RMSE',
               ]
 
+data_paths3 = ['Parameter_study/multi_q3_BO_KL_wight_1_iter_400.npz',
+              'Parameter_study/multi_Q3_BO_KL_wight_1_iter_400 (2).npz',
+              'Parameter_study/q3_BO_KL_wight_1_iter_400.npz',
+              'Parameter_study/Q3_BO_KL_wight_1_iter_400 (2).npz',
+              ]
+
+labels3 = ['q3_multi',
+          'Q3_multi',
+          'q3_simple',
+          'Q3_simple',
+              ]
+
 visualize_results(data_paths1, labels1)
 visualize_results(data_paths2, labels2)
+visualize_results(data_paths3, labels3)

@@ -534,7 +534,7 @@ if __name__ == "__main__":
             N[0,1,0] = 0.3
             N[1,0,0] = 0.3
         elif art_flag == "breakage":
-            N[-1,-1,0] = 1
+            N[1,-1,0] = 1
         else:
             N[-1,-1,0] = 1   
             N[0,1,0] = 0.3
@@ -573,7 +573,6 @@ if __name__ == "__main__":
         ## B_R and B_F do not include the left and low boundaries
         F_M = np.zeros((NS-1,NS-1,NS-1,NS-1))
         B_R = np.zeros((NS-1,NS-1))
-        B_F = np.zeros((NS-1,NS-1,NS-1,NS-1))
         bf_int = np.zeros((NS-1,NS-1,NS-1,NS-1))
         xbf_int = np.zeros((NS-1,NS-1,NS-1,NS-1))
         ybf_int = np.zeros((NS-1,NS-1,NS-1,NS-1))

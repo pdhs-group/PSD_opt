@@ -2,15 +2,6 @@
 
 ## Submodules
 
-## func_test.Dependency_Test module
-
-```{eval-rst}
-.. automodule:: func_test.Dependency_Test
-   :members:
-   :undoc-members:
-   :show-inheritance:
-```
-
 ## func_test.base_opt_test module
 
 ```{eval-rst}
@@ -38,6 +29,15 @@
    :show-inheritance:
 ```
 
+## func_test.cell_average_agg_with_breakage_debug module
+
+```{eval-rst}
+.. automodule:: func_test.cell_average_agg_with_breakage_debug
+   :members:
+   :undoc-members:
+   :show-inheritance:
+```
+
 ## func_test.cell_average_agglomeration_debug module
 
 ```{eval-rst}
@@ -51,6 +51,15 @@
 
 ```{eval-rst}
 .. automodule:: func_test.cell_average_breakage_debug
+   :members:
+   :undoc-members:
+   :show-inheritance:
+```
+
+## func_test.dependency_test module
+
+```{eval-rst}
+.. automodule:: func_test.dependency_test
    :members:
    :undoc-members:
    :show-inheritance:

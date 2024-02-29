@@ -623,7 +623,6 @@
             <span class="n">pop</span><span class="o">.</span><span class="n">full_init</span><span class="p">(</span><span class="n">calc_alpha</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="n">pop</span><span class="o">.</span><span class="n">calc_F_M</span><span class="p">()</span>
-        <span class="k">if</span> <span class="n">pop</span><span class="o">.</span><span class="n">dim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span> <span class="n">pop</span><span class="o">.</span><span class="n">calc_B_M</span><span class="p">()</span>
         
         <span class="k">if</span> <span class="n">t_vec</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span> <span class="n">pop</span><span class="o">.</span><span class="n">solve_PBE</span><span class="p">(</span><span class="n">t_vec</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">t_vec</span><span class="p">)</span>      
         <span class="k">else</span><span class="p">:</span> <span class="n">pop</span><span class="o">.</span><span class="n">solve_PBE</span><span class="p">(</span><span class="n">t_vec</span><span class="o">=</span><span class="n">t_vec</span><span class="p">)</span>  </div>

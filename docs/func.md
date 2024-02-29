@@ -20,6 +20,15 @@
    :show-inheritance:
 ```
 
+## func.jit_pop module
+
+```{eval-rst}
+.. automodule:: func.jit_pop
+   :members:
+   :undoc-members:
+   :show-inheritance:
+```
+
 ## Module contents
 
 ```{eval-rst}

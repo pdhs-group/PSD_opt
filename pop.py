@@ -1515,7 +1515,7 @@ class population():
         self.BREAKFVAL = 2                    # Case for calculation breakage function. 1 = conservation of Hypervolume, 2 = conservation of 0 Moments 
         self.BREAKRVAL = 2                    # Case for calculation breakage rate. 1 = constant, 2 = size dependent
         self.aggl_crit = 1e3                  # Maximum aggregate volume allowed to further agglomeration
-        self.process_art = "agglomeration"    # "agglomeration": only calculate agglomeration, "breakage": only calculate breakage, "mix": calculate both agglomeration and breakage
+        self.process_type = "agglomeration"    # "agglomeration": only calculate agglomeration, "breakage": only calculate breakage, "mix": calculate both agglomeration and breakage
                        
         self.SIZEEVAL = 2                     # Case for implementation of size dependency. 1 = No size dependency, 2 = Model from Soos2007 
         self.POTEVAL = 1                      # Case for the set of used interaction potentials. See int_fun_Xd for infos.
