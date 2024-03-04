@@ -12,7 +12,11 @@ import math
 import sys, os
 sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),".."))
 import plotter.plotter as pt
+from scipy.special import beta
+from scipy.integrate import quad, dblquad
+from functools import partial
 from plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
+import func.jit_pop as my_jit
 
 from numba import jit
 from numba.extending import overload, register_jitable
@@ -23,7 +27,7 @@ pt.plot_init(mrksze=8,lnewdth=1)
 #%% PARAM
 t = np.arange(0, 11, 1, dtype=float)
 NS = 30
-S = 3.5
+S = 3
 R01, R02 = 1, 1
 V01, V02 = 1e-9, 1e-9
 V_crit = 1e-6
@@ -31,13 +35,23 @@ corr_beta = 1
 dim = 2
 ## BREAKRVAL == 1: 1, constant breakage rate
 ## BREAKRVAL == 2: x*y or x + y, breakage rate is related to particle size
-BREAKRVAL = 1
+## BREAKRVAL == 3: power low
+BREAKRVAL = 3
 ## BREAKFVAL == 1: 4/x'y', meet the first cross moment
-## BREAKFVAL == 1: 2/x'y', meet the first moment/ mass conversation
-BREAKFVAL = 2
-# art_flag = "agglomeration"
-art_flag = "breakage"
-# art_flag = "mix"
+## BREAKFVAL == 2: 2/x'y', meet the first moment/ mass conversation
+## BREAKFVAL == 3: product function of power law  
+BREAKFVAL = 3
+
+## parameter for power law product function
+v = 4   ## number of fragments
+q = 1   ## parameter describes the breakage type
+P1 = 1e-6 
+P2 = 0.4
+G = 2.3
+
+# type_flag = "agglomeration"
+type_flag = "breakage"
+# type_flag = "mix"
 
 #%% FUNCTIONS
 @jit(nopython=True)
@@ -77,7 +91,7 @@ def calc_1d_breakage(N,V_p,V_e,B_R,bf_int,xbf_int,B_c,M_c,D):
     return B_c, M_c, D
   
 @jit(nopython=True)      
-def dNdt_1D(t,N,NS,V_p,V_e,F_M,B_R,bf_int,xbf_int,art_flag,agg_crit):
+def dNdt_1D(t,N,NS,V_p,V_e,F_M,B_R,bf_int,xbf_int,type_flag,agg_crit):
     dNdt = np.zeros(N.shape)
     M_c = np.zeros(V_e.shape)
     D = np.zeros(N.shape)
@@ -87,15 +101,15 @@ def dNdt_1D(t,N,NS,V_p,V_e,F_M,B_R,bf_int,xbf_int,art_flag,agg_crit):
     V_p_ex = np.zeros(NS+1)
     V_p_ex[:-1] = V_p
     
-    if art_flag == "agglomeration":
+    if type_flag == "agglomeration":
         B_c, M_c, D = calc_1d_agglomeration(N,V_p,V_e,F_M,B_c,M_c,D,agg_crit)
-    elif art_flag == "breakage":
+    elif type_flag == "breakage":
         B_c, M_c, D = calc_1d_breakage(N,V_p,V_e,B_R,bf_int,xbf_int,B_c,M_c,D)
-    elif art_flag == "mix":
+    elif type_flag == "mix":
         B_c, M_c, D = calc_1d_agglomeration(N, V_p, V_e, F_M, B_c, M_c, D,agg_crit)
         B_c, M_c, D = calc_1d_breakage(N, V_p, V_e, B_R, bf_int,xbf_int, B_c, M_c, D)
     else:
-        raise Exception("Current art_flag is not supported")
+        raise Exception("Current type_flag is not supported")
                     
     v[B_c != 0] = M_c[B_c != 0]/B_c[B_c != 0]
     
@@ -207,7 +221,7 @@ def calc_2d_breakage(N,V_p,V_e1,V_e2,B_R,bf_int,xbf_int,ybf_int,B_c,M1_c,M2_c,D)
 
 
 @jit(nopython=True)
-def dNdt_2D(t,NN,NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,art_flag,agg_crit):
+def dNdt_2D(t,NN,NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,type_flag,agg_crit):
   
     N = np.copy(NN) 
     N = np.reshape(N,(NS,NS))
@@ -226,9 +240,9 @@ def dNdt_2D(t,NN,NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,art_flag,agg_cr
     dNdt_bound_x = np.zeros(NS)
     dNdt_bound_y = np.zeros(NS)
     
-    if art_flag == "agglomeration":
+    if type_flag == "agglomeration":
         B_c, M1_c,M2_c, D = calc_2d_agglomeration(N,V_p,V_e1,V_e2,F_M,B_c,M1_c,M2_c,D,agg_crit)
-    elif art_flag == "breakage":
+    elif type_flag == "breakage":
         ## Because the cells on the lower boundary (e1=0 or e2=0)are not allowed to break outward, 
         ## 1d calculations need to be performed on the two lower boundaries.
         dNdt_bound_x = dNdt_1D(t,N[:,1],NS,V_p[:,0],V_e1,F_M[:,0,:,0],B_R[:,0],bf_int[:,0,:,0],xbf_int[:,0,:,0],"breakage",agg_crit[0])
@@ -237,7 +251,7 @@ def dNdt_2D(t,NN,NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,art_flag,agg_cr
         dNdt_bound_x[1] /= 2
         dNdt_bound_y[1] /= 2
         B_c, M1_c,M2_c, D = calc_2d_breakage(N,V_p,V_e1,V_e2,B_R,bf_int,xbf_int,ybf_int,B_c,M1_c,M2_c,D)
-    elif art_flag == "mix":
+    elif type_flag == "mix":
         B_c, M1_c,M2_c, D = calc_2d_agglomeration(N,V_p,V_e1,V_e2,F_M,B_c,M1_c,M2_c,D,agg_crit)
         ## Because the cells on the lower boundary (e1=0 or e2=0)are not allowed to break outward, 
         ## 1d calculations need to be performed on the two lower boundaries.
@@ -248,7 +262,7 @@ def dNdt_2D(t,NN,NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,art_flag,agg_cr
         dNdt_bound_y[1] /= 2
         B_c, M1_c,M2_c, D = calc_2d_breakage(N,V_p,V_e1,V_e2,B_R,bf_int,xbf_int,ybf_int,B_c,M1_c,M2_c,D)
     else:
-        raise Exception("Current art_flag is not supported")
+        raise Exception("Current type_flag is not supported")
     
     for i in range(NS+1):
         for j in range(NS+1):
@@ -350,6 +364,27 @@ def xb_integrate(x_up,x_low,y_up=None,y_low=None,bf=None):
 def yb_integrate(x_up,x_low,y_up=None,y_low=None,bf=None):
     return (y_up**2 - y_low**2)*(x_up-x_low)*0.5*bf  
 
+def power_law_product_1d(x,y,v,q):
+    euler_beta = beta(q,q*(v-1))
+    z = x/y
+    theta = v * z**(q-1) * (1-z)**(q*(v-1)-1) / euler_beta
+    b = theta / y
+    return b
+def power_law_product_1d_volume(x,y,v,q):
+    return x * power_law_product_1d(x,y,v,q)
+
+def power_law_product_2d(x1,x2,y1,y2,v,q):
+    euler_beta = beta(q,q*(v-1))
+    z = (x1+x2)/(y1+y2)
+    theta = v * z**(q-1) * (1-z)**(q*(v-1)-1) / euler_beta
+    b = theta / (y1+y2)
+    return b
+def power_law_product_2d_volume_x1(x1,x2,y1,y2,v,q):
+    return x1 * power_law_product_2d(x1,x2,y1,y2,v,q)
+
+def power_law_product_2d_volume_x2(x1,x2,y1,y2,v,q):
+    return x2 * power_law_product_2d(x1,x2,y1,y2,v,q)
+
 if __name__ == "__main__":    
     #%% NEW 1D
     if dim == 1:
@@ -361,9 +396,9 @@ if __name__ == "__main__":
         # SOLUTION N is saved on pivots
         N = np.zeros((NS,len(t)))
         #N[0,0] = 0.1
-        if art_flag == "agglomeration":
+        if type_flag == "agglomeration":
             N[1,0] = 0.3
-        elif art_flag == "breakage":
+        elif type_flag == "breakage":
             N[-1,0] = 1
         else:
             # N[1,0] = 0.3
@@ -406,6 +441,11 @@ if __name__ == "__main__":
                 a = idx[0]
                 if idx[0] != 0:
                     B_R[idx] = V_p[a+1]
+        elif BREAKRVAL == 3:
+            for idx, tmp in np.ndenumerate(B_R):
+                a = idx[0]
+                if idx[0] != 0:
+                    B_R[idx] = P1 * G * (V_p[a+1]/V_p[1])**P2
                 
         ## Validation: breakage function dependent only on parent particle
         for idx, tmp in np.ndenumerate(B_F):
@@ -415,6 +455,7 @@ if __name__ == "__main__":
                     B_F[idx] = 4 / (V_p[i+1])
                 elif BREAKFVAL == 2:
                     # B_F[idx] = 2 / (V_p[i+1])
+                    
                     bf = 2 / (V_p[i+1])
                     if a == i:
                         bf_int[idx] = b_integrate(V_p[a+1],V_e_tem[a],bf=bf)
@@ -422,12 +463,20 @@ if __name__ == "__main__":
                     else:
                         bf_int[idx] = b_integrate(V_e_tem[a+1],V_e_tem[a],bf=bf)
                         xbf_int[idx] = xb_integrate(V_e_tem[a+1],V_e_tem[a],bf=bf)
+                elif BREAKFVAL == 3:
+                    args = (V_p[i+1],v,q)
+                    if a == i:
+                        bf_int[idx],err = quad(power_law_product_1d,V_e_tem[a],V_p[a+1],args=args)
+                        xbf_int[idx],err = quad(power_law_product_1d_volume,V_e_tem[a],V_p[a+1],args=args)
+                    else:
+                        bf_int[idx],err = quad(power_law_product_1d,V_e_tem[a],V_e_tem[a+1],args=args)
+                        xbf_int[idx],err = quad(power_law_product_1d_volume,V_e_tem[a],V_e_tem[a+1],args=args)
         # SOLVE    
         import scipy.integrate as integrate
         RES = integrate.solve_ivp(dNdt_1D,
                                   [0, max(t)], 
                                   N[:,0], t_eval=t,
-                                  args=(NS,V_p,V_e,F_M,B_R,bf_int,xbf_int,art_flag,agg_crit),
+                                  args=(NS,V_p,V_e,F_M,B_R,bf_int,xbf_int,type_flag,agg_crit),
                                   method='RK45',first_step=0.1,rtol=1e-3)
         
         # Reshape and save result to N and t_vec
@@ -440,7 +489,7 @@ if __name__ == "__main__":
         print(np.sum(N0*V_p), np.sum(NE*V_p))
         
         print('### Initial dNdt..')
-        dNdt0=dNdt_1D(0,N[:,0],NS,V_p,V_e,F_M,B_R,bf_int,xbf_int,art_flag,agg_crit)
+        dNdt0=dNdt_1D(0,N[:,0],NS,V_p,V_e,F_M,B_R,bf_int,xbf_int,type_flag,agg_crit)
         print(dNdt0)   
         
         fig=plt.figure(figsize=[10,2])    
@@ -464,9 +513,9 @@ if __name__ == "__main__":
         ax2.plot(t, mu0, color=c_KIT_green, label='$\mu_0$ (numerical)') 
         
         # mu0_as = 2/(2+np.sum(N[:,0])*t)
-        if art_flag == "agglomeration":
+        if type_flag == "agglomeration":
             mu0_as = np.exp(-np.sum(N[:,0])*t)  
-        elif art_flag == "breakage":
+        elif type_flag == "breakage":
             if BREAKFVAL == 2 and BREAKRVAL == 2:
                 # see Kumar Dissertation A.1
                 N_as = np.zeros((NS,len(t)))
@@ -486,7 +535,7 @@ if __name__ == "__main__":
                                 (-(t[j]*V_p[-1]+1)+t[j]*V_e[i])*np.exp(-V_e[i]*t[j]) + \
                                 (np.exp(-t[j]*V_p[i]))
                         V_sum[i,j] = N_as[i,j] * V_p[i]
-            mu0_as = N_as.sum(axis=0)
+                mu0_as = N_as.sum(axis=0)
         else:
             mu0_as = 1*t
         
@@ -530,24 +579,15 @@ if __name__ == "__main__":
             V_e2[i+1] = S**(i)*V02
             V_p1[i] = (V_e1[i] + V_e1[i+1]) / 2#S**(i-1)*V01
             V_p2[i] = (V_e2[i] + V_e2[i+1]) / 2#S**(i-1)*V02
-        if art_flag == "agglomeration":
+        if type_flag == "agglomeration":
             N[0,1,0] = 0.3
             N[1,0,0] = 0.3
-        elif art_flag == "breakage":
+        elif type_flag == "breakage":
             N[1,-1,0] = 1
         else:
             N[-1,-1,0] = 1   
             N[0,1,0] = 0.3
             N[1,0,0] = 0.3
-        
-        ## Let the integration range associated with the breakage function start from zero 
-        ## to ensure mass conservation   
-        V_e1_tem = np.zeros(NS) 
-        V_e2_tem = np.zeros(NS) 
-        V_e1_tem[:] = V_e1[1:]
-        V_e2_tem[:] = V_e2[1:]
-        V_e1_tem[0] = 0.0
-        V_e2_tem[0] = 0.0
 
         V_p[:,0] = V_p1 
         V_p[0,:] = V_p2 
@@ -567,78 +607,10 @@ if __name__ == "__main__":
                 else:
                     X1[i,j] = V_p1[i]/V_p[i,j]
                     X2[i,j] = V_p2[j]/V_p[i,j]
-        ## To save computing resources, do not set parameters for corresponding particles 
-        ## which do not participate in calculations.
-        ## That means, F_M does not include the right and upper boundaries
-        ## B_R and B_F do not include the left and low boundaries
+        
         F_M = np.zeros((NS-1,NS-1,NS-1,NS-1))
         B_R = np.zeros((NS-1,NS-1))
-        bf_int = np.zeros((NS-1,NS-1,NS-1,NS-1))
-        xbf_int = np.zeros((NS-1,NS-1,NS-1,NS-1))
-        ybf_int = np.zeros((NS-1,NS-1,NS-1,NS-1))
-        
-        F_M_tem=1
-        for idx, tmp in np.ndenumerate(B_F):
-            a = idx[0]; b = idx[1] ; i = idx[2]; j = idx[3] 
-            if a + b != 0 and i + j != 0:
-                F_M[idx] = F_M_tem
-            # F_M[idx] = (V_p[a,b] + V_p[i,j]) * corr_beta
-            if i + j != 0 and a<=i or b <= j:
-                if BREAKFVAL == 1: 
-                    # if i == 0 and j == 0:
-                    #     continue
-                    # elif i == 0:
-                    #     B_F[idx] = 4 / (V_p2[j])
-                    # elif j == 0:
-                    #     B_F[idx] = 4 / (V_p1[i])
-                    # else:
-                    B_F[idx] = 4 / (V_p1[i+1]*V_p2[j+1])
-                elif BREAKFVAL == 2:
-                    if i == 0:
-                        ## for left boundary/y
-                        # B_F[idx] = 2 / (V_p2[j+1])
-                        bf = 2 / (V_p2[j+1])
-                        if j == 0:
-                            continue
-                        elif b == j:
-                            bf_int[idx] = b_integrate(V_p2[b+1],V_e2_tem[b],bf=bf)
-                            ybf_int[idx] = xb_integrate(V_p2[b+1],V_e2_tem[b],bf=bf)
-                        else:
-                            bf_int[idx] = b_integrate(V_e2_tem[b+1],V_e2_tem[b],bf=bf)
-                            ybf_int[idx] = xb_integrate(V_e2_tem[b+1],V_e2_tem[b],bf=bf)
-                    elif j == 0:
-                        ## for low boundary/x
-                        # B_F[idx] = 2 / (V_p1[i+1])
-                        bf = 2 / (V_p1[i+1])
-                        if a == i:
-                            bf_int[idx] = b_integrate(V_p1[a+1],V_e1_tem[a],bf=bf)
-                            xbf_int[idx] = xb_integrate(V_p1[a+1],V_e1_tem[a],bf=bf)
-                        else:
-                            bf_int[idx] = b_integrate(V_e1_tem[a+1],V_e1_tem[a],bf=bf)
-                            xbf_int[idx] = xb_integrate(V_e1_tem[a+1],V_e1_tem[a],bf=bf)
-                    else:
-                        # B_F[idx] = 2 / (V_p1[i+1]*V_p2[j+1])
-                        bf = 2 / (V_p1[i+1]*V_p2[j+1])
-                        ## The contributions of fragments on the same vertical axis
-                        if a == i and b == j:
-                            bf_int[idx] = b_integrate(V_p1[a+1], V_e1_tem[a], V_p2[b+1], V_e2_tem[b], bf)
-                            xbf_int[idx] = xb_integrate(V_p1[a+1], V_e1_tem[a], V_p2[b+1], V_e2_tem[b], bf)
-                            ybf_int[idx] = yb_integrate(V_p1[a+1], V_e1_tem[a], V_p2[b+1], V_e2_tem[b], bf)
-                        elif a == i:
-                            bf_int[idx] = b_integrate(V_p1[a+1], V_e1_tem[a], V_e2_tem[b+1], V_e2_tem[b], bf)
-                            xbf_int[idx] = xb_integrate(V_p1[a+1], V_e1_tem[a], V_e2_tem[b+1], V_e2_tem[b], bf)
-                            ybf_int[idx] = yb_integrate(V_p1[a+1], V_e1_tem[a], V_e2_tem[b+1], V_e2_tem[b], bf)
-                        ## The contributions of fragments on the same horizontal axis
-                        elif b == j:   
-                            bf_int[idx] = b_integrate(V_e1_tem[a+1], V_e1_tem[a], V_p2[b+1], V_e2_tem[b], bf)
-                            xbf_int[idx] = xb_integrate(V_e1_tem[a+1], V_e1_tem[a], V_p2[b+1], V_e2_tem[b], bf)
-                            ybf_int[idx] = yb_integrate(V_e1_tem[a+1], V_e1_tem[a], V_p2[b+1], V_e2_tem[b], bf)
-                        ## The contribution from the fragments of large particles on the upper right side 
-                        else:
-                            bf_int[idx] = b_integrate(V_e1_tem[a+1], V_e1_tem[a], V_e2_tem[b+1], V_e2_tem[b], bf)
-                            xbf_int[idx] = xb_integrate(V_e1_tem[a+1], V_e1_tem[a], V_e2_tem[b+1], V_e2_tem[b], bf)
-                            ybf_int[idx] = yb_integrate(V_e1_tem[a+1], V_e1_tem[a], V_e2_tem[b+1], V_e2_tem[b], bf)
-                        
+        F_M[:,:] = 1
         if BREAKRVAL == 1:
             B_R[:,:] = 1
             B_R[0,0] = 0
@@ -656,13 +628,26 @@ if __name__ == "__main__":
                         B_R[idx] = V_p1[a+1]*V_p2[b+1]
                     else:
                         B_R[idx] = V_p1[a+1] + V_p2[b+1]
+        elif BREAKFVAL == 3:
+            for idx, tmp in np.ndenumerate(B_R):
+                a = idx[0]; b = idx[1]
+                if a == 0 and b == 0:
+                    continue
+                elif a == 0:
+                    B_R[idx] = P1 * G * (V_p2[b+1]/V_p2[1])**P2
+                elif b == 0:
+                    B_R[idx] = P1 * G * (V_p1[a+1]/V_p1[1])**P2
+                else:
+                    B_R[idx] = P1 * G * (V_p[a+1,b+1]/V_p[1,1])**P2
+                    
+        bf_int, xbf_int, ybf_int = my_jit.calc_int_B_F_2D(NS,V_p1,V_p2,V_e1,V_e2,BREAKFVAL,v,q)
             
         # SOLVE    
         import scipy.integrate as integrate
         RES = integrate.solve_ivp(dNdt_2D,
                                   [0, max(t)], 
                                   N[:,:,0].reshape(-1), t_eval=t,
-                                  args=(NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,art_flag,agg_crit),
+                                  args=(NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,type_flag,agg_crit),
                                   method='RK23',first_step=0.1,rtol=1e-3)
         
         # Reshape and save result to N and t_vec
@@ -675,7 +660,7 @@ if __name__ == "__main__":
         print(np.sum(N0*V_p), np.sum(NE*V_p))
         
         print('### Initial dNdt..')
-        dNdt0=dNdt_2D(0,N[:,:,0].reshape(-1),NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,art_flag,agg_crit).reshape(NS,NS)#.reshape(NS,NS)
+        dNdt0=dNdt_2D(0,N[:,:,0].reshape(-1),NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,type_flag,agg_crit).reshape(NS,NS)#.reshape(NS,NS)
         print(dNdt0)
         
         VE2, VE1 = np.meshgrid(V_e2, V_e1)
@@ -700,9 +685,9 @@ if __name__ == "__main__":
             mu0[ti] = np.sum(N[:,:,ti])/np.sum(N[:,:,0]) 
             
         ax2.plot(t, mu0, color=c_KIT_green, label='$\mu_0$ (numerical)') 
-        if art_flag == "agglomeration":
-            mu0_as = 2/(2+F_M_tem*np.sum(N[:,:,0])*t)  
-        elif art_flag == "breakage":
+        if type_flag == "agglomeration":
+            mu0_as = 2/(2+1*np.sum(N[:,:,0])*t)  
+        elif type_flag == "breakage":
             mu_as = np.zeros((2,2,len(t)))
             if BREAKRVAL == 1 and BREAKFVAL == 1:
                 for k in range(2):

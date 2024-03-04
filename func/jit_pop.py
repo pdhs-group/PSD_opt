@@ -7,10 +7,11 @@ Created on Tue Feb 27 16:24:30 2024
 import numpy as np
 import math
 from numba import jit
+# from scipy.integrate import quad, dblquad
 # from numba.extending import overload, register_jitable
 
 @jit(nopython=True)
-def get_dNdt_1d_geo(t,N,NS,V_p,V_e,F_M,B_R,bf_int,xbf_int,art_flag,agg_crit):
+def get_dNdt_1d_geo(t,N,NS,V_p,V_e,F_M,B_R,bf_int,xbf_int,type_flag,agg_crit):
     dNdt = np.zeros(N.shape)
     M_c = np.zeros(V_e.shape)
     D = np.zeros(N.shape)
@@ -20,15 +21,15 @@ def get_dNdt_1d_geo(t,N,NS,V_p,V_e,F_M,B_R,bf_int,xbf_int,art_flag,agg_crit):
     V_p_ex = np.zeros(NS+1)
     V_p_ex[:-1] = V_p
     
-    if art_flag == "agglomeration":
+    if type_flag == "agglomeration":
         B_c, M_c, D = calc_1d_agglomeration(N,V_p,V_e,F_M,B_c,M_c,D,agg_crit)
-    elif art_flag == "breakage":
+    elif type_flag == "breakage":
         B_c, M_c, D = calc_1d_breakage(N,V_p,V_e,B_R,bf_int,xbf_int,B_c,M_c,D)
-    elif art_flag == "mix":
+    elif type_flag == "mix":
         B_c, M_c, D = calc_1d_agglomeration(N, V_p, V_e, F_M, B_c, M_c, D,agg_crit)
         B_c, M_c, D = calc_1d_breakage(N, V_p, V_e, B_R, bf_int,xbf_int, B_c, M_c, D)
     else:
-        raise Exception("Current art_flag is not supported")
+        raise Exception("Current type_flag is not supported")
                     
     v[B_c != 0] = M_c[B_c != 0]/B_c[B_c != 0]
     
@@ -48,7 +49,7 @@ def get_dNdt_1d_geo(t,N,NS,V_p,V_e,F_M,B_R,bf_int,xbf_int,art_flag,agg_crit):
     return dNdt 
 
 @jit(nopython=True)
-def get_dNdt_2d_geo(t,NN,NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,art_flag,agg_crit):       
+def get_dNdt_2d_geo(t,NN,NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,type_flag,agg_crit):       
     N = np.copy(NN) 
     N = np.reshape(N,(NS,NS))
     dNdt = np.zeros(np.shape(N))
@@ -66,9 +67,9 @@ def get_dNdt_2d_geo(t,NN,NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,art_fla
     dNdt_bound_x = np.zeros(NS)
     dNdt_bound_y = np.zeros(NS)
     
-    if art_flag == "agglomeration":
+    if type_flag == "agglomeration":
         B_c, M1_c,M2_c, D = calc_2d_agglomeration(N,V_p,V_e1,V_e2,F_M,B_c,M1_c,M2_c,D,agg_crit)
-    elif art_flag == "breakage":
+    elif type_flag == "breakage":
         ## Because the cells on the lower boundary (e1=0 or e2=0)are not allowed to break outward, 
         ## 1d calculations need to be performed on the two lower boundaries.
         dNdt_bound_x = get_dNdt_1d_geo(t,N[:,1],NS,V_p[:,0],V_e1,F_M[:,0,:,0],B_R[:,0],bf_int[:,0,:,0],xbf_int[:,0,:,0],"breakage",agg_crit[0])
@@ -77,7 +78,7 @@ def get_dNdt_2d_geo(t,NN,NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,art_fla
         dNdt_bound_x[1] /= 2
         dNdt_bound_y[1] /= 2
         B_c, M1_c,M2_c, D = calc_2d_breakage(N,V_p,V_e1,V_e2,B_R,bf_int,xbf_int,ybf_int,B_c,M1_c,M2_c,D)
-    elif art_flag == "mix":
+    elif type_flag == "mix":
         B_c, M1_c,M2_c, D = calc_2d_agglomeration(N,V_p,V_e1,V_e2,F_M,B_c,M1_c,M2_c,D,agg_crit)
         ## Because the cells on the lower boundary (e1=0 or e2=0)are not allowed to break outward, 
         ## 1d calculations need to be performed on the two lower boundaries.
@@ -88,7 +89,7 @@ def get_dNdt_2d_geo(t,NN,NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,art_fla
         dNdt_bound_y[1] /= 2
         B_c, M1_c,M2_c, D = calc_2d_breakage(N,V_p,V_e1,V_e2,B_R,bf_int,xbf_int,ybf_int,B_c,M1_c,M2_c,D)
     else:
-        raise Exception("Current art_flag is not supported")
+        raise Exception("Current type_flag is not supported")
     
     for i in range(NS+1):
         for j in range(NS+1):
@@ -700,7 +701,70 @@ def calc_F_M_3D(NS,disc,COLEVAL,CORR_BETA,G,R,X1,X2,X3,EFFEVAL,alpha_prim,SIZEEV
     return F_M
 
 @jit(nopython=True)
-def calc_int_B_F_2D(NS,V1,V3,V_e1,V_e3,BREAKFVAL):
+def beta_func(x, y):
+    return math.gamma(x) * math.gamma(y) / math.gamma(x + y)
+
+@jit(nopython=True)
+def breakage_func_1d(x,y,v,q,BREAKFVAL):
+    if BREAKFVAL == 1:
+        b = y / 4
+    elif BREAKFVAL == 2:
+        b = y / 2
+    elif BREAKFVAL == 3:     
+        euler_beta = beta_func(q,q*(v-1))
+        z = x/y
+        theta = v * z**(q-1) * (1-z)**(q*(v-1)-1) / euler_beta
+        b = theta / y
+    return b
+@jit(nopython=True)
+def breakage_func_1d_vol(x,y,v,q,BREAKFVAL):
+    return x * breakage_func_1d(x,y,v,q,BREAKFVAL)
+
+@jit(nopython=True)
+def breakage_func_2d(x1,x3,y1,y3,v,q,BREAKFVAL):
+    if BREAKFVAL == 1:
+        b = (y1+y3) / 4
+    elif BREAKFVAL == 2:
+        b = (y1+y3) / 2
+    elif BREAKFVAL == 3:  
+        euler_beta = beta_func(q,q*(v-1))
+        z = (x1+x3)/(y1+y3)
+        theta = v * z**(q-1) * (1-z)**(q*(v-1)-1) / euler_beta
+        b = theta / (y1+y3)
+    return b
+@jit(nopython=True)
+def breakage_func_2d_x1vol(x1,x3,y1,y3,v,q,BREAKFVAL):
+    return x1 * breakage_func_2d(x1,x3,y1,y3,v,q,BREAKFVAL)
+
+@jit(nopython=True)
+def breakage_func_2d_x3vol(x1,x3,y1,y3,v,q,BREAKFVAL):
+    return x3 * breakage_func_2d(x1,x3,y1,y3,v,q,BREAKFVAL)
+
+@jit(nopython=True)
+# def trap_integral_1d(f,a,b,args=(),n=100):
+def quad(f,a,b,args=(),n=100):
+    x = np.linspace(a, b, n)
+    fx = np.zeros_like(x)
+    h = (b - a) / (n - 1)
+    for i in range(n):
+        fx[i] = f(x[i], *args)
+    return (h/2) * (fx[0] + 2 * np.sum(fx[1:-1]) + fx[-1]), 0
+
+@jit(nopython=True)
+def dblquad(f, a1, b1, a2, b2, args=(), n1=100, n2=100):
+    x1 = np.linspace(a1, b1, n1)
+    x3 = np.linspace(a2, b2, n2)
+    h1 = (b1 - a1) / (n1 - 1)
+    h2 = (b2 - a2) / (n2 - 1)
+    s = 0.0
+    for i in range(n1):
+        for j in range(n2):
+            s += f(x1[i], x3[j], *args)
+    return s * h1 * h2, 0
+
+@jit(nopython=True)
+## integration function scipy.quad and scipy.dblquad are not compatible with jit!
+def calc_int_B_F_2D(NS,V1,V3,V_e1,V_e3,BREAKFVAL,v,q):
     int_B_F = np.zeros((NS-1, NS-1, NS-1, NS-1))
     intx_B_F = np.zeros((NS-1, NS-1, NS-1, NS-1))
     inty_B_F = np.zeros((NS-1, NS-1, NS-1, NS-1))
@@ -710,61 +774,54 @@ def calc_int_B_F_2D(NS,V1,V3,V_e1,V_e3,BREAKFVAL):
     V_e3_tem = np.zeros(NS) 
     V_e3_tem[:] = V_e3[1:]
     V_e3_tem[0] = 0.0
+    
     for idx, tmp in np.ndenumerate(int_B_F):
         a = idx[0] ; b = idx[1]; i = idx[2]; j = idx[3]
         if i + j != 0 and a<=i or b <= j:
             if i == 0:
                 ## for left boundary/y
-                if BREAKFVAL == 1:
-                    B_F = 4 / (V3[j+1])
-                elif BREAKFVAL == 2:
-                    B_F = 2 / (V3[j+1])
+                args = (V3[j+1],v,q,BREAKFVAL)
                 if j == 0:
                     continue
                 elif b == j:
-                    int_B_F[idx] = b_integrate(V3[b+1],V_e3_tem[b],bf=B_F)
-                    inty_B_F[idx] = xb_integrate(V3[b+1],V_e3_tem[b],bf=B_F)
+                    int_B_F[idx],err  = quad(breakage_func_1d,V_e3_tem[b],V3[b+1],args=args)
+                    inty_B_F[idx],err  = quad(breakage_func_1d_vol,V_e3_tem[b],V3[b+1],args=args)
                 else:
-                    int_B_F[idx] = b_integrate(V_e3_tem[b+1],V_e3_tem[b],bf=B_F)
-                    inty_B_F[idx] = xb_integrate(V_e3_tem[b+1],V_e3_tem[b],bf=B_F)
+                    int_B_F[idx],err  = quad(breakage_func_1d,V_e3_tem[b],V_e3_tem[b+1],args=args)
+                    inty_B_F[idx],err  = quad(breakage_func_1d_vol,V_e3_tem[b],V_e3_tem[b+1],args=args)
             elif j == 0:
                 ## for low boundary/x
-                if BREAKFVAL == 1:
-                    B_F = 4 / (V1[i+1])
-                elif BREAKFVAL == 2:
-                    B_F = 2 / (V1[i+1])
+                args = (V1[i+1],v,q,BREAKFVAL)
                 if a == i:
-                    int_B_F[idx] = b_integrate(V1[a+1],V_e1_tem[a],bf=B_F)
-                    intx_B_F[idx] = xb_integrate(V1[a+1],V_e1_tem[a],bf=B_F)
+                    int_B_F[idx],err = quad(breakage_func_1d,V_e1_tem[a],V1[a+1],args=args)
+                    intx_B_F[idx],err = quad(breakage_func_1d_vol,V_e1_tem[a],V1[a+1],args=args)
                 else:
-                    int_B_F[idx] = b_integrate(V_e1_tem[a+1],V_e1_tem[a],bf=B_F)
-                    intx_B_F[idx] = xb_integrate(V_e1_tem[a+1],V_e1_tem[a],bf=B_F)
+                    int_B_F[idx],err = quad(breakage_func_1d,V_e1_tem[a],V_e1_tem[a+1],args=args)
+                    intx_B_F[idx],err = quad(breakage_func_1d_vol,V_e1_tem[a],V_e1_tem[a+1],args=args)
             else:
-                if BREAKFVAL == 1:
-                    B_F = 4 / (V1[i+1]*V3[j+1])
-                elif BREAKFVAL == 2:
-                    B_F = 2 / (V1[i+1]*V3[j+1])
+                args = (V1[i+1],V3[j+1],v,q,BREAKFVAL)
                 ## The contributions of fragments on the same vertical axis
                 if a == i and b == j:
-                    int_B_F[idx] = b_integrate(V1[a+1], V_e1_tem[a], V3[b+1], V_e3_tem[b], B_F)
-                    intx_B_F[idx] = xb_integrate(V1[a+1], V_e1_tem[a], V3[b+1], V_e3_tem[b], B_F)
-                    inty_B_F[idx] = yb_integrate(V1[a+1], V_e1_tem[a], V3[b+1], V_e3_tem[b], B_F)
+                    int_B_F[idx],err  = dblquad(breakage_func_2d,V_e1_tem[a],V1[a+1],V_e3_tem[b],V3[b+1],args=args)
+                    intx_B_F[idx],err = dblquad(breakage_func_2d_x1vol,V_e1_tem[a],V1[a+1],V_e3_tem[b],V3[b+1],args=args)
+                    inty_B_F[idx],err = dblquad(breakage_func_2d_x3vol,V_e1_tem[a],V1[a+1],V_e3_tem[b],V3[b+1],args=args)
                 elif a == i:
-                    int_B_F[idx] = b_integrate(V1[a+1], V_e1_tem[a], V_e3_tem[b+1], V_e3_tem[b], B_F)
-                    intx_B_F[idx] = xb_integrate(V1[a+1], V_e1_tem[a], V_e3_tem[b+1], V_e3_tem[b], B_F)
-                    inty_B_F[idx] = yb_integrate(V1[a+1], V_e1_tem[a], V_e3_tem[b+1], V_e3_tem[b], B_F)
+                    int_B_F[idx],err  = dblquad(breakage_func_2d,V_e1_tem[a],V1[a+1],V_e3_tem[b],V_e3_tem[b+1],args=args)
+                    intx_B_F[idx],err = dblquad(breakage_func_2d_x1vol,V_e1_tem[a],V1[a+1],V_e3_tem[b],V_e3_tem[b+1],args=args)
+                    inty_B_F[idx],err = dblquad(breakage_func_2d_x3vol,V_e1_tem[a],V1[a+1],V_e3_tem[b],V_e3_tem[b+1],args=args)
                 ## The contributions of fragments on the same horizontal axis
                 elif b == j:   
-                    int_B_F[idx] = b_integrate(V_e1_tem[a+1], V_e1_tem[a], V3[b+1], V_e3_tem[b], B_F)
-                    intx_B_F[idx] = xb_integrate(V_e1_tem[a+1], V_e1_tem[a], V3[b+1], V_e3_tem[b], B_F)
-                    inty_B_F[idx] = yb_integrate(V_e1_tem[a+1], V_e1_tem[a], V3[b+1], V_e3_tem[b], B_F)
+                    int_B_F[idx],err  = dblquad(breakage_func_2d,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V3[b+1],args=args)
+                    intx_B_F[idx],err = dblquad(breakage_func_2d_x1vol,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V3[b+1],args=args)
+                    inty_B_F[idx],err = dblquad(breakage_func_2d_x3vol,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V3[b+1],args=args)
                 ## The contribution from the fragments of large particles on the upper right side 
                 else:
-                    int_B_F[idx] = b_integrate(V_e1_tem[a+1], V_e1_tem[a], V_e3_tem[b+1], V_e3_tem[b], B_F)
-                    intx_B_F[idx] = xb_integrate(V_e1_tem[a+1], V_e1_tem[a], V_e3_tem[b+1], V_e3_tem[b], B_F)
-                    inty_B_F[idx] = yb_integrate(V_e1_tem[a+1], V_e1_tem[a], V_e3_tem[b+1], V_e3_tem[b], B_F)
-
+                    int_B_F[idx],err  = dblquad(breakage_func_2d,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V_e3_tem[b+1],args=args)
+                    intx_B_F[idx],err = dblquad(breakage_func_2d_x1vol,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V_e3_tem[b+1],args=args)
+                    inty_B_F[idx],err = dblquad(breakage_func_2d_x3vol,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V_e3_tem[b+1],args=args)
+                            
     return int_B_F, intx_B_F, inty_B_F
+
 @jit(nopython=True)
 def calc_1d_agglomeration(N,V_p,V_e,F_M,B_c,M_c,D,agg_crit):
     for e in range(1,agg_crit):

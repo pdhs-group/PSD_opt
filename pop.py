@@ -60,7 +60,7 @@ class population():
             if self.disc == 'geo':
                 rhs = jit.get_dNdt_1d_geo
                 args=(self.NS,self.V,self.V_e,self.F_M,self.B_R,self.int_B_F,
-                      self.intx_B_F,self.process_art,self.aggl_crit_id)
+                      self.intx_B_F,self.process_type,self.aggl_crit_id)
             elif self.disc == 'uni':
                 rhs = jit.get_dNdt_1d_uni                
                 args=(self.V,self.F_M,self.NS,self.THR_DN)
@@ -79,7 +79,7 @@ class population():
             if self.disc == 'geo':
                 rhs = jit.get_dNdt_2d_geo
                 args=(self.NS,self.V,self.V_e1,self.V_e3,self.F_M,self.B_R,self.int_B_F,
-                      self.intx_B_F,self.inty_B_F,self.process_art,self.aggl_crit_id)
+                      self.intx_B_F,self.inty_B_F,self.process_type,self.aggl_crit_id)
             elif self.disc == 'uni':
                 rhs = jit.get_dNdt_2d_uni   
                 args=(self.V,self.V1,self.V3,self.F_M,self.NS,self.THR_DN)
@@ -344,15 +344,15 @@ class population():
             if self.USE_PSD:
                 self.N[1:,0] = self.new_initialize_psd(2*self.R[1:],self.DIST1,self.V01)
             else:
-                if self.process_art == "agglomeration":
+                if self.process_type == "agglomeration":
                     self.N[1,0] = self.N01
-                elif self.process_art == "breakage":
+                elif self.process_type == "breakage":
                     self.N[-1,0] = self.N01
-                elif self.process_art == "mix":
+                elif self.process_type == "mix":
                     self.N[1,0] = self.N01
                     self.N[-1,0] = self.N01
                 else:
-                    raise Exception("Current process_art not allowed!")
+                    raise Exception("Current process_type not allowed!")
         
         # 2-D case
         elif self.dim == 2:
@@ -361,12 +361,12 @@ class population():
                 self.N[1:,1,0] = self.new_initialize_psd(2*self.R[1:,0],self.DIST1,self.V01)
                 self.N[1,1:,0] = self.new_initialize_psd(2*self.R[0,1:],self.DIST3,self.V03)
             else:
-                if self.process_art == "agglomeration":
+                if self.process_type == "agglomeration":
                     self.N[1,0,0] = self.N01
                     self.N[0,1,0] = self.N03
-                elif self.process_art == "breakage":
+                elif self.process_type == "breakage":
                     self.N[-1,-1,0] = self.N01
-                elif self.process_art == "mix":
+                elif self.process_type == "mix":
                     self.N[1,0,0] = self.N01
                     self.N[0,1,0] = self.N03  
                     self.N[-1,-1,0] = self.N01
@@ -746,9 +746,6 @@ class population():
             ## Note: Because particles with a volume of zero are skipped, 
             ##       calculation with V requires (index+1)
             self.B_R = np.zeros(self.NS-1)
-            # Power Law Pandy and Spielmann --> See Jeldres2018 (28)
-            # for i in range(2,len(self.V)):
-            #     self.B_M[i] = self.P1*self.G*(self.V[i]/self.V[2])**self.P2
             
             # Size independent breakage rate --> See Leong2023 (10)
             # only for validation with analytical results
@@ -762,6 +759,14 @@ class population():
                     a = idx[0]
                     if a != 0:
                         self.B_R[a] = self.V[a+1]
+                        
+            # Power Law Pandy and Spielmann --> See Jeldres2018 (28)
+            elif self.BREAKRVAL == 3:
+                for idx, tmp in np.ndenumerate(self.B_R):
+                    a = idx[0]
+                    if a != 0:
+                        self.B_R[a] = self.P1*self.G*(self.V[a+1]/self.V[1])**self.P2          
+        
         # 2-D case            
         if self.dim == 2:
             self.B_R = np.zeros((self.NS-1, self.NS-1))
@@ -789,6 +794,17 @@ class population():
                             self.B_R[idx] = self.V1[a+1]*self.V3[b+1]
                         elif self.BREAKFVAL == 2:
                             self.B_R[idx] = self.V1[a+1] + self.V3[b+1]
+            elif self.BREAKRVAL == 3:
+                for idx, tmp in np.ndenumerate(self.B_R):
+                    a = idx[0]; b = idx[1]
+                    if a == 0 and b == 0:
+                        continue
+                    elif a == 0:
+                        self.B_R[idx] = self.P1 * self.G * (self.V3[b+1]/self.V3[1])**self.P2
+                    elif b == 0:
+                        self.B_R[idx] = self.P1 * self.G * (self.V1[a+1]/self.V1[1])**self.P2
+                    else:
+                        self.B_R[idx] = self.P1 * self.G * (self.V_p[a+1,b+1]/self.V_p[1,1])**self.P2
                         
             
     ## Calculate integrated breakage function matrix.         
