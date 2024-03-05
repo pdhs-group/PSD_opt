@@ -17,6 +17,7 @@ from scipy.integrate import quad, dblquad
 from functools import partial
 from plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
 import func.jit_pop as my_jit
+import time
 
 from numba import jit
 from numba.extending import overload, register_jitable
@@ -26,32 +27,33 @@ pt.plot_init(mrksze=8,lnewdth=1)
     
 #%% PARAM
 t = np.arange(0, 11, 1, dtype=float)
-NS = 30
-S = 3
+NS = 15
+S = 4
 R01, R02 = 1, 1
 V01, V02 = 1e-9, 1e-9
-V_crit = 1e-6
+V_crit = 1e-7
 corr_beta = 1
-dim = 2
+dim = 1
 ## BREAKRVAL == 1: 1, constant breakage rate
 ## BREAKRVAL == 2: x*y or x + y, breakage rate is related to particle size
 ## BREAKRVAL == 3: power low
 BREAKRVAL = 3
 ## BREAKFVAL == 1: 4/x'y', meet the first cross moment
 ## BREAKFVAL == 2: 2/x'y', meet the first moment/ mass conversation
-## BREAKFVAL == 3: product function of power law  
-BREAKFVAL = 3
+## BREAKFVAL == 3: product function of power law(only for 1d)
+## BREAKFVAL == 4: simple power law
+BREAKFVAL = 4
 
 ## parameter for power law product function
-v = 4   ## number of fragments
+v = 0.5   ## number of fragments
 q = 1   ## parameter describes the breakage type
-P1 = 1e-6 
-P2 = 0.4
+P1 = 1e-4
+P2 = 0.5
 G = 2.3
 
 # type_flag = "agglomeration"
-type_flag = "breakage"
-# type_flag = "mix"
+# type_flag = "breakage"
+type_flag = "mix"
 
 #%% FUNCTIONS
 @jit(nopython=True)
@@ -364,12 +366,17 @@ def xb_integrate(x_up,x_low,y_up=None,y_low=None,bf=None):
 def yb_integrate(x_up,x_low,y_up=None,y_low=None,bf=None):
     return (y_up**2 - y_low**2)*(x_up-x_low)*0.5*bf  
 
+@jit(nopython=True)
+def beta_func(x, y):
+    return math.gamma(x) * math.gamma(y) / math.gamma(x + y)
+@jit(nopython=True)
 def power_law_product_1d(x,y,v,q):
-    euler_beta = beta(q,q*(v-1))
+    euler_beta = beta_func(q,q*(v-1))
     z = x/y
     theta = v * z**(q-1) * (1-z)**(q*(v-1)-1) / euler_beta
     b = theta / y
     return b
+@jit(nopython=True)
 def power_law_product_1d_volume(x,y,v,q):
     return x * power_law_product_1d(x,y,v,q)
 
@@ -451,26 +458,13 @@ if __name__ == "__main__":
         for idx, tmp in np.ndenumerate(B_F):
             a = idx[0]; i = idx[1]
             if i != 0 and a <= i:
-                if BREAKFVAL == 1:  
-                    B_F[idx] = 4 / (V_p[i+1])
-                elif BREAKFVAL == 2:
-                    # B_F[idx] = 2 / (V_p[i+1])
-                    
-                    bf = 2 / (V_p[i+1])
-                    if a == i:
-                        bf_int[idx] = b_integrate(V_p[a+1],V_e_tem[a],bf=bf)
-                        xbf_int[idx] = xb_integrate(V_p[a+1],V_e_tem[a],bf=bf)
-                    else:
-                        bf_int[idx] = b_integrate(V_e_tem[a+1],V_e_tem[a],bf=bf)
-                        xbf_int[idx] = xb_integrate(V_e_tem[a+1],V_e_tem[a],bf=bf)
-                elif BREAKFVAL == 3:
-                    args = (V_p[i+1],v,q)
-                    if a == i:
-                        bf_int[idx],err = quad(power_law_product_1d,V_e_tem[a],V_p[a+1],args=args)
-                        xbf_int[idx],err = quad(power_law_product_1d_volume,V_e_tem[a],V_p[a+1],args=args)
-                    else:
-                        bf_int[idx],err = quad(power_law_product_1d,V_e_tem[a],V_e_tem[a+1],args=args)
-                        xbf_int[idx],err = quad(power_law_product_1d_volume,V_e_tem[a],V_e_tem[a+1],args=args)
+                args = (V_p[i+1],v,q,BREAKFVAL)
+                if a == i:
+                    bf_int[idx],err = quad(my_jit.breakage_func_1d,V_e_tem[a],V_p[a+1],args=args)
+                    xbf_int[idx],err = quad(my_jit.breakage_func_1d_vol,V_e_tem[a],V_p[a+1],args=args)
+                else:
+                    bf_int[idx],err = quad(my_jit.breakage_func_1d,V_e_tem[a],V_e_tem[a+1],args=args)
+                    xbf_int[idx],err = quad(my_jit.breakage_func_1d_vol,V_e_tem[a],V_e_tem[a+1],args=args)
         # SOLVE    
         import scipy.integrate as integrate
         RES = integrate.solve_ivp(dNdt_1D,
@@ -583,7 +577,7 @@ if __name__ == "__main__":
             N[0,1,0] = 0.3
             N[1,0,0] = 0.3
         elif type_flag == "breakage":
-            N[1,-1,0] = 1
+            N[-1,-1,0] = 1
         else:
             N[-1,-1,0] = 1   
             N[0,1,0] = 0.3
@@ -628,7 +622,7 @@ if __name__ == "__main__":
                         B_R[idx] = V_p1[a+1]*V_p2[b+1]
                     else:
                         B_R[idx] = V_p1[a+1] + V_p2[b+1]
-        elif BREAKFVAL == 3:
+        elif BREAKRVAL == 3:
             for idx, tmp in np.ndenumerate(B_R):
                 a = idx[0]; b = idx[1]
                 if a == 0 and b == 0:
@@ -639,8 +633,26 @@ if __name__ == "__main__":
                     B_R[idx] = P1 * G * (V_p1[a+1]/V_p1[1])**P2
                 else:
                     B_R[idx] = P1 * G * (V_p[a+1,b+1]/V_p[1,1])**P2
-                    
-        bf_int, xbf_int, ybf_int = my_jit.calc_int_B_F_2D(NS,V_p1,V_p2,V_e1,V_e2,BREAKFVAL,v,q)
+        
+        
+        # start_time = time.time()            
+        # bf_int_a, xbf_int_a, ybf_int_a = my_jit.calc_int_B_F_2D(NS,V_p1,V_p2,V_e1,V_e2,BREAKFVAL,v,q)
+        # end_time = time.time()
+        # elapsed_time = end_time - start_time
+        # print(f"time with jit is {elapsed_time}")
+        start_time = time.time()       
+        bf_int, xbf_int, ybf_int = my_jit.calc_int_B_F_2D_quad(NS,V_p1,V_p2,V_e1,V_e2,BREAKFVAL,v,q)
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        print(f"time without jit is {elapsed_time}")
+        
+        # deltabf = np.zeros(bf_int.shape)
+        # deltabfintx = np.zeros(bf_int.shape)
+        # deltabfinty = np.zeros(bf_int.shape)
+        # deltabf[bf_int_q!=0]= abs(bf_int[bf_int_q!=0] - bf_int_q[bf_int_q!=0])/bf_int_q[bf_int_q!=0]
+        # deltabfintx[xbf_int_q!=0]= abs(xbf_int[xbf_int_q!=0] - xbf_int_q[xbf_int_q!=0])/xbf_int_q[xbf_int_q!=0]
+        # deltabfinty[ybf_int_q!=0]= abs(ybf_int[ybf_int_q!=0] - ybf_int_q[ybf_int_q!=0])/ybf_int_q[ybf_int_q!=0]
+        
             
         # SOLVE    
         import scipy.integrate as integrate

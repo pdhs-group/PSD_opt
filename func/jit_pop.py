@@ -7,7 +7,7 @@ Created on Tue Feb 27 16:24:30 2024
 import numpy as np
 import math
 from numba import jit
-# from scipy.integrate import quad, dblquad
+from scipy.integrate import quad, dblquad
 # from numba.extending import overload, register_jitable
 
 @jit(nopython=True)
@@ -468,21 +468,21 @@ def heaviside(x1, x2):
     else:
         return x2
 
-@jit(nopython=True)
-def b_integrate(x_up,x_low,y_up=None,y_low=None,bf=None):
-    if y_up is None or y_low is None:
-        return (x_up - x_low)*bf
-    else:
-        return (x_up- x_low)*(y_up - y_low)*bf
-@jit(nopython=True)    
-def xb_integrate(x_up,x_low,y_up=None,y_low=None,bf=None):
-    if y_up is None or y_low is None:
-        return (x_up**2 - x_low**2)*0.5*bf
-    else:
-        return (x_up**2- x_low**2)*(y_up - y_low)*0.5*bf
-@jit(nopython=True)    
-def yb_integrate(x_up,x_low,y_up=None,y_low=None,bf=None):
-    return (y_up**2 - y_low**2)*(x_up-x_low)*0.5*bf 
+# @jit(nopython=True)
+# def b_integrate(x_up,x_low,y_up=None,y_low=None,bf=None):
+#     if y_up is None or y_low is None:
+#         return (x_up - x_low)*bf
+#     else:
+#         return (x_up- x_low)*(y_up - y_low)*bf
+# @jit(nopython=True)    
+# def xb_integrate(x_up,x_low,y_up=None,y_low=None,bf=None):
+#     if y_up is None or y_low is None:
+#         return (x_up**2 - x_low**2)*0.5*bf
+#     else:
+#         return (x_up**2- x_low**2)*(y_up - y_low)*0.5*bf
+# @jit(nopython=True)    
+# def yb_integrate(x_up,x_low,y_up=None,y_low=None,bf=None):
+#     return (y_up**2 - y_low**2)*(x_up-x_low)*0.5*bf 
 
 @jit(nopython=True)
 def get_lam_3d(x,y,z,Vx,Vy,Vz,i,j,k,m1,m2,m3):
@@ -706,43 +706,57 @@ def beta_func(x, y):
 
 @jit(nopython=True)
 def breakage_func_1d(x,y,v,q,BREAKFVAL):
+    # Conservation of Hypervolume, random breakage into four fragments --> See Leong2023 (10)
+    # only for validation with analytical results
     if BREAKFVAL == 1:
-        b = y / 4
+        b = 4 / y
+    # Conservation of First-Order Moments, random breakage into two fragments --> See Leong2023 (10)
+    # only for validation with analytical results    
     elif BREAKFVAL == 2:
-        b = y / 2
+        b = 2 / y
+    ## product function of power law. --> See Diemer_Olson (2002)
     elif BREAKFVAL == 3:     
         euler_beta = beta_func(q,q*(v-1))
         z = x/y
         theta = v * z**(q-1) * (1-z)**(q*(v-1)-1) / euler_beta
         b = theta / y
+    ## simple function of power law. --> See Diemer_Olson (2002)
+    elif BREAKFVAL == 4:
+        z = x/y
+        b = (v+1) * z ** (v-1) / y
     return b
 @jit(nopython=True)
 def breakage_func_1d_vol(x,y,v,q,BREAKFVAL):
     return x * breakage_func_1d(x,y,v,q,BREAKFVAL)
 
+## Note: The counter-intuitive position in the input parameters (x3,x1...) of the 2d breakage function 
+## is determined by the characteristics of the integrate function dblquad()
 @jit(nopython=True)
-def breakage_func_2d(x1,x3,y1,y3,v,q,BREAKFVAL):
+def breakage_func_2d(x3,x1,y1,y3,v,q,BREAKFVAL):
     if BREAKFVAL == 1:
-        b = (y1+y3) / 4
+        b = 4 / (y1*y3)
     elif BREAKFVAL == 2:
-        b = (y1+y3) / 2
+        b = 2 / (y1*y3)
     elif BREAKFVAL == 3:  
-        euler_beta = beta_func(q,q*(v-1))
-        z = (x1+x3)/(y1+y3)
-        theta = v * z**(q-1) * (1-z)**(q*(v-1)-1) / euler_beta
-        b = theta / (y1+y3)
+        # euler_beta = beta_func(q,q*(v-1))
+        # z = (x1+x3)/(y1+y3)
+        # theta = v * z**(q-1) * (1-z)**(q*(v-1)-1) / euler_beta
+        # b = theta / (y1+y3)
+        raise Exception("Product function of power law not implemented for 2d!")
+    elif BREAKFVAL == 4:
+        z = x1*x3 / (y1*y3)
+        b = v * (v+1) * z ** (v-1) / (y1*y3)
     return b
 @jit(nopython=True)
-def breakage_func_2d_x1vol(x1,x3,y1,y3,v,q,BREAKFVAL):
+def breakage_func_2d_x1vol(x3,x1,y3,y1,v,q,BREAKFVAL):
     return x1 * breakage_func_2d(x1,x3,y1,y3,v,q,BREAKFVAL)
 
 @jit(nopython=True)
-def breakage_func_2d_x3vol(x1,x3,y1,y3,v,q,BREAKFVAL):
+def breakage_func_2d_x3vol(x3,x1,y3,y1,v,q,BREAKFVAL):
     return x3 * breakage_func_2d(x1,x3,y1,y3,v,q,BREAKFVAL)
 
 @jit(nopython=True)
-# def trap_integral_1d(f,a,b,args=(),n=100):
-def quad(f,a,b,args=(),n=100):
+def trap(f,a,b,args=(),n=10):
     x = np.linspace(a, b, n)
     fx = np.zeros_like(x)
     h = (b - a) / (n - 1)
@@ -751,7 +765,7 @@ def quad(f,a,b,args=(),n=100):
     return (h/2) * (fx[0] + 2 * np.sum(fx[1:-1]) + fx[-1]), 0
 
 @jit(nopython=True)
-def dblquad(f, a1, b1, a2, b2, args=(), n1=100, n2=100):
+def dbltrap(f, a1, b1, a2, b2, args=(), n1=10, n2=10):
     x1 = np.linspace(a1, b1, n1)
     x3 = np.linspace(a2, b2, n2)
     h1 = (b1 - a1) / (n1 - 1)
@@ -763,8 +777,71 @@ def dblquad(f, a1, b1, a2, b2, args=(), n1=100, n2=100):
     return s * h1 * h2, 0
 
 @jit(nopython=True)
+def gauss_legendre(f,a,b,args=(),n=5):
+    ## To do
+    return 0
+
+@jit(nopython=True)
 ## integration function scipy.quad and scipy.dblquad are not compatible with jit!
 def calc_int_B_F_2D(NS,V1,V3,V_e1,V_e3,BREAKFVAL,v,q):
+    int_B_F = np.zeros((NS-1, NS-1, NS-1, NS-1))
+    intx_B_F = np.zeros((NS-1, NS-1, NS-1, NS-1))
+    inty_B_F = np.zeros((NS-1, NS-1, NS-1, NS-1))
+    V_e1_tem = np.zeros(NS) 
+    V_e1_tem[:] = V_e1[1:]
+    V_e1_tem[0] = 0.0
+    V_e3_tem = np.zeros(NS) 
+    V_e3_tem[:] = V_e3[1:]
+    V_e3_tem[0] = 0.0
+    for idx, tmp in np.ndenumerate(int_B_F):
+        a = idx[0] ; b = idx[1]; i = idx[2]; j = idx[3]
+        if i + j != 0 and a<=i or b <= j:
+            if i == 0:
+                ## for left boundary/y
+                args = (V3[j+1],v,q,BREAKFVAL)
+                if j == 0:
+                    continue
+                elif b == j:
+                    int_B_F[idx],err  = trap(breakage_func_1d,V_e3_tem[b],V3[b+1],args=args)
+                    inty_B_F[idx],err  = trap(breakage_func_1d_vol,V_e3_tem[b],V3[b+1],args=args)
+                else:
+                    int_B_F[idx],err  = trap(breakage_func_1d,V_e3_tem[b],V_e3_tem[b+1],args=args)
+                    inty_B_F[idx],err  = trap(breakage_func_1d_vol,V_e3_tem[b],V_e3_tem[b+1],args=args)
+            elif j == 0:
+                ## for low boundary/x
+                args = (V1[i+1],v,q,BREAKFVAL)
+                if a == i:
+                    int_B_F[idx],err = trap(breakage_func_1d,V_e1_tem[a],V1[a+1],args=args)
+                    intx_B_F[idx],err = trap(breakage_func_1d_vol,V_e1_tem[a],V1[a+1],args=args)
+                else:
+                    int_B_F[idx],err = trap(breakage_func_1d,V_e1_tem[a],V_e1_tem[a+1],args=args)
+                    intx_B_F[idx],err = trap(breakage_func_1d_vol,V_e1_tem[a],V_e1_tem[a+1],args=args)
+            else:
+                args = (V1[i+1],V3[j+1],v,q,BREAKFVAL)
+                ## The contributions of fragments on the same vertical axis
+                if a == i and b == j:
+                    int_B_F[idx],err  = dbltrap(breakage_func_2d,V_e1_tem[a],V1[a+1],V_e3_tem[b],V3[b+1],args=args)
+                    intx_B_F[idx],err = dbltrap(breakage_func_2d_x1vol,V_e1_tem[a],V1[a+1],V_e3_tem[b],V3[b+1],args=args)
+                    inty_B_F[idx],err = dbltrap(breakage_func_2d_x3vol,V_e1_tem[a],V1[a+1],V_e3_tem[b],V3[b+1],args=args)
+                elif a == i:
+                    int_B_F[idx],err  = dbltrap(breakage_func_2d,V_e1_tem[a],V1[a+1],V_e3_tem[b],V_e3_tem[b+1],args=args)
+                    intx_B_F[idx],err = dbltrap(breakage_func_2d_x1vol,V_e1_tem[a],V1[a+1],V_e3_tem[b],V_e3_tem[b+1],args=args)
+                    inty_B_F[idx],err = dbltrap(breakage_func_2d_x3vol,V_e1_tem[a],V1[a+1],V_e3_tem[b],V_e3_tem[b+1],args=args)
+                ## The contributions of fragments on the same horizontal axis
+                elif b == j:   
+                    int_B_F[idx],err  = dbltrap(breakage_func_2d,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V3[b+1],args=args)
+                    intx_B_F[idx],err = dbltrap(breakage_func_2d_x1vol,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V3[b+1],args=args)
+                    inty_B_F[idx],err = dbltrap(breakage_func_2d_x3vol,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V3[b+1],args=args)
+                ## The contribution from the fragments of large particles on the upper right side 
+                else:
+                    int_B_F[idx],err  = dbltrap(breakage_func_2d,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V_e3_tem[b+1],args=args)
+                    intx_B_F[idx],err = dbltrap(breakage_func_2d_x1vol,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V_e3_tem[b+1],args=args)
+                    inty_B_F[idx],err = dbltrap(breakage_func_2d_x3vol,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V_e3_tem[b+1],args=args)
+                            
+    return int_B_F, intx_B_F, inty_B_F
+
+## integration function scipy.quad and scipy.dblquad are not compatible with jit!
+def calc_int_B_F_2D_quad(NS,V1,V3,V_e1,V_e3,BREAKFVAL,v,q):
     int_B_F = np.zeros((NS-1, NS-1, NS-1, NS-1))
     intx_B_F = np.zeros((NS-1, NS-1, NS-1, NS-1))
     inty_B_F = np.zeros((NS-1, NS-1, NS-1, NS-1))

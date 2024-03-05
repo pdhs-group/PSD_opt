@@ -36,16 +36,25 @@ def calculate_case(CASE, PBE=True, MC=False):
             p = pop_disc(1, disc=grid)
             
             p.process_art = process_art
+            p.BREAKFVAL = BREAKFVAL
+            p.BREAKRVAL = BREAKRVAL
+            p.pl_v = pl_v   ## number of fragments
+            p.pl_q = pl_q   ## parameter describes the breakage type
+            p.pl_P1 = pl_P1
+            p.pl_P2 = pl_P2
+            p.G = G
+            
             p.NS = NS  
             p.S = S
-            p.COLEVAL = 3                           # Constant beta
-            p.EFFEVAL = 2                           # Case for calculation of alpha
+            p.COLEVAL = COLEVAL                          # Constant beta
+            p.EFFEVAL = EFFEVAL                           # Case for calculation of alpha
             p.CORR_BETA = beta0
             p.SIZEEVAL = 1
             p.R01 = x/2
             p.USE_PSD = False                  
             p.P1=0                                  # No breakage     
             p.N01 = n0
+            
               
             p.calc_R()
             p.init_N()
@@ -113,6 +122,14 @@ def calculate_case(CASE, PBE=True, MC=False):
             p = pop_disc(2, disc=grid)
             
             p.process_art = process_art
+            p.BREAKFVAL = BREAKFVAL
+            p.BREAKRVAL = BREAKRVAL
+            p.pl_v = pl_v   ## number of fragments
+            p.pl_q = pl_q   ## parameter describes the breakage type
+            p.pl_P1 = pl_P1
+            p.pl_P2 = pl_P2
+            p.G = G
+            
             p.NS = NS  
             p.S = S
             p.COLEVAL = 3                           # Constant beta
@@ -123,7 +140,6 @@ def calculate_case(CASE, PBE=True, MC=False):
             p.USE_PSD = False                  
             p.P1=0                                  # No breakage     
             p.N01, p.N03 = n0, n0
-            p.BREAKRVAL = 1
     
             p.calc_R()
             p.init_N()
@@ -758,7 +774,9 @@ if __name__ == "__main__":
     ### General parameters
     t = np.arange(0, 11, 1, dtype=float)     # Time array [s]
     c = 0.1e-2*1e-2                 # Volume concentration [-]
+    v0 = 1e-9
     x = 1e-3                       # Particle diameter [m]
+    x = (v0*6/math.pi)**(1/3)
     beta0 = 1e-16                   # Collision frequency parameter [m^3/s]
     n0 = 3*c/(4*math.pi*(x/2)**3)   # Total number concentration of primary particles
     n0 = 1                        # validation for pure breakage
@@ -767,12 +785,12 @@ if __name__ == "__main__":
     
     ### PBE Parameters
     grid = 'geo'
-    NS = 30
+    NS = 15
     NS2 = None
     #NS2 = 50
     process_art = "mix"
     
-    S = 3.5
+    S = 4
     # alpha_pbe = np.array([1,0.2,0.2,0])
     alpha_pbe = np.array([1,1,1,1])
     # alpha_pbe = np.array([1,0,0,0])
@@ -785,6 +803,13 @@ if __name__ == "__main__":
     
     EFFEVAL=2       #dPB
     COLEVAL=3       #dPB
+    BREAKFVAL = 4
+    BREAKRVAL = 3
+    pl_v = 0.5   ## number of fragments
+    pl_q = 1   ## parameter describes the breakage type
+    pl_P1 = 1e-4 
+    pl_P2 = 0.5
+    G = 2.3
 
     mu_as, mu_pbe, mu_mc, std_mu_mc, p, m, mu_mc_reps, m_save  = calculate_case(CASE,MC=False)
     
