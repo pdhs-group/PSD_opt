@@ -68,7 +68,7 @@ class population():
                                            [0, t_max], 
                                            self.N[:,0], t_eval=t_vec,
                                            args=args,
-                                           method='LSODA',first_step=0.1,rtol=1e-1)
+                                           method='Radau',first_step=0.1,rtol=1e-1)
             
             # Reshape and save result to N and t_vec
             self.N = self.RES.y
@@ -197,7 +197,7 @@ class population():
             self.X1_a = np.ones(self.NS) 
             ## Large particle agglomeration may cause the integration to not converge. 
             ## A Limit can be placed on the particle size.
-            aggl_crit_ids = np.where(self.V < self.aggl_crit)[0]
+            aggl_crit_ids = np.where(self.V < self.aggl_crit*self.V[1])[0]
             if (aggl_crit_ids.size > 0 and aggl_crit_ids.size < len(self.V)):
                 self.aggl_crit_id = aggl_crit_ids[-1]  
             else: 
@@ -258,8 +258,8 @@ class population():
                         self.X3_a[i,j] = A3[j]/(A1[i]+A3[j])
             ## Large particle agglomeration may cause the integration to not converge. 
             ## A Limit can be placed on the particle size.
-            aggl_crit_ids1 = np.where(self.V1 < self.aggl_crit)[0]
-            aggl_crit_ids2 = np.where(self.V3 < self.aggl_crit)[0]
+            aggl_crit_ids1 = np.where(self.V1 < self.aggl_crit*self.V1[1])[0]
+            aggl_crit_ids2 = np.where(self.V3 < self.aggl_crit*self.V3[1])[0]
             self.aggl_crit_id = np.zeros(2, dtype=int)
             if (aggl_crit_ids1.size > 0 and aggl_crit_ids1.size < len(self.V1)):
                 self.aggl_crit_id[0] = aggl_crit_ids1[-1]  
@@ -1203,7 +1203,7 @@ class population():
                         for k in range(1,self.NS):
                             # if self.V[i,j,k] in v_uni:
                             sumvol_uni_tem[v_uni == self.V[i,j,k]] += self.V[i,j,k]*N[i,j,k,t]
-            ## convert unit m into mm
+            ## convert unit m into um
             sumV = np.sum(sumvol_uni_tem)*1e18
             sumvol_uni[1:] = sumvol_uni_tem*1e18
             # Calculate diameter array
@@ -1517,9 +1517,9 @@ class population():
         self.EFFEVAL = 2                      # Case for calculation of alpha. 1 = Full calculation, 2 = Reduced model (only based on primary particle interactions)
                                             # Case 2 massively faster and legit acc. to Kusters1997 and Bäbler2008
                                             # Case 3 to use pre-defines alphas (e.g. from ANN) --> alphas need to be provided at some point
+        self.BREAKRVAL = 3                    # Case for calculation breakage rate. 1 = constant, 2 = size dependent
         self.BREAKFVAL = 3                    # Case for calculation breakage function. 1 = conservation of Hypervolume, 2 = conservation of 0 Moments 
-        self.BREAKRVAL = 4                    # Case for calculation breakage rate. 1 = constant, 2 = size dependent
-        self.aggl_crit = 1e3                  # Maximum aggregate volume allowed to further agglomeration
+        self.aggl_crit = 1e3                  # relative maximum aggregate volume(to primary particle) allowed to further agglomeration
         self.process_type = "breakage"    # "agglomeration": only calculate agglomeration, "breakage": only calculate breakage, "mix": calculate both agglomeration and breakage
         self.pl_v = 4                         # number of fragments in product function of power law
                                               # or (v+1)/v: number of fragments in simple power law  
@@ -1799,9 +1799,9 @@ class population():
             v_one_tmp = (1/6)*np.pi*d[i-1]**3
             n[i-1] = v_total_tmp/v_one_tmp
         
-        # Eliminate sub and near zero values (sub-thrshold)
-        thr = 1e-5
-        n[n<thr*np.mean(n)] = 0
+        # # Eliminate sub and near zero values (sub-thrshold)
+        # thr = 1e-5
+        # n[n<thr*np.mean(n)] = 0
         
         return n    
     ## Plot 2D-distribution:

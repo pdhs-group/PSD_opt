@@ -151,6 +151,11 @@ class opt_find():
         `tuple`
             A tuple containing optimized kernels in PBE and their difference to original kernels(if given).
         """
+        if self.algo.set_comp_para_flag is False:
+            warnings.warn('Component parameters have not been set')
+        if self.algo.set_model_para_flag is False:
+            warnings.warn('Model parameters have not been set')
+            
         if data_name == None:
             warnings.warn("Please specify the name of the training data without labels!")
         else:

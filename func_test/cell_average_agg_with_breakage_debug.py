@@ -26,13 +26,18 @@ pt.close()
 pt.plot_init(mrksze=8,lnewdth=1)
     
 #%% PARAM
-t = np.arange(0, 11, 1, dtype=float)
+t = np.arange(0,11,1, dtype=float)
 NS = 15
 S = 4
-R01, R02 = 1, 1
-V01, V02 = 1e-9, 1e-9
-V_crit = 1e-7
-corr_beta = 1
+R01, R02 = 1e-6, 1e-6
+V01, V02 = 4*math.pi*R01**3/3, 4*math.pi*R02**3/3
+V_crit = 1e4
+COLEVAL = 2
+CORR_BETA = 150
+G= 1 
+EFFEVAL = 2 
+alpha_prim = np.array([0.5,1,1,0.5]) 
+SIZEEVAL = 1
 dim = 1
 ## BREAKRVAL == 1: 1, constant breakage rate
 ## BREAKRVAL == 2: x*y or x + y, breakage rate is related to particle size
@@ -42,14 +47,15 @@ BREAKRVAL = 3
 ## BREAKFVAL == 2: 2/x'y', meet the first moment/ mass conversation
 ## BREAKFVAL == 3: product function of power law(only for 1d)
 ## BREAKFVAL == 4: simple power law
-BREAKFVAL = 4
+## BREAKFVAL == 5: Parabolic(Vigil and Ziff 1989)
+BREAKFVAL = 5
 
 ## parameter for power law product function
-v = 0.5   ## number of fragments
-q = 1   ## parameter describes the breakage type
+v = 2  ## number of fragments
+q = 10   ## parameter describes the breakage type
 P1 = 1e-4
 P2 = 0.5
-G = 2.3
+G = 1
 
 # type_flag = "agglomeration"
 # type_flag = "breakage"
@@ -400,24 +406,25 @@ if __name__ == "__main__":
         V_e[0] = -V01
         # V_p: Volume of PIVOTS
         V_p = np.zeros(NS)
+        R = np.zeros(NS)
         # SOLUTION N is saved on pivots
         N = np.zeros((NS,len(t)))
         #N[0,0] = 0.1
         if type_flag == "agglomeration":
-            N[1,0] = 0.3
+            N[1,0] = 1e14
         elif type_flag == "breakage":
-            N[-1,0] = 1
+            N[-1,0] = 1e14
         else:
-            # N[1,0] = 0.3
-            N[-1,0] = 1
+            N[1,0] = 1e14
+            N[-1,0] = 1e14
         #N[2,0] = 0.2
         
         for i in range(1,NS+1):
             V_e[i] = S**(i-1)*V01
             # ith pivot is mean between ith and (i+1)th edge
             V_p[i-1] = (V_e[i] + V_e[i-1])/2
-            
-        index_crit = np.where(V_p < V_crit)[0]
+            R[i-1] = (4*V_p[i-1]/3/math.pi)**(1/3)
+        index_crit = np.where(V_p < V_crit*V_p[1])[0]
         agg_crit = index_crit[-1] if (index_crit.size > 0 and index_crit.size < len(V_p)) else (len(V_p) -1)
         agg_crit = agg_crit
         ## Let the integration range associated with the breakage function start from zero 
@@ -431,10 +438,15 @@ if __name__ == "__main__":
         # F_M[:,:] = 1
         ## sum kernal
         for idx, tmp in np.ndenumerate(F_M):
-            if idx[0]==0 or idx[1]==0:
+            a = idx[0]; i = idx[1]
+            if a==0 or i==0:
                 continue
-            a = idx[0]; b = idx[1]
-            F_M[idx] = (V_p[a] + V_p[b])/V_p[1]
+            if R[a]<=R[i]:
+                corr_lam = R[a]/R[i]
+            else:
+                corr_lam = R[i]/R[a]
+            corr_size = np.exp(-0.310601*(1-corr_lam)**2)/((R[a]*R[i]/(R01**2))**1.06168)
+            F_M[idx] = corr_size*CORR_BETA*2*1.38*(10**-23)*293*(R[a]+R[i])**2/(3*(10**-3)*(R[a]*R[i]))
         
         B_R = np.zeros(NS-1)
         B_F = np.zeros((NS-1,NS-1))
@@ -467,12 +479,11 @@ if __name__ == "__main__":
                     xbf_int[idx],err = quad(my_jit.breakage_func_1d_vol,V_e_tem[a],V_e_tem[a+1],args=args)
         # SOLVE    
         import scipy.integrate as integrate
-        RES = integrate.solve_ivp(dNdt_1D,
+        RES = integrate.solve_ivp(my_jit.get_dNdt_1d_geo,
                                   [0, max(t)], 
                                   N[:,0], t_eval=t,
                                   args=(NS,V_p,V_e,F_M,B_R,bf_int,xbf_int,type_flag,agg_crit),
-                                  method='RK45',first_step=0.1,rtol=1e-3)
-        
+                                  method='Radau',first_step=0.1,rtol=1e-1)
         # Reshape and save result to N and t_vec
         N = RES.y
         t = RES.t
@@ -530,6 +541,8 @@ if __name__ == "__main__":
                                 (np.exp(-t[j]*V_p[i]))
                         V_sum[i,j] = N_as[i,j] * V_p[i]
                 mu0_as = N_as.sum(axis=0)
+            else:
+                mu0_as = 1*t
         else:
             mu0_as = 1*t
         
@@ -544,7 +557,7 @@ if __name__ == "__main__":
         fig3=plt.figure(figsize=[4,3])    
         ax3=fig3.add_subplot(1,1,1) 
         ax3.plot(V_p, nE, color=c_KIT_green, label='$\Particle numerber$ (numerical)')
-        # ax3.set_xscale('log')
+        ax3.set_xscale('log')
         plt.tight_layout()
     
     #%% NEW 2D    
@@ -558,8 +571,8 @@ if __name__ == "__main__":
         # V_p: Volume of PIVOTS
         V_p1 = np.zeros(NS)#np.zeros(NS)
         V_p2 = np.zeros(NS)#np.zeros(NS)
-        V_p = np.ones((NS,NS))#np.zeros((NS,NS)) 
-        
+        V_p = np.zeros((NS,NS))#np.zeros((NS,NS)) 
+        R = np.zeros((NS,NS))
         # Volume fractions
         X1 = np.zeros((NS,NS))#np.zeros((NS,NS)) 
         X2 = np.zeros((NS,NS))#np.zeros((NS,NS)) 
@@ -580,13 +593,13 @@ if __name__ == "__main__":
             N[-1,-1,0] = 1
         else:
             N[-1,-1,0] = 1   
-            N[0,1,0] = 0.3
-            N[1,0,0] = 0.3
+            N[0,1,0] = 1
+            N[1,0,0] = 1
 
         V_p[:,0] = V_p1 
         V_p[0,:] = V_p2 
-        index1_crit = np.where(V_p1 < V_crit)[0]
-        index2_crit = np.where(V_p2 < V_crit)[0]
+        index1_crit = np.where(V_p1 < V_crit*V_p1[1])[0]
+        index2_crit = np.where(V_p2 < V_crit*V_p1[2])[0]
         agg_crit = np.zeros(2, dtype=int)
         agg_crit[0] = index1_crit[-1] if (index1_crit.size > 0 and index1_crit.size < len(V_p1)) else (len(V_p1) -1)
         agg_crit[1] = index2_crit[-1] if (index2_crit.size > 0 and index2_crit.size < len(V_p2)) else (len(V_p2) -1)
@@ -595,6 +608,7 @@ if __name__ == "__main__":
         for i in range(NS): #range(NS)
             for j in range(NS): #range(NS)
                 V_p[i,j] = V_p1[i]+V_p2[j]
+                R[i,j] = (4*V_p[i,j]/3/math.pi)**(1/3)
                 if i==0 and j==0: #i==0 and j==0
                     X1[i,j] = 0
                     X2[i,j] = 0
@@ -602,9 +616,8 @@ if __name__ == "__main__":
                     X1[i,j] = V_p1[i]/V_p[i,j]
                     X2[i,j] = V_p2[j]/V_p[i,j]
         
-        F_M = np.zeros((NS-1,NS-1,NS-1,NS-1))
+        F_M = my_jit.calc_F_M_2D(NS, 'geo', COLEVAL, CORR_BETA, G, R, X1, X2, EFFEVAL, alpha_prim, SIZEEVAL, 0.310601, 1.06168)
         B_R = np.zeros((NS-1,NS-1))
-        F_M[:,:] = 1
         if BREAKRVAL == 1:
             B_R[:,:] = 1
             B_R[0,0] = 0

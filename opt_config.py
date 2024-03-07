@@ -20,6 +20,21 @@ config = {
     'n_iter': 400,
     'calc_init_N': True,
     
+    ## Model parameters
+    'NS' : 30,
+    'S' : 2.5,
+    'BREAKRVAL' : 3,
+    'BREAKFVAL' : 5,
+    'aggl_crit' : 1e4,
+    'process_type' : "breakage",
+    'pl_v' : 2,
+    'pl_q' : 1,
+    'pl_P1' : 1e-4,
+    'pl_P2' : 0.5,
+    'COLEVAL' : 2,
+    'EFFEVAL' : 1,
+    'SIZEEVAL' : 1,
+    
     ## Use only 2D Data or 1D+2D
     'multi_flag': True,
       

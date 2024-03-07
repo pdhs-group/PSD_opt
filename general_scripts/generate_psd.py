@@ -5,7 +5,7 @@ Created on Fri Apr 16 09:03:36 2021
 @author: xy0264
 """
 import numpy as np
-from scipy.stats import norm
+from scipy.stats import norm,lognorm
 
 def generate_psd_normal(x50,sigma,exp_name=None,xmin=None,xmax=None):
     
@@ -44,6 +44,31 @@ def generate_psd_normal(x50,sigma,exp_name=None,xmin=None,xmax=None):
         Q_PSD[i]=np.trapz(q_PSD[:i+1],x_PSD[:i+1])
         
     return Q_PSD, q_PSD, x_PSD 
+
+def generate_psd_lognormal(x50,sigma,exp_name=None,xmin=None,xmax=None):
+    if xmin is None:
+        xmin = x50 * 1e-2
+    if xmax is None:
+        xmax = x50 * 1e2
+        
+    # Number of x points in x_PSD
+    NUM_X = 10000
+        
+    # Generate logarithmically spaced x vector
+    x_PSD = np.logspace(np.log10(xmin), np.log10(xmax), NUM_X)
+    
+    # Calculate scale parameter for lognorm function
+    s = abs(np.log(sigma))
+    
+    # Generate q_PSD according to log-normal distribution
+    q_PSD = lognorm.pdf(x_PSD, s, scale=x50)
+    
+    # Generate Q_PSD. It is the integral of q over x
+    Q_PSD = np.zeros_like(q_PSD)
+    for i in range(1, len(Q_PSD)):
+        Q_PSD[i] = np.trapz(q_PSD[:i+1], x_PSD[:i+1])
+        
+    return Q_PSD, q_PSD, x_PSD
     
 def find_x_f(Q_PSD,x_PSD,F):
     
@@ -75,15 +100,20 @@ def full_psd(x50, resigma=0.2, minscale=None, maxscale=None, plot_psd=False):
     import os
     from decimal import Decimal
     scl=1e-6
-    x50=x50*scl
+    x50 *= scl 
+    # Volume specific
     v50=np.pi*x50**3/6
     sigma=v50*resigma
     vmin=v50*minscale
     vmax=v50*maxscale
-    # Volume specific
-    # Generate PSD
     Q,q,v = generate_psd_normal(v50,sigma,xmin=vmin,xmax=vmax)
     x = (6*v/np.pi)**(1/3)
+    
+    # sigma = x50*resigma
+    # xmin=x50*minscale
+    # xmax=x50*maxscale
+    # Q,q,x = generate_psd_lognormal(x50,sigma,xmin=xmin,xmax=xmax)
+    
     # Find r0 corresponding to the volume fraction of 1%, 5%, and 10%
     r0_001 = find_x_f(Q,x,0.01)/2
     r0_005 = find_x_f(Q,x,0.05)/2
@@ -100,7 +130,7 @@ def full_psd(x50, resigma=0.2, minscale=None, maxscale=None, plot_psd=False):
         ax.legend(['Density distribution q','Sum distribution Q'])
     # Generate full filestring
     dist = os.path.join(os.path.dirname( __file__ ),
-                        "..","data","PSD_data","PSD_x50_{Decimal(x50):.1E}_v50_{Decimal(v50):.1E}_RelSigmaV_{Decimal(resigma):.1E}.npy")
+                        "..","data","PSD_data",f"PSD_x50_{Decimal(x50):.1E}_RelSigmaV_{Decimal(resigma):.1E}.npy")
     
     # Create and save PSD dictionary
     dict_Qx={'Q_PSD':Q,'x_PSD':x, 'r0_001':r0_001, 'r0_005':r0_005, 'r0_01':r0_01}

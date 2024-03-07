@@ -54,6 +54,8 @@ class opt_algo():
         self.cost_func_type = 'MSE'
 
         self.calc_init_N = False
+        self.set_model_para_flag = False
+        self.set_comp_para_flag = False
     #%%  Optimierer    
     def calc_delta(self, corr_beta=None, alpha_prim=None, scale=1, sample_num=1, exp_data_path=None):
         """
@@ -530,8 +532,6 @@ class opt_algo():
         """
         Configure and calculate the PBE.
         """
-        pop.COLEVAL = 2
-        pop.EFFEVAL = 2
         pop.CORR_BETA = corr_beta
         if pop.dim == 1:
             alpha_prim_temp = alpha_prim
@@ -545,12 +545,36 @@ class opt_algo():
             pop.full_init(calc_alpha=False)
         else:
             pop.calc_F_M()
+            pop.calc_B_R()
+            pop.calc_int_B_F()
         
         if t_vec is None: pop.solve_PBE(t_vec=self.t_vec)      
-        else: pop.solve_PBE(t_vec=t_vec)  
+        else: pop.solve_PBE(t_vec=t_vec) 
+        
+    def set_model_para(self,NS=12,S=2,BREAKRVAL=3,BREAKFVAL=4,aggl_crit=1e20,process_type="mix",
+                       pl_v=1,pl_q=1,pl_P1=1e-4,pl_P2=0.5,COLEVAL=2,EFFEVAL=1,SIZEEVAL=1):
+        params = {
+            "NS": NS, "S": S, "BREAKRVAL": BREAKRVAL, "BREAKFVAL": BREAKFVAL,
+            "aggl_crit": aggl_crit, "process_type": process_type, "pl_v": pl_v,
+            "pl_q": pl_q, "pl_P1": pl_P1, "pl_P2": pl_P2, "COLEVAL": COLEVAL,
+            "EFFEVAL": EFFEVAL, "SIZEEVAL": SIZEEVAL
+        }
+        
+        self.set_model_para_pop(self.p, params)
+        
+        if hasattr(self, 'p_NM'):
+            self.set_model_para_pop(self.p_NM, params)
+        if hasattr(self, 'p_M'):
+            self.set_model_para_pop(self.p_M, params)
+        
+        self.set_model_para_flag = True
+
+    def set_model_para_pop(self, pop, params):
+        for key, value in params.items():
+            setattr(pop, key, value)
         
     def set_comp_para(self, R01_0='r0_005', R03_0='r0_005', dist_path_NM=None, dist_path_M=None,
-                      R_NM=2.9e-7, R_M=2.9e-7):
+                      R_NM=2.9e-7, R_M=2.9e-7,R01_0_scl=1,R03_0_scl=1):
         """
         Set component parameters for non-magnetic and magnetic particle.
         
@@ -578,21 +602,23 @@ class opt_algo():
             psd_dict_M = np.load(dist_path_M,allow_pickle=True).item()
             self.p.DIST1 = dist_path_NM
             self.p.DIST3 = dist_path_M
-            self.p.R01 = psd_dict_NM[R01_0]
-            self.p.R03 = psd_dict_M[R03_0]
+            self.p.R01 = psd_dict_NM[R01_0] * R01_0_scl
+            self.p.R03 = psd_dict_M[R03_0] * R03_0_scl
         else:
             self.p.USE_PSD = False
             self.p.R01 = R_NM
             self.p.R03 = R_M
-        ## Set particle parameter for 1D PBE
-        self.p_NM.USE_PSD = self.p_M.USE_PSD = self.p.USE_PSD
-        # parameter for particle component 1 - NM
-        self.p_NM.R01 = self.p.R01
-        self.p_NM.DIST1 = self.p.DIST1
-        
-        # parameter for particle component 2 - M
-        self.p_M.R01 = self.p.R03
-        self.p_M.DIST1 = self.p.DIST3
+        if self.dim > 1:
+            ## Set particle parameter for 1D PBE
+            self.p_NM.USE_PSD = self.p_M.USE_PSD = self.p.USE_PSD
+            # parameter for particle component 1 - NM
+            self.p_NM.R01 = self.p.R01
+            self.p_NM.DIST1 = self.p.DIST1
+            
+            # parameter for particle component 2 - M
+            self.p_M.R01 = self.p.R03
+            self.p_M.DIST1 = self.p.DIST3
+        self.set_comp_para_flag = True
         
     def calc_all_R(self):
         """

@@ -709,22 +709,25 @@ def breakage_func_1d(x,y,v,q,BREAKFVAL):
     # Conservation of Hypervolume, random breakage into four fragments --> See Leong2023 (10)
     # only for validation with analytical results
     if BREAKFVAL == 1:
-        b = 4 / y
+        theta = 4
     # Conservation of First-Order Moments, random breakage into two fragments --> See Leong2023 (10)
     # only for validation with analytical results    
     elif BREAKFVAL == 2:
-        b = 2 / y
+        theta = 2
     ## product function of power law. --> See Diemer_Olson (2002)
     elif BREAKFVAL == 3:     
         euler_beta = beta_func(q,q*(v-1))
         z = x/y
         theta = v * z**(q-1) * (1-z)**(q*(v-1)-1) / euler_beta
-        b = theta / y
     ## simple function of power law. --> See Diemer_Olson (2002)
     elif BREAKFVAL == 4:
         z = x/y
-        b = (v+1) * z ** (v-1) / y
-    return b
+        theta = (v+1) * z ** (v-1)
+    ## Parabolic --> See Diemer_Olson (2002)
+    elif BREAKFVAL == 5:
+        z = x/y
+        theta = (v+2)*(v+1)*z**(v-1)*(1-z)
+    return theta / y
 @jit(nopython=True)
 def breakage_func_1d_vol(x,y,v,q,BREAKFVAL):
     return x * breakage_func_1d(x,y,v,q,BREAKFVAL)
@@ -734,9 +737,9 @@ def breakage_func_1d_vol(x,y,v,q,BREAKFVAL):
 @jit(nopython=True)
 def breakage_func_2d(x3,x1,y1,y3,v,q,BREAKFVAL):
     if BREAKFVAL == 1:
-        b = 4 / (y1*y3)
+        theta = 4 / (y1*y3)
     elif BREAKFVAL == 2:
-        b = 2 / (y1*y3)
+        theta = 2 / (y1*y3)
     elif BREAKFVAL == 3:  
         # euler_beta = beta_func(q,q*(v-1))
         # z = (x1+x3)/(y1+y3)
@@ -745,8 +748,11 @@ def breakage_func_2d(x3,x1,y1,y3,v,q,BREAKFVAL):
         raise Exception("Product function of power law not implemented for 2d!")
     elif BREAKFVAL == 4:
         z = x1*x3 / (y1*y3)
-        b = v * (v+1) * z ** (v-1) / (y1*y3)
-    return b
+        theta = v * (v+1) * z ** (v-1) / (y1*y3)
+    elif BREAKFVAL == 5:
+        z = x1*x3 / (y1*y3)
+        theta = (v+2)*(v+1)*z**(v-1)*(1-z)*v/2 
+    return theta / (y1*y3)
 @jit(nopython=True)
 def breakage_func_2d_x1vol(x3,x1,y3,y1,v,q,BREAKFVAL):
     return x1 * breakage_func_2d(x1,x3,y1,y3,v,q,BREAKFVAL)
@@ -783,6 +789,7 @@ def gauss_legendre(f,a,b,args=(),n=5):
 
 @jit(nopython=True)
 ## integration function scipy.quad and scipy.dblquad are not compatible with jit!
+## So a manually implemented integration method(accurate!) is needed here.
 def calc_int_B_F_2D(NS,V1,V3,V_e1,V_e3,BREAKFVAL,v,q):
     int_B_F = np.zeros((NS-1, NS-1, NS-1, NS-1))
     intx_B_F = np.zeros((NS-1, NS-1, NS-1, NS-1))
