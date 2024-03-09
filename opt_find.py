@@ -104,7 +104,7 @@ class opt_find():
         exp_data_path = os.path.join(self.base_path, filename)
         
         if not self.multi_flag:
-            self.algo.calc_pop(self.algo.p, self.algo.corr_beta, self.algo.alpha_prim, self.algo.t_all)
+            self.algo.calc_pop(self.algo.p, self.algo.CORR_BETA, self.algo.alpha_prim, self.algo.t_all)
             
             for i in range(0, sample_num):
                 if sample_num != 1:
@@ -117,7 +117,7 @@ class opt_find():
                 exp_data_path.replace(".xlsx", "_NM.xlsx"),
                 exp_data_path.replace(".xlsx", "_M.xlsx")
             ]
-            self.algo.calc_all_pop(self.algo.corr_beta, self.algo.alpha_prim, self.algo.t_all)
+            self.algo.calc_all_pop(self.algo.CORR_BETA, self.algo.alpha_prim, self.algo.t_all)
             
             for i in range(0, sample_num):
                 if sample_num != 1:
@@ -173,7 +173,7 @@ class opt_find():
                 
             if method == 'kernels':
                 delta_opt_sample = np.zeros(sample_num)
-                corr_beta_sample = np.zeros(sample_num)
+                CORR_BETA_sample = np.zeros(sample_num)
                 if self.algo.p.dim == 1:
                     alpha_prim_sample = np.zeros(sample_num)
                     
@@ -182,7 +182,7 @@ class opt_find():
                 
                 if sample_num == 1:
                     delta_opt = self.algo.optimierer_agg(self.opt_params, exp_data_path=exp_data_path)
-                    corr_beta = self.algo.corr_beta_opt
+                    CORR_BETA = self.algo.CORR_BETA_opt
                     alpha_prim = self.algo.alpha_prim_opt
                     
                 else:
@@ -191,7 +191,7 @@ class opt_find():
                         delta_opt_sample[i] = \
                             self.algo.optimierer_agg(self.opt_params, exp_data_path=exp_data_path)
                             
-                        corr_beta_sample[i] = self.algo.corr_beta_opt
+                        CORR_BETA_sample[i] = self.algo.CORR_BETA_opt
                         if self.algo.p.dim == 1:
                             alpha_prim_sample[i] = self.algo.alpha_prim_opt
                             
@@ -200,9 +200,9 @@ class opt_find():
 
                 if not sample_num == 1:
                     delta_opt = np.mean(delta_opt_sample)
-                    corr_beta = np.mean(corr_beta_sample)
+                    CORR_BETA = np.mean(CORR_BETA_sample)
                     alpha_prim = np.mean(alpha_prim_sample, axis=self.algo.p.dim-1)
-                    self.algo.corr_beta_opt = corr_beta
+                    self.algo.CORR_BETA_opt = CORR_BETA
                     self.algo.alpha_prim_opt = alpha_prim
                 
             elif method == 'delta':
@@ -214,22 +214,22 @@ class opt_find():
                 
             if self.algo.p.dim == 1:
                 para_diff_i = np.zeros(2)
-                para_diff_i[0] = abs(self.algo.corr_beta_opt- self.algo.corr_beta) / self.algo.corr_beta
+                para_diff_i[0] = abs(self.algo.CORR_BETA_opt- self.algo.CORR_BETA) / self.algo.CORR_BETA
                 para_diff_i[1] = abs(self.algo.alpha_prim_opt - self.algo.alpha_prim)
                 
             elif self.algo.p.dim == 2:
                 para_diff_i = np.zeros(4)
-                para_diff_i[0] = abs(self.algo.corr_beta_opt- self.algo.corr_beta) / self.algo.corr_beta
+                para_diff_i[0] = abs(self.algo.CORR_BETA_opt- self.algo.CORR_BETA) / self.algo.CORR_BETA
                 para_diff_i[1:] = abs(self.algo.alpha_prim_opt - self.algo.alpha_prim)
             
-            corr_agg = self.algo.corr_beta * self.algo.alpha_prim
-            corr_agg_opt = self.algo.corr_beta_opt * self.algo.alpha_prim_opt
+            corr_agg = self.algo.CORR_BETA * self.algo.alpha_prim
+            corr_agg_opt = self.algo.CORR_BETA_opt * self.algo.alpha_prim_opt
             corr_agg_diff = abs(corr_agg_opt - corr_agg) / np.where(corr_agg == 0, 1, corr_agg)
             para_diff=para_diff_i.mean()
-            return self.algo.corr_beta_opt, self.algo.alpha_prim_opt, para_diff, delta_opt, \
+            return self.algo.CORR_BETA_opt, self.algo.alpha_prim_opt, para_diff, delta_opt, \
                 corr_agg, corr_agg_opt, corr_agg_diff
                 
-            # return self.algo.corr_beta_opt, self.algo.alpha_prim_opt, para_diff, delta_opt
+            # return self.algo.CORR_BETA_opt, self.algo.alpha_prim_opt, para_diff, delta_opt
         
         
     def write_new_data(self, pop, exp_data_path):
@@ -273,7 +273,7 @@ class opt_find():
         return 
     
     # Visualize only the last time step of the specified time vector and the last used experimental data
-    def visualize_distribution(self, pop, corr_beta_ori, alpha_prim_ori, corr_beta_opt, 
+    def visualize_distribution(self, pop, CORR_BETA_ori, alpha_prim_ori, CORR_BETA_opt, 
                                alpha_prim_opt, exp_data_path=None,ax=None,fig=None,
                                close_all=False,clr='k',scl_a4=1,figsze=[12.8,6.4*1.5]):
         """
@@ -282,7 +282,7 @@ class opt_find():
         """
         ## Recalculate PSD using original parameter
         ## Todo: set_comp_para with original parameter
-        self.algo.calc_pop(pop, corr_beta=corr_beta_ori, alpha_prim=alpha_prim_ori)
+        self.algo.calc_pop(pop, CORR_BETA=CORR_BETA_ori, alpha_prim=alpha_prim_ori)
 
         x_uni_ori, sumvol_uni_ori = pop.return_distribution(t=-1, flag='x_uni, sumvol_uni')
 
@@ -291,7 +291,7 @@ class opt_find():
             q3_ori = self.algo.KDE_score(kde, x_uni_ori)
             Q3_ori = self.algo.calc_Q3(x_uni_ori, q3_ori)
 
-        self.algo.calc_pop(pop, corr_beta_opt, alpha_prim_opt)  
+        self.algo.calc_pop(pop, CORR_BETA_opt, alpha_prim_opt)  
             
         x_uni, sumvol_uni= pop.return_distribution(t=-1, flag='x_uni, sumvol_uni')
         if self.algo.smoothing:

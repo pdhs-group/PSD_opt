@@ -124,8 +124,9 @@ if __name__ == '__main__':
     ## whether to calculate the initial conditions from experimental data
     ## 0. Use only 2D Data or 1D+2D
     multi_flag = conf.config['multi_flag']
+    opt_params = conf.config['opt_params']
     
-    find.init_opt_algo(multi_flag, algo_params)
+    find.init_opt_algo(multi_flag, algo_params, opt_params)
     
     find.algo.set_init_pop_para(pop_params)
     

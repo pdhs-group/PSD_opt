@@ -54,7 +54,13 @@ config = {
         'alpha_prim': np.array([1, 0.5, 1]),
         'CORR_BETA' : 150,
         },
-      
+    
+    ## Parameters which should be optimized
+    'opt_params' : {
+    'corr_agg': {'bounds': (1e-3, 1e3), 'log_scale': True},
+    'pl_v': {'bounds': (0.1, 10), 'log_scale': False},
+    # add more parameters as needed
+    },
     ## The diameter ratio of the primary particles can also be used as a variable
     'R_NM': 8.68e-7,
     'R_M': 8.68e-7*1,
