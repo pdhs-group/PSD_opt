@@ -38,8 +38,8 @@ class opt_algo_multi(opt_algo):
             
         return delta_sum
         
-    def calc_all_pop(self, corr_beta, alpha_prim, t_vec=None):
-        self.calc_pop(self.p_NM, corr_beta, alpha_prim[0], t_vec)
-        self.calc_pop(self.p_M, corr_beta, alpha_prim[2], t_vec)
-        self.calc_pop(self.p, corr_beta, alpha_prim, t_vec)       
+    def calc_all_pop(self, params=None, t_vec=None):
+        self.calc_pop(self.p_NM, params, t_vec)
+        self.calc_pop(self.p_M, params, t_vec)
+        self.calc_pop(self.p, params, t_vec)       
         

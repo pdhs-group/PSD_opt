@@ -111,28 +111,8 @@ def visualize_distribution_smoothing_v(Opt, pop, v_uni, q3, Q3, ax=None,fig=None
     
 if __name__ == '__main__':
     #%%  Input for Opt
-    dim = 1 # conf.config['dim']
-    t_init = conf.config['t_init']
-    t_vec = np.arange(0, 101, 10, dtype=float) # conf.config['t_vec']
-    add_noise = conf.config['add_noise']
-    smoothing = conf.config['smoothing']
-    noise_type=conf.config['noise_type']
-    noise_strength = conf.config['noise_strength']
-    sample_num = conf.config['sample_num']
-    
-    NS = conf.config['NS']
-    S = conf.config['S']
-    BREAKRVAL = conf.config['BREAKRVAL']
-    BREAKFVAL = conf.config['BREAKFVAL']
-    aggl_crit = conf.config['aggl_crit']
-    process_type = conf.config['process_type']
-    pl_v = conf.config['pl_v']
-    pl_q = conf.config['pl_q']
-    pl_P1 = conf.config['pl_P1']
-    pl_P2 = conf.config['pl_P2']
-    COLEVAL = conf.config['COLEVAL']
-    EFFEVAL = conf.config['EFFEVAL']
-    SIZEEVAL = conf.config['SIZEEVAL']
+    algo_params = conf.config['algo_params']
+    pop_params = conf.config['pop_params']
     
     ## Instantiate find and algo.
     ## The find class determines how the experimental 
@@ -143,37 +123,16 @@ if __name__ == '__main__':
     ## Set the R0 particle radius and 
     ## whether to calculate the initial conditions from experimental data
     ## 0. Use only 2D Data or 1D+2D
-    find.multi_flag = False # conf.config['multi_flag']
-    find.init_opt_algo(dim, t_init, t_vec, add_noise, noise_type, noise_strength, smoothing)
-    find.algo.set_model_para(NS,S,BREAKRVAL,BREAKFVAL,aggl_crit,process_type,
-                       pl_v,pl_q,pl_P1,pl_P2,COLEVAL,EFFEVAL,SIZEEVAL)
-
-    ## Iteration steps for optimierer
-    find.algo.n_iter = conf.config['n_iter']
+    multi_flag = conf.config['multi_flag']
+    
+    find.init_opt_algo(multi_flag, algo_params)
+    
+    find.algo.set_init_pop_para(pop_params)
     
     ## 1. The diameter ratio of the primary particles can also be used as a variable
-    find.algo.calc_init_N = conf.config['calc_init_N']
     find.algo.set_comp_para(R_NM=1e-6, R_M=1e-6)
     
-    ## 2. Criteria of optimization target
-    ## delta_flag = 1: use q3
-    ## delta_flag = 2: use Q3
-    ## delta_flag = 3: use x_10
-    ## delta_flag = 4: use x_50
-    ## delta_flag = 5: use x_90
-    find.algo.delta_flag = conf.config['delta_flag']
     delta_flag_target = ['','q3','Q3','x_10','x_50','x_90']
-    
-    ## 3. Optimize method: 
-    ##   'BO': Bayesian Optimization with package BayesianOptimization
-    find.algo.method='BO'
-    
-    ## 4. Type of cost function to use
-    ##   'MSE': Mean Squared Error
-    ##   'RMSE': Root Mean Squared Error
-    ##   'MAE': Mean Absolute Error
-    ##   'KL': Kullback–Leibler divergence(Only q3 and Q3 are compatible with KL) 
-    find.algo.cost_func_type = 'KL'
     
     ## 5. Weight of 2D data
     ## The error of 2d pop may be more important, so weight needs to be added
@@ -185,25 +144,25 @@ if __name__ == '__main__':
     ## wait to write hier 
    
     ## Input for generating psd-data
-    x50 = 1   # /um
-    resigma = 1.5
-    minscale = 1e-3
-    maxscale = 1e3
-    dist_path = full_psd(x50, resigma, minscale=minscale, maxscale=maxscale, plot_psd=True)
+    # x50 = 1   # /um
+    # resigma = 1.5
+    # minscale = 1e-3
+    # maxscale = 1e3
+    # dist_path = full_psd(x50, resigma, minscale=minscale, maxscale=maxscale, plot_psd=True)
     # psd_dict = np.load(dist_path,allow_pickle=True).item()
     
     ## Reinitialization of pop equations using psd data  
     find.algo.calc_init_N = False
     pth = os.path.dirname( __file__ )
     # dist_path_1 = os.path.join(pth, "..", "data", "PSD_data", conf.config['dist_scale_1'])
-    dist_path_1 = dist_path
-    find.algo.set_comp_para('r0_001', 'r0_001', dist_path_1, dist_path_1,R01_0_scl=1e-2,R03_0_scl=1e-2)
-    find.algo.corr_beta = 150
-    find.algo.alpha_prim = np.array([1, 1, 1])
+    # dist_path_1 = dist_path
+    # find.algo.set_comp_para('r0_001', 'r0_001', dist_path_1, dist_path_1,R01_0_scl=1,R03_0_scl=1)
+    # find.algo.corr_beta = 150
+    # find.algo.alpha_prim = np.array([1, 1, 1])
     
     ## Calculate PBE direkt with psd-data, result is raw exp-data
-    # find.algo.calc_all_pop(find.algo.corr_beta, find.algo.alpha_prim)
-    find.algo.calc_pop(find.algo.p, find.algo.corr_beta, 1, t_vec)      
+    find.algo.calc_all_pop()
+    # find.algo.calc_pop(find.algo.p)      
     
     # ## Test the influence of Total number concentration to q3
     # find.algo.p_M.V01 *= 10
@@ -212,11 +171,11 @@ if __name__ == '__main__':
     x_uni, q3, Q3, sumvol_uni = find.algo.p.return_distribution(t=-1, flag='x_uni, q3, Q3, sumvol_uni')
     v_uni = find.algo.calc_v_uni(find.algo.p)
     visualize_distribution_smoothing(find, find.algo.p, x_uni, q3, Q3, sumvol_uni)
-    if hasattr(find.algo, 'p_NM'):
+    if find.multi_flag:
         x_uni_NM, q3_NM, Q3_NM, sumvol_uni_NM = find.algo.p_NM.return_distribution(t=-1, flag='x_uni, q3, Q3, sumvol_uni')
         v_uni_NM = find.algo.calc_v_uni(find.algo.p_NM)
         visualize_distribution_smoothing(find, find.algo.p_NM, x_uni_NM, q3_NM, Q3_NM, sumvol_uni_NM)
-    if hasattr(find.algo, 'p_M'):    
+    if find.multi_flag:    
         x_uni_M, q3_M, Q3_M, sumvol_uni_M = find.algo.p_M.return_distribution(t=-1, flag='x_uni, q3, Q3, sumvol_uni')
         v_uni_M = find.algo.calc_v_uni(find.algo.p_M)
         visualize_distribution_smoothing(find, find.algo.p_M, x_uni_M, q3_M, Q3_M, sumvol_uni_M)

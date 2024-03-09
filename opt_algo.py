@@ -57,7 +57,7 @@ class opt_algo():
         self.set_model_para_flag = False
         self.set_comp_para_flag = False
     #%%  Optimierer    
-    def calc_delta(self, corr_beta=None, alpha_prim=None, scale=1, sample_num=1, exp_data_path=None):
+    def calc_delta(self, CORR_BETA=None, alpha_prim=None, scale=1, sample_num=1, exp_data_path=None):
         """
         Calculate the difference (delta) of PSD.
         
@@ -66,7 +66,7 @@ class opt_algo():
         
         Parameters
         ----------
-        corr_beta : `float`
+        CORR_BETA : `float`
             Collision frequency correction factor for agglomeration in PBE.
         alpha_prim : `array`
             Collision efficiency for agglomeration in PBE.
@@ -79,7 +79,7 @@ class opt_algo():
         exp_data_path : `str`
             path for experimental data.
         """
-        self.calc_pop(self.p, corr_beta, alpha_prim, self.t_vec)
+        self.calc_pop(self.p, CORR_BETA, alpha_prim, self.t_vec)
 
         return self.calc_delta_tem(sample_num, exp_data_path, scale, self.p)
     
@@ -87,7 +87,7 @@ class opt_algo():
         """
         Calculate the difference (delta) of PSD.
         
-        - The function is exactly the same as :meth:`~.calc_delta`, but receives corr_agg (agglomeration rate). Then calls `~.return_syth_beta` to compute the equivalent corr_beta and alpha_prim.
+        - The function is exactly the same as :meth:`~.calc_delta`, but receives corr_agg (agglomeration rate). Then calls `~.return_syth_beta` to compute the equivalent CORR_BETA and alpha_prim.
         
         Parameters
         ----------
@@ -102,10 +102,10 @@ class opt_algo():
         exp_data_path : `str`
             path for experimental data.
         """
-        corr_beta = self.return_syth_beta(corr_agg)
-        alpha_prim = corr_agg / corr_beta
+        CORR_BETA = self.return_syth_beta(corr_agg)
+        alpha_prim = corr_agg / CORR_BETA
 
-        self.calc_pop(self.p, corr_beta, alpha_prim, self.t_vec)
+        self.calc_pop(self.p, CORR_BETA, alpha_prim, self.t_vec)
 
         return self.calc_delta_tem(sample_num, exp_data_path, scale, self.p)
 
@@ -180,8 +180,8 @@ class opt_algo():
     
     def optimierer(self, method='BO', init_points=4, sample_num=1, hyperparameter=None, exp_data_path=None):
         """
-        Optimize the corr_beta and alpha_prim based on :meth:`~.calc_delta`. 
-        Results are saved in corr_beta_opt and alpha_prim_opt.
+        Optimize the CORR_BETA and alpha_prim based on :meth:`~.calc_delta`. 
+        Results are saved in CORR_BETA_opt and alpha_prim_opt.
         
         Parameters
         ----------
@@ -201,15 +201,15 @@ class opt_algo():
         """
         if method == 'BO':
             if self.p.dim == 1:
-                pbounds = {'corr_beta_log': (-3, 3), 'alpha_prim': (0, 1)}
-                objective = lambda corr_beta_log, alpha_prim: self.calc_delta(
-                    corr_beta=10**corr_beta_log, alpha_prim=np.array([alpha_prim]),
+                pbounds = {'CORR_BETA_log': (-3, 3), 'alpha_prim': (0, 1)}
+                objective = lambda CORR_BETA_log, alpha_prim: self.calc_delta(
+                    CORR_BETA=10**CORR_BETA_log, alpha_prim=np.array([alpha_prim]),
                     scale=-1, sample_num=sample_num, exp_data_path=exp_data_path)
                 
             elif self.p.dim == 2:
-                pbounds = {'corr_beta_log': (-3, 3), 'alpha_prim_0': (0, 1), 'alpha_prim_1': (0, 1), 'alpha_prim_2': (0, 1)}
-                objective = lambda corr_beta_log, alpha_prim_0, alpha_prim_1, alpha_prim_2: self.calc_delta(
-                    corr_beta=10**corr_beta_log, 
+                pbounds = {'CORR_BETA_log': (-3, 3), 'alpha_prim_0': (0, 1), 'alpha_prim_1': (0, 1), 'alpha_prim_2': (0, 1)}
+                objective = lambda CORR_BETA_log, alpha_prim_0, alpha_prim_1, alpha_prim_2: self.calc_delta(
+                    CORR_BETA=10**CORR_BETA_log, 
                     alpha_prim=np.array([alpha_prim_0, alpha_prim_1, alpha_prim_2]), 
                     scale=-1, sample_num=sample_num, exp_data_path=exp_data_path)
                 
@@ -225,12 +225,12 @@ class opt_algo():
                 n_iter=self.n_iter,
             )   
             if self.p.dim == 1:
-                self.corr_beta_opt = 10**opt.max['params']['corr_beta_log']
+                self.CORR_BETA_opt = 10**opt.max['params']['CORR_BETA_log']
                 self.alpha_prim_opt = opt.max['params']['alpha_prim']
                 
             elif self.p.dim == 2:
                 self.alpha_prim_opt = np.zeros(3)
-                self.corr_beta_opt = 10**opt.max['params']['corr_beta_log']
+                self.CORR_BETA_opt = 10**opt.max['params']['CORR_BETA_log']
                 self.alpha_prim_opt[0] = opt.max['params']['alpha_prim_0']
                 self.alpha_prim_opt[1] = opt.max['params']['alpha_prim_1']
                 self.alpha_prim_opt[2] = opt.max['params']['alpha_prim_2']
@@ -239,7 +239,7 @@ class opt_algo():
             
         return delta_opt  
     
-    def optimierer_agg(self, method='BO', init_points=4, sample_num=1, hyperparameter=None, exp_data_path=None):
+    def optimierer_agg(self, opt_params, method='BO', init_points=4, sample_num=1, hyperparameter=None, exp_data_path=None):
         """
         Optimize the corr_agg based on :meth:`~.calc_delta_agg`. 
         Results are saved in corr_agg_opt.
@@ -261,46 +261,50 @@ class opt_algo():
             Optimized value of the objective.
         """
         if method == 'BO':
-            if self.p.dim == 1:
-                pbounds = {'corr_agg_log': (-3, 3)}
-                objective = lambda corr_agg_log: self.calc_delta_agg(
-                    corr_agg=10**corr_agg_log, scale=-1, sample_num=sample_num, 
-                    exp_data_path=exp_data_path)
+            pbounds = {}
+            transform = {}
+            
+            # Prepare bounds and transformation based on parameters definition
+            for param, info in opt_params.items():
+                bounds = info['bounds']
+                log_scale = info.get('log_scale', False)
                 
-            elif self.p.dim == 2:
-                pbounds = {'corr_agg_log_0': (-3, 3), 'corr_agg_log_1': (-3, 3), 'corr_agg_log_2': (-3, 3)}
-                objective = lambda corr_agg_log_0, corr_agg_log_1, corr_agg_log_2: self.calc_delta_agg(
-                    corr_agg=10**np.array([corr_agg_log_0, corr_agg_log_1, corr_agg_log_2]), 
-                    scale=-1, sample_num=sample_num, exp_data_path=exp_data_path)
+                if log_scale:
+                    transformed_param = f"{param}_log"
+                    pbounds[transformed_param] = (np.log10(bounds[0]), np.log10(bounds[1]))
+                    transform[param] = lambda x: 10**x
+                else:
+                    pbounds[param] = bounds
+                    transform[param] = lambda x: x
+                    
+            # Objective function considering the log scale transformation if necessary
+            def objective(**kwargs):
+                transformed_args = {}
+                for param, func in transform.items():
+                    key = f"{param}_log" if f"{param}_log" in kwargs else param
+                    transformed_args[param] = func(kwargs[key])
                 
-            opt = BayesianOptimization(
-                f=objective, 
-                pbounds=pbounds,
-                random_state=1,
-                allow_duplicate_points=True
-            )
-            
-            opt.maximize(
-                init_points=init_points,
-                n_iter=self.n_iter,
-            )
-            
-            if self.p.dim == 1:
-                corr_agg_opt = 10**opt.max['params']['corr_agg_log']
-                self.corr_beta_opt = self.return_syth_beta(corr_agg_opt)
-                self.alpha_prim_opt = corr_agg_opt / self.corr_beta_opt
+                # Special handling for corr_agg based on dimension
+                if 'corr_agg' in transformed_args:
+                    if self.p.dim == 1:
+                        transformed_args['corr_agg'] = np.array([transformed_args['corr_agg']])
+                    elif self.p.dim == 2:
+                        transformed_args['corr_agg'] = np.array([transformed_args[f'corr_agg_{i}'] for i in range(3)])
                 
-            elif self.p.dim == 2:
-                corr_agg_opt = np.zeros(3)
-                corr_agg_opt[0] = 10**opt.max['params']['corr_agg_log_0']
-                corr_agg_opt[1] = 10**opt.max['params']['corr_agg_log_1']
-                corr_agg_opt[2] = 10**opt.max['params']['corr_agg_log_2']
-                self.corr_beta_opt = self.return_syth_beta(corr_agg_opt)
-                self.alpha_prim_opt = corr_agg_opt / self.corr_beta_opt
+                return self.calc_delta_agg(**transformed_args, scale=-1, sample_num=sample_num, exp_data_path=exp_data_path)
             
-            delta_opt = -opt.max['target']           
+            opt = BayesianOptimization(f=objective, pbounds=pbounds, random_state=1, allow_duplicate_points=True)
+            opt.maximize(init_points=init_points, n_iter=self.n_iter)
             
-        return delta_opt  
+            # Extract optimized values and apply transformations
+            opt_values = {param: transform[param](opt.max['params'][f"{param}_log"]) if f"{param}_log" in opt.max['params'] else opt.max['params'][param] for param in opt_params}
+            delta_opt = -opt.max['target']
+            
+            # Save the optimized_values in self attributes
+            for param, value in opt_values.items():
+                setattr(self, f"{param}_opt", value)
+            
+            return delta_opt
     
     def return_syth_beta(self,corr_agg):
         """
@@ -528,19 +532,12 @@ class opt_algo():
         self.p_NM = population(dim=1,disc=disc)
         self.p_M = population(dim=1,disc=disc)
             
-    def calc_pop(self, pop, corr_beta, alpha_prim, t_vec=None):
+    def calc_pop(self, pop, params=None, t_vec=None):
         """
         Configure and calculate the PBE.
         """
-        pop.CORR_BETA = corr_beta
-        if pop.dim == 1:
-            alpha_prim_temp = alpha_prim
-        elif pop.dim == 2:
-            alpha_prim_temp = np.zeros(4)
-            alpha_prim_temp[0] = alpha_prim[0]
-            alpha_prim_temp[1] = alpha_prim_temp[2] = alpha_prim[1]
-            alpha_prim_temp[3] = alpha_prim[2]
-        pop.alpha_prim = alpha_prim_temp
+        self.set_pop_para(pop, params)
+        
         if not self.calc_init_N:
             pop.full_init(calc_alpha=False)
         else:
@@ -551,27 +548,44 @@ class opt_algo():
         if t_vec is None: pop.solve_PBE(t_vec=self.t_vec)      
         else: pop.solve_PBE(t_vec=t_vec) 
         
-    def set_model_para(self,NS=12,S=2,BREAKRVAL=3,BREAKFVAL=4,aggl_crit=1e20,process_type="mix",
-                       pl_v=1,pl_q=1,pl_P1=1e-4,pl_P2=0.5,COLEVAL=2,EFFEVAL=1,SIZEEVAL=1):
-        params = {
-            "NS": NS, "S": S, "BREAKRVAL": BREAKRVAL, "BREAKFVAL": BREAKFVAL,
-            "aggl_crit": aggl_crit, "process_type": process_type, "pl_v": pl_v,
-            "pl_q": pl_q, "pl_P1": pl_P1, "pl_P2": pl_P2, "COLEVAL": COLEVAL,
-            "EFFEVAL": EFFEVAL, "SIZEEVAL": SIZEEVAL
-        }
+    def set_init_pop_para(self,pop_params):
         
-        self.set_model_para_pop(self.p, params)
+        self.set_pop_para(self.p, pop_params)
         
         if hasattr(self, 'p_NM'):
-            self.set_model_para_pop(self.p_NM, params)
+            self.set_pop_para(self.p_NM, pop_params)
         if hasattr(self, 'p_M'):
-            self.set_model_para_pop(self.p_M, params)
+            self.set_pop_para(self.p_M, pop_params)
         
-        self.set_model_para_flag = True
+        self.set_init_para_flag = True
 
-    def set_model_para_pop(self, pop, params):
+    def set_pop_para(self, pop, params):
+        if params is None:
+            return
+        self.set_pop_attributes(pop, params)
+        ## Because alpha_prim can be an arry, it needs to be handled separatedly 
+        if self.dim == 1:
+            if 'alpha_prim' in params:
+                pop.alpha_prim = params['alpha_prim']
+            
+        elif self.dim == 2:
+            if 'alpha_prim' in params:
+                alpha_prim_value = params['alpha_prim']
+                if pop is self.p:
+                    alpha_prim_temp = np.zeros(4)
+                    alpha_prim_temp[0] = alpha_prim_value[0]
+                    alpha_prim_temp[1] = alpha_prim_value[2] = alpha_prim_value[1]
+                    alpha_prim_temp[3] = alpha_prim_value[2]
+                    pop.alpha_prim = alpha_prim_temp
+                elif pop is self.p_NM:
+                    pop.alpha_prim = alpha_prim_value[0]
+                elif pop is self.p_M:
+                    pop.alpha_prim = alpha_prim_value[2]
+
+    def set_pop_attributes(self, pop, params):
         for key, value in params.items():
-            setattr(pop, key, value)
+            if key != 'alpha_prim':
+                setattr(pop, key, value)
         
     def set_comp_para(self, R01_0='r0_005', R03_0='r0_005', dist_path_NM=None, dist_path_M=None,
                       R_NM=2.9e-7, R_M=2.9e-7,R01_0_scl=1,R03_0_scl=1):

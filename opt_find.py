@@ -33,8 +33,7 @@ class opt_find():
     def __init__(self):
         self.multi_flag=True
         
-    def init_opt_algo(self, dim=1, t_init= None, t_vec=None, add_noise=False, noise_type='Gaus',
-                      noise_strength=0.01,smoothing=False):
+    def init_opt_algo(self, multi_flag, algo_params, opt_params):
         """
         Initializes the optimization algorithm with specified parameters and configurations.
         
@@ -56,28 +55,25 @@ class opt_find():
         smoothing : `bool`, optional
             Flag to determine whether to apply smoothing(KDE) to the data. Default is False.
         """
+        dim = algo_params.get('dim', None)
+        self.opt_params = opt_params
+        self.multi_flag = multi_flag
         if not self.multi_flag:
             self.algo = opt_algo()
         else:
             if dim == 1:
                 warnings.warn("The multi algorithm does not support 1-D pop!")
             self.algo = opt_algo_multi()  
-        self.algo.add_noise = add_noise
-        self.algo.smoothing = smoothing
-        self.algo.dim = dim
-        self.algo.noise_type = noise_type
-        self.algo.noise_strength = noise_strength
-        self.algo.t_init = t_init
-        self.algo.num_t_init = len(t_init)
-        self.algo.t_vec = t_vec
-        self.algo.num_t_steps = len(t_vec)
+        for key, value in algo_params.items():
+            setattr(self.algo, key, value)
+
+        self.algo.num_t_init = len(self.algo.t_init)
+        self.algo.num_t_steps = len(self.algo.t_vec)
         ## Get the complete simulation time and get the indices corresponding 
         ## to the vec and init time vectors
         self.algo.t_all = np.sort(np.concatenate((self.algo.t_init, self.algo.t_vec)))
         self.algo.idt_vec = [np.where(self.algo.t_all == t_time)[0][0] for t_time in self.algo.t_vec]
         self.algo.idt_init = [np.where(self.algo.t_all == t_time)[0][0] for t_time in self.algo.t_init]
-        
-        self.algo.method='BO'
         
         self.algo.p = population(dim=dim, disc='geo')
         ## The 1D-pop data is also used when calculating the initial N of 2/3D-pop.
@@ -153,8 +149,8 @@ class opt_find():
         """
         if self.algo.set_comp_para_flag is False:
             warnings.warn('Component parameters have not been set')
-        if self.algo.set_model_para_flag is False:
-            warnings.warn('Model parameters have not been set')
+        if self.algo.set_init_pop_para_flag is False:
+            warnings.warn('Initial PBE parameters have not been set')
             
         if data_name == None:
             warnings.warn("Please specify the name of the training data without labels!")
@@ -185,7 +181,7 @@ class opt_find():
                     alpha_prim_sample = np.zeros((3, sample_num))
                 
                 if sample_num == 1:
-                    delta_opt = self.algo.optimierer_agg(exp_data_path=exp_data_path)
+                    delta_opt = self.algo.optimierer_agg(self.opt_params, exp_data_path=exp_data_path)
                     corr_beta = self.algo.corr_beta_opt
                     alpha_prim = self.algo.alpha_prim_opt
                     
@@ -193,7 +189,7 @@ class opt_find():
                     for i in range(0, sample_num):
                         exp_data_path=self.algo.traverse_path(i, exp_data_path)
                         delta_opt_sample[i] = \
-                            self.algo.optimierer_agg(exp_data_path=exp_data_path)
+                            self.algo.optimierer_agg(self.opt_params, exp_data_path=exp_data_path)
                             
                         corr_beta_sample[i] = self.algo.corr_beta_opt
                         if self.algo.p.dim == 1:
@@ -210,8 +206,8 @@ class opt_find():
                     self.algo.alpha_prim_opt = alpha_prim
                 
             elif method == 'delta':
-                delta_opt = self.algo.optimierer_agg(sample_num=sample_num, 
-                                      exp_data_path=exp_data_path)
+                delta_opt = self.algo.optimierer_agg(self.opt_params, sample_num=sample_num,
+                                                     exp_data_path=exp_data_path)
                 # delta_opt = self.algo.optimierer(sample_num=sample_num, 
                 #                       exp_data_path=exp_data_path)
                 
