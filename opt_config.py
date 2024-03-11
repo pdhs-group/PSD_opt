@@ -13,16 +13,16 @@ config = {
     
     'algo_params': {
         'dim': 2,
-        't_init' : np.array([3, 15, 22, 40]),
-        't_vec' : np.arange(0, 11, 1, dtype=float),
+        't_init' : np.array([1, 3, 5, 7]),
+        't_vec' : np.arange(0, 21, 2, dtype=float),
         'add_noise': True,
         'smoothing': True,
         'noise_type': 'Mul',
         'noise_strength': 0.1,
         'sample_num': 5,
         'method': 'BO',
-        'n_iter': 400,
-        'calc_init_N': True,
+        'n_iter': 4,
+        'calc_init_N': False,
         ## delta_flag = q3: use q3
         ## delta_flag = Q3: use Q3
         ## delta_flag = x_10: use x_10
@@ -57,9 +57,11 @@ config = {
     
     ## Parameters which should be optimized
     'opt_params' : {
-    'corr_agg': {'bounds': (1e-3, 1e3), 'log_scale': True},
-    'pl_v': {'bounds': (0.1, 10), 'log_scale': False},
-    # add more parameters as needed
+        'corr_agg_0': {'bounds': (-3, 3), 'log_scale': True},
+        'corr_agg_1': {'bounds': (-3, 3), 'log_scale': True},
+        'corr_agg_2': {'bounds': (-3, 3), 'log_scale': True},
+        'pl_v': {'bounds': (0.1, 10), 'log_scale': False},
+
     },
     ## The diameter ratio of the primary particles can also be used as a variable
     'R_NM': 8.68e-7,

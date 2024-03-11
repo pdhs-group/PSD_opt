@@ -83,7 +83,7 @@ class write_read_exp():
             if t_exp < 0 or t_exp > max(time_points):
                 raise ValueError("The experimental time is out of the range of the data table.")
             
-            # interpolation
+            # interpolation for time
             interpolated_data = {}
             for diameter in self.exp_data.index:
 

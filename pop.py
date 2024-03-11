@@ -397,7 +397,8 @@ class population():
             # To avoid mass leakage at the boundary in CAT, boundary cells are not directly involved in the calculation. 
             # So there is no need to define the corresponding F_M at boundary. F_M is (NS-1)^2 instead (NS)^2
             self.F_M = np.zeros((self.NS-1,self.NS-1))
-            
+            if self.process_type == 'breakage':
+                return  
             # Go through all agglomeration partners 1 [a] and 2 [i]
             # The current index tuple idx stores them as (a,i)
             for idx, tmp in np.ndenumerate(self.F_M):
@@ -460,7 +461,11 @@ class population():
                 
         # 2-D case.
         elif self.dim == 2:
-            
+            # To avoid mass leakage at the boundary in CAT, boundary cells are not directly involved in the calculation. 
+            # So there is no need to define the corresponding F_M at boundary. F_M is (NS-1)^4 instead (NS)^4
+            self.F_M = np.zeros((self.NS-1,self.NS-1,self.NS-1,self.NS-1))
+            if self.process_type == 'breakage':
+                return
             if self.JIT_FM:
                 self.F_M = jit.calc_F_M_2D(self.NS,self.disc,self.COLEVAL,self.CORR_BETA,
                                            self.G,self.R,self.X1_vol,self.X3_vol,
@@ -468,10 +473,6 @@ class population():
                                            self.X_SEL,self.Y_SEL)
             
             else:
-                # To avoid mass leakage at the boundary in CAT, boundary cells are not directly involved in the calculation. 
-                # So there is no need to define the corresponding F_M at boundary. F_M is (NS-1)^4 instead (NS)^4
-                self.F_M = np.zeros((self.NS-1,self.NS-1,self.NS-1,self.NS-1))
-                
                 # Go through all agglomeration partners 1 [a,b] and 2 [i,j]
                 # The current index tuple idx stores them as (a,b,i,j)
                 for idx, tmp in np.ndenumerate(self.F_M):
@@ -549,7 +550,8 @@ class population():
                 
         # 3-D case. 
         elif self.dim == 3:
-            
+            if self.process_type == 'breakage':
+                return
             if self.JIT_FM: 
                 self.F_M = jit.calc_F_M_3D(self.NS,self.disc,self.COLEVAL,self.CORR_BETA,
                                            self.G,self.R,self.X1_vol,self.X2_vol,self.X3_vol,
@@ -746,7 +748,8 @@ class population():
             ## Note: Because particles with a volume of zero are skipped, 
             ##       calculation with V requires (index+1)
             self.B_R = np.zeros(self.NS-1)
-            
+            if self.process_type == 'agglomeration':
+                return
             # Size independent breakage rate --> See Leong2023 (10)
             # only for validation with analytical results
             if self.BREAKRVAL == 1:
@@ -770,7 +773,8 @@ class population():
         # 2-D case            
         if self.dim == 2:
             self.B_R = np.zeros((self.NS-1, self.NS-1))
-            
+            if self.process_type == 'agglomeration':
+                return
             # Size independent breakage rate --> See Leong2023 (10)
             # only for validation with analytical results
             if self.BREAKRVAL == 1:
@@ -822,6 +826,8 @@ class population():
             ##       calculation with V requires (index+1)
             self.int_B_F = np.zeros((self.NS-1, self.NS-1))
             self.intx_B_F = np.zeros((self.NS-1, self.NS-1))
+            if self.process_type == 'agglomeration':
+                return
             ## Let the integration range associated with the breakage function start from zero 
             ## to ensure mass conservation  
             V_e_tem = np.zeros(self.NS) 
@@ -840,15 +846,17 @@ class population():
                     
         # 2-D case
         elif self.dim == 2:
+            self.int_B_F = np.zeros((self.NS-1, self.NS-1, self.NS-1, self.NS-1))
+            self.intx_B_F = np.zeros((self.NS-1, self.NS-1, self.NS-1, self.NS-1))
+            self.inty_B_F = np.zeros((self.NS-1, self.NS-1, self.NS-1, self.NS-1))
+            if self.process_type == 'agglomeration':
+                return
             if self.JIT_BF == True:
                 self.int_B_F, self.intx_B_F, self.inty_B_F = jit.calc_int_B_F_2D_quad(
                     self.NS,self.V1,self.V3,self.V_e1,self.V_e3,self.BREAKFVAL,self.pl_v,self.pl_q)
                 # self.int_B_F, self.intx_B_F, self.inty_B_F = jit.calc_int_B_F_2D(
                 #     self.NS,self.V1,self.V3,self.V_e1,self.V_e3,self.BREAKFVAL,self.pl_v,self.pl_q)
             else:
-                self.int_B_F = np.zeros((self.NS-1, self.NS-1, self.NS-1, self.NS-1))
-                self.intx_B_F = np.zeros((self.NS-1, self.NS-1, self.NS-1, self.NS-1))
-                self.inty_B_F = np.zeros((self.NS-1, self.NS-1, self.NS-1, self.NS-1))
                 V_e1_tem = np.zeros(self.NS) 
                 V_e1_tem[:] = self.V_e1[1:]
                 V_e1_tem[0] = 0.0
@@ -1177,37 +1185,36 @@ class population():
             N = self.N
         
         # Extract unique values that are NOT -1 or 0 (border)
-        v_uni = np.setdiff1d(self.V,[-1,0])
+        v_uni = np.setdiff1d(self.V,[-1])
         # v_uni = unique_with_tolerance(v_uni)
-        q3 = np.zeros(len(v_uni)+1)
-        x_uni = np.zeros(len(v_uni)+1)
-        sumvol_uni = np.zeros(len(v_uni)+1)
-        sumvol_uni_tem = np.zeros(len(v_uni))
+        q3 = np.zeros(len(v_uni))
+        x_uni = np.zeros(len(v_uni))
+        sumvol_uni = np.zeros(len(v_uni))
         
         if comp == 'all':
             # Loop through all entries in V and add volume concentration to specific entry in sumvol_uni
             if self.dim == 1:
-                for i in range(1,self.NS):
+                for i in range(self.NS):
                     # if self.V[i] in v_uni:
-                    sumvol_uni_tem[v_uni == self.V[i]] += self.V[i]*N[i,t] 
+                    sumvol_uni[v_uni == self.V[i]] += self.V[i]*N[i,t] 
                         
             if self.dim == 2:
-                for i in range(1,self.NS):
-                    for j in range(1,self.NS):
+                for i in range(self.NS):
+                    for j in range(self.NS):
                         # if self.V[i,j] in v_uni:
-                        sumvol_uni_tem[v_uni == self.V[i,j]] += self.V[i,j]*N[i,j,t]
+                        sumvol_uni[v_uni == self.V[i,j]] += self.V[i,j]*N[i,j,t]
 
             if self.dim == 3:
-                for i in range(1,self.NS):
-                    for j in range(1,self.NS):
-                        for k in range(1,self.NS):
+                for i in range(self.NS):
+                    for j in range(self.NS):
+                        for k in range(self.NS):
                             # if self.V[i,j,k] in v_uni:
-                            sumvol_uni_tem[v_uni == self.V[i,j,k]] += self.V[i,j,k]*N[i,j,k,t]
+                            sumvol_uni[v_uni == self.V[i,j,k]] += self.V[i,j,k]*N[i,j,k,t]
             ## convert unit m into um
-            sumV = np.sum(sumvol_uni_tem)*1e18
-            sumvol_uni[1:] = sumvol_uni_tem*1e18
+            sumvol_uni *= 1e18
+            sumV = np.sum(sumvol_uni)
             # Calculate diameter array
-            x_uni[1:]=(6*v_uni/np.pi)**(1/3)*1e6
+            x_uni[1:]=(6*v_uni[1:]/np.pi)**(1/3)*1e6
             
             # Calculate sum and density distribution
             Q3 = np.cumsum(sumvol_uni)/sumV
@@ -1245,37 +1252,35 @@ class population():
         
         # Extract unique values that are NOT -1 or 0 (border)
         # At the same time, v_uni will be rearranged according to size.
-        v_uni = np.setdiff1d(self.V,[-1,0])
+        v_uni = np.setdiff1d(self.V,[-1])
 
-        q3 = np.zeros(len(v_uni)+1)
-        x_uni = np.zeros(len(v_uni)+1)
-        sumN_uni = np.zeros(len(v_uni)+1)
-        sumN_uni_tem = np.zeros(len(v_uni))
+        q3 = np.zeros(len(v_uni))
+        x_uni = np.zeros(len(v_uni))
+        sumN_uni = np.zeros(len(v_uni))
         
         if comp == 'all':
             # Loop through all entries in V and add volume concentration to specific entry in sumN_uni
             if self.dim == 1:
-                for i in range(1,self.NS):
+                for i in range(self.NS):
                     if float_in_list(self.V[i], v_uni) and (not N[i,t] < 0):
-                        sumN_uni_tem[v_uni == self.V[i]] += N[i,t] 
+                        sumN_uni[v_uni == self.V[i]] += N[i,t] 
                         
             if self.dim == 2:
-                for i in range(1,self.NS):
-                    for j in range(1,self.NS):
+                for i in range(self.NS):
+                    for j in range(self.NS):
                         if float_in_list(self.V[i,j], v_uni) and (not N[i,j,t] < 0):
-                            sumN_uni_tem[v_uni == self.V[i,j]] += N[i,j,t]
+                            sumN_uni[v_uni == self.V[i,j]] += N[i,j,t]
 
             if self.dim == 3:
-                for i in range(1,self.NS+3):
-                    for j in range(1,self.NS+3):
-                        for k in range(1,self.NS+3):
+                for i in range(self.NS):
+                    for j in range(self.NS):
+                        for k in range(self.NS):
                             if float_in_list(self.V[i,j,k], v_uni) and (not N[i,j,t] < 0):
-                                sumN_uni_tem[v_uni == self.V[i,j,k]] += N[i,j,k,t]
+                                sumN_uni[v_uni == self.V[i,j,k]] += N[i,j,k,t]
                                 
-            sumN = np.sum(sumN_uni_tem)
-            sumN_uni[1:] = sumN_uni_tem
+            sumN = np.sum(sumN_uni)
             # Calculate diameter array and convert into mm
-            x_uni[1:]=(6*v_uni/np.pi)**(1/3)*1e6
+            x_uni[1:]=(6*v_uni[1:]/np.pi)**(1/3)*1e6
             
             # Calculate sum and density distribution
             Q3 = np.cumsum(sumN_uni)/sumN

@@ -82,7 +82,7 @@ class opt_find():
         # Set the base path for exp_data_path
         self.base_path = os.path.join(self.algo.p.pth, "data")
         
-    def generate_data(self, sample_num=1, add_info=""):
+    def generate_data(self, pop_params=None, sample_num=1, add_info=""):
         """
         Generates synthetic data based on simulation results, optionally adding noise.
         
@@ -104,7 +104,7 @@ class opt_find():
         exp_data_path = os.path.join(self.base_path, filename)
         
         if not self.multi_flag:
-            self.algo.calc_pop(self.algo.p, self.algo.CORR_BETA, self.algo.alpha_prim, self.algo.t_all)
+            self.algo.calc_pop(self.algo.p, pop_params, self.algo.t_all)
             
             for i in range(0, sample_num):
                 if sample_num != 1:
@@ -117,7 +117,7 @@ class opt_find():
                 exp_data_path.replace(".xlsx", "_NM.xlsx"),
                 exp_data_path.replace(".xlsx", "_M.xlsx")
             ]
-            self.algo.calc_all_pop(self.algo.CORR_BETA, self.algo.alpha_prim, self.algo.t_all)
+            self.algo.calc_all_pop(pop_params, self.algo.t_all)
             
             for i in range(0, sample_num):
                 if sample_num != 1:
@@ -206,28 +206,27 @@ class opt_find():
                     self.algo.alpha_prim_opt = alpha_prim
                 
             elif method == 'delta':
-                delta_opt = self.algo.optimierer_agg(self.opt_params, sample_num=sample_num,
+                delta_opt, opt_values = self.algo.optimierer_agg(self.opt_params, sample_num=sample_num,
                                                      exp_data_path=exp_data_path)
                 # delta_opt = self.algo.optimierer(sample_num=sample_num, 
                 #                       exp_data_path=exp_data_path)
                 
                 
-            if self.algo.p.dim == 1:
-                para_diff_i = np.zeros(2)
-                para_diff_i[0] = abs(self.algo.CORR_BETA_opt- self.algo.CORR_BETA) / self.algo.CORR_BETA
-                para_diff_i[1] = abs(self.algo.alpha_prim_opt - self.algo.alpha_prim)
+            # if self.algo.p.dim == 1:
+            #     para_diff_i = np.zeros(2)
+            #     para_diff_i[0] = abs(self.algo.CORR_BETA_opt- self.algo.CORR_BETA) / self.algo.CORR_BETA
+            #     para_diff_i[1] = abs(self.algo.alpha_prim_opt - self.algo.alpha_prim)
                 
-            elif self.algo.p.dim == 2:
-                para_diff_i = np.zeros(4)
-                para_diff_i[0] = abs(self.algo.CORR_BETA_opt- self.algo.CORR_BETA) / self.algo.CORR_BETA
-                para_diff_i[1:] = abs(self.algo.alpha_prim_opt - self.algo.alpha_prim)
+            # elif self.algo.p.dim == 2:
+            #     para_diff_i = np.zeros(4)
+            #     para_diff_i[0] = abs(self.algo.CORR_BETA_opt- self.algo.CORR_BETA) / self.algo.CORR_BETA
+            #     para_diff_i[1:] = abs(self.algo.alpha_prim_opt - self.algo.alpha_prim)
             
-            corr_agg = self.algo.CORR_BETA * self.algo.alpha_prim
-            corr_agg_opt = self.algo.CORR_BETA_opt * self.algo.alpha_prim_opt
-            corr_agg_diff = abs(corr_agg_opt - corr_agg) / np.where(corr_agg == 0, 1, corr_agg)
-            para_diff=para_diff_i.mean()
-            return self.algo.CORR_BETA_opt, self.algo.alpha_prim_opt, para_diff, delta_opt, \
-                corr_agg, corr_agg_opt, corr_agg_diff
+            # corr_agg = self.algo.CORR_BETA * self.algo.alpha_prim
+            # corr_agg_opt = self.algo.CORR_BETA_opt * self.algo.alpha_prim_opt
+            # corr_agg_diff = abs(corr_agg_opt - corr_agg) / np.where(corr_agg == 0, 1, corr_agg)
+            # para_diff=para_diff_i.mean()
+            return delta_opt, opt_values
                 
             # return self.algo.CORR_BETA_opt, self.algo.alpha_prim_opt, para_diff, delta_opt
         
@@ -252,7 +251,7 @@ class opt_find():
         
         for idt in self.algo.idt_vec:
             sumvol_uni = pop.return_distribution(t=idt, flag='sumvol_uni')[0]
-            kde = self.algo.KDE_fit(x_uni,  sumvol_uni)
+            kde = self.algo.KDE_fit(x_uni, sumvol_uni)
             ## Recalculate the values of after smoothing
             q3 = self.algo.KDE_score(kde, x_uni)
             Q3 = self.algo.calc_Q3(x_uni, q3)
@@ -273,8 +272,7 @@ class opt_find():
         return 
     
     # Visualize only the last time step of the specified time vector and the last used experimental data
-    def visualize_distribution(self, pop, CORR_BETA_ori, alpha_prim_ori, CORR_BETA_opt, 
-                               alpha_prim_opt, exp_data_path=None,ax=None,fig=None,
+    def visualize_distribution(self, pop, ori_params, opt_values, exp_data_path=None,ax=None,fig=None,
                                close_all=False,clr='k',scl_a4=1,figsze=[12.8,6.4*1.5]):
         """
         Visualizes the distribution at the last time step.
@@ -282,7 +280,7 @@ class opt_find():
         """
         ## Recalculate PSD using original parameter
         ## Todo: set_comp_para with original parameter
-        self.algo.calc_pop(pop, CORR_BETA=CORR_BETA_ori, alpha_prim=alpha_prim_ori)
+        self.algo.calc_pop(pop, ori_params)
 
         x_uni_ori, sumvol_uni_ori = pop.return_distribution(t=-1, flag='x_uni, sumvol_uni')
 
@@ -291,7 +289,7 @@ class opt_find():
             q3_ori = self.algo.KDE_score(kde, x_uni_ori)
             Q3_ori = self.algo.calc_Q3(x_uni_ori, q3_ori)
 
-        self.algo.calc_pop(pop, CORR_BETA_opt, alpha_prim_opt)  
+        self.algo.calc_pop(pop, opt_values)  
             
         x_uni, sumvol_uni= pop.return_distribution(t=-1, flag='x_uni, sumvol_uni')
         if self.algo.smoothing:

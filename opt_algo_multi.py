@@ -24,11 +24,18 @@ class opt_algo_multi(opt_algo):
             
         return delta_sum
     
-    def calc_delta_agg(self, corr_agg=None, scale=1, sample_num=1, exp_data_path=None): 
-        corr_beta = self.return_syth_beta(corr_agg)
-        alpha_prim = corr_agg / corr_beta
+    def calc_delta_agg(self, params, scale=1, sample_num=1, exp_data_path=None): 
+        if "corr_agg" in params:
+            corr_agg = params["corr_agg"]
+            CORR_BETA = self.return_syth_beta(corr_agg)
+            alpha_prim = corr_agg / CORR_BETA
+            
+            params["CORR_BETA"] = CORR_BETA
+            params["alpha_prim"] = alpha_prim
+            
+            del params["corr_agg"]
         
-        self.calc_all_pop(corr_beta, alpha_prim, self.t_vec)
+        self.calc_all_pop(params, self.t_vec)
         
         delta = self.calc_delta_tem(sample_num, exp_data_path[0], scale, self.p)
         delta_NM = self.calc_delta_tem(sample_num, exp_data_path[1], scale, self.p_NM)

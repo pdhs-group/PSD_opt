@@ -54,7 +54,7 @@ class opt_algo():
         self.cost_func_type = 'MSE'
 
         self.calc_init_N = False
-        self.set_model_para_flag = False
+        self.set_init_pop_para_flag = False
         self.set_comp_para_flag = False
     #%%  Optimierer    
     def calc_delta(self, CORR_BETA=None, alpha_prim=None, scale=1, sample_num=1, exp_data_path=None):
@@ -83,7 +83,7 @@ class opt_algo():
 
         return self.calc_delta_tem(sample_num, exp_data_path, scale, self.p)
     
-    def calc_delta_agg(self, corr_agg=None, scale=1, sample_num=1, exp_data_path=None):
+    def calc_delta_agg(self, params, scale=1, sample_num=1, exp_data_path=None):
         """
         Calculate the difference (delta) of PSD.
         
@@ -102,10 +102,17 @@ class opt_algo():
         exp_data_path : `str`
             path for experimental data.
         """
-        CORR_BETA = self.return_syth_beta(corr_agg)
-        alpha_prim = corr_agg / CORR_BETA
+        if "corr_agg" in params:
+            corr_agg = params["corr_agg"]
+            CORR_BETA = self.return_syth_beta(corr_agg)
+            alpha_prim = corr_agg / CORR_BETA
+            
+            params["CORR_BETA"] = CORR_BETA
+            params["alpha_prim"] = alpha_prim
+            
+            del params["corr_agg"]
 
-        self.calc_pop(self.p, CORR_BETA, alpha_prim, self.t_vec)
+        self.calc_pop(self.p, params, self.t_vec)
 
         return self.calc_delta_tem(sample_num, exp_data_path, scale, self.p)
 
@@ -135,8 +142,7 @@ class opt_algo():
             kde_list.append(kde)
         
         if sample_num == 1:
-            x_uni_exp, sumN_uni_exp = self.read_exp(exp_data_path) 
-            sumN_uni_exp = sumN_uni_exp[:, self.idt_vec]
+            x_uni_exp, sumN_uni_exp = self.read_exp(exp_data_path, self.t_vec) 
             vol_uni = np.tile((1/6)*np.pi*x_uni_exp**3, (len(self.idt_vec), 1)).T
             sumvol_uni_exp = sumN_uni_exp * vol_uni
             q3_mod = np.zeros((len(x_uni_exp), self.num_t_steps))
@@ -156,8 +162,7 @@ class opt_algo():
             delta_sum = 0           
             for i in range (0, sample_num):
                 exp_data_path = self.traverse_path(i, exp_data_path)
-                x_uni_exp, sumN_uni_exp = self.read_exp(exp_data_path) 
-                sumN_uni_exp = sumN_uni_exp[:, self.idt_vec]
+                x_uni_exp, sumN_uni_exp = self.read_exp(exp_data_path, self.t_vec) 
                 vol_uni = np.tile((1/6)*np.pi*x_uni_exp**3, (len(self.idt_vec), 1)).T
                 sumvol_uni_exp = sumN_uni_exp * vol_uni
                 q3_mod = np.zeros((len(x_uni_exp), self.num_t_steps))
@@ -268,44 +273,44 @@ class opt_algo():
             for param, info in opt_params.items():
                 bounds = info['bounds']
                 log_scale = info.get('log_scale', False)
-                
+                pbounds[param] = bounds
                 if log_scale:
-                    transformed_param = f"{param}_log"
-                    pbounds[transformed_param] = (np.log10(bounds[0]), np.log10(bounds[1]))
                     transform[param] = lambda x: 10**x
                 else:
-                    pbounds[param] = bounds
                     transform[param] = lambda x: x
                     
             # Objective function considering the log scale transformation if necessary
             def objective(**kwargs):
-                transformed_args = {}
+                transformed_params = {}
                 for param, func in transform.items():
-                    key = f"{param}_log" if f"{param}_log" in kwargs else param
-                    transformed_args[param] = func(kwargs[key])
+                    transformed_params[param] = func(kwargs[param])
                 
                 # Special handling for corr_agg based on dimension
-                if 'corr_agg' in transformed_args:
-                    if self.p.dim == 1:
-                        transformed_args['corr_agg'] = np.array([transformed_args['corr_agg']])
-                    elif self.p.dim == 2:
-                        transformed_args['corr_agg'] = np.array([transformed_args[f'corr_agg_{i}'] for i in range(3)])
-                
-                return self.calc_delta_agg(**transformed_args, scale=-1, sample_num=sample_num, exp_data_path=exp_data_path)
+                if 'corr_agg_0' in transformed_params:
+                    transformed_params = self.array_dict_transform(transformed_params)
+                return self.calc_delta_agg(transformed_params, scale=-1, sample_num=sample_num, exp_data_path=exp_data_path)
             
             opt = BayesianOptimization(f=objective, pbounds=pbounds, random_state=1, allow_duplicate_points=True)
             opt.maximize(init_points=init_points, n_iter=self.n_iter)
             
             # Extract optimized values and apply transformations
-            opt_values = {param: transform[param](opt.max['params'][f"{param}_log"]) if f"{param}_log" in opt.max['params'] else opt.max['params'][param] for param in opt_params}
+            opt_values = {param: transform[param](opt.max['params'][param]) for param in opt_params}
             delta_opt = -opt.max['target']
+            if 'corr_agg_0' in opt_values:
+                opt_values =self.array_dict_transform(opt_values)
             
-            # Save the optimized_values in self attributes
-            for param, value in opt_values.items():
-                setattr(self, f"{param}_opt", value)
-            
-            return delta_opt
-    
+            return delta_opt, opt_values
+    def array_dict_transform(self, array_dict):
+        # Special handling for array in dictionary like corr_agg based on dimension
+            if self.p.dim == 1:
+                array_dict['corr_agg'] = np.array([array_dict['corr_agg_0']])
+                del array_dict["corr_agg_0"]
+            elif self.p.dim == 2:
+                array_dict['corr_agg'] = np.array([array_dict[f'corr_agg_{i}'] for i in range(3)])
+                for i in range(3):
+                    del array_dict[f'corr_agg_{i}']
+            return array_dict
+                    
     def return_syth_beta(self,corr_agg):
         """
         Calculate and return a synthetic beta value.
@@ -363,7 +368,7 @@ class opt_algo():
     #%% Data Process  
     ## Read the experimental data and re-interpolate the particle distribution 
     ## of the experimental data according to the simulation results.
-    def read_exp(self, exp_data_path):  
+    def read_exp(self, exp_data_path, t_vec):  
         """
         Reads experimental data from a specified path and processes it.
     
@@ -379,7 +384,7 @@ class opt_algo():
             - `sumN_uni_exp`: An array of sum of number concentrations for the unique particle sizes.
         """
         exp_data = write_read_exp(exp_data_path, read=True)
-        df = exp_data.get_exp_data(self.t_all)
+        df = exp_data.get_exp_data(t_vec)
         x_uni_exp = df.index.to_numpy()
         sumN_uni_exp = df.to_numpy()
         return x_uni_exp, sumN_uni_exp
@@ -557,7 +562,7 @@ class opt_algo():
         if hasattr(self, 'p_M'):
             self.set_pop_para(self.p_M, pop_params)
         
-        self.set_init_para_flag = True
+        self.set_init_pop_para_flag = True
 
     def set_pop_para(self, pop, params):
         if params is None:
@@ -685,19 +690,18 @@ class opt_algo():
         """
         x_uni = self.calc_x_uni(pop)
         if sample_num == 1:
-            x_uni_exp, sumN_uni_init_sets = self.read_exp(exp_data_path)
+            x_uni_exp, sumN_uni_init_sets = self.read_exp(exp_data_path, self.t_init)
         else:
             exp_data_path=self.traverse_path(0, exp_data_path)
-            x_uni_exp, sumN_uni_tem = self.read_exp(exp_data_path)
-            sumN_uni_all_samples = np.zeros((len(x_uni_exp), len(self.t_all), sample_num))
+            x_uni_exp, sumN_uni_tem = self.read_exp(exp_data_path, self.t_init)
+            sumN_uni_all_samples = np.zeros((len(x_uni_exp), len(self.t_init), sample_num))
             sumN_uni_all_samples[:, :, 0] = sumN_uni_tem
             for i in range(1, sample_num):
                 exp_data_path=self.traverse_path(i, exp_data_path)
-                _, sumN_uni_tem = self.read_exp(exp_data_path)
+                _, sumN_uni_tem = self.read_exp(exp_data_path, self.t_init)
                 sumN_uni_all_samples[:, :, i] = sumN_uni_tem
-            sumN_uni_all = sumN_uni_all_samples.mean(axis=2)
+            sumN_uni_init_sets = sumN_uni_all_samples.mean(axis=2)
             
-        sumN_uni_init_sets = sumN_uni_all[:, self.idt_init]
         sumN_uni_init = np.zeros(len(x_uni))
             
         if init_flag == 'int':
