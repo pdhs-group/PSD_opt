@@ -26,7 +26,7 @@ pt.close()
 pt.plot_init(mrksze=8,lnewdth=1)
     
 #%% PARAM
-t = np.arange(0,11,1, dtype=float)
+t = np.arange(0,101,10, dtype=float)
 NS = 15
 S = 4
 R01, R02 = 1e-6, 1e-6
@@ -38,7 +38,7 @@ G= 1
 EFFEVAL = 2 
 alpha_prim = np.array([0.5,1,1,0.5]) 
 SIZEEVAL = 1
-dim = 1
+dim = 2
 ## BREAKRVAL == 1: 1, constant breakage rate
 ## BREAKRVAL == 2: x*y or x + y, breakage rate is related to particle size
 ## BREAKRVAL == 3: power low
@@ -592,9 +592,9 @@ if __name__ == "__main__":
         elif type_flag == "breakage":
             N[-1,-1,0] = 1
         else:
-            N[-1,-1,0] = 1   
-            N[0,1,0] = 1
-            N[1,0,0] = 1
+            N[-1,-1,0] = 1e14
+            N[0,1,0] = 1e14
+            N[1,0,0] = 1e14
 
         V_p[:,0] = V_p1 
         V_p[0,:] = V_p2 
@@ -673,11 +673,12 @@ if __name__ == "__main__":
                                   [0, max(t)], 
                                   N[:,:,0].reshape(-1), t_eval=t,
                                   args=(NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,type_flag,agg_crit),
-                                  method='RK23',first_step=0.1,rtol=1e-3)
+                                  method='Radau',first_step=0.1,rtol=1e-1)
         
         # Reshape and save result to N and t_vec
-        N = RES.y.reshape((NS,NS,len(t))) #RES.y.reshape((NS,NS,len(t)))
         t = RES.t
+        N = RES.y.reshape((NS,NS,len(t))) #RES.y.reshape((NS,NS,len(t)))
+        int_flag = RES.status
         
         N0 = N[:,:,0]
         NE = N[:,:,-1]

@@ -36,14 +36,16 @@ class opt_algo_multi(opt_algo):
             del params["corr_agg"]
         
         self.calc_all_pop(params, self.t_vec)
-        
-        delta = self.calc_delta_tem(sample_num, exp_data_path[0], scale, self.p)
-        delta_NM = self.calc_delta_tem(sample_num, exp_data_path[1], scale, self.p_NM)
-        delta_M = self.calc_delta_tem(sample_num, exp_data_path[2], scale, self.p_M)
-        # increase the weight of the 2D case
-        delta_sum = delta * self.weight_2d + delta_NM + delta_M
-            
-        return delta_sum
+        if self.p.calc_status == 0 and self.p_NM.calc_status == 0 and self.p_M.calc_status == 0:
+            delta = self.calc_delta_tem(sample_num, exp_data_path[0], scale, self.p)
+            delta_NM = self.calc_delta_tem(sample_num, exp_data_path[1], scale, self.p_NM)
+            delta_M = self.calc_delta_tem(sample_num, exp_data_path[2], scale, self.p_M)
+            # increase the weight of the 2D case
+            delta_sum = delta * self.weight_2d + delta_NM + delta_M
+                
+            return delta_sum
+        else:
+            return scale
         
     def calc_all_pop(self, params=None, t_vec=None):
         self.calc_pop(self.p_NM, params, t_vec)

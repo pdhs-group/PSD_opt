@@ -11,19 +11,44 @@ import opt_find as opt
 import numpy as np
 from generate_psd import full_psd
 import opt_config as conf
+import multiprocessing
 
-if __name__ == '__main__':
-    ## Input for Opt
-    dim = conf.config['dim']
-    t_init = conf.config['t_init']
-    t_vec = conf.config['t_vec']
-    delta_flag = conf.config['delta_flag']
-    add_noise = conf.config['add_noise']
-    smoothing = conf.config['smoothing']
-    noise_type=conf.config['noise_type']
-    noise_strength = conf.config['noise_strength']
-    sample_num = conf.config['sample_num']
+def calc_function(R01_0, R03_0, dist_path_NM, dist_path_M, var_pop_params):
+    #%%  Input for Opt 
+    find = opt.opt_find()
+     
+    algo_params = conf.config['algo_params']
+    pop_params = conf.config['pop_params']
+    multi_flag = conf.config['multi_flag']
+    opt_params = conf.config['opt_params']
     
+    find.init_opt_algo(multi_flag, algo_params, opt_params)
+    
+    find.algo.set_init_pop_para(pop_params)
+    
+    find.algo.set_comp_para(R_NM=conf.config['R_NM'], R_M=conf.config['R_M'])
+    
+    find.algo.weight_2d = conf.config['weight_2d']
+    
+    find.algo.set_comp_para(R01_0, R03_0, dist_path_NM, dist_path_M)
+    
+    # find.algo.calc_all_pop(var_pop_params, find.algo.t_vec)
+    # calc_status = find.algo.p.calc_status
+    # calc_NM_status = find.algo.p_NM.calc_status
+    # calc_M_status = find.algo.p_M.calc_status
+    b = var_pop_params['CORR_BETA']
+    a = var_pop_params['alpha_prim']
+    v = var_pop_params['pl_v']
+    p1 = var_pop_params['pl_P1']
+    p2 = var_pop_params['pl_P2']
+    add_info = f"_para_{b}_{a[0]}_{a[1]}_{a[2]}_{v}_{p1}_{p2}"
+    # Generate synthetic Data
+    find.generate_data(var_pop_params, find.algo.sample_num, add_info=add_info)
+    # if calc_status !=0 or calc_NM_status!=0 or calc_M_status!=0:
+    #     return (var_pop_params, calc_status, calc_NM_status, calc_M_status)
+
+    
+if __name__ == '__main__':
     generate_new_psd = True
     
     if generate_new_psd:
@@ -40,10 +65,10 @@ if __name__ == '__main__':
         dist_path_1 = os.path.join(pth, "..", "data", "PSD_data", conf.config['dist_scale_1'])
         dist_path_5 = os.path.join(pth, "..", "data", "PSD_data", conf.config['dist_scale_5'])
         dist_path_10 = os.path.join(pth, "..","data", "PSD_data", conf.config['dist_scale_10'])
-    
+
     ## define the range of corr_beta
-    var_corr_beta = np.array([1e-2, 1e-1, 1e0, 1e1, 1e2])
-    
+    # var_corr_beta = np.array([1e-2, 1e-1, 1e0, 1e1, 1e2])
+    var_corr_beta = np.array([1e-2])
     ## define the range of alpha_prim 27x3
     values = np.array([0, 0.5, 1])
     a1, a2, a3 = np.meshgrid(values, values, values, indexing='ij')
@@ -51,28 +76,46 @@ if __name__ == '__main__':
     ## The case of all zero α is meaningless, that means no Agglomeration occurs
     var_alpha_prim = var_alpha_prim[~np.all(var_alpha_prim == 0, axis=1)]
 
+    ## define the range of v(breakage function)
+    # var_v = np.array([0.01, 1, 2])
+    var_v = np.array([0.01])
+    ## define the range of P1, P2 for power law breakage rate
+    # var_P1 = np.array([1e-6, 1e-4, 1e-2, 1])
+    # var_P2 = np.array([0.0, 0.5, 1, 2])
+    var_P1 = np.array([1])
+    var_P2 = np.array([0.0])
+    
     ## define the range of particle size scale and minimal size
-    dist_path = [dist_path_1, dist_path_10]
+    dist_path = [dist_path_1] # [dist_path_1, dist_path_10]
     size_scale = np.array([1, 10])
     R01_0 = 'r0_001'
     R03_0 = 'r0_001'
-    ## Instantiate Opt
-    find = opt.opt_find()
-    find.init_opt_algo(dim, t_init, t_vec, add_noise, noise_type, noise_strength, smoothing)
 
+    func_list = []
     for i, dist in enumerate(dist_path):
         ## Reinitialization of pop equations using psd data  
         dist_path_NM = dist_path[0]
         dist_path_M = dist
         scale = size_scale[i]
-        find.algo.set_comp_para(R01_0, R03_0, dist_path_NM, dist_path_M)
-        
-        for corr_beta in var_corr_beta:
-            for alpha_prim in var_alpha_prim:
-                ## Set α and β_corr
-                find.algo.corr_beta = corr_beta
-                find.algo.alpha_prim = alpha_prim
-                add_info = f"_para_{find.algo.corr_beta}_{find.algo.alpha_prim[0]}_{find.algo.alpha_prim[1]}_{find.algo.alpha_prim[2]}_{scale}"
-                # Generate synthetic Data
-                find.generate_data(sample_num=sample_num, add_info=add_info)
+        for j,corr_beta in enumerate(var_corr_beta):
+            for k,alpha_prim in enumerate(var_alpha_prim):
+                for l,v in enumerate(var_v):
+                    for m,P1 in enumerate(var_P1):
+                        for n,P2 in enumerate(var_P2):
+                            ## Set parameters for PBE
+                            conf_params = {
+                                'pop_params':{
+                                    'CORR_BETA' : corr_beta,
+                                    'alpha_prim' : alpha_prim,
+                                    'pl_v' : v,
+                                    'pl_P1' : P1,
+                                    'pl_P2' : P2,
+                                    }
+                                }
+                            var_pop_params = conf_params['pop_params']
+                            func_list.append((R01_0, R03_0, dist_path_NM, dist_path_M, var_pop_params))
+    pool = multiprocessing.Pool(processes=12)
+    results = pool.starmap(calc_function, func_list)                        
+    pool.close()
+    pool.join()                        
                    

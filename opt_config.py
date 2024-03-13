@@ -43,7 +43,7 @@ config = {
         'BREAKRVAL' : 3,
         'BREAKFVAL' : 5,
         'aggl_crit' : 1e20,
-        'process_type' : "breakage",
+        'process_type' : "agglomeration",
         'pl_v' : 2,
         'pl_q' : 1,
         'pl_P1' : 1e-4,

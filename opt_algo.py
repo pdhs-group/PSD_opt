@@ -113,8 +113,10 @@ class opt_algo():
             del params["corr_agg"]
 
         self.calc_pop(self.p, params, self.t_vec)
-
-        return self.calc_delta_tem(sample_num, exp_data_path, scale, self.p)
+        if self.p.calc_status == 0:
+            return self.calc_delta_tem(sample_num, exp_data_path, scale, self.p)
+        else:
+            return scale
 
     def calc_delta_tem(self, sample_num, exp_data_path, scale, pop):
         """

@@ -783,9 +783,16 @@ def dbltrap(f, a1, b1, a2, b2, args=(), n1=10, n2=10):
     return s * h1 * h2, 0
 
 @jit(nopython=True)
-def gauss_legendre(f,a,b,args=(),n=5):
-    ## To do
-    return 0
+def gauss_legendre(f,a,b,args=(),deg=9):
+    xs, ws = np.polynomial.legendre.leggauss(deg)
+    int_f = (b - a) * 0.5 * sum(ws * f((b - a) * 0.5 * xs + (b + a) * 0.5))
+    return int_f
+
+@jit(nopython=True)
+def dbgauss_legendre(f, a1, b1, a2, b2, args=(), deg1=9, deg2=9, deg=9):
+    xs1, ws1 = np.polynomial.legendre.leggauss(deg)
+    int_f = (b - a) * 0.5 * sum(ws * f((b - a) * 0.5 * xs + (b + a) * 0.5))
+    return int_f
 
 @jit(nopython=True)
 ## integration function scipy.quad and scipy.dblquad are not compatible with jit!

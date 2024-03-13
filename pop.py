@@ -71,8 +71,8 @@ class population():
                                            method='Radau',first_step=0.1,rtol=1e-1)
             
             # Reshape and save result to N and t_vec
-            self.N = self.RES.y
             self.t_vec = self.RES.t
+            self.N = self.RES.y
             
         elif self.dim == 2:
             # Define right-hand-side function depending on discretization
@@ -87,11 +87,11 @@ class population():
                                            [0, t_max], 
                                            np.reshape(self.N[:,:,0],-1), t_eval=t_vec,
                                            args=args,
-                                           method='RK23',first_step=0.1,rtol=1e-3)
+                                           method='Radau',first_step=0.1,rtol=1e-1)
             
             # Reshape and save result to N and t_vec
-            self.N = self.RES.y.reshape((self.NS,self.NS,len(self.RES.t)))
             self.t_vec = self.RES.t
+            self.N = self.RES.y.reshape((self.NS,self.NS,len(self.RES.t)))
         
         elif self.dim == 3:
             # Define right-hand-side function depending on discretization
@@ -104,12 +104,13 @@ class population():
                                            [0, t_max], 
                                            np.reshape(self.N[:,:,:,0],-1), t_eval=t_vec,
                                            args=(self.V,self.V1,self.V2,self.V3,self.F_M,self.NS,self.THR_DN),
-                                           method='RK23',first_step=0.1,rtol=1e-1)
+                                           method='Radau',first_step=0.1,rtol=1e-1)
             
             # Reshape and save result to N and t_vec
             self.N = self.RES.y.reshape((self.NS+3,self.NS+3,self.NS+3,len(self.RES.t)))
             self.t_vec = self.RES.t
-             
+        # Monitor whether integration are completed    
+        self.calc_status = self.RES.status    
     ## Solve ODE (forward Euler scheme):
     def solve_PBE_Euler(self):
         """ `(Legacy)` Simple solver with forward Euler. Use ``solve_PBE( )`` instead. """
@@ -768,8 +769,13 @@ class population():
                 for idx, tmp in np.ndenumerate(self.B_R):
                     a = idx[0]
                     if a != 0:
-                        self.B_R[a] = self.pl_P1*self.G*(self.V[a+1]/self.V[1])**self.pl_P2          
-        
+                        self.B_R[a] = self.pl_P1*self.G*(self.V[a+1]/self.V[1])**self.pl_P2     
+            # Hypothetical formula considering volume fraction
+            elif self.BREAKRVAL == 4:
+                for idx, tmp in np.ndenumerate(self.B_R):
+                    a = idx[0]
+                    if a != 0:
+                        self.B_R[a] = self.pl_P1*self.G*(self.V[a+1]/self.V[1])**self.pl_P2   
         # 2-D case            
         if self.dim == 2:
             self.B_R = np.zeros((self.NS-1, self.NS-1))
@@ -809,7 +815,20 @@ class population():
                         self.B_R[idx] = self.pl_P1 * self.G * (self.V1[a+1]/self.V1[1])**self.pl_P2
                     else:
                         self.B_R[idx] = self.pl_P1 * self.G * (self.V[a+1,b+1]/self.V[1,1])**self.pl_P2
-                        
+            # Hypothetical formula considering volume fraction
+            elif self.BREAKRVAL == 4:
+                for idx, tmp in np.ndenumerate(self.B_R):
+                    a = idx[0]; b = idx[1]
+                    if a == 0 and b == 0:
+                        continue
+                    elif a == 0:
+                        self.B_R[idx] = self.pl_P3 * self.G * (self.V3[b+1]/self.V3[1])**self.pl_P4
+                    elif b == 0:
+                        self.B_R[idx] = self.pl_P1 * self.G * (self.V1[a+1]/self.V1[1])**self.pl_P2
+                    else:
+                        self.B_R[idx] = (self.pl_P1 * self.G * (self.V1[a+1]/self.V1[1])**self.pl_P2 + \
+                                         self.pl_P3 * self.G * (self.V3[b+1]/self.V3[1])**self.pl_P4) * \
+                                        self.pl_P5 * self.X1_vol ** self.pl_P6
             
     ## Calculate integrated breakage function matrix.         
     def calc_int_B_F(self):
@@ -1529,8 +1548,12 @@ class population():
         self.pl_v = 4                         # number of fragments in product function of power law
                                               # or (v+1)/v: number of fragments in simple power law  
         self.pl_q = 1                         # parameter describes the breakage type(in product function of power law) 
-        self.pl_P1 = 1e-6                     # 1. parameter in power law for breakage rate  
-        self.pl_P2 = 0.5                      # 2. parameter in power law for breakage rate  
+        self.pl_P1 = 1e-6                     # 1. parameter in power law for breakage rate  1d/2d
+        self.pl_P2 = 0.5                      # 2. parameter in power law for breakage rate  1d/2d
+        self.pl_P3 = 1e-6                     # 3. parameter in power law for breakage rate  2d
+        self.pl_P4 = 0.5                      # 4. parameter in power law for breakage rate  2d
+        self.pl_P5 = 1e-6                     # 5. parameter in power law for breakage rate  2d
+        self.pl_P6 = 0.5                      # 6. parameter in power law for breakage rate  2d
                        
         self.SIZEEVAL = 2                     # Case for implementation of size dependency. 1 = No size dependency, 2 = Model from Soos2007 
         self.POTEVAL = 1                      # Case for the set of used interaction potentials. See int_fun_Xd for infos.

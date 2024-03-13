@@ -24,8 +24,8 @@ def visualize_results(data_paths, labels):
         rel_agg_diff = data['corr_agg_diff'][0]
         data.close()
         
-        agg_diff = abs(corr_agg_opt - corr_agg)
-        # agg_diff = rel_agg_diff
+        # agg_diff = abs(corr_agg_opt - corr_agg)
+        agg_diff = rel_agg_diff
         para_diff_mean = np.mean(agg_diff)
         para_diff_std = np.std(agg_diff)
         para_diff_var = np.var(agg_diff)
