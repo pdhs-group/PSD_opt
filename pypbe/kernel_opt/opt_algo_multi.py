@@ -5,7 +5,7 @@ Created on Mon Dec 11 09:05:42 2023
 @author: px2030
 """
 
-from opt_algo import opt_algo        
+from .opt_algo import opt_algo        
 
 class opt_algo_multi(opt_algo):
     def __init__(self, *args, **kwargs):

@@ -7,13 +7,13 @@ import numpy as np
 import math
 import scipy.integrate as integrate
 ## jit function
-import func.jit_pop as jit
+from  .utils.func import jit_pop as jit
 ## For plots
 import matplotlib.pyplot as plt
-import plotter.plotter as pt          
-from plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
+from .utils.plotter import plotter as pt          
+from .utils.plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
 ## For math
-from func.func_math import float_in_list, float_equal, isZero
+from .utils.func.func_math import float_in_list, float_equal, isZero
 
 ### ------ POPULATION CLASS DEFINITION ------ ###
 class population():
@@ -871,7 +871,7 @@ class population():
             if self.process_type == 'agglomeration':
                 return
             if self.JIT_BF == True:
-                self.int_B_F, self.intx_B_F, self.inty_B_F = jit.calc_int_B_F_2D_quad(
+                self.int_B_F, self.intx_B_F, self.inty_B_F = jit.calc_int_B_F_2D_GL(
                     self.NS,self.V1,self.V3,self.V_e1,self.V_e3,self.BREAKFVAL,self.pl_v,self.pl_q)
                 # self.int_B_F, self.intx_B_F, self.inty_B_F = jit.calc_int_B_F_2D(
                 #     self.NS,self.V1,self.V3,self.V_e1,self.V_e3,self.BREAKFVAL,self.pl_v,self.pl_q)

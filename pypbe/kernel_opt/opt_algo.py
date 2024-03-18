@@ -5,13 +5,14 @@ Minimize the difference by optimization algorithm to obtain the kernel of PBE.
 """
 import numpy as np
 import math
-from pop import population
 from bayes_opt import BayesianOptimization
 from scipy.stats import entropy
 from sklearn.neighbors import KernelDensity
 from sklearn.metrics import mean_squared_error, mean_absolute_error
-from func.func_read_exp import write_read_exp
 from scipy.interpolate import interp1d
+## import in package
+from ..dpbe import population
+from ..utils.func.func_read_exp import write_read_exp
 
 class opt_algo():
     """

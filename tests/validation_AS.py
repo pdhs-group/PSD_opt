@@ -11,11 +11,11 @@ import sys, os
 sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),".."))
 import numpy as np
 import math
-import plotter.plotter as pt
-from plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
+import pypbe.utils.plotter.plotter as pt
+from pypbe.utils.plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
 
-from pop import population as pop_disc
-from pop_MC import population_MC as pop_mc 
+from pypbe.dpbe import population as pop_disc
+from pypbe.mcpbe import population_MC as pop_mc 
 
 #%% CASES
 def calculate_case(CASE, PBE=True, MC=False):
@@ -762,7 +762,7 @@ if __name__ == "__main__":
     # '2D_sum_mono_ccm': 2D, sum kernel, monodisperse initial conditions, aplha from CCM
     # '2D_ortho_mono': 2D, ortho kernel, monodisperse initial conditions, alpha = 1
     # '2D_ortho_mono': 2D, ortho kernel, monodisperse initial conditions, alpha from CCM
-    # CASE = '1D_const_mono'
+    CASE = '1D_const_mono'
     # CASE = '2D_const_mono'
     #CASE = '3D_const_mono'
     # CASE = '1D_sum_mono'

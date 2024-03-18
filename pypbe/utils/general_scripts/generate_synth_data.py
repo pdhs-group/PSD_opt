@@ -6,12 +6,12 @@ Created on Thu Jan  4 16:14:15 2024
 """
 import sys
 import os
-sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),".."))
-import opt_find as opt
 import numpy as np
-from generate_psd import full_psd
-import opt_config as conf
 import multiprocessing
+sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),"../../.."))
+from generate_psd import full_psd
+import pypbe.kernel_opt.opt_find as opt
+import config.opt_config as conf
 
 def calc_function(R01_0, R03_0, dist_path_NM, dist_path_M, var_pop_params):
     #%%  Input for Opt 
@@ -30,26 +30,26 @@ def calc_function(R01_0, R03_0, dist_path_NM, dist_path_M, var_pop_params):
     
     find.algo.weight_2d = conf.config['weight_2d']
     
-    find.algo.set_comp_para(R01_0, R03_0, dist_path_NM, dist_path_M)
+    # find.algo.set_comp_para(R01_0, R03_0, dist_path_NM, dist_path_M)
     
-    # find.algo.calc_all_pop(var_pop_params, find.algo.t_vec)
-    # calc_status = find.algo.p.calc_status
-    # calc_NM_status = find.algo.p_NM.calc_status
-    # calc_M_status = find.algo.p_M.calc_status
-    b = var_pop_params['CORR_BETA']
-    a = var_pop_params['alpha_prim']
-    v = var_pop_params['pl_v']
-    p1 = var_pop_params['pl_P1']
-    p2 = var_pop_params['pl_P2']
-    add_info = f"_para_{b}_{a[0]}_{a[1]}_{a[2]}_{v}_{p1}_{p2}"
-    # Generate synthetic Data
-    find.generate_data(var_pop_params, find.algo.sample_num, add_info=add_info)
-    # if calc_status !=0 or calc_NM_status!=0 or calc_M_status!=0:
-    #     return (var_pop_params, calc_status, calc_NM_status, calc_M_status)
+    find.algo.calc_all_pop(var_pop_params, find.algo.t_vec)
+    calc_status = find.algo.p.calc_status
+    calc_NM_status = find.algo.p_NM.calc_status
+    calc_M_status = find.algo.p_M.calc_status
+    # b = var_pop_params['CORR_BETA']
+    # a = var_pop_params['alpha_prim']
+    # v = var_pop_params['pl_v']
+    # p1 = var_pop_params['pl_P1']
+    # p2 = var_pop_params['pl_P2']
+    # add_info = f"_para_{b}_{a[0]}_{a[1]}_{a[2]}_{v}_{p1}_{p2}"
+    # # Generate synthetic Data
+    # find.generate_data(var_pop_params, find.algo.sample_num, add_info=add_info)
+    if calc_status !=0 or calc_NM_status!=0 or calc_M_status!=0:
+        return (var_pop_params, calc_status, calc_NM_status, calc_M_status)
 
     
 if __name__ == '__main__':
-    generate_new_psd = True
+    generate_new_psd = False
     
     if generate_new_psd:
         ## Input for generating psd-data
@@ -67,8 +67,8 @@ if __name__ == '__main__':
         dist_path_10 = os.path.join(pth, "..","data", "PSD_data", conf.config['dist_scale_10'])
 
     ## define the range of corr_beta
-    # var_corr_beta = np.array([1e-2, 1e-1, 1e0, 1e1, 1e2])
-    var_corr_beta = np.array([1e-2])
+    var_corr_beta = np.array([1e-2, 1e-1, 1e0, 1e1, 1e2])
+    # var_corr_beta = np.array([1e-2])
     ## define the range of alpha_prim 27x3
     values = np.array([0, 0.5, 1])
     a1, a2, a3 = np.meshgrid(values, values, values, indexing='ij')
@@ -77,13 +77,13 @@ if __name__ == '__main__':
     var_alpha_prim = var_alpha_prim[~np.all(var_alpha_prim == 0, axis=1)]
 
     ## define the range of v(breakage function)
-    # var_v = np.array([0.01, 1, 2])
-    var_v = np.array([0.01])
+    var_v = np.array([0.01, 1, 2])
+    # var_v = np.array([0.01])
     ## define the range of P1, P2 for power law breakage rate
-    # var_P1 = np.array([1e-6, 1e-4, 1e-2, 1])
-    # var_P2 = np.array([0.0, 0.5, 1, 2])
-    var_P1 = np.array([1])
-    var_P2 = np.array([0.0])
+    var_P1 = np.array([1e-6, 1e-4, 1e-2, 1])
+    var_P2 = np.array([0.0, 0.5, 1, 2])
+    # var_P1 = np.array([1])
+    # var_P2 = np.array([0.0])
     
     ## define the range of particle size scale and minimal size
     dist_path = [dist_path_1] # [dist_path_1, dist_path_10]

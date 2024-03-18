@@ -4,23 +4,25 @@ Created on Tue Dec  5 10:58:09 2023
 
 @author: px2030
 """
+import sys, os
 import numpy as np
 import time
-import opt_find as opt
 import multiprocessing
-import opt_config as conf
+import logging
+sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),".."))
+from pypbe.kernel_opt import opt_find as opt
+from config import opt_config as conf
 
-def optimization_process(var_pop_params):
+logging.basicConfig(filename='parallel.log', level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def optimization_process(algo_params,pop_params,multi_flag,opt_params,ori_params,data_name):
     #%%  Input for Opt 
     find = opt.opt_find()
-     
-    algo_params = conf.config['algo_params']
-    pop_params = conf.config['pop_params']
-    multi_flag = conf.config['multi_flag']
-    opt_params = conf.config['opt_params']
+
     ## Update the parameter for PBE
-    pop_params.update(var_pop_params)
-    
+    pop_params.update(ori_params)
+
     find.init_opt_algo(multi_flag, algo_params, opt_params)
     
     find.algo.set_init_pop_para(pop_params)
@@ -29,21 +31,23 @@ def optimization_process(var_pop_params):
     
     find.algo.weight_2d = conf.config['weight_2d']
 
-    be = var_pop_params['CORR_BETA']
-    al = var_pop_params['alpha_prim']
-    pv = var_pop_params['pl_v']
-    p1 = var_pop_params['pl_P1']
-    p2 = var_pop_params['pl_P2']
-    noise_type = algo_params['noise_type']
-    noise_strength = algo_params['noise_strength']
-    data_name = f"Sim_{noise_type}_{noise_strength}_para_{be}_{al[0]}_{al[1]}_{al[2]}_{pv}_{p1}_{p2}.xlsx"
-    
-    results = \
+    delta_opt, opt_values = \
         find.find_opt_kernels(sample_num=find.algo.sample_num, method='delta', data_name=data_name)
 
-    return results
+    return delta_opt, opt_values, ori_params
 
 if __name__ == '__main__':
+    algo_params = conf.config['algo_params']
+    pop_params = conf.config['pop_params']
+    multi_flag = conf.config['multi_flag']
+    opt_params = conf.config['opt_params']
+    weight_2d = conf.config['weight_2d']
+    
+    noise_type = algo_params['noise_type']
+    noise_strength = algo_params['noise_strength']
+    delta_flag = algo_params['delta_flag']
+    method = algo_params['method']
+    cost_func_type = algo_params['cost_func_type']
     #%% Prepare test data set
     ## define the range of corr_beta
     # var_corr_beta = [1e-2, 1e-1, 1e0, 1e1, 1e2]
@@ -73,7 +77,7 @@ if __name__ == '__main__':
     var_P1 = np.array([1])
     var_P2 = np.array([0.0])
     
-    pool = multiprocessing.Pool(processes=1)
+    pool = multiprocessing.Pool(processes=12)
     tasks = []
     for j,corr_beta in enumerate(var_corr_beta):
         for k,alpha_prim in enumerate(var_alpha_prim):
@@ -90,43 +94,22 @@ if __name__ == '__main__':
                                 'pl_P2' : P2,
                                 }
                             }
+                        data_name = f"Sim_{noise_type}_{noise_strength}_para_{corr_beta}_{alpha_prim[0]}_{alpha_prim[1]}_{alpha_prim[2]}_{v}_{P1}_{P2}.xlsx"
                         var_pop_params = conf_params['pop_params']
-                        tasks.append((var_pop_params))
+                        tasks.append((algo_params,pop_params,multi_flag,opt_params,
+                                      var_pop_params,data_name))
     
-    results = pool.map(optimization_process, tasks)
-    
-    data_size = np.array([len(var_corr_beta), len(var_alpha_prim)],len(var_v),len(var_P1),len(var_P2))
-    # The asterisk (*) is used in a function call to indicate an "unpacking" operation, 
-    # which means that it expands the elements of 'data_size' into individual arguments
-    
-    
-    # for result in results:
-    #     i, j, (corr_beta_opt_res, alpha_prim_opt_res, para_diff_res, delta_opt_res, \
-    #            corr_agg_res, corr_agg_opt_res, corr_agg_diff_res) = result
-    #     corr_beta_opt[i,j] = corr_beta_opt_res
-    #     alpha_prim_opt[i,j,:] = alpha_prim_opt_res
-    #     para_diff[i,j] = para_diff_res
-    #     delta_opt[i,j] = delta_opt_res
+    results = pool.starmap(optimization_process, tasks)
+
+    ## save the results in npz
+    if multi_flag:
+        result_name = f'multi_{delta_flag}_{method}_{cost_func_type}_wight_{weight_2d}'
+    else:
+        result_name =  f'{delta_flag}_{method}_{cost_func_type}_wight_{weight_2d}'
         
-    #     corr_agg[i,j,:] = corr_agg_res
-    #     corr_agg_opt[i,j,:] = corr_agg_opt_res
-    #     corr_agg_diff[i,j,:] = corr_agg_diff_res
-            
-    # ## save the results in npz
-    # if multi_flag:
-    #     result_name = f'multi_{delta_flag}_{method}_{cost_func_type}_wight_{weight_2d}'
-    # else:
-    #     result_name =  f'{delta_flag}_{method}_{cost_func_type}_wight_{weight_2d}'
-        
-    # np.savez(f'{result_name}.npz', 
-    #      corr_beta_opt=corr_beta_opt, 
-    #      alpha_prim_opt=alpha_prim_opt, 
-    #      para_diff=para_diff, 
-    #      delta_opt=delta_opt, 
-    #      corr_agg = corr_agg,
-    #      corr_agg_opt = corr_agg_opt,
-    #      corr_agg_diff = corr_agg_diff,
-    #      )
+    np.savez(f'{result_name}.npz', 
+          results=results, 
+          )
     
     
     

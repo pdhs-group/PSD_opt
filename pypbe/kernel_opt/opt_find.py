@@ -9,13 +9,13 @@ import numpy as np
 import os
 import warnings
 import pandas as pd
-from pop import population
-from opt_algo import opt_algo 
-from opt_algo_multi import opt_algo_multi
-from func.func_read_exp import write_read_exp
+from ..dpbe import population
+from .opt_algo import opt_algo 
+from .opt_algo_multi import opt_algo_multi
+from ..utils.func.func_read_exp import write_read_exp
 ## For plots
 import matplotlib.pyplot as plt
-import plotter.plotter as pt          
+from ..utils.plotter import plotter as pt        
 
 class opt_find():
     """

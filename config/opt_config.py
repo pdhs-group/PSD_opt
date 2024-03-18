@@ -21,7 +21,7 @@ config = {
         'noise_strength': 0.1,
         'sample_num': 5,
         'method': 'BO',
-        'n_iter': 4,
+        'n_iter': 100,
         'calc_init_N': False,
         ## delta_flag = q3: use q3
         ## delta_flag = Q3: use Q3
@@ -43,7 +43,7 @@ config = {
         'BREAKRVAL' : 3,
         'BREAKFVAL' : 5,
         'aggl_crit' : 1e20,
-        'process_type' : "agglomeration",
+        'process_type' : "mix",
         'pl_v' : 2,
         'pl_q' : 1,
         'pl_P1' : 1e-4,

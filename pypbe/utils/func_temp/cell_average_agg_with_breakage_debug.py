@@ -355,49 +355,10 @@ def delta(i,j,a,b):
         return 0.5
     else:
         return 1
+
+# def RK_Radau_integrate_solve():
     
-@jit(nopython=True)
-def b_integrate(x_up,x_low,y_up=None,y_low=None,bf=None):
-    if y_up is None or y_low is None:
-        return (x_up - x_low)*bf
-    else:
-        return (x_up- x_low)*(y_up - y_low)*bf
-@jit(nopython=True)    
-def xb_integrate(x_up,x_low,y_up=None,y_low=None,bf=None):
-    if y_up is None or y_low is None:
-        return (x_up**2 - x_low**2)*0.5*bf
-    else:
-        return (x_up**2- x_low**2)*(y_up - y_low)*0.5*bf
-@jit(nopython=True)    
-def yb_integrate(x_up,x_low,y_up=None,y_low=None,bf=None):
-    return (y_up**2 - y_low**2)*(x_up-x_low)*0.5*bf  
-
-@jit(nopython=True)
-def beta_func(x, y):
-    return math.gamma(x) * math.gamma(y) / math.gamma(x + y)
-@jit(nopython=True)
-def power_law_product_1d(x,y,v,q):
-    euler_beta = beta_func(q,q*(v-1))
-    z = x/y
-    theta = v * z**(q-1) * (1-z)**(q*(v-1)-1) / euler_beta
-    b = theta / y
-    return b
-@jit(nopython=True)
-def power_law_product_1d_volume(x,y,v,q):
-    return x * power_law_product_1d(x,y,v,q)
-
-def power_law_product_2d(x1,x2,y1,y2,v,q):
-    euler_beta = beta(q,q*(v-1))
-    z = (x1+x2)/(y1+y2)
-    theta = v * z**(q-1) * (1-z)**(q*(v-1)-1) / euler_beta
-    b = theta / (y1+y2)
-    return b
-def power_law_product_2d_volume_x1(x1,x2,y1,y2,v,q):
-    return x1 * power_law_product_2d(x1,x2,y1,y2,v,q)
-
-def power_law_product_2d_volume_x2(x1,x2,y1,y2,v,q):
-    return x2 * power_law_product_2d(x1,x2,y1,y2,v,q)
-
+    
 if __name__ == "__main__":    
     #%% NEW 1D
     if dim == 1:
@@ -648,16 +609,16 @@ if __name__ == "__main__":
                     B_R[idx] = P1 * G * (V_p[a+1,b+1]/V_p[1,1])**P2
         
         
-        # start_time = time.time()            
-        # bf_int_a, xbf_int_a, ybf_int_a = my_jit.calc_int_B_F_2D(NS,V_p1,V_p2,V_e1,V_e2,BREAKFVAL,v,q)
-        # end_time = time.time()
-        # elapsed_time = end_time - start_time
-        # print(f"time with jit is {elapsed_time}")
-        start_time = time.time()       
-        bf_int, xbf_int, ybf_int = my_jit.calc_int_B_F_2D_quad(NS,V_p1,V_p2,V_e1,V_e2,BREAKFVAL,v,q)
+        start_time = time.time()            
+        bf_int, xbf_int, ybf_int = my_jit.calc_int_B_F_2D_GL(NS,V_p1,V_p2,V_e1,V_e2,BREAKFVAL,v,q)
         end_time = time.time()
         elapsed_time = end_time - start_time
-        print(f"time without jit is {elapsed_time}")
+        print(f"time with jit is {elapsed_time}")
+        # start_time = time.time()       
+        # bf_int_q, xbf_int_q, ybf_int_q = my_jit.calc_int_B_F_2D_quad(NS,V_p1,V_p2,V_e1,V_e2,BREAKFVAL,v,q)
+        # end_time = time.time()
+        # elapsed_time = end_time - start_time
+        # print(f"time without jit is {elapsed_time}")
         
         # deltabf = np.zeros(bf_int.shape)
         # deltabfintx = np.zeros(bf_int.shape)
