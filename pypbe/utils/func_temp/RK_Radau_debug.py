@@ -1,54 +1,74 @@
 import numpy as np
 from scipy.optimize import fsolve
 import scipy.integrate as integrate
+from scipy.interpolate import interp1d
 
 def func(t, y):
-    return -t*y
+    return 3*y
 
-def equations(k_flat,a,c,n,dim_y,f,t,y,dt):
+def analytic_sol(t,y0):
+    return y0 * np.exp(3*t)
+    
+def k_equations(k_flat,a,c,n,dim_y,f,t,y,dt):
     k = k_flat.reshape((n, dim_y))
     t_k = t + c * dt
     y_k = np.array([f(t_k[j], y + dt * np.dot(a[j], k)) for j in range(n)])
     return (k - y_k).flatten()
 
-def radau_ii_a_step(y, t, dt, f, a,b,c,a_,b_,c_,try_t_max=100,tol=1e-3,t_step_min=1e-3):
+def predict_factor(h_abs, h_abs_old, error_norm, error_norm_old):
+    # E. Hairer, S. P. Norsett G. Wanner, "Solving Ordinary Differential
+    # Equations II: Stiff and Differential-Algebraic Problems", Sec. IV.8.
+    if error_norm_old is None or h_abs_old is None or error_norm == 0:
+        multiplier = 1
+    else:
+        multiplier = h_abs / h_abs_old * (error_norm_old / error_norm) ** 0.25
+
+    with np.errstate(divide='ignore'):
+        factor = min(1, multiplier) * error_norm ** -0.25
+
+    return factor
+
+def solve_k_system(k_equations,k_guess,a,c,n,dim_y,f,t,y,dt):
+    args=(a,c,n,dim_y,f,t,y,dt)
+    k = fsolve(k_equations, k_guess, args=args)
+    k = k.reshape((n, dim_y))
+    dy = dt * np.dot(b, k)
+    return dy
+def radau_ii_a_step(y, t, dt, dt_old, error_norm_old, f, a,b,c,a_e,b_e,c_e,
+                    try_t_max=100,re_tol=1e-1, abs_tol=0.0, dt_min=1e-3,
+                    min_factor=0.2):
     n = len(b)
-    n_ = len(b_)
+    n_e = len(b_e)
     dim_y = len(y)
+    dt_accepted = False
+    dt_new=dt
+    
     for i in range(try_t_max): 
-        args=(a,c,n,dim_y,f,t,y,dt)
         k_guess = np.zeros(n * dim_y)
-        k = fsolve(equations, k_guess, args=args)
-        k = k.reshape((n, dim_y))
-        dy = dt * np.dot(b, k)
+        dy = solve_k_system(k_equations,k_guess,a,c,n,dim_y,f,t,y,dt_new)
+        dy_e = solve_k_system(k_equations,k_guess,a_e, c_e,n_e,dim_y,f,t,y,dt_new)
+        y_new = y + dy
         
-        args = (a_, c_,n_,dim_y,f,t,y,dt)
-        k_guess = np.zeros(n_ * dim_y)
-        k = fsolve(equations, k_guess, args=args)
-        k = k.reshape((n_, dim_y))
-        dy_ = dt * np.dot(b_, k)
-        
-        dy_diff= np.max(abs(dy - dy_))
-        # Check if the error is within the tolerance, if so, break the loop
-        if dy_diff <= tol:
-            accepted = True
-            break
+        erro = np.abs(dy -dy_e)
+        scale = abs_tol + np.maximum(np.abs(y),np.abs(y_new)) * re_tol
+        error_norm = np.linalg.norm(erro/scale)
+
+        # If the error is too large, reduce dt
+        # print(f'current dy_diff is {dy_diff}, current tol_up is {tol_up}')
+        if error_norm > 1 and not dt_accepted:
+            factor = predict_factor(dt_new, dt_old, error_norm, error_norm_old)
+            dt_accepted = True
+        elif error_norm > 1:
+            
         else:
-            # If the error is too large, reduce dt and try again
-            dt_new = dt * (tol/dy_diff)**(1/4)
-            # Limit how much dt can change in one iteration
-            # to prevent instability or very slow convergence
-            factor = 0.5  # Example factor, this can be adjusted as needed
-            dt_new = max(dt_new, dt * factor)
-            dt_new = min(dt_new, dt / factor)
-            dt = dt_new
+            dt_accepted = True
+            break
     
-    if not accepted:
-        # If we exit the loop without an accepted solution, there is an issue
-        raise RuntimeError(f"Could not find an accepted solution within {try_t_max} iterations")
+    if not dt_accepted:
+        raise RuntimeError(f"Could not find an accepted dt within {try_t_max} iterations")
     
         
-    return y+dy, dt
+    return y+dy, dt, error_norm
 
 if __name__ == "__main__":
     # Coefficients a_ij in the Butcher tableau for a 5th-order Radau IIA method
@@ -61,37 +81,57 @@ if __name__ == "__main__":
      
     # Coefficients in the Butcher tableau for a 3th-order Radau IIA method, 
     # used for erro estimation and time step prediction
-    a_ = np.array([[ 0.41666667, -0.08333333],
+    a_e = np.array([[ 0.41666667, -0.08333333],
                    [ 0.75      ,  0.25      ]]    
                   )
-    b_ = np.array([0.75, 0.25])
-    c_ = np.array([0.33333333, 1.0])
+    b_e = np.array([0.75, 0.25])
+    c_e = np.array([0.33333333, 1.0])
+    
+    
+    
     
     y0 = np.array([0.0,0.5,0.4,0.6,1.0])
-    t=np.arange(0, 1, 0.1, dtype=float)
-    dt = 0.1 
+    t_eval=np.arange(0, 10, 1, dtype=float)
     
-    y = np.zeros((len(y0),len(t)))
+    y = np.zeros((len(y0),len(t_eval)))
     y[:,0] = y0
     
-    t_tem = np.min(t)
-    i_tem = 1
-    y_tem = y0
-    while True:
-        if t_tem <= np.max(t):
-            y_tem_old = y_tem
-            y_tem, dt = radau_ii_a_step(y_tem_old, t_tem, dt, func, a,b,c,a_,b_,c_)
-            t_tem += dt
-            if t_tem >= t[i_tem]:
-                y[:,i_tem] = y_tem
-                dt = t[i_tem] - t_tem
-                i_tem += 1
-        else:
-            break
+    y_res_tem_list = []
+    t_res_tem_list = []
+    erro_list = []
+    
+    current_t = 0
+    current_y = y0
+    dt = 0.01
+    dt_old = None
+    error_norm_old = None
+    while current_t < max(t_eval):
+        new_y, new_dt, erro_norm = radau_ii_a_step(current_y, current_t, dt, dt_old, error_norm_old, 
+                                              func, a, b, c, a_e, b_e, c_e)
         
+        current_y = new_y
+        current_t += dt
+        # Let the step size of the next time step be tried at a larger value
+        dt = new_dt
+        
+        y_res_tem_list.append(current_y)
+        t_res_tem_list.append(current_t)
+        erro_list.append(erro)
+        
+    y_res_tem = np.array(y_res_tem_list).T  # Transpose to match the expected shape
+    t_res_tem = np.array(t_res_tem_list)   
+    
+    interp_func = interp1d(t_res_tem, y_res_tem, kind='cubic', axis=1, fill_value="extrapolate")
+    y_results = interp_func(t_eval)
+    
     RES = integrate.solve_ivp(func,
-                              [0,max(t)], 
-                              y0,t_eval=t,
-                              method='Radau',first_step=0.1,rtol=1e-1)
+                              [0,max(t_eval)], 
+                              y0,t_eval=t_eval,
+                              method='Radau',first_step=0.1,rtol=1e-3)
     # Reshape and save result to N and t_vec
     y_ivp = RES.y
+    y_analytic = np.zeros((len(y0),len(t_eval)))
+    for idt, t_val in enumerate(t_eval):
+        y_analytic[:,idt] = analytic_sol(t_val, y0)
+    
+    y_e = abs(y_results-y_analytic)
