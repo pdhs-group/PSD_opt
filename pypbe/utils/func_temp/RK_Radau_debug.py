@@ -34,41 +34,41 @@ def solve_k_system(k_equations,k_guess,a,c,n,dim_y,f,t,y,dt):
     k = k.reshape((n, dim_y))
     dy = dt * np.dot(b, k)
     return dy
-def radau_ii_a_step(y, t, dt, dt_old, error_norm_old, f, a,b,c,a_e,b_e,c_e,
-                    try_t_max=100,re_tol=1e-1, abs_tol=0.0, dt_min=1e-3,
-                    min_factor=0.2):
-    n = len(b)
-    n_e = len(b_e)
-    dim_y = len(y)
-    dt_accepted = False
-    dt_new=dt
+# def radau_ii_a_step(y, t, dt, dt_old, error_norm_old, f, a,b,c,a_e,b_e,c_e,
+#                     try_t_max=100,re_tol=1e-1, abs_tol=0.0, dt_min=1e-3,
+#                     min_factor=0.2):
+#     n = len(b)
+#     n_e = len(b_e)
+#     dim_y = len(y)
+#     dt_accepted = False
+#     dt_new=dt
     
-    for i in range(try_t_max): 
-        k_guess = np.zeros(n * dim_y)
-        dy = solve_k_system(k_equations,k_guess,a,c,n,dim_y,f,t,y,dt_new)
-        dy_e = solve_k_system(k_equations,k_guess,a_e, c_e,n_e,dim_y,f,t,y,dt_new)
-        y_new = y + dy
+#     for i in range(try_t_max): 
+#         k_guess = np.zeros(n * dim_y)
+#         dy = solve_k_system(k_equations,k_guess,a,c,n,dim_y,f,t,y,dt_new)
+#         dy_e = solve_k_system(k_equations,k_guess,a_e, c_e,n_e,dim_y,f,t,y,dt_new)
+#         y_new = y + dy
         
-        erro = np.abs(dy -dy_e)
-        scale = abs_tol + np.maximum(np.abs(y),np.abs(y_new)) * re_tol
-        error_norm = np.linalg.norm(erro/scale)
+#         erro = np.abs(dy -dy_e)
+#         scale = abs_tol + np.maximum(np.abs(y),np.abs(y_new)) * re_tol
+#         error_norm = np.linalg.norm(erro/scale)
 
-        # If the error is too large, reduce dt
-        # print(f'current dy_diff is {dy_diff}, current tol_up is {tol_up}')
-        if error_norm > 1 and not dt_accepted:
-            factor = predict_factor(dt_new, dt_old, error_norm, error_norm_old)
-            dt_accepted = True
-        elif error_norm > 1:
+#         # If the error is too large, reduce dt
+#         # print(f'current dy_diff is {dy_diff}, current tol_up is {tol_up}')
+#         if error_norm > 1 and not dt_accepted:
+#             factor = predict_factor(dt_new, dt_old, error_norm, error_norm_old)
+#             dt_accepted = True
+#         elif error_norm > 1:
             
-        else:
-            dt_accepted = True
-            break
+#         else:
+#             dt_accepted = True
+#             break
     
-    if not dt_accepted:
-        raise RuntimeError(f"Could not find an accepted dt within {try_t_max} iterations")
+#     if not dt_accepted:
+#         raise RuntimeError(f"Could not find an accepted dt within {try_t_max} iterations")
     
         
-    return y+dy, dt, error_norm
+#     return y+dy, dt, error_norm
 
 if __name__ == "__main__":
     # Coefficients a_ij in the Butcher tableau for a 5th-order Radau IIA method
@@ -105,33 +105,33 @@ if __name__ == "__main__":
     dt = 0.01
     dt_old = None
     error_norm_old = None
-    while current_t < max(t_eval):
-        new_y, new_dt, erro_norm = radau_ii_a_step(current_y, current_t, dt, dt_old, error_norm_old, 
-                                              func, a, b, c, a_e, b_e, c_e)
+    # while current_t < max(t_eval):
+    #     new_y, new_dt, erro_norm = radau_ii_a_step(current_y, current_t, dt, dt_old, error_norm_old, 
+    #                                           func, a, b, c, a_e, b_e, c_e)
         
-        current_y = new_y
-        current_t += dt
-        # Let the step size of the next time step be tried at a larger value
-        dt = new_dt
+    #     current_y = new_y
+    #     current_t += dt
+    #     # Let the step size of the next time step be tried at a larger value
+    #     dt = new_dt
         
-        y_res_tem_list.append(current_y)
-        t_res_tem_list.append(current_t)
-        erro_list.append(erro)
+    #     y_res_tem_list.append(current_y)
+    #     t_res_tem_list.append(current_t)
+    #     erro_list.append(erro)
         
-    y_res_tem = np.array(y_res_tem_list).T  # Transpose to match the expected shape
-    t_res_tem = np.array(t_res_tem_list)   
+    # y_res_tem = np.array(y_res_tem_list).T  # Transpose to match the expected shape
+    # t_res_tem = np.array(t_res_tem_list)   
     
-    interp_func = interp1d(t_res_tem, y_res_tem, kind='cubic', axis=1, fill_value="extrapolate")
-    y_results = interp_func(t_eval)
+    # interp_func = interp1d(t_res_tem, y_res_tem, kind='cubic', axis=1, fill_value="extrapolate")
+    # y_results = interp_func(t_eval)
     
     RES = integrate.solve_ivp(func,
                               [0,max(t_eval)], 
                               y0,t_eval=t_eval,
-                              method='Radau',first_step=0.1,rtol=1e-3)
+                              method='Radau',first_step=0.1,rtol=1e-9)
     # Reshape and save result to N and t_vec
     y_ivp = RES.y
     y_analytic = np.zeros((len(y0),len(t_eval)))
     for idt, t_val in enumerate(t_eval):
         y_analytic[:,idt] = analytic_sol(t_val, y0)
     
-    y_e = abs(y_results-y_analytic)
+    y_e = abs(y_analytic-y_ivp)
