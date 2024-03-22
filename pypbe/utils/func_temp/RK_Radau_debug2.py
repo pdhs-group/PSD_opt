@@ -16,14 +16,21 @@ EPS = np.finfo(float).eps
 NEWTON_MAXITER = 6  # Maximum number of Newton iterations.
 MIN_FACTOR = 0.2  # Minimum allowed decrease in a step size.
 MAX_FACTOR = 10  # Maximum allowed increase in a step size.
-# @jit(nopython=True)
+
+NUM_JAC_DIFF_REJECT = EPS ** 0.875
+NUM_JAC_DIFF_SMALL = EPS ** 0.75
+NUM_JAC_DIFF_BIG = EPS ** 0.25
+NUM_JAC_MIN_FACTOR = 1e3 * EPS
+NUM_JAC_FACTOR_INCREASE = 10
+NUM_JAC_FACTOR_DECREASE = 0.1
+@jit(nopython=True)
 def func(t, y):
     return 3*y
 
 def analytic_sol(t,y0):
     return y0 * np.exp(3*t)
 
-# @jit(nopython=True)
+@jit(nopython=True)
 def num_jac(fun, t, y, f, threshold, factor):
     # y = np.asarray(y)
     n = y.shape[0]
@@ -48,29 +55,21 @@ def num_jac(fun, t, y, f, threshold, factor):
                 h[i] = (y[i] + factor[i] * y_scale[i]) - y[i]
 
     return _dense_num_jac(fun, t, y, f, h, factor, y_scale)
-# @jit(nopython=True)
+@jit(nopython=True)
 def _dense_num_jac(fun, t, y, f, h, factor, y_scale):
-
-    NUM_JAC_DIFF_REJECT = EPS ** 0.875
-    NUM_JAC_DIFF_SMALL = EPS ** 0.75
-    NUM_JAC_DIFF_BIG = EPS ** 0.25
-    NUM_JAC_MIN_FACTOR = 1e3 * EPS
-    NUM_JAC_FACTOR_INCREASE = 10
-    NUM_JAC_FACTOR_DECREASE = 0.1
-    
     n = y.shape[0]
-    # h_vecs = np.diag(h)
-    h_vecs = np.zeros((n, n))
-    for i in range(n):
-        h_vecs[i, i] = h[i]
-    # f_new = fun(t, y[:, None] + h_vecs)
-    # diff = f_new - f[:, None]
-    f_new = np.empty((n, n))
-    for i in range(n):
-        y_temp = y.copy()
-        y_temp[i] += h[i]
-        f_new[:, i] = fun(t, y_temp)
+    h_vecs = np.diag(h)
+    # h_vecs = np.zeros((n, n))
+    # for i in range(n):
+    #     h_vecs[i, i] = h[i]
+    f_new = fun(t, y[:, None] + h_vecs)
     diff = f_new - f[:, None]
+    # f_new = np.empty((n, n))
+    # for i in range(n):
+    #     y_temp = y.copy()
+    #     y_temp[i] += h[i]
+    #     f_new[:, i] = fun(t, y_temp)
+    # diff = f_new - f
     
     max_ind = np.argmax(np.abs(diff), axis=0)
     # r = np.arange(n)
@@ -82,29 +81,54 @@ def _dense_num_jac(fun, t, y, f, h, factor, y_scale):
         max_diff[i] = np.abs(diff[max_ind[i], i])
         scale[i] = np.maximum(np.abs(f[max_ind[i]]), np.abs(f_new[max_ind[i], i]))
 
-
     diff_too_small = max_diff < NUM_JAC_DIFF_REJECT * scale
-    if np.any(diff_too_small):
-        ind, = np.nonzero(diff_too_small)
-        new_factor = NUM_JAC_FACTOR_INCREASE * factor[ind]
-        h_new = (y[ind] + new_factor * y_scale[ind]) - y[ind]
-        h_vecs[ind, ind] = h_new
-        f_new = fun(t, y[:, None] + h_vecs[:, ind])
-        diff_new = f_new - f[:, None]
-        max_ind = np.argmax(np.abs(diff_new), axis=0)
-        r = np.arange(ind.shape[0])
-        max_diff_new = np.abs(diff_new[max_ind, r])
-        scale_new = np.maximum(np.abs(f[max_ind]), np.abs(f_new[max_ind, r]))
+    # if np.any(diff_too_small):
+    # ind, = np.nonzero(diff_too_small)
+    # new_factor = NUM_JAC_FACTOR_INCREASE * factor[ind]
+    # h_new = (y[ind] + new_factor * y_scale[ind]) - y[ind]
+    # h_vecs[ind, ind] = h_new
+    # f_new = fun(t, y[:, None] + h_vecs[:, ind])
+    # diff_new = f_new - f[:, None]
+    # max_ind = np.argmax(np.abs(diff_new), axis=0)
+    # r = np.arange(ind.shape[0])
+    # max_diff_new = np.abs(diff_new[max_ind, r])
+    # scale_new = np.maximum(np.abs(f[max_ind]), np.abs(f_new[max_ind, r]))
 
-        update = max_diff[ind] * scale_new < max_diff_new * scale[ind]
-        if np.any(update):
-            update, = np.nonzero(update)
-            update_ind = ind[update]
-            factor[update_ind] = new_factor[update]
-            h[update_ind] = h_new[update]
-            diff[:, update_ind] = diff_new[:, update]
-            scale[update_ind] = scale_new[update]
-            max_diff[update_ind] = max_diff_new[update]
+    # update = max_diff[ind] * scale_new < max_diff_new * scale[ind]
+    # if np.any(update):
+    #     update, = np.nonzero(update)
+    #     update_ind = ind[update]
+    #     factor[update_ind] = new_factor[update]
+    #     h[update_ind] = h_new[update]
+    #     diff[:, update_ind] = diff_new[:, update]
+    #     scale[update_ind] = scale_new[update]
+    #     max_diff[update_ind] = max_diff_new[update]
+    if np.any(diff_too_small):
+        inds = np.nonzero(diff_too_small)[0]  # 获取满足条件的索引数组
+        m = len(inds)
+        f_new_update = np.zeros((n,m))
+        max_diff_new = np.empty(m)
+        scale_new = np.empty(m)
+        for idx,ind in enumerate(inds):
+            new_factor = NUM_JAC_FACTOR_INCREASE * factor[ind]
+            h_new = (y[ind] + new_factor * y_scale[ind]) - y[ind]
+            h_vecs[ind, ind] = h_new  # 只有一个标量索引，Numba支持
+            # 此处需要调整fun的调用方式以接受向量输入
+            f_new_update[:,idx] = fun(t, y + h_vecs[:, ind])  
+            diff_new = f_new_update - f[:, None]
+            max_ind_update = np.argmax(np.abs(diff_new), axis=0)
+            
+            for i in (len(max_ind_update)):
+                max_diff_new[i] = np.abs(diff_new[max_ind_update[i], i])
+                scale_new[i] = np.maximum(np.abs(f[max_ind_update[i]]), np.abs(f_new_update[max_ind_update[i], i]))
+            update = max_diff[ind] * scale_new < max_diff_new * scale[ind]
+            if np.any(update):
+                update_inds = np.nonzero(update)
+                factor[ind] = new_factor
+                h[ind] = h_new
+                diff[:, ind] = diff_new[:, ind]
+                scale[ind] = scale_new
+                max_diff[ind] = max_diff_new
 
     diff /= h
 
