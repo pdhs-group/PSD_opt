@@ -23,6 +23,7 @@ NUM_JAC_DIFF_BIG = EPS ** 0.25
 NUM_JAC_MIN_FACTOR = 1e3 * EPS
 NUM_JAC_FACTOR_INCREASE = 10
 NUM_JAC_FACTOR_DECREASE = 0.1
+
 @jit(nopython=True)
 def func(t, y):
     return 3*y
@@ -30,7 +31,7 @@ def func(t, y):
 def analytic_sol(t,y0):
     return y0 * np.exp(3*t)
 
-@jit(nopython=True)
+# @jit(nopython=True)
 def num_jac(fun, t, y, f, threshold, factor):
     # y = np.asarray(y)
     n = y.shape[0]
@@ -55,7 +56,7 @@ def num_jac(fun, t, y, f, threshold, factor):
                 h[i] = (y[i] + factor[i] * y_scale[i]) - y[i]
 
     return _dense_num_jac(fun, t, y, f, h, factor, y_scale)
-@jit(nopython=True)
+# @jit(nopython=True)
 def _dense_num_jac(fun, t, y, f, h, factor, y_scale):
     n = y.shape[0]
     h_vecs = np.diag(h)
@@ -154,6 +155,7 @@ def norm(x):
     # Compute RMS norm.
     return np.linalg.norm(x) / x.size ** 0.5
 
+## 如果要使用jit的话需要分别对t_eval为标量和为向量时写对应的方法
 def interpolation_radau(t_old, t_current, t_eval, y_old, Q):
     x = (t_eval - t_old) / (t_current - t_old)
     order = Q.shape[1] - 1

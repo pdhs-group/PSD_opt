@@ -48,15 +48,26 @@ EPS = np.finfo(float).eps
 NEWTON_MAXITER = 6  # Maximum number of Newton iterations.
 MIN_FACTOR = 0.2  # Minimum allowed decrease in a step size.
 MAX_FACTOR = 10  # Maximum allowed increase in a step size.
+
+NUM_JAC_DIFF_REJECT = EPS ** 0.875
+NUM_JAC_DIFF_SMALL = EPS ** 0.75
+NUM_JAC_DIFF_BIG = EPS ** 0.25
+NUM_JAC_MIN_FACTOR = 1e3 * EPS
+NUM_JAC_FACTOR_INCREASE = 10
+NUM_JAC_FACTOR_DECREASE = 0.1
 #%% FUNCTION
 @jit(nopython=True)
 def func(t, y):
     return 3*y
 
+# @njit
+# def func(t: float64, y: float64) -> float64:
+#     return 3 * y
+
 def analytic_sol(t,y0):
     return y0 * np.exp(3*t)
 
-@jit(nopython=True)
+# @jit(nopython=True)
 def num_jac(fun, t, y, f, threshold, factor):
     # y = np.asarray(y)
     n = y.shape[0]
@@ -80,30 +91,22 @@ def num_jac(fun, t, y, f, threshold, factor):
                 factor[i] *= 10
                 h[i] = (y[i] + factor[i] * y_scale[i]) - y[i]
 
-    return _dense_num_jac(fun, t, y, f, h, factor, y_scale)
+    return dense_num_jac(fun, t, y, f, h, factor, y_scale)
 # @jit(nopython=True)
-def _dense_num_jac(fun, t, y, f, h, factor, y_scale):
-
-    NUM_JAC_DIFF_REJECT = EPS ** 0.875
-    NUM_JAC_DIFF_SMALL = EPS ** 0.75
-    NUM_JAC_DIFF_BIG = EPS ** 0.25
-    NUM_JAC_MIN_FACTOR = 1e3 * EPS
-    NUM_JAC_FACTOR_INCREASE = 10
-    NUM_JAC_FACTOR_DECREASE = 0.1
-    
+def dense_num_jac(fun, t, y, f, h, factor, y_scale): 
     n = y.shape[0]
-    # h_vecs = np.diag(h)
-    h_vecs = np.zeros((n, n))
-    for i in range(n):
-        h_vecs[i, i] = h[i]
-    # f_new = fun(t, y[:, None] + h_vecs)
-    # diff = f_new - f[:, None]
-    f_new = np.empty((n, n))
-    for i in range(n):
-        y_temp = y.copy()
-        y_temp[i] += h[i]
-        f_new[:, i] = fun(t, y_temp)
+    h_vecs = np.diag(h)
+    # h_vecs = np.zeros((n, n))
+    # for i in range(n):
+    #     h_vecs[i, i] = h[i]
+    f_new = fun(t, y[:, None] + h_vecs)
     diff = f_new - f[:, None]
+    # f_new = np.empty((n, n))
+    # for i in range(n):
+    #     y_temp = y.copy()
+    #     y_temp[i] += h[i]
+    #     f_new[:, i] = fun(t, y_temp)
+    # diff = f_new - f
     
     max_ind = np.argmax(np.abs(diff), axis=0)
     # r = np.arange(n)
@@ -115,29 +118,54 @@ def _dense_num_jac(fun, t, y, f, h, factor, y_scale):
         max_diff[i] = np.abs(diff[max_ind[i], i])
         scale[i] = np.maximum(np.abs(f[max_ind[i]]), np.abs(f_new[max_ind[i], i]))
 
-
     diff_too_small = max_diff < NUM_JAC_DIFF_REJECT * scale
-    if np.any(diff_too_small):
-        ind, = np.nonzero(diff_too_small)
-        new_factor = NUM_JAC_FACTOR_INCREASE * factor[ind]
-        h_new = (y[ind] + new_factor * y_scale[ind]) - y[ind]
-        h_vecs[ind, ind] = h_new
-        f_new = fun(t, y[:, None] + h_vecs[:, ind])
-        diff_new = f_new - f[:, None]
-        max_ind = np.argmax(np.abs(diff_new), axis=0)
-        r = np.arange(ind.shape[0])
-        max_diff_new = np.abs(diff_new[max_ind, r])
-        scale_new = np.maximum(np.abs(f[max_ind]), np.abs(f_new[max_ind, r]))
+    # if np.any(diff_too_small):
+    # ind, = np.nonzero(diff_too_small)
+    # new_factor = NUM_JAC_FACTOR_INCREASE * factor[ind]
+    # h_new = (y[ind] + new_factor * y_scale[ind]) - y[ind]
+    # h_vecs[ind, ind] = h_new
+    # f_new = fun(t, y[:, None] + h_vecs[:, ind])
+    # diff_new = f_new - f[:, None]
+    # max_ind = np.argmax(np.abs(diff_new), axis=0)
+    # r = np.arange(ind.shape[0])
+    # max_diff_new = np.abs(diff_new[max_ind, r])
+    # scale_new = np.maximum(np.abs(f[max_ind]), np.abs(f_new[max_ind, r]))
 
-        update = max_diff[ind] * scale_new < max_diff_new * scale[ind]
-        if np.any(update):
-            update, = np.nonzero(update)
-            update_ind = ind[update]
-            factor[update_ind] = new_factor[update]
-            h[update_ind] = h_new[update]
-            diff[:, update_ind] = diff_new[:, update]
-            scale[update_ind] = scale_new[update]
-            max_diff[update_ind] = max_diff_new[update]
+    # update = max_diff[ind] * scale_new < max_diff_new * scale[ind]
+    # if np.any(update):
+    #     update, = np.nonzero(update)
+    #     update_ind = ind[update]
+    #     factor[update_ind] = new_factor[update]
+    #     h[update_ind] = h_new[update]
+    #     diff[:, update_ind] = diff_new[:, update]
+    #     scale[update_ind] = scale_new[update]
+    #     max_diff[update_ind] = max_diff_new[update]
+    if np.any(diff_too_small):
+        inds = np.nonzero(diff_too_small)[0]  # 获取满足条件的索引数组
+        m = len(inds)
+        f_new_update = np.zeros((n,m))
+        max_diff_new = np.empty(m)
+        scale_new = np.empty(m)
+        for idx,ind in enumerate(inds):
+            new_factor = NUM_JAC_FACTOR_INCREASE * factor[ind]
+            h_new = (y[ind] + new_factor * y_scale[ind]) - y[ind]
+            h_vecs[ind, ind] = h_new  # 只有一个标量索引，Numba支持
+            # 此处需要调整fun的调用方式以接受向量输入
+            f_new_update[:,idx] = fun(t, y + h_vecs[:, ind])  
+            diff_new = f_new_update - f[:, None]
+            max_ind_update = np.argmax(np.abs(diff_new), axis=0)
+            
+            for i in (len(max_ind_update)):
+                max_diff_new[i] = np.abs(diff_new[max_ind_update[i], i])
+                scale_new[i] = np.maximum(np.abs(f[max_ind_update[i]]), np.abs(f_new_update[max_ind_update[i], i]))
+            update = max_diff[ind] * scale_new < max_diff_new * scale[ind]
+            if np.any(update):
+                update_inds = np.nonzero(update)
+                factor[ind] = new_factor
+                h[ind] = h_new
+                diff[:, ind] = diff_new[:, ind]
+                scale[ind] = scale_new
+                max_diff[ind] = max_diff_new
 
     diff /= h
 
@@ -146,7 +174,8 @@ def _dense_num_jac(fun, t, y, f, h, factor, y_scale):
     factor = np.maximum(factor, NUM_JAC_MIN_FACTOR)
 
     return diff, factor
-@jit(nopython=True)
+
+# @jit(nopython=True)
 def predict_factor(dt, dt_old, error_norm, error_norm_old):
     # E. Hairer, S. P. Norsett G. Wanner, "Solving Ordinary Differential
     # Equations II: Stiff and Differential-Algebraic Problems", Sec. IV.8.
@@ -166,20 +195,33 @@ def norm(x):
     return np.linalg.norm(x) / x.size ** 0.5
 
 @jit(nopython=True)
-def interpolation_radau(t_old, t_current, t_eval, y_old, Q):
+def interpolation_radau_array(t_old, t_current, t_eval, y_old, Q):
     x = (t_eval - t_old) / (t_current - t_old)
     order = Q.shape[1] - 1
-    if t_eval.ndim == 0:
-        p = np.tile(x, order + 1)
-        p = np.cumprod(p)
-    else:
-        p = np.tile(x, (order + 1, 1))
-        p = np.cumprod(p, axis=0)
+    
+    p = np.empty((order + 1, len(t_eval)))
+    p[0, :] = x
+    for i in range(1, order + 1):
+        p[i, :] = p[i - 1, :] * x
+        
     y = np.dot(Q, p)
-    if y.ndim == 2:
-        y += y_old[:, None]
-    else:
-        y += y_old
+    y += y_old[:, None]
+
+    return y
+
+@jit(nopython=True)
+def interpolation_radau_scalar(t_old, t_current, t_eval, y_old, Q):
+    x = (t_eval - t_old) / (t_current - t_old)
+    order = Q.shape[1] - 1
+    
+    p = np.empty(order + 1)
+    p[0] = x
+    for i in range(1, order + 1):
+        p[i] = p[i - 1] * x
+        
+    y = np.dot(Q, p)
+    y += y_old
+
     return y
 
 @jit(nopython=True)
@@ -263,7 +305,7 @@ spec = [
     ('is_new_jac', boolean),
 ]
 #%%CLASS
-@jitclass(spec)
+# @jitclass(spec)
 class radau_ii_a():
     def __init__(self, y0, t_eval, dt_first=0.01):
         self.ns = len(y0)
@@ -288,7 +330,7 @@ class radau_ii_a():
         self.LU_complex_valid = False
         self.jac_factor = np.full(self.ns, EPS ** 0.5)
         
-    def solve_ode(self, func, re_tol=1e-1, abs_tol=1e-6):
+    def solve_ode(self, ode_func, re_tol=1e-1, abs_tol=1e-6):
         # 创建保存原始结果的容器，用于后续的对t_eval的点进行插值
         y_res_tem_list = []
         t_res_tem_list = []
@@ -303,7 +345,7 @@ class radau_ii_a():
         t_res_tem_list.append(self.t_current)
         
         while self.t_current < self.t_eval[-1]:
-            self.radau_ii_a_step(func,re_tol, abs_tol,newton_tol)
+            self.radau_ii_a_step(ode_func,re_tol, abs_tol,newton_tol)
             y_res_tem_list.append(self.y_current)
             t_res_tem_list.append(self.t_current)
             erro_list.append(self.error_norm_old)
@@ -327,13 +369,13 @@ class radau_ii_a():
             # 注意Q，或者说Z是个过程量，其本身比t和y短1，但是是短在结束时间点上，中间的对应关系不变
             Q = Q_res_tem[index]
             # 计算插值
-            y_evaluated[:,i] = interpolation_radau(t_old, t_current, t_eval[i], y_old, Q)
+            y_evaluated[:,i] = interpolation_radau_scalar(t_old, t_current, t_eval[i], y_old, Q)
         
         return y_evaluated, y_res_tem
 
-    def radau_ii_a_step(self, func, re_tol, abs_tol,newton_tol):
+    def radau_ii_a_step(self, ode_func, re_tol, abs_tol,newton_tol):
         dt_current = self.dt_current
-        f_current = func(self.t_current,self.y_current)
+        f_current = ode_func(self.t_current,self.y_current)
         
         rejected = False
         step_accepted = False
@@ -348,7 +390,7 @@ class radau_ii_a():
                 self.Q_valid = True
             else:
                 t_tem = self.t_current + dt_current*C
-                Z0 = interpolation_radau(self.t_old, self.t_current, t_tem, self.y_old, self.Q).T - self.y_current
+                Z0 = interpolation_radau_array(self.t_old, self.t_current, t_tem, self.y_old, self.Q).T - self.y_current
             
             scale = abs_tol + np.abs(self.y_current) * re_tol
             converged = False
@@ -359,8 +401,8 @@ class radau_ii_a():
                     self.LU_real_valid = True
                     self.LU_complex_valid = True
         
-                converged, n_iter, Z, rate = self.solve_collocation_system(
-                    func, self.t_current, self.y_current, dt_current, Z0, scale, newton_tol,
+                converged, n_iter, Z, rate = solve_collocation_system(
+                    ode_func, self.t_current, self.y_current, dt_current, Z0, scale, newton_tol,
                     self.LU_real, self.LU_complex)
         
                 if not converged:
@@ -368,7 +410,7 @@ class radau_ii_a():
                         break
                   # 这一段是某些情况下后续程序会判断没有必要更新J，所以上边的迭代使用上一步的J计算的，可能会发散
                   # 这种情况下就重新计算一下J，如果还发散，就缩小dt（或者一开始就是用的新的J计算的，也一样）
-                    self.J,self.jac_factor = num_jac(func, self.t_current, self.y_current, f_current, abs_tol, self.jac_factor)
+                    self.J,self.jac_factor = num_jac(ode_func, self.t_current, self.y_current, f_current, abs_tol, self.jac_factor)
                     self.is_new_jac = True
                     self.LU_real_valid = False
                     self.LU_complex_valid = False
@@ -389,7 +431,7 @@ class radau_ii_a():
                                                        + n_iter)
         
             if rejected and error_norm > 1:
-                error = lu_solve(self.LU_real, func(self.t_current, self.y_current + error) + ZE, overwrite_b=True)
+                error = lu_solve(self.LU_real, ode_func(self.t_current, self.y_current + error) + ZE, overwrite_b=True)
                 error_norm = norm(error / scale)
         
             if error_norm > 1:
@@ -414,10 +456,10 @@ class radau_ii_a():
             self.LU_real_valid = False
             self.LU_complex_valid = False
 
-        f_new = func(t_new, y_new)
+        f_new = ode_func(t_new, y_new)
         # 如果需要，重新计算下一步骤中要用的雅可比矩阵
         if recompute_jac:
-            self.J,self.jac_factor = num_jac(func, t_new, y_new, f_new, abs_tol, self.jac_factor)
+            self.J,self.jac_factor = num_jac(ode_func, t_new, y_new, f_new, abs_tol, self.jac_factor)
             self.is_new_jac = True
         else:
             self.is_new_jac = False
