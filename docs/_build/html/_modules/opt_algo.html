@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>opt_algo &mdash; dPBE: Discrete Population Balance Equations 1.0.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css" />
+
+  
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../_static/jquery.js"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+        <script src="../_static/doctools.js"></script>
+        <script src="../_static/sphinx_highlight.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            dPBE: Discrete Population Balance Equations
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../quickstart.html">Quick Start</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../attributes.html">Attributes of the dPBE Class</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../advanced_guide.html">Advanced Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../references.html">References</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../pop.html">pop module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../modules.html">PSD_opt</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">dPBE: Discrete Population Balance Equations</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">Module code</a></li>
+      <li class="breadcrumb-item active">opt_algo</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for opt_algo</h1><div class="highlight"><pre>
+<span></span><span class="c1"># -*- coding: utf-8 -*-</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Calculate the difference between the PSD of the simulation results and the experimental data.</span>
+<span class="sd">Minimize the difference by optimization algorithm to obtain the kernel of PBE.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">math</span>
+<span class="kn">from</span> <span class="nn">pop</span> <span class="kn">import</span> <span class="n">population</span>
+<span class="kn">from</span> <span class="nn">bayes_opt</span> <span class="kn">import</span> <span class="n">BayesianOptimization</span>
+<span class="kn">from</span> <span class="nn">scipy.stats</span> <span class="kn">import</span> <span class="n">entropy</span>
+<span class="kn">from</span> <span class="nn">sklearn.neighbors</span> <span class="kn">import</span> <span class="n">KernelDensity</span>
+<span class="kn">from</span> <span class="nn">sklearn.metrics</span> <span class="kn">import</span> <span class="n">mean_squared_error</span><span class="p">,</span> <span class="n">mean_absolute_error</span>
+<span class="kn">from</span> <span class="nn">func.func_read_exp</span> <span class="kn">import</span> <span class="n">write_read_exp</span>
+<span class="kn">from</span> <span class="nn">scipy.interpolate</span> <span class="kn">import</span> <span class="n">interp1d</span>
+
+<div class="viewcode-block" id="opt_algo"><a class="viewcode-back" href="../opt_algo.html#opt_algo.opt_algo">[docs]</a><span class="k">class</span> <span class="nc">opt_algo</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Class definition for calculations within optimization process class.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    n_iter : `int`, optional</span>
+<span class="sd">        Number of iterations of the optimization process. Default is 100.</span>
+<span class="sd">    delta_flag : `str`, optional</span>
+<span class="sd">        Which data from the PSD is used for the calculation. Default is &#39;q3&#39;. Options include:</span>
+<span class="sd">        </span>
+<span class="sd">        - &#39;q3&#39;: Number density distribution</span>
+<span class="sd">        - &#39;Q3&#39;: Cumulative distribution</span>
+<span class="sd">        - &#39;x_10&#39;: Particle size corresponding to 10% cumulative distribution</span>
+<span class="sd">        - &#39;x_50&#39;: Particle size corresponding to 50% cumulative distribution</span>
+<span class="sd">        - &#39;x_90&#39;: Particle size corresponding to 90% cumulative distribution</span>
+<span class="sd">    cost_func_type : `str`, optional</span>
+<span class="sd">        Method for calculating the PSD difference. Default is &#39;MSE&#39;. Options include:</span>
+<span class="sd">        </span>
+<span class="sd">        - &#39;MSE&#39;: Mean Squared Error</span>
+<span class="sd">        - &#39;RMSE&#39;: Root Mean Squared Error</span>
+<span class="sd">        - &#39;MAE&#39;: Mean Absolute Error</span>
+<span class="sd">        - &#39;KL&#39;: Kullback–Leibler divergence (Only q3 and Q3 are compatible with KL)</span>
+<span class="sd">    calc_init_N : `bool`, optional</span>
+<span class="sd">        Whether to use experimental data to calculate initial conditions. If False, the initial conditions for PBE need to be defined manually. Default is False.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_iter</span> <span class="o">=</span> <span class="mi">100</span>
+        <span class="c1">## delta_flag = 1: use q3</span>
+        <span class="c1">## delta_flag = 2: use Q3</span>
+        <span class="c1">## delta_flag = 3: use x_10</span>
+        <span class="c1">## delta_flag = 4: use x_50</span>
+        <span class="c1">## delta_flag = 5: use x_90</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">delta_flag</span> <span class="o">=</span> <span class="s1">&#39;q3&#39;</span>    
+        <span class="c1">## &#39;MSE&#39;: Mean Squared Error</span>
+        <span class="c1">## &#39;RMSE&#39;: Root Mean Squared Error</span>
+        <span class="c1">## &#39;MAE&#39;: Mean Absolute Error</span>
+        <span class="c1">## &#39;KL&#39;: Kullback–Leibler divergence(Only q3 and Q3 are compatible with KL) </span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cost_func_type</span> <span class="o">=</span> <span class="s1">&#39;MSE&#39;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">calc_init_N</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="c1">#%%  Optimierer    </span>
+<div class="viewcode-block" id="opt_algo.calc_delta"><a class="viewcode-back" href="../opt_algo.html#opt_algo.opt_algo.calc_delta">[docs]</a>    <span class="k">def</span> <span class="nf">calc_delta</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">corr_beta</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">alpha_prim</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">sample_num</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">exp_data_path</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Calculate the difference (delta) of PSD.</span>
+<span class="sd">        </span>
+<span class="sd">        - This method first calls :meth:`~.calc_pop` to calculate the PBE under the current kernel.</span>
+<span class="sd">        - Then calls :meth:`~.calc_delta_tem` to calculate delta corresponding to experimental data.</span>
+<span class="sd">        </span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        corr_beta : `float`</span>
+<span class="sd">            Collision frequency correction factor for agglomeration in PBE.</span>
+<span class="sd">        alpha_prim : `array`</span>
+<span class="sd">            Collision efficiency for agglomeration in PBE.</span>
+<span class="sd">        scale : `int`, optional. Default 1.</span>
+<span class="sd">            The actual return result is delta*scale. delta is absolute and always positive. </span>
+<span class="sd">            Setting scale to 1 is suitable for optimizers that look for minimum values, </span>
+<span class="sd">            and -1 is suitable for those that look for maximum values.</span>
+<span class="sd">        sample_num : `int`, optional. Default 1.</span>
+<span class="sd">            Set how many sets of experimental data are used simultaneously for optimization.</span>
+<span class="sd">        exp_data_path : `str`</span>
+<span class="sd">            path for experimental data.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">calc_pop</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">p</span><span class="p">,</span> <span class="n">corr_beta</span><span class="p">,</span> <span class="n">alpha_prim</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">t_vec</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">calc_delta_tem</span><span class="p">(</span><span class="n">sample_num</span><span class="p">,</span> <span class="n">exp_data_path</span><span class="p">,</span> <span class="n">scale</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">p</span><span class="p">)</span></div>
+    
+<div class="viewcode-block" id="opt_algo.calc_delta_agg"><a class="viewcode-back" href="../opt_algo.html#opt_algo.opt_algo.calc_delta_agg">[docs]</a>    <span class="k">def</span> <span class="nf">calc_delta_agg</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">corr_agg</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">sample_num</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">exp_data_path</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Calculate the difference (delta) of PSD.</span>
+<span class="sd">        </span>
+<span class="sd">        - The function is exactly the same as :meth:`~.calc_delta`, but receives corr_agg (agglomeration rate). Then calls `~.return_syth_beta` to compute the equivalent corr_beta and alpha_prim.</span>
+<span class="sd">        </span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        corr_agg : `array`</span>
+<span class="sd">            Agglomeration rate in PBE.</span>
+<span class="sd">        scale : `int`, optional. Default 1.</span>
+<span class="sd">            The actual return result is delta*scale. delta is absolute and always positive. </span>
+<span class="sd">            Setting scale to 1 is suitable for optimizers that look for minimum values, </span>
+<span class="sd">            and -1 is suitable for those that look for maximum values.</span>
+<span class="sd">        sample_num : `int`, optional. Default 1.</span>
+<span class="sd">            Set how many sets of experimental data are used simultaneously for optimization.</span>
+<span class="sd">        exp_data_path : `str`</span>
+<span class="sd">            path for experimental data.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">corr_beta</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">return_syth_beta</span><span class="p">(</span><span class="n">corr_agg</span><span class="p">)</span>
+        <span class="n">alpha_prim</span> <span class="o">=</span> <span class="n">corr_agg</span> <span class="o">/</span> <span class="n">corr_beta</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">calc_pop</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">p</span><span class="p">,</span> <span class="n">corr_beta</span><span class="p">,</span> <span class="n">alpha_prim</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">t_vec</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">calc_delta_tem</span><span class="p">(</span><span class="n">sample_num</span><span class="p">,</span> <span class="n">exp_data_path</span><span class="p">,</span> <span class="n">scale</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">p</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="opt_algo.calc_delta_tem"><a class="viewcode-back" href="../opt_algo.html#opt_algo.opt_algo.calc_delta_tem">[docs]</a>    <span class="k">def</span> <span class="nf">calc_delta_tem</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sample_num</span><span class="p">,</span> <span class="n">exp_data_path</span><span class="p">,</span> <span class="n">scale</span><span class="p">,</span> <span class="n">pop</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Loop through all the experimental data and calculate the average diffences.</span>
+<span class="sd">        </span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        sample_num : `int`, optional. Default 1.</span>
+<span class="sd">            Set how many sets of experimental data are used simultaneously for optimization.</span>
+<span class="sd">        exp_data_path : `str`</span>
+<span class="sd">            path for experimental data.</span>
+<span class="sd">        pop : :class:`pop.population`</span>
+<span class="sd">            Instance of the PBE.</span>
+<span class="sd">            </span>
+<span class="sd">        Returns   </span>
+<span class="sd">        -------</span>
+<span class="sd">        (delta_sum * scale) / x_uni_num : `float`</span>
+<span class="sd">            Average value of PSD&#39;s difference for corresponding to all particle sizes. </span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">kde_list</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">x_uni</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">calc_x_uni</span><span class="p">(</span><span class="n">pop</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">idt</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">num_t_steps</span><span class="p">):</span>
+            <span class="n">sumvol_uni</span> <span class="o">=</span> <span class="n">pop</span><span class="o">.</span><span class="n">return_distribution</span><span class="p">(</span><span class="n">t</span><span class="o">=</span><span class="n">idt</span><span class="p">,</span> <span class="n">flag</span><span class="o">=</span><span class="s1">&#39;sumvol_uni&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">kde</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">KDE_fit</span><span class="p">(</span><span class="n">x_uni</span><span class="p">,</span> <span class="n">sumvol_uni</span><span class="p">)</span>
+            <span class="n">kde_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">kde</span><span class="p">)</span>
+        
+        <span class="k">if</span> <span class="n">sample_num</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">x_uni_exp</span><span class="p">,</span> <span class="n">sumN_uni_exp</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">read_exp</span><span class="p">(</span><span class="n">exp_data_path</span><span class="p">)</span> 
+            <span class="n">sumN_uni_exp</span> <span class="o">=</span> <span class="n">sumN_uni_exp</span><span class="p">[:,</span> <span class="bp">self</span><span class="o">.</span><span class="n">idt_vec</span><span class="p">]</span>
+            <span class="n">vol_uni</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">tile</span><span class="p">((</span><span class="mi">1</span><span class="o">/</span><span class="mi">6</span><span class="p">)</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="o">*</span><span class="n">x_uni_exp</span><span class="o">**</span><span class="mi">3</span><span class="p">,</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">idt_vec</span><span class="p">),</span> <span class="mi">1</span><span class="p">))</span><span class="o">.</span><span class="n">T</span>
+            <span class="n">sumvol_uni_exp</span> <span class="o">=</span> <span class="n">sumN_uni_exp</span> <span class="o">*</span> <span class="n">vol_uni</span>
+            <span class="n">q3_mod</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="n">x_uni_exp</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">num_t_steps</span><span class="p">))</span>
+            <span class="k">for</span> <span class="n">idt</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">num_t_steps</span><span class="p">):</span>
+                <span class="n">q3_mod_tem</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">KDE_score</span><span class="p">(</span><span class="n">kde_list</span><span class="p">[</span><span class="n">idt</span><span class="p">],</span> <span class="n">x_uni_exp</span><span class="p">)</span>
+                <span class="n">q3_mod</span><span class="p">[:,</span> <span class="n">idt</span><span class="p">]</span> <span class="o">=</span> <span class="n">q3_mod_tem</span>
+            <span class="n">data_mod</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">re_calc_distribution</span><span class="p">(</span><span class="n">x_uni_exp</span><span class="p">,</span> <span class="n">q3</span><span class="o">=</span><span class="n">q3_mod</span><span class="p">,</span> <span class="n">flag</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">delta_flag</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">data_exp</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">re_calc_distribution</span><span class="p">(</span><span class="n">x_uni_exp</span><span class="p">,</span> <span class="n">sum_uni</span><span class="o">=</span><span class="n">sumvol_uni_exp</span><span class="p">,</span> <span class="n">flag</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">delta_flag</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="c1"># Calculate the error between experimental data and simulation results</span>
+            <span class="n">delta</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cost_fun</span><span class="p">(</span><span class="n">data_exp</span><span class="p">,</span> <span class="n">data_mod</span><span class="p">)</span>
+            
+            <span class="c1"># Because the number of x_uni is different in different pop equations, </span>
+            <span class="c1"># the average value needs to be used instead of the sum.</span>
+            <span class="n">x_uni_num</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">x_uni_exp</span><span class="p">)</span>
+            <span class="k">return</span> <span class="p">(</span><span class="n">delta</span> <span class="o">*</span> <span class="n">scale</span><span class="p">)</span> <span class="o">/</span> <span class="n">x_uni_num</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">delta_sum</span> <span class="o">=</span> <span class="mi">0</span>           
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">sample_num</span><span class="p">):</span>
+                <span class="n">exp_data_path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">traverse_path</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">exp_data_path</span><span class="p">)</span>
+                <span class="n">x_uni_exp</span><span class="p">,</span> <span class="n">sumN_uni_exp</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">read_exp</span><span class="p">(</span><span class="n">exp_data_path</span><span class="p">)</span> 
+                <span class="n">sumN_uni_exp</span> <span class="o">=</span> <span class="n">sumN_uni_exp</span><span class="p">[:,</span> <span class="bp">self</span><span class="o">.</span><span class="n">idt_vec</span><span class="p">]</span>
+                <span class="n">vol_uni</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">tile</span><span class="p">((</span><span class="mi">1</span><span class="o">/</span><span class="mi">6</span><span class="p">)</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="o">*</span><span class="n">x_uni_exp</span><span class="o">**</span><span class="mi">3</span><span class="p">,</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">idt_vec</span><span class="p">),</span> <span class="mi">1</span><span class="p">))</span><span class="o">.</span><span class="n">T</span>
+                <span class="n">sumvol_uni_exp</span> <span class="o">=</span> <span class="n">sumN_uni_exp</span> <span class="o">*</span> <span class="n">vol_uni</span>
+                <span class="n">q3_mod</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="n">x_uni_exp</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">num_t_steps</span><span class="p">))</span>
+                
+                <span class="k">for</span> <span class="n">idt</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">num_t_steps</span><span class="p">):</span>
+                    <span class="n">q3_mod_tem</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">KDE_score</span><span class="p">(</span><span class="n">kde_list</span><span class="p">[</span><span class="n">idt</span><span class="p">],</span> <span class="n">x_uni_exp</span><span class="p">)</span>
+                    <span class="n">q3_mod</span><span class="p">[:,</span> <span class="n">idt</span><span class="p">]</span> <span class="o">=</span> <span class="n">q3_mod_tem</span>
+
+                <span class="n">data_mod</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">re_calc_distribution</span><span class="p">(</span><span class="n">x_uni_exp</span><span class="p">,</span> <span class="n">q3</span><span class="o">=</span><span class="n">q3_mod</span><span class="p">,</span> <span class="n">flag</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">delta_flag</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="n">data_exp</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">re_calc_distribution</span><span class="p">(</span><span class="n">x_uni_exp</span><span class="p">,</span> <span class="n">sum_uni</span><span class="o">=</span><span class="n">sumvol_uni_exp</span><span class="p">,</span> <span class="n">flag</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">delta_flag</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="c1"># Calculate the error between experimental data and simulation results</span>
+                <span class="n">delta</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cost_fun</span><span class="p">(</span><span class="n">data_exp</span><span class="p">,</span> <span class="n">data_mod</span><span class="p">)</span>
+                <span class="n">delta_sum</span> <span class="o">+=</span><span class="n">delta</span>
+            <span class="c1"># Restore the original name of the file to prepare for the next step of training</span>
+            <span class="n">delta_sum</span> <span class="o">/=</span> <span class="n">sample_num</span>
+            <span class="c1"># Because the number of x_uni is different in different pop equations, </span>
+            <span class="c1"># the average value needs to be used instead of the sum.</span>
+            <span class="n">x_uni_num</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">x_uni_exp</span><span class="p">)</span>  
+            <span class="k">return</span> <span class="p">(</span><span class="n">delta_sum</span> <span class="o">*</span> <span class="n">scale</span><span class="p">)</span> <span class="o">/</span> <span class="n">x_uni_num</span></div>
+    
+<div class="viewcode-block" id="opt_algo.optimierer"><a class="viewcode-back" href="../opt_algo.html#opt_algo.opt_algo.optimierer">[docs]</a>    <span class="k">def</span> <span class="nf">optimierer</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;BO&#39;</span><span class="p">,</span> <span class="n">init_points</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> <span class="n">sample_num</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">hyperparameter</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">exp_data_path</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Optimize the corr_beta and alpha_prim based on :meth:`~.calc_delta`. </span>
+<span class="sd">        Results are saved in corr_beta_opt and alpha_prim_opt.</span>
+<span class="sd">        </span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        method : `str`</span>
+<span class="sd">            Which algorithm to use for optimization.</span>
+<span class="sd">        init_points : `int`, optional. Default 4.</span>
+<span class="sd">            Number of steps for random exploration in BayesianOptimization.</span>
+<span class="sd">        sample_num : `int`, optional. Default 1.</span>
+<span class="sd">            Set how many sets of experimental data are used simultaneously for optimization.</span>
+<span class="sd">        exp_data_path : `str`</span>
+<span class="sd">            path for experimental data.</span>
+<span class="sd">            </span>
+<span class="sd">        Returns   </span>
+<span class="sd">        -------</span>
+<span class="sd">        delta_opt : `float`</span>
+<span class="sd">            Optimized value of the objective.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;BO&#39;</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">p</span><span class="o">.</span><span class="n">dim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">pbounds</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;corr_beta_log&#39;</span><span class="p">:</span> <span class="p">(</span><span class="o">-</span><span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="s1">&#39;alpha_prim&#39;</span><span class="p">:</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)}</span>
+                <span class="n">objective</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">corr_beta_log</span><span class="p">,</span> <span class="n">alpha_prim</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">calc_delta</span><span class="p">(</span>
+                    <span class="n">corr_beta</span><span class="o">=</span><span class="mi">10</span><span class="o">**</span><span class="n">corr_beta_log</span><span class="p">,</span> <span class="n">alpha_prim</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">alpha_prim</span><span class="p">]),</span>
+                    <span class="n">scale</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">sample_num</span><span class="o">=</span><span class="n">sample_num</span><span class="p">,</span> <span class="n">exp_data_path</span><span class="o">=</span><span class="n">exp_data_path</span><span class="p">)</span>
+                
+            <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">p</span><span class="o">.</span><span class="n">dim</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="n">pbounds</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;corr_beta_log&#39;</span><span class="p">:</span> <span class="p">(</span><span class="o">-</span><span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="s1">&#39;alpha_prim_0&#39;</span><span class="p">:</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="s1">&#39;alpha_prim_1&#39;</span><span class="p">:</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="s1">&#39;alpha_prim_2&#39;</span><span class="p">:</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)}</span>
+                <span class="n">objective</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">corr_beta_log</span><span class="p">,</span> <span class="n">alpha_prim_0</span><span class="p">,</span> <span class="n">alpha_prim_1</span><span class="p">,</span> <span class="n">alpha_prim_2</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">calc_delta</span><span class="p">(</span>
+                    <span class="n">corr_beta</span><span class="o">=</span><span class="mi">10</span><span class="o">**</span><span class="n">corr_beta_log</span><span class="p">,</span> 
+                    <span class="n">alpha_prim</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">alpha_prim_0</span><span class="p">,</span> <span class="n">alpha_prim_1</span><span class="p">,</span> <span class="n">alpha_prim_2</span><span class="p">]),</span> 
+                    <span class="n">scale</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">sample_num</span><span class="o">=</span><span class="n">sample_num</span><span class="p">,</span> <span class="n">exp_data_path</span><span class="o">=</span><span class="n">exp_data_path</span><span class="p">)</span>
+                
+            <span class="n">opt</span> <span class="o">=</span> <span class="n">BayesianOptimization</span><span class="p">(</span>
+                <span class="n">f</span><span class="o">=</span><span class="n">objective</span><span class="p">,</span> 
+                <span class="n">pbounds</span><span class="o">=</span><span class="n">pbounds</span><span class="p">,</span>
+                <span class="n">random_state</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                <span class="n">allow_duplicate_points</span><span class="o">=</span><span class="kc">True</span>
+            <span class="p">)</span>
+            
+            <span class="n">opt</span><span class="o">.</span><span class="n">maximize</span><span class="p">(</span>
+                <span class="n">init_points</span><span class="o">=</span><span class="n">init_points</span><span class="p">,</span>
+                <span class="n">n_iter</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">n_iter</span><span class="p">,</span>
+            <span class="p">)</span>   
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">p</span><span class="o">.</span><span class="n">dim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">corr_beta_opt</span> <span class="o">=</span> <span class="mi">10</span><span class="o">**</span><span class="n">opt</span><span class="o">.</span><span class="n">max</span><span class="p">[</span><span class="s1">&#39;params&#39;</span><span class="p">][</span><span class="s1">&#39;corr_beta_log&#39;</span><span class="p">]</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">alpha_prim_opt</span> <span class="o">=</span> <span class="n">opt</span><span class="o">.</span><span class="n">max</span><span class="p">[</span><span class="s1">&#39;params&#39;</span><span class="p">][</span><span class="s1">&#39;alpha_prim&#39;</span><span class="p">]</span>
+                
+            <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">p</span><span class="o">.</span><span class="n">dim</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">alpha_prim_opt</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">corr_beta_opt</span> <span class="o">=</span> <span class="mi">10</span><span class="o">**</span><span class="n">opt</span><span class="o">.</span><span class="n">max</span><span class="p">[</span><span class="s1">&#39;params&#39;</span><span class="p">][</span><span class="s1">&#39;corr_beta_log&#39;</span><span class="p">]</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">alpha_prim_opt</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">opt</span><span class="o">.</span><span class="n">max</span><span class="p">[</span><span class="s1">&#39;params&#39;</span><span class="p">][</span><span class="s1">&#39;alpha_prim_0&#39;</span><span class="p">]</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">alpha_prim_opt</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">opt</span><span class="o">.</span><span class="n">max</span><span class="p">[</span><span class="s1">&#39;params&#39;</span><span class="p">][</span><span class="s1">&#39;alpha_prim_1&#39;</span><span class="p">]</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">alpha_prim_opt</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="n">opt</span><span class="o">.</span><span class="n">max</span><span class="p">[</span><span class="s1">&#39;params&#39;</span><span class="p">][</span><span class="s1">&#39;alpha_prim_2&#39;</span><span class="p">]</span>
+            
+            <span class="n">delta_opt</span> <span class="o">=</span> <span class="o">-</span><span class="n">opt</span><span class="o">.</span><span class="n">max</span><span class="p">[</span><span class="s1">&#39;target&#39;</span><span class="p">]</span>           
+            
+        <span class="k">return</span> <span class="n">delta_opt</span>  </div>
+    
+<div class="viewcode-block" id="opt_algo.optimierer_agg"><a class="viewcode-back" href="../opt_algo.html#opt_algo.opt_algo.optimierer_agg">[docs]</a>    <span class="k">def</span> <span class="nf">optimierer_agg</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;BO&#39;</span><span class="p">,</span> <span class="n">init_points</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> <span class="n">sample_num</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">hyperparameter</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">exp_data_path</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Optimize the corr_agg based on :meth:`~.calc_delta_agg`. </span>
+<span class="sd">        Results are saved in corr_agg_opt.</span>
+<span class="sd">        </span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        method : `str`</span>
+<span class="sd">            Which algorithm to use for optimization.</span>
+<span class="sd">        init_points : `int`, optional. Default 4.</span>
+<span class="sd">            Number of steps for random exploration in BayesianOptimization.</span>
+<span class="sd">        sample_num : `int`, optional. Default 1.</span>
+<span class="sd">            Set how many sets of experimental data are used simultaneously for optimization.</span>
+<span class="sd">        exp_data_path : `str`</span>
+<span class="sd">            path for experimental data.</span>
+<span class="sd">            </span>
+<span class="sd">        Returns   </span>
+<span class="sd">        -------</span>
+<span class="sd">        delta_opt : `float`</span>
+<span class="sd">            Optimized value of the objective.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;BO&#39;</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">p</span><span class="o">.</span><span class="n">dim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">pbounds</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;corr_agg_log&#39;</span><span class="p">:</span> <span class="p">(</span><span class="o">-</span><span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">)}</span>
+                <span class="n">objective</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">corr_agg_log</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">calc_delta_agg</span><span class="p">(</span>
+                    <span class="n">corr_agg</span><span class="o">=</span><span class="mi">10</span><span class="o">**</span><span class="n">corr_agg_log</span><span class="p">,</span> <span class="n">scale</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">sample_num</span><span class="o">=</span><span class="n">sample_num</span><span class="p">,</span> 
+                    <span class="n">exp_data_path</span><span class="o">=</span><span class="n">exp_data_path</span><span class="p">)</span>
+                
+            <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">p</span><span class="o">.</span><span class="n">dim</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="n">pbounds</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;corr_agg_log_0&#39;</span><span class="p">:</span> <span class="p">(</span><span class="o">-</span><span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="s1">&#39;corr_agg_log_1&#39;</span><span class="p">:</span> <span class="p">(</span><span class="o">-</span><span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="s1">&#39;corr_agg_log_2&#39;</span><span class="p">:</span> <span class="p">(</span><span class="o">-</span><span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">)}</span>
+                <span class="n">objective</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">corr_agg_log_0</span><span class="p">,</span> <span class="n">corr_agg_log_1</span><span class="p">,</span> <span class="n">corr_agg_log_2</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">calc_delta_agg</span><span class="p">(</span>
+                    <span class="n">corr_agg</span><span class="o">=</span><span class="mi">10</span><span class="o">**</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">corr_agg_log_0</span><span class="p">,</span> <span class="n">corr_agg_log_1</span><span class="p">,</span> <span class="n">corr_agg_log_2</span><span class="p">]),</span> 
+                    <span class="n">scale</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">sample_num</span><span class="o">=</span><span class="n">sample_num</span><span class="p">,</span> <span class="n">exp_data_path</span><span class="o">=</span><span class="n">exp_data_path</span><span class="p">)</span>
+                
+            <span class="n">opt</span> <span class="o">=</span> <span class="n">BayesianOptimization</span><span class="p">(</span>
+                <span class="n">f</span><span class="o">=</span><span class="n">objective</span><span class="p">,</span> 
+                <span class="n">pbounds</span><span class="o">=</span><span class="n">pbounds</span><span class="p">,</span>
+                <span class="n">random_state</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                <span class="n">allow_duplicate_points</span><span class="o">=</span><span class="kc">True</span>
+            <span class="p">)</span>
+            
+            <span class="n">opt</span><span class="o">.</span><span class="n">maximize</span><span class="p">(</span>
+                <span class="n">init_points</span><span class="o">=</span><span class="n">init_points</span><span class="p">,</span>
+                <span class="n">n_iter</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">n_iter</span><span class="p">,</span>
+            <span class="p">)</span>
+            
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">p</span><span class="o">.</span><span class="n">dim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">corr_agg_opt</span> <span class="o">=</span> <span class="mi">10</span><span class="o">**</span><span class="n">opt</span><span class="o">.</span><span class="n">max</span><span class="p">[</span><span class="s1">&#39;params&#39;</span><span class="p">][</span><span class="s1">&#39;corr_agg_log&#39;</span><span class="p">]</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">corr_beta_opt</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">return_syth_beta</span><span class="p">(</span><span class="n">corr_agg_opt</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">alpha_prim_opt</span> <span class="o">=</span> <span class="n">corr_agg_opt</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">corr_beta_opt</span>
+                
+            <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">p</span><span class="o">.</span><span class="n">dim</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="n">corr_agg_opt</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+                <span class="n">corr_agg_opt</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">10</span><span class="o">**</span><span class="n">opt</span><span class="o">.</span><span class="n">max</span><span class="p">[</span><span class="s1">&#39;params&#39;</span><span class="p">][</span><span class="s1">&#39;corr_agg_log_0&#39;</span><span class="p">]</span>
+                <span class="n">corr_agg_opt</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mi">10</span><span class="o">**</span><span class="n">opt</span><span class="o">.</span><span class="n">max</span><span class="p">[</span><span class="s1">&#39;params&#39;</span><span class="p">][</span><span class="s1">&#39;corr_agg_log_1&#39;</span><span class="p">]</span>
+                <span class="n">corr_agg_opt</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="mi">10</span><span class="o">**</span><span class="n">opt</span><span class="o">.</span><span class="n">max</span><span class="p">[</span><span class="s1">&#39;params&#39;</span><span class="p">][</span><span class="s1">&#39;corr_agg_log_2&#39;</span><span class="p">]</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">corr_beta_opt</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">return_syth_beta</span><span class="p">(</span><span class="n">corr_agg_opt</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">alpha_prim_opt</span> <span class="o">=</span> <span class="n">corr_agg_opt</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">corr_beta_opt</span>
+            
+            <span class="n">delta_opt</span> <span class="o">=</span> <span class="o">-</span><span class="n">opt</span><span class="o">.</span><span class="n">max</span><span class="p">[</span><span class="s1">&#39;target&#39;</span><span class="p">]</span>           
+            
+        <span class="k">return</span> <span class="n">delta_opt</span>  </div>
+    
+<div class="viewcode-block" id="opt_algo.return_syth_beta"><a class="viewcode-back" href="../opt_algo.html#opt_algo.opt_algo.return_syth_beta">[docs]</a>    <span class="k">def</span> <span class="nf">return_syth_beta</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span><span class="n">corr_agg</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Calculate and return a synthetic beta value.</span>
+
+<span class="sd">        This method calculates the maximum value of `corr_agg`, takes its logarithm to base 10, </span>
+<span class="sd">        rounds it up to the nearest integer, and returns 10 raised to the power of this integer.</span>
+<span class="sd">        </span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        corr_agg : `array`</span>
+<span class="sd">            The correction factors for aggregation.</span>
+<span class="sd">    </span>
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        float</span>
+<span class="sd">            The synthetic beta value</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">max_val</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">corr_agg</span><span class="p">)</span>
+        <span class="n">power</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">log10</span><span class="p">(</span><span class="n">max_val</span><span class="p">)</span>
+        <span class="n">power</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">power</span><span class="p">)</span>
+        <span class="k">return</span> <span class="mi">10</span><span class="o">**</span><span class="n">power</span></div>
+    
+<div class="viewcode-block" id="opt_algo.cost_fun"><a class="viewcode-back" href="../opt_algo.html#opt_algo.opt_algo.cost_fun">[docs]</a>    <span class="k">def</span> <span class="nf">cost_fun</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data_exp</span><span class="p">,</span> <span class="n">data_mod</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Calculate the difference(cost) between experimental and model data.</span>
+<span class="sd">        </span>
+<span class="sd">        This method supports multiple cost function types including Mean Squared Error (MSE), </span>
+<span class="sd">        Root Mean Squared Error (RMSE), Mean Absolute Error (MAE), and Kullback-Leibler (KL) divergence. </span>
+<span class="sd">        </span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        data_exp : `array`</span>
+<span class="sd">            The experimental data.</span>
+<span class="sd">        data_mod : `array`</span>
+<span class="sd">            The data generated by the simulation.</span>
+<span class="sd">        </span>
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        float</span>
+<span class="sd">            The calculated cost based on the specified cost function type.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cost_func_type</span> <span class="o">==</span> <span class="s1">&#39;MSE&#39;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">mean_squared_error</span><span class="p">(</span><span class="n">data_mod</span><span class="p">,</span> <span class="n">data_exp</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">cost_func_type</span> <span class="o">==</span> <span class="s1">&#39;RMSE&#39;</span><span class="p">:</span>
+            <span class="n">mse</span> <span class="o">=</span> <span class="n">mean_squared_error</span><span class="p">(</span><span class="n">data_mod</span><span class="p">,</span> <span class="n">data_exp</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">mse</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">cost_func_type</span> <span class="o">==</span> <span class="s1">&#39;MAE&#39;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">mean_absolute_error</span><span class="p">(</span><span class="n">data_mod</span><span class="p">,</span> <span class="n">data_exp</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">delta_flag</span> <span class="o">==</span> <span class="s1">&#39;q3&#39;</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">delta_flag</span> <span class="o">==</span> <span class="s1">&#39;Q3&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">cost_func_type</span> <span class="o">==</span> <span class="s1">&#39;KL&#39;</span><span class="p">:</span>
+            <span class="n">data_mod</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">data_mod</span> <span class="o">&lt;=</span> <span class="mf">10e-20</span><span class="p">,</span> <span class="mf">10e-20</span><span class="p">,</span> <span class="n">data_mod</span><span class="p">)</span>
+            <span class="n">data_exp</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">data_exp</span> <span class="o">&lt;=</span> <span class="mf">10e-20</span><span class="p">,</span> <span class="mf">10e-20</span><span class="p">,</span> <span class="n">data_exp</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">entropy</span><span class="p">(</span><span class="n">data_mod</span><span class="p">,</span> <span class="n">data_exp</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s2">&quot;Current cost function type is not supported&quot;</span><span class="p">)</span></div>
+    <span class="c1">#%% Data Process  </span>
+    <span class="c1">## Read the experimental data and re-interpolate the particle distribution </span>
+    <span class="c1">## of the experimental data according to the simulation results.</span>
+<div class="viewcode-block" id="opt_algo.read_exp"><a class="viewcode-back" href="../opt_algo.html#opt_algo.opt_algo.read_exp">[docs]</a>    <span class="k">def</span> <span class="nf">read_exp</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">exp_data_path</span><span class="p">):</span>  
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Reads experimental data from a specified path and processes it.</span>
+<span class="sd">    </span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        exp_data_path : `str`</span>
+<span class="sd">            Path to the experimental data.</span>
+<span class="sd">    </span>
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        `tuple of array`</span>
+<span class="sd">            - `x_uni_exp`: An array of unique particle sizes.</span>
+<span class="sd">            - `sumN_uni_exp`: An array of sum of number concentrations for the unique particle sizes.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">exp_data</span> <span class="o">=</span> <span class="n">write_read_exp</span><span class="p">(</span><span class="n">exp_data_path</span><span class="p">,</span> <span class="n">read</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">exp_data</span><span class="o">.</span><span class="n">get_exp_data</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">t_all</span><span class="p">)</span>
+        <span class="n">x_uni_exp</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span>
+        <span class="n">sumN_uni_exp</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">x_uni_exp</span><span class="p">,</span> <span class="n">sumN_uni_exp</span></div>
+    
+<div class="viewcode-block" id="opt_algo.function_noise"><a class="viewcode-back" href="../opt_algo.html#opt_algo.opt_algo.function_noise">[docs]</a>    <span class="k">def</span> <span class="nf">function_noise</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ori_data</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Adds noise to the original data based on the specified noise type.</span>
+<span class="sd">        </span>
+<span class="sd">        The method supports four types of noise: Gaussian (&#39;Gaus&#39;), Uniform (&#39;Uni&#39;), </span>
+<span class="sd">        Poisson (&#39;Po&#39;), and Multiplicative (&#39;Mul&#39;). The type of noise and its strength </span>
+<span class="sd">        are determined by the `noise_type` and `noise_strength` attributes, respectively.</span>
+<span class="sd">        </span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        ori_data : `array`</span>
+<span class="sd">            The original data to which noise will be added.</span>
+<span class="sd">        </span>
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        `array`</span>
+<span class="sd">            The noised data.</span>
+<span class="sd">        </span>
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        - Gaussian noise is added with mean 0 and standard deviation `noise_strength`.</span>
+<span class="sd">        - Uniform noise is distributed over [-`noise_strength`/2, `noise_strength`/2).</span>
+<span class="sd">        - Poisson noise uses `noise_strength` as lambda (expected value of interval).</span>
+<span class="sd">        - Multiplicative noise is Gaussian with mean 1 and standard deviation `noise_strength`,</span>
+<span class="sd">          and it is multiplied by the original data instead of being added.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">rows</span><span class="p">,</span> <span class="n">cols</span> <span class="o">=</span> <span class="n">ori_data</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">noise</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">rows</span><span class="p">,</span> <span class="n">cols</span><span class="p">))</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">noise_type</span> <span class="o">==</span> <span class="s1">&#39;Gaus&#39;</span><span class="p">:</span>
+            <span class="c1"># The first parameter 0 represents the mean value of the noise, </span>
+            <span class="c1"># the second parameter is the standard deviation of the noise,</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">cols</span><span class="p">):</span>
+                <span class="n">noise</span><span class="p">[:,</span> <span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">noise_strength</span><span class="p">,</span> <span class="n">rows</span><span class="p">)</span>              
+            <span class="n">noised_data</span> <span class="o">=</span> <span class="n">ori_data</span> <span class="o">+</span> <span class="n">noise</span>
+            
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">noise_type</span> <span class="o">==</span> <span class="s1">&#39;Uni&#39;</span><span class="p">:</span>
+            <span class="c1"># Noises are uniformly distributed over the half-open interval [low, high)</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">cols</span><span class="p">):</span>
+                <span class="n">noise</span><span class="p">[:,</span> <span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">low</span><span class="o">=-</span><span class="bp">self</span><span class="o">.</span><span class="n">noise_strength</span><span class="o">/</span><span class="mi">2</span><span class="p">,</span> <span class="n">high</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">noise_strength</span><span class="o">/</span><span class="mi">2</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="n">rows</span><span class="p">)</span>
+            <span class="n">noised_data</span> <span class="o">=</span> <span class="n">ori_data</span> <span class="o">+</span> <span class="n">noise</span>
+            
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">noise_type</span> <span class="o">==</span> <span class="s1">&#39;Po&#39;</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">cols</span><span class="p">):</span>
+                <span class="n">noise</span><span class="p">[:,</span> <span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">poisson</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">noise_strength</span><span class="p">,</span> <span class="n">rows</span><span class="p">)</span>
+            <span class="n">noised_data</span> <span class="o">=</span> <span class="n">ori_data</span> <span class="o">+</span> <span class="n">noise</span>
+            
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">noise_type</span> <span class="o">==</span> <span class="s1">&#39;Mul&#39;</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">cols</span><span class="p">):</span>
+                <span class="n">noise</span><span class="p">[:,</span> <span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">noise_strength</span><span class="p">,</span> <span class="n">rows</span><span class="p">)</span>
+            <span class="n">noised_data</span> <span class="o">=</span> <span class="n">ori_data</span> <span class="o">*</span> <span class="n">noise</span>
+        <span class="c1"># Cliping the data out of range  </span>
+        <span class="n">noised_data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">noised_data</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">noised_data</span></div>
+
+    <span class="c1">## Kernel density estimation</span>
+    <span class="c1">## data_ori must be a quantity rather than a relative value!</span>
+<div class="viewcode-block" id="opt_algo.KDE_fit"><a class="viewcode-back" href="../opt_algo.html#opt_algo.opt_algo.KDE_fit">[docs]</a>    <span class="k">def</span> <span class="nf">KDE_fit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x_uni_ori</span><span class="p">,</span> <span class="n">data_ori</span><span class="p">,</span> <span class="n">bandwidth</span><span class="o">=</span><span class="s1">&#39;scott&#39;</span><span class="p">,</span> <span class="n">kernel_func</span><span class="o">=</span><span class="s1">&#39;epanechnikov&#39;</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Fit a Kernel Density Estimation (KDE) to the original data.</span>
+<span class="sd">        </span>
+<span class="sd">        This method applies KDE to the original data using specified bandwidth and kernel function. </span>
+<span class="sd">        </span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        x_uni_ori : `array`</span>
+<span class="sd">            The unique values of the data variable, must be a one-dimensional array.</span>
+<span class="sd">        data_ori : `array`</span>
+<span class="sd">            The original data corresponding to `x_uni_ori`.</span>
+<span class="sd">        bandwidth : `str`, optional</span>
+<span class="sd">            The bandwidth to use for the kernel density estimation. Defaults to &#39;scott&#39;.</span>
+<span class="sd">        kernel_func : `str`, optional</span>
+<span class="sd">            The kernel function to use for KDE. Defaults to &#39;epanechnikov&#39;.</span>
+<span class="sd">        </span>
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        sklearn.neighbors.kde.KernelDensity</span>
+<span class="sd">            The fitted KDE model.</span>
+<span class="sd">        &quot;&quot;&quot;</span>    
+        <span class="c1"># KernelDensity requires input to be a column vector</span>
+        <span class="c1"># So x_uni_re must be reshaped</span>
+        <span class="n">x_uni_ori_re</span> <span class="o">=</span> <span class="n">x_uni_ori</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="c1"># Avoid divide-by-zero warnings when calculating KDE</span>
+        <span class="n">data_ori_adjested</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">data_ori</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">,</span> <span class="mf">1e-20</span><span class="p">,</span> <span class="n">data_ori</span><span class="p">)</span>      
+        <span class="n">kde</span> <span class="o">=</span> <span class="n">KernelDensity</span><span class="p">(</span><span class="n">kernel</span><span class="o">=</span><span class="n">kernel_func</span><span class="p">,</span> <span class="n">bandwidth</span><span class="o">=</span><span class="n">bandwidth</span><span class="p">)</span>
+        <span class="n">kde</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x_uni_ori_re</span><span class="p">,</span> <span class="n">sample_weight</span><span class="o">=</span><span class="n">data_ori_adjested</span><span class="p">)</span>  
+        <span class="k">return</span> <span class="n">kde</span></div>
+    
+<div class="viewcode-block" id="opt_algo.KDE_score"><a class="viewcode-back" href="../opt_algo.html#opt_algo.opt_algo.KDE_score">[docs]</a>    <span class="k">def</span> <span class="nf">KDE_score</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">kde</span><span class="p">,</span> <span class="n">x_uni_new</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Evaluate the KDE model on new data points and normalize the results.</span>
+<span class="sd">        </span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        kde : sklearn.neighbors.kde.KernelDensity</span>
+<span class="sd">            The fitted KDE model from :meth:`~.KDE_fit`.</span>
+<span class="sd">        x_uni_new :`array`</span>
+<span class="sd">            New unique data points where the KDE model is evaluated.</span>
+<span class="sd">        </span>
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        `array`</span>
+<span class="sd">            The smoothed and normalized data based on the KDE model.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">x_uni_new_re</span> <span class="o">=</span> <span class="n">x_uni_new</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span> 
+        <span class="n">data_smoothing</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">kde</span><span class="o">.</span><span class="n">score_samples</span><span class="p">(</span><span class="n">x_uni_new_re</span><span class="p">))</span>
+        
+        <span class="c1"># Flatten a column vector into a one-dimensional array</span>
+        <span class="n">data_smoothing</span> <span class="o">=</span> <span class="n">data_smoothing</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+        <span class="c1">## normalize the data for value range after smoothing</span>
+        <span class="c1"># data_smoothing = data_smoothing/np.trapz(data_smoothing,x_uni_new)</span>
+        <span class="n">Q3</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">calc_Q3</span><span class="p">(</span><span class="n">x_uni_new</span><span class="p">,</span> <span class="n">data_smoothing</span><span class="p">)</span>
+        <span class="n">data_smoothing</span> <span class="o">=</span> <span class="n">data_smoothing</span> <span class="o">/</span> <span class="n">Q3</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">data_smoothing</span></div>
+    
+<div class="viewcode-block" id="opt_algo.traverse_path"><a class="viewcode-back" href="../opt_algo.html#opt_algo.opt_algo.traverse_path">[docs]</a>    <span class="k">def</span> <span class="nf">traverse_path</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">label</span><span class="p">,</span> <span class="n">path_ori</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Update the file path or list of paths based on the label.</span>
+<span class="sd">        </span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        label : `int`</span>
+<span class="sd">            The label to update in the file path(s).</span>
+<span class="sd">        path_ori : `str` or `list` of `str`</span>
+<span class="sd">            The original file path or list of file paths to be updated.</span>
+<span class="sd">        </span>
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        `str` or `list` of `str`</span>
+<span class="sd">            The updated file path.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">def</span> <span class="nf">update_path</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">label</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">label</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">path</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;.xlsx&quot;</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;_</span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2">.xlsx&quot;</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">path</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;_</span><span class="si">{</span><span class="n">label</span><span class="o">-</span><span class="mi">1</span><span class="si">}</span><span class="s2">.xlsx&quot;</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;_</span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2">.xlsx&quot;</span><span class="p">)</span>
+    
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">path_ori</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="k">return</span> <span class="p">[</span><span class="n">update_path</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">label</span><span class="p">)</span> <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">path_ori</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">update_path</span><span class="p">(</span><span class="n">path_ori</span><span class="p">,</span> <span class="n">label</span><span class="p">)</span>        </div>
+    <span class="c1">#%% PBE    </span>
+<div class="viewcode-block" id="opt_algo.create_1d_pop"><a class="viewcode-back" href="../opt_algo.html#opt_algo.opt_algo.create_1d_pop">[docs]</a>    <span class="k">def</span> <span class="nf">create_1d_pop</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">disc</span><span class="o">=</span><span class="s1">&#39;geo&#39;</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Instantiate one-dimensional populations for both non-magnetic (NM) and magnetic (M) particles.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">p_NM</span> <span class="o">=</span> <span class="n">population</span><span class="p">(</span><span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span><span class="n">disc</span><span class="o">=</span><span class="n">disc</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">p_M</span> <span class="o">=</span> <span class="n">population</span><span class="p">(</span><span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span><span class="n">disc</span><span class="o">=</span><span class="n">disc</span><span class="p">)</span></div>
+            
+<div class="viewcode-block" id="opt_algo.calc_pop"><a class="viewcode-back" href="../opt_algo.html#opt_algo.opt_algo.calc_pop">[docs]</a>    <span class="k">def</span> <span class="nf">calc_pop</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pop</span><span class="p">,</span> <span class="n">corr_beta</span><span class="p">,</span> <span class="n">alpha_prim</span><span class="p">,</span> <span class="n">t_vec</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Configure and calculate the PBE.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">pop</span><span class="o">.</span><span class="n">COLEVAL</span> <span class="o">=</span> <span class="mi">2</span>
+        <span class="n">pop</span><span class="o">.</span><span class="n">EFFEVAL</span> <span class="o">=</span> <span class="mi">2</span>
+        <span class="n">pop</span><span class="o">.</span><span class="n">CORR_BETA</span> <span class="o">=</span> <span class="n">corr_beta</span>
+        <span class="k">if</span> <span class="n">pop</span><span class="o">.</span><span class="n">dim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">alpha_prim_temp</span> <span class="o">=</span> <span class="n">alpha_prim</span>
+        <span class="k">elif</span> <span class="n">pop</span><span class="o">.</span><span class="n">dim</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="n">alpha_prim_temp</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+            <span class="n">alpha_prim_temp</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">alpha_prim</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">alpha_prim_temp</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">alpha_prim_temp</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="n">alpha_prim</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+            <span class="n">alpha_prim_temp</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span> <span class="o">=</span> <span class="n">alpha_prim</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+        <span class="n">pop</span><span class="o">.</span><span class="n">alpha_prim</span> <span class="o">=</span> <span class="n">alpha_prim_temp</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">calc_init_N</span><span class="p">:</span>
+            <span class="n">pop</span><span class="o">.</span><span class="n">full_init</span><span class="p">(</span><span class="n">calc_alpha</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">pop</span><span class="o">.</span><span class="n">calc_F_M</span><span class="p">()</span>
+        
+        <span class="k">if</span> <span class="n">t_vec</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span> <span class="n">pop</span><span class="o">.</span><span class="n">solve_PBE</span><span class="p">(</span><span class="n">t_vec</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">t_vec</span><span class="p">)</span>      
+        <span class="k">else</span><span class="p">:</span> <span class="n">pop</span><span class="o">.</span><span class="n">solve_PBE</span><span class="p">(</span><span class="n">t_vec</span><span class="o">=</span><span class="n">t_vec</span><span class="p">)</span>  </div>
+        
+<div class="viewcode-block" id="opt_algo.set_comp_para"><a class="viewcode-back" href="../opt_algo.html#opt_algo.opt_algo.set_comp_para">[docs]</a>    <span class="k">def</span> <span class="nf">set_comp_para</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">R01_0</span><span class="o">=</span><span class="s1">&#39;r0_005&#39;</span><span class="p">,</span> <span class="n">R03_0</span><span class="o">=</span><span class="s1">&#39;r0_005&#39;</span><span class="p">,</span> <span class="n">dist_path_NM</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">dist_path_M</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                      <span class="n">R_NM</span><span class="o">=</span><span class="mf">2.9e-7</span><span class="p">,</span> <span class="n">R_M</span><span class="o">=</span><span class="mf">2.9e-7</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Set component parameters for non-magnetic and magnetic particle.</span>
+<span class="sd">        </span>
+<span class="sd">        Configures the particle size distribution (PSD) parameters from provided paths or sets</span>
+<span class="sd">        default values.</span>
+<span class="sd">        </span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        R01_0 : `str`, optional</span>
+<span class="sd">            Key for accessing the initial radius of NM particles from the PSD dictionary. Defaults to &#39;r0_005&#39;.</span>
+<span class="sd">        R03_0 : `str`, optional</span>
+<span class="sd">            Key for accessing the initial radius of M particles from the PSD dictionary. Defaults to &#39;r0_005&#39;.</span>
+<span class="sd">        dist_path_NM : `str`, optional</span>
+<span class="sd">            Path to the file containing the PSD dictionary for NM particles. If None, default radii are used.</span>
+<span class="sd">        dist_path_M : `str`, optional</span>
+<span class="sd">            Path to the file containing the PSD dictionary for M particles. If None, default radii are used.</span>
+<span class="sd">        R_NM : `float`, optional</span>
+<span class="sd">            Default radius for NM particles if `dist_path_NM` is not provided. Defaults to 2.9e-7.</span>
+<span class="sd">        R_M : `float`, optional</span>
+<span class="sd">            Default radius for M particles if `dist_path_M` is not provided. Defaults to 2.9e-7.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="p">(</span><span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">calc_init_N</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span><span class="n">dist_path_NM</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">dist_path_M</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">p</span><span class="o">.</span><span class="n">USE_PSD</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="n">psd_dict_NM</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">dist_path_NM</span><span class="p">,</span><span class="n">allow_pickle</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+            <span class="n">psd_dict_M</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">dist_path_M</span><span class="p">,</span><span class="n">allow_pickle</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">p</span><span class="o">.</span><span class="n">DIST1</span> <span class="o">=</span> <span class="n">dist_path_NM</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">p</span><span class="o">.</span><span class="n">DIST3</span> <span class="o">=</span> <span class="n">dist_path_M</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">p</span><span class="o">.</span><span class="n">R01</span> <span class="o">=</span> <span class="n">psd_dict_NM</span><span class="p">[</span><span class="n">R01_0</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">p</span><span class="o">.</span><span class="n">R03</span> <span class="o">=</span> <span class="n">psd_dict_M</span><span class="p">[</span><span class="n">R03_0</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">p</span><span class="o">.</span><span class="n">USE_PSD</span> <span class="o">=</span> <span class="kc">False</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">p</span><span class="o">.</span><span class="n">R01</span> <span class="o">=</span> <span class="n">R_NM</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">p</span><span class="o">.</span><span class="n">R03</span> <span class="o">=</span> <span class="n">R_M</span>
+        <span class="c1">## Set particle parameter for 1D PBE</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">p_NM</span><span class="o">.</span><span class="n">USE_PSD</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">p_M</span><span class="o">.</span><span class="n">USE_PSD</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">p</span><span class="o">.</span><span class="n">USE_PSD</span>
+        <span class="c1"># parameter for particle component 1 - NM</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">p_NM</span><span class="o">.</span><span class="n">R01</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">p</span><span class="o">.</span><span class="n">R01</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">p_NM</span><span class="o">.</span><span class="n">DIST1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">p</span><span class="o">.</span><span class="n">DIST1</span>
+        
+        <span class="c1"># parameter for particle component 2 - M</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">p_M</span><span class="o">.</span><span class="n">R01</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">p</span><span class="o">.</span><span class="n">R03</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">p_M</span><span class="o">.</span><span class="n">DIST1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">p</span><span class="o">.</span><span class="n">DIST3</span></div>
+        
+<div class="viewcode-block" id="opt_algo.calc_all_R"><a class="viewcode-back" href="../opt_algo.html#opt_algo.opt_algo.calc_all_R">[docs]</a>    <span class="k">def</span> <span class="nf">calc_all_R</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Calculate the radius for particles in all PBEs.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">p</span><span class="o">.</span><span class="n">calc_R</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">p_NM</span><span class="o">.</span><span class="n">calc_R</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">p_M</span><span class="o">.</span><span class="n">calc_R</span><span class="p">()</span></div>
+    
+    <span class="c1">## only for 1D-pop, </span>
+<div class="viewcode-block" id="opt_algo.set_init_N"><a class="viewcode-back" href="../opt_algo.html#opt_algo.opt_algo.set_init_N">[docs]</a>    <span class="k">def</span> <span class="nf">set_init_N</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sample_num</span><span class="p">,</span> <span class="n">exp_data_paths</span><span class="p">,</span> <span class="n">init_flag</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initialize the number concentration N for 1D populations based on experimental data.</span>
+<span class="sd">        </span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        sample_num : `int`</span>
+<span class="sd">            The number of sets of experimental data used for initialization.</span>
+<span class="sd">        exp_data_paths : `list of str`</span>
+<span class="sd">            Paths to the experimental data for initialization.</span>
+<span class="sd">        init_flag : `str`</span>
+<span class="sd">            The method to use for initialization: &#39;int&#39; for interpolation or &#39;mean&#39; for averaging</span>
+<span class="sd">            the initial sets.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">calc_all_R</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">set_init_N_1D</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">p_NM</span><span class="p">,</span> <span class="n">sample_num</span><span class="p">,</span> <span class="n">exp_data_paths</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">init_flag</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">set_init_N_1D</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">p_M</span><span class="p">,</span> <span class="n">sample_num</span><span class="p">,</span> <span class="n">exp_data_paths</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="n">init_flag</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">p</span><span class="o">.</span><span class="n">N</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">p</span><span class="o">.</span><span class="n">NS</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">p</span><span class="o">.</span><span class="n">NS</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">p</span><span class="o">.</span><span class="n">t_vec</span><span class="p">)))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">p</span><span class="o">.</span><span class="n">N</span><span class="p">[</span><span class="mi">1</span><span class="p">:,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">p_NM</span><span class="o">.</span><span class="n">N</span><span class="p">[</span><span class="mi">1</span><span class="p">:,</span> <span class="mi">0</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">p</span><span class="o">.</span><span class="n">N</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">p_M</span><span class="o">.</span><span class="n">N</span><span class="p">[</span><span class="mi">1</span><span class="p">:,</span> <span class="mi">0</span><span class="p">]</span></div>
+    
+<div class="viewcode-block" id="opt_algo.set_init_N_1D"><a class="viewcode-back" href="../opt_algo.html#opt_algo.opt_algo.set_init_N_1D">[docs]</a>    <span class="k">def</span> <span class="nf">set_init_N_1D</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pop</span><span class="p">,</span> <span class="n">sample_num</span><span class="p">,</span> <span class="n">exp_data_path</span><span class="p">,</span> <span class="n">init_flag</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initialize the number concentration N for a single 1D population using experimental data.</span>
+<span class="sd">        </span>
+<span class="sd">        It processes the experimental data to align with the population&#39;s discrete size grid,</span>
+<span class="sd">        using either interpolation or averaging based on the `init_flag`. Supports processing</span>
+<span class="sd">        multiple samples of experimental data for averaging purposes.</span>
+<span class="sd">        </span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        pop : :class:`pop.population`</span>
+<span class="sd">            The population instance (either NM or M) to initialize.</span>
+<span class="sd">        sample_num : `int`</span>
+<span class="sd">            Number of experimental data sets used for initialization.</span>
+<span class="sd">        exp_data_path : `str`</span>
+<span class="sd">            Path to the experimental data file.</span>
+<span class="sd">        init_flag : `str`</span>
+<span class="sd">            Initialization method: &#39;int&#39; for interpolation, &#39;mean&#39; for averaging.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">x_uni</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">calc_x_uni</span><span class="p">(</span><span class="n">pop</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">sample_num</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">x_uni_exp</span><span class="p">,</span> <span class="n">sumN_uni_init_sets</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">read_exp</span><span class="p">(</span><span class="n">exp_data_path</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">exp_data_path</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">traverse_path</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">exp_data_path</span><span class="p">)</span>
+            <span class="n">x_uni_exp</span><span class="p">,</span> <span class="n">sumN_uni_tem</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">read_exp</span><span class="p">(</span><span class="n">exp_data_path</span><span class="p">)</span>
+            <span class="n">sumN_uni_all_samples</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="n">x_uni_exp</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">t_all</span><span class="p">),</span> <span class="n">sample_num</span><span class="p">))</span>
+            <span class="n">sumN_uni_all_samples</span><span class="p">[:,</span> <span class="p">:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">sumN_uni_tem</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">sample_num</span><span class="p">):</span>
+                <span class="n">exp_data_path</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">traverse_path</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">exp_data_path</span><span class="p">)</span>
+                <span class="n">_</span><span class="p">,</span> <span class="n">sumN_uni_tem</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">read_exp</span><span class="p">(</span><span class="n">exp_data_path</span><span class="p">)</span>
+                <span class="n">sumN_uni_all_samples</span><span class="p">[:,</span> <span class="p">:,</span> <span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">sumN_uni_tem</span>
+            <span class="n">sumN_uni_all</span> <span class="o">=</span> <span class="n">sumN_uni_all_samples</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+            
+        <span class="n">sumN_uni_init_sets</span> <span class="o">=</span> <span class="n">sumN_uni_all</span><span class="p">[:,</span> <span class="bp">self</span><span class="o">.</span><span class="n">idt_init</span><span class="p">]</span>
+        <span class="n">sumN_uni_init</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">x_uni</span><span class="p">))</span>
+            
+        <span class="k">if</span> <span class="n">init_flag</span> <span class="o">==</span> <span class="s1">&#39;int&#39;</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">idx</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">x_uni_exp</span><span class="p">)):</span>
+                <span class="n">interp_time</span> <span class="o">=</span> <span class="n">interp1d</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">t_init</span><span class="p">,</span> <span class="n">sumN_uni_init_sets</span><span class="p">[</span><span class="n">idx</span><span class="p">,</span> <span class="p">:],</span> <span class="n">kind</span><span class="o">=</span><span class="s1">&#39;linear&#39;</span><span class="p">,</span> <span class="n">fill_value</span><span class="o">=</span><span class="s2">&quot;extrapolate&quot;</span><span class="p">)</span>
+                <span class="n">sumN_uni_init</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">interp_time</span><span class="p">(</span><span class="mf">0.0</span><span class="p">)</span>
+
+        <span class="k">elif</span> <span class="n">init_flag</span> <span class="o">==</span> <span class="s1">&#39;mean&#39;</span><span class="p">:</span>
+            <span class="n">sumN_uni_init</span> <span class="o">=</span> <span class="n">sumN_uni_init_sets</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+                
+        <span class="c1">## Remap q3 corresponding to the x value of the experimental data to x of the PBE</span>
+        <span class="c1"># kde = self.KDE_fit(x_uni_exp, q3_init)</span>
+        <span class="c1"># sumV_uni = self.KDE_score(kde, x_uni)</span>
+        <span class="c1"># q3_init = sumV_uni / sumV_uni.sum()</span>
+        <span class="n">inter_grid</span> <span class="o">=</span> <span class="n">interp1d</span><span class="p">(</span><span class="n">x_uni_exp</span><span class="p">,</span> <span class="n">sumN_uni_init</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="s1">&#39;linear&#39;</span><span class="p">,</span> <span class="n">fill_value</span><span class="o">=</span><span class="s2">&quot;extrapolate&quot;</span><span class="p">)</span>
+        <span class="n">sumN_uni_init</span> <span class="o">=</span> <span class="n">inter_grid</span><span class="p">(</span><span class="n">x_uni</span><span class="p">)</span>
+                
+        <span class="n">pop</span><span class="o">.</span><span class="n">N</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">pop</span><span class="o">.</span><span class="n">NS</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">pop</span><span class="o">.</span><span class="n">t_vec</span><span class="p">)))</span>
+        <span class="c1">## Because sumN_uni_init[0] = 0</span>
+        <span class="n">pop</span><span class="o">.</span><span class="n">N</span><span class="p">[</span><span class="mi">1</span><span class="p">:,</span> <span class="mi">0</span><span class="p">]</span><span class="o">=</span> <span class="n">sumN_uni_init</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+        <span class="n">thr</span> <span class="o">=</span> <span class="mf">1e-5</span>
+        <span class="n">pop</span><span class="o">.</span><span class="n">N</span><span class="p">[</span><span class="n">pop</span><span class="o">.</span><span class="n">N</span> <span class="o">&lt;</span> <span class="p">(</span><span class="n">thr</span> <span class="o">*</span> <span class="n">pop</span><span class="o">.</span><span class="n">N</span><span class="p">[</span><span class="mi">1</span><span class="p">:,</span> <span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">max</span><span class="p">())]</span><span class="o">=</span><span class="mi">0</span>     </div>
+        
+<div class="viewcode-block" id="opt_algo.calc_v_uni"><a class="viewcode-back" href="../opt_algo.html#opt_algo.opt_algo.calc_v_uni">[docs]</a>    <span class="k">def</span> <span class="nf">calc_v_uni</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pop</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Calculate unique volume values for a given population.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">setdiff1d</span><span class="p">(</span><span class="n">pop</span><span class="o">.</span><span class="n">V</span><span class="p">,</span> <span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">])</span><span class="o">*</span><span class="mf">1e18</span></div>
+    
+<div class="viewcode-block" id="opt_algo.calc_x_uni"><a class="viewcode-back" href="../opt_algo.html#opt_algo.opt_algo.calc_x_uni">[docs]</a>    <span class="k">def</span> <span class="nf">calc_x_uni</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pop</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Calculate unique particle diameters from volume values for a given population.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">v_uni</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">calc_v_uni</span><span class="p">(</span><span class="n">pop</span><span class="p">)</span>
+        <span class="c1"># Because the length unit in the experimental data is millimeters </span>
+        <span class="c1"># and in the simulation it is meters, so it needs to be converted </span>
+        <span class="c1"># before use.</span>
+        <span class="n">x_uni</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">v_uni</span><span class="p">)</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">x_uni</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span><span class="o">=</span><span class="p">(</span><span class="mi">6</span><span class="o">*</span><span class="n">v_uni</span><span class="o">/</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">)</span><span class="o">**</span><span class="p">(</span><span class="mi">1</span><span class="o">/</span><span class="mi">3</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">x_uni</span></div>
+        
+<div class="viewcode-block" id="opt_algo.re_calc_distribution"><a class="viewcode-back" href="../opt_algo.html#opt_algo.opt_algo.re_calc_distribution">[docs]</a>    <span class="k">def</span> <span class="nf">re_calc_distribution</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x_uni</span><span class="p">,</span> <span class="n">q3</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">sum_uni</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">flag</span><span class="o">=</span><span class="s1">&#39;all&#39;</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Recalculate distribution metrics for a given population and distribution data.</span>
+<span class="sd">        </span>
+<span class="sd">        Can operate on either q3 or sum_uni distribution data to calculate Q3, q3, and particle</span>
+<span class="sd">        diameters corresponding to specific percentiles (x_10, x_50, x_90).</span>
+<span class="sd">        </span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        x_uni : `array`</span>
+<span class="sd">            Unique particle diameters.</span>
+<span class="sd">        q3 : `array`, optional</span>
+<span class="sd">            q3 distribution data.</span>
+<span class="sd">        sum_uni : `array`, optional</span>
+<span class="sd">            sum_uni distribution data.</span>
+<span class="sd">        flag : `str`, optional</span>
+<span class="sd">            Specifies which metrics to return. Defaults to &#39;all&#39;, can be a comma-separated list</span>
+<span class="sd">            of &#39;q3&#39;, &#39;Q3&#39;, &#39;x_10&#39;, &#39;x_50&#39;, &#39;x_90&#39;.</span>
+<span class="sd">        </span>
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        `tuple`</span>
+<span class="sd">            Selected distribution metrics based on the `flag`. Can include q3, Q3, x_10, x_50,</span>
+<span class="sd">            and x_90 values.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">q3</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">q3_new</span> <span class="o">=</span> <span class="n">q3</span>
+            <span class="n">Q3_new</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">apply_along_axis</span><span class="p">(</span><span class="k">lambda</span> <span class="n">q3_slice</span><span class="p">:</span> 
+                                     <span class="bp">self</span><span class="o">.</span><span class="n">calc_Q3</span><span class="p">(</span><span class="n">x_uni</span><span class="p">,</span> <span class="n">q3</span><span class="o">=</span><span class="n">q3_slice</span><span class="p">),</span> <span class="mi">0</span><span class="p">,</span> <span class="n">q3</span><span class="p">)</span>
+
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">Q3_new</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">apply_along_axis</span><span class="p">(</span><span class="k">lambda</span> <span class="n">sum_uni_slice</span><span class="p">:</span> 
+                                     <span class="bp">self</span><span class="o">.</span><span class="n">calc_Q3</span><span class="p">(</span><span class="n">x_uni</span><span class="p">,</span> <span class="n">sum_uni</span><span class="o">=</span><span class="n">sum_uni_slice</span><span class="p">),</span> <span class="mi">0</span><span class="p">,</span> <span class="n">sum_uni</span><span class="p">)</span>
+            <span class="n">q3_new</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">apply_along_axis</span><span class="p">(</span><span class="k">lambda</span> <span class="n">Q3_slice</span><span class="p">:</span> 
+                                          <span class="bp">self</span><span class="o">.</span><span class="n">calc_q3</span><span class="p">(</span><span class="n">Q3_slice</span><span class="p">,</span> <span class="n">x_uni</span><span class="p">),</span> <span class="mi">0</span><span class="p">,</span> <span class="n">Q3_new</span><span class="p">)</span>
+        
+        <span class="n">dim</span> <span class="o">=</span> <span class="n">q3_new</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">x_10_new</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span>
+        <span class="n">x_50_new</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span>
+        <span class="n">x_90_new</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">idx</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">dim</span><span class="p">):</span>
+            <span class="n">x_10_new</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">interp</span><span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">Q3_new</span><span class="p">[:,</span> <span class="n">idx</span><span class="p">],</span> <span class="n">x_uni</span><span class="p">)</span>
+            <span class="n">x_50_new</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">interp</span><span class="p">(</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">Q3_new</span><span class="p">[:,</span> <span class="n">idx</span><span class="p">],</span> <span class="n">x_uni</span><span class="p">)</span>
+            <span class="n">x_90_new</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">interp</span><span class="p">(</span><span class="mf">0.9</span><span class="p">,</span> <span class="n">Q3_new</span><span class="p">[:,</span> <span class="n">idx</span><span class="p">],</span> <span class="n">x_uni</span><span class="p">)</span>
+        <span class="n">outputs</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;q3&#39;</span><span class="p">:</span> <span class="n">q3_new</span><span class="p">,</span>
+        <span class="s1">&#39;Q3&#39;</span><span class="p">:</span> <span class="n">Q3_new</span><span class="p">,</span>
+        <span class="s1">&#39;x_10&#39;</span><span class="p">:</span> <span class="n">x_10_new</span><span class="p">,</span>
+        <span class="s1">&#39;x_50&#39;</span><span class="p">:</span> <span class="n">x_50_new</span><span class="p">,</span>
+        <span class="s1">&#39;x_90&#39;</span><span class="p">:</span> <span class="n">x_90_new</span><span class="p">,</span>
+        <span class="p">}</span>
+        
+        <span class="k">if</span> <span class="n">flag</span> <span class="o">==</span> <span class="s1">&#39;all&#39;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">outputs</span><span class="o">.</span><span class="n">values</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">flags</span> <span class="o">=</span> <span class="n">flag</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;,&#39;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">outputs</span><span class="p">[</span><span class="n">f</span><span class="o">.</span><span class="n">strip</span><span class="p">()]</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">flags</span> <span class="k">if</span> <span class="n">f</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="ow">in</span> <span class="n">outputs</span><span class="p">)</span></div>
+        
+<div class="viewcode-block" id="opt_algo.calc_Q3"><a class="viewcode-back" href="../opt_algo.html#opt_algo.opt_algo.calc_Q3">[docs]</a>    <span class="k">def</span> <span class="nf">calc_Q3</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x_uni</span><span class="p">,</span> <span class="n">q3</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">sum_uni</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Calculate the cumulative distribution Q3 from q3 or sum_uni distribution data.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">Q3</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">q3</span><span class="p">)</span> <span class="k">if</span> <span class="n">q3</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">sum_uni</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">q3</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">Q3</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="n">sum_uni</span><span class="p">)</span><span class="o">/</span><span class="n">sum_uni</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">Q3</span><span class="p">)):</span>
+                    <span class="c1"># Q3[i] = np.trapz(q3[:i+1], x_uni[:i+1])</span>
+                    <span class="c1">## Euler backward</span>
+                    <span class="n">Q3</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">Q3</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">q3</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">*</span> <span class="p">(</span><span class="n">x_uni</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="n">x_uni</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+        <span class="k">return</span> <span class="n">Q3</span></div>
+<div class="viewcode-block" id="opt_algo.calc_sum_uni"><a class="viewcode-back" href="../opt_algo.html#opt_algo.opt_algo.calc_sum_uni">[docs]</a>    <span class="k">def</span> <span class="nf">calc_sum_uni</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">Q3</span><span class="p">,</span> <span class="n">sum_total</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Calculate the sum_uni distribution from the Q3 cumulative distribution and total sum.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">sum_uni</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">Q3</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">Q3</span><span class="p">)):</span>
+            <span class="n">sum_uni</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">sum_total</span> <span class="o">*</span> <span class="nb">max</span><span class="p">((</span><span class="n">Q3</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span><span class="n">Q3</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="p">),</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">sum_uni</span></div>
+<div class="viewcode-block" id="opt_algo.calc_q3"><a class="viewcode-back" href="../opt_algo.html#opt_algo.opt_algo.calc_q3">[docs]</a>    <span class="k">def</span> <span class="nf">calc_q3</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">Q3</span><span class="p">,</span> <span class="n">x_uni</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Calculate the q3 distribution from the Q3 cumulative distribution.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">q3</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">Q3</span><span class="p">)</span>
+        <span class="n">q3</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="n">Q3</span><span class="p">)</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="n">x_uni</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">q3</span></div></div>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Frank Rhein, Haoran Ji.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

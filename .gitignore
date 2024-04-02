@@ -5,7 +5,9 @@
 *.npz
 *.npy
 *.pdf
+*.tar.gz
 
 # ignore ordner
 __pycache__
 myenv
+docs/_build/
