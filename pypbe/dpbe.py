@@ -14,6 +14,7 @@ from .utils.plotter import plotter as pt
 from .utils.plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
 ## For math
 from .utils.func.func_math import float_in_list, float_equal, isZero
+from .utils.func_temp import RK_Radau_debug as RK
 
 ### ------ POPULATION CLASS DEFINITION ------ ###
 class population():
@@ -64,15 +65,26 @@ class population():
             elif self.disc == 'uni':
                 rhs = jit.get_dNdt_1d_uni                
                 args=(self.V,self.F_M,self.NS,self.THR_DN)
-            self.RES = integrate.solve_ivp(rhs, 
-                                           [0, t_max], 
-                                           self.N[:,0], t_eval=t_vec,
-                                           args=args,
-                                           method='Radau',first_step=0.1,rtol=1e-1)
+                
+            # self.RES = integrate.solve_ivp(rhs, 
+            #                                 [0, t_max], 
+            #                                 self.N[:,0], t_eval=t_vec,
+            #                                 args=args,
+            #                                 method='Radau',first_step=0.1,rtol=1e-1)
             
-            # Reshape and save result to N and t_vec
-            self.t_vec = self.RES.t
-            self.N = self.RES.y
+            # # Reshape and save result to N and t_vec
+            # self.t_vec = self.RES.t
+            # self.N = self.RES.y
+            
+            ode_sys = RK.radau_ii_a(rhs, self.N[:,0], t_eval=t_vec,
+                                    args = args,
+                                    dt_first=0.1)
+            y_evaluated, y_res_tem, t_res_tem = ode_sys.solve_ode()
+            
+            self.t_vec = t_vec 
+            self.N = y_evaluated
+            self.y_res_tem = y_res_tem
+            self.t_res_tem = t_res_tem
             
         elif self.dim == 2:
             # Define right-hand-side function depending on discretization
@@ -83,15 +95,24 @@ class population():
             elif self.disc == 'uni':
                 rhs = jit.get_dNdt_2d_uni   
                 args=(self.V,self.V1,self.V3,self.F_M,self.NS,self.THR_DN)
-            self.RES = integrate.solve_ivp(rhs, 
-                                           [0, t_max], 
-                                           np.reshape(self.N[:,:,0],-1), t_eval=t_vec,
-                                           args=args,
-                                           method='Radau',first_step=0.1,rtol=1e-1)
+            # self.RES = integrate.solve_ivp(rhs, 
+            #                                 [0, t_max], 
+            #                                 np.reshape(self.N[:,:,0],-1), t_eval=t_vec,
+            #                                 args=args,
+            #                                 method='Radau',first_step=0.1,rtol=1e-1)
             
-            # Reshape and save result to N and t_vec
-            self.t_vec = self.RES.t
-            self.N = self.RES.y.reshape((self.NS,self.NS,len(self.RES.t)))
+            # # Reshape and save result to N and t_vec
+            # self.t_vec = self.RES.t
+            # self.N = self.RES.y.reshape((self.NS,self.NS,len(self.RES.t)))
+            ode_sys = RK.radau_ii_a(rhs, np.reshape(self.N[:,:,0],-1), t_eval=t_vec,
+                                    args = args,
+                                    dt_first=0.1)
+            y_evaluated, y_res_tem, t_res_tem = ode_sys.solve_ode()
+            
+            self.t_vec = t_vec 
+            self.N = y_evaluated.reshape((self.NS,self.NS,len(t_vec)))
+            self.y_res_tem = y_res_tem
+            self.t_res_tem = t_res_tem
         
         elif self.dim == 3:
             # Define right-hand-side function depending on discretization
@@ -110,7 +131,7 @@ class population():
             self.N = self.RES.y.reshape((self.NS+3,self.NS+3,self.NS+3,len(self.RES.t)))
             self.t_vec = self.RES.t
         # Monitor whether integration are completed    
-        self.calc_status = self.RES.status    
+        self.calc_status = not ode_sys.dt_is_too_small   
     ## Solve ODE (forward Euler scheme):
     def solve_PBE_Euler(self):
         """ `(Legacy)` Simple solver with forward Euler. Use ``solve_PBE( )`` instead. """
@@ -198,7 +219,7 @@ class population():
             self.X1_a = np.ones(self.NS) 
             ## Large particle agglomeration may cause the integration to not converge. 
             ## A Limit can be placed on the particle size.
-            aggl_crit_ids = np.where(self.V < self.aggl_crit*self.V[1])[0]
+            aggl_crit_ids = np.where(self.V <= self.V[1]*self.S**(self.aggl_crit))[0]
             if (aggl_crit_ids.size > 0 and aggl_crit_ids.size < len(self.V)):
                 self.aggl_crit_id = aggl_crit_ids[-1]  
             else: 
@@ -259,8 +280,8 @@ class population():
                         self.X3_a[i,j] = A3[j]/(A1[i]+A3[j])
             ## Large particle agglomeration may cause the integration to not converge. 
             ## A Limit can be placed on the particle size.
-            aggl_crit_ids1 = np.where(self.V1 < self.aggl_crit*self.V1[1])[0]
-            aggl_crit_ids2 = np.where(self.V3 < self.aggl_crit*self.V3[1])[0]
+            aggl_crit_ids1 = np.where(self.V1 <= self.S**(self.aggl_crit)*self.V1[1])[0]
+            aggl_crit_ids2 = np.where(self.V3 <= self.S**(self.aggl_crit)*self.V3[1])[0]
             self.aggl_crit_id = np.zeros(2, dtype=int)
             if (aggl_crit_ids1.size > 0 and aggl_crit_ids1.size < len(self.V1)):
                 self.aggl_crit_id[0] = aggl_crit_ids1[-1]  
@@ -828,7 +849,7 @@ class population():
                     else:
                         self.B_R[idx] = (self.pl_P1 * self.G * (self.V1[a+1]/self.V1[1])**self.pl_P2 + \
                                          self.pl_P3 * self.G * (self.V3[b+1]/self.V3[1])**self.pl_P4) * \
-                                        self.pl_P5 * self.X1_vol ** self.pl_P6
+                                        self.pl_P5 * self.X1_vol[idx] ** self.pl_P6
             
     ## Calculate integrated breakage function matrix.         
     def calc_int_B_F(self):

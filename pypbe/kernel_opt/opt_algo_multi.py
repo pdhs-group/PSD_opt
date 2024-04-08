@@ -15,10 +15,19 @@ class opt_algo_multi(opt_algo):
         
     def calc_delta(self, corr_beta=None, alpha_prim=None, scale=1, sample_num=1, exp_data_path=None):  
         self.calc_all_pop(corr_beta, alpha_prim, self.t_vec)
-        
-        delta = self.calc_delta_tem(sample_num, exp_data_path[0], scale, self.p)
-        delta_NM = self.calc_delta_tem(sample_num, exp_data_path[1], scale, self.p_NM)
-        delta_M = self.calc_delta_tem(sample_num, exp_data_path[2], scale, self.p_M)
+
+        if self.p.calc_status:
+            delta = self.calc_delta_tem(sample_num, exp_data_path[0], scale, self.p)
+        else:
+            delta = scale
+        if self.p_NM.calc_status:
+            delta_NM = self.calc_delta_tem(sample_num, exp_data_path[1], scale, self.p_NM)
+        else:
+            delta_NM = scale
+        if self.p_M.calc_status:
+            delta_M = self.calc_delta_tem(sample_num, exp_data_path[2], scale, self.p_M)
+        else:
+            delta_M = scale
         # increase the weight of the 2D case
         delta_sum = delta * self.weight_2d + delta_NM + delta_M
             
@@ -36,16 +45,25 @@ class opt_algo_multi(opt_algo):
             del params["corr_agg"]
         
         self.calc_all_pop(params, self.t_vec)
-        if self.p.calc_status == 0 and self.p_NM.calc_status == 0 and self.p_M.calc_status == 0:
+        if self.p.calc_status:
             delta = self.calc_delta_tem(sample_num, exp_data_path[0], scale, self.p)
-            delta_NM = self.calc_delta_tem(sample_num, exp_data_path[1], scale, self.p_NM)
-            delta_M = self.calc_delta_tem(sample_num, exp_data_path[2], scale, self.p_M)
-            # increase the weight of the 2D case
-            delta_sum = delta * self.weight_2d + delta_NM + delta_M
-                
-            return delta_sum
         else:
-            return scale
+            print('p not converged')
+            delta = scale
+        if self.p_NM.calc_status:
+            delta_NM = self.calc_delta_tem(sample_num, exp_data_path[1], scale, self.p_NM)
+        else:
+            print('p_NM not converged')
+            delta_NM = scale
+        if self.p_M.calc_status:    
+            delta_M = self.calc_delta_tem(sample_num, exp_data_path[2], scale, self.p_M)
+        else:
+            print('p_M not converged')
+            delta_M = scale
+            # increase the weight of the 2D case
+        delta_sum = delta * self.weight_2d + delta_NM + delta_M
+        return delta_sum        
+
         
     def calc_all_pop(self, params=None, t_vec=None):
         self.calc_pop(self.p_NM, params, t_vec)

@@ -13,8 +13,8 @@ config = {
     
     'algo_params': {
         'dim': 2,
-        't_init' : np.array([1, 3, 5, 7]),
-        't_vec' : np.arange(0, 21, 2, dtype=float),
+        't_init' : np.array([0.1, 0.3, 0.5, 0.9]),
+        't_vec' : np.arange(0, 10, 1, dtype=float),
         'add_noise': True,
         'smoothing': True,
         'noise_type': 'Mul',
@@ -22,7 +22,7 @@ config = {
         'sample_num': 5,
         'method': 'BO',
         'n_iter': 100,
-        'calc_init_N': False,
+        'calc_init_N': True,
         ## delta_flag = q3: use q3
         ## delta_flag = Q3: use Q3
         ## delta_flag = x_10: use x_10
@@ -33,39 +33,51 @@ config = {
         ##   'RMSE': Root Mean Squared Error
         ##   'MAE': Mean Absolute Error
         ##   'KL': Kullback–Leibler divergence(Only q3 and Q3 are compatible with KL) 
-        'cost_func_type': 'MSE',
+        'cost_func_type': 'KL',
         },
     
     ## PBE parameters
     'pop_params': {
         'NS' : 15,
         'S' : 4,
-        'BREAKRVAL' : 3,
+        'BREAKRVAL' : 4,
         'BREAKFVAL' : 5,
-        'aggl_crit' : 1e20,
+        ## aggl_crit: The sequence number of the particle that allows further agglomeration
+        'aggl_crit' : 7,
         'process_type' : "mix",
-        'pl_v' : 2,
+        'pl_v' : 1,
         'pl_q' : 1,
         'pl_P1' : 1e-4,
         'pl_P2' : 0.5,
+        'pl_P3' : 2e-4,
+        'pl_P4' : 0.4,
+        'pl_P5' : 3e-4,
+        'pl_P6' : 0.3,
         'COLEVAL' : 2,
         'EFFEVAL' : 1,
-        'SIZEEVAL' : 1,
+        'SIZEEVAL' : 2,
         'alpha_prim': np.array([1, 0.5, 1]),
-        'CORR_BETA' : 150,
+        # 'alpha_prim': 0.5,
+        'CORR_BETA' : 15,
         },
     
     ## Parameters which should be optimized
     'opt_params' : {
-        'corr_agg_0': {'bounds': (-3, 3), 'log_scale': True},
-        'corr_agg_1': {'bounds': (-3, 3), 'log_scale': True},
-        'corr_agg_2': {'bounds': (-3, 3), 'log_scale': True},
-        'pl_v': {'bounds': (0.1, 10), 'log_scale': False},
+        'corr_agg_0': {'bounds': (-1.0, 1.0), 'log_scale': True},
+        'corr_agg_1': {'bounds': (-1.0, 1.0), 'log_scale': True},
+        'corr_agg_2': {'bounds': (-1.0, 1.0), 'log_scale': True},
+        'pl_v': {'bounds': (0.1, 2), 'log_scale': False},
+        'pl_P1': {'bounds': (-8, -4), 'log_scale': True},
+        'pl_P2': {'bounds': (0.1, 1), 'log_scale': False},
+        'pl_P3': {'bounds': (-8, -4), 'log_scale': True},
+        'pl_P4': {'bounds': (0.1, 1), 'log_scale': False},
+        'pl_P5': {'bounds': (-8, -4), 'log_scale': True},
+        'pl_P6': {'bounds': (0.1, 1), 'log_scale': False},
 
     },
     ## The diameter ratio of the primary particles can also be used as a variable
-    'R_NM': 8.68e-7,
-    'R_M': 8.68e-7*1,
+    'R_NM': 1.18e-7,
+    'R_M': 1.18e-7*1,
     
     ## The error of 2d pop may be more important, so weight needs to be added
     'weight_2d': 1,

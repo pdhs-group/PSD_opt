@@ -6,14 +6,14 @@ Created on Fri Jan  5 09:40:35 2024
 """
 import sys
 import os
-sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),".."))
+sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),"../../.."))
 import numpy as np
-from general_scripts.generate_psd import full_psd
-import opt_find as opt
-import opt_config as conf
+# from general_scripts.generate_psd import full_psd
+import pypbe.kernel_opt.opt_find as opt
+import config.opt_config as conf
 ## For plots
 import matplotlib.pyplot as plt
-import plotter.plotter as pt   
+import pypbe.utils.plotter.plotter as pt   
 
 def visualize_distribution_smoothing(Opt, pop, x_uni, q3, Q3, sumvol_uni, ax=None,fig=None,
                            close_all=False,clr='k',scl_a4=1,figsze=[12.8,6.4*1.5]):
@@ -110,6 +110,7 @@ def visualize_distribution_smoothing_v(Opt, pop, v_uni, q3, Q3, ax=None,fig=None
     plt.tight_layout()    
     
 if __name__ == '__main__':
+    smoothing_test = True
     #%%  Input for Opt
     algo_params = conf.config['algo_params']
     pop_params = conf.config['pop_params']
@@ -163,23 +164,32 @@ if __name__ == '__main__':
     
     ## Calculate PBE direkt with psd-data, result is raw exp-data
     find.algo.calc_all_pop()
+    
     # find.algo.calc_pop(find.algo.p)      
+    # N = find.algo.p.N
+    # y_res_tem = find.algo.p.y_res_tem
+    # t_res_tem = find.algo.p.t_res_tem
+    # N0 = y_res_tem[:,0]
+    # NE = y_res_tem[:,-1]
+    # V_p = find.algo.p.V
+    # print(np.sum(N0*V_p), np.sum(NE*V_p))
     
     # ## Test the influence of Total number concentration to q3
     # find.algo.p_M.V01 *= 10
     # find.algo.cal_pop(find.algo.p_M, find.algo.corr_beta, find.algo.alpha_prim[0])
     
-    x_uni, q3, Q3, sumvol_uni = find.algo.p.return_distribution(t=-1, flag='x_uni, q3, Q3, sumvol_uni')
-    v_uni = find.algo.calc_v_uni(find.algo.p)
-    visualize_distribution_smoothing(find, find.algo.p, x_uni, q3, Q3, sumvol_uni)
-    if find.multi_flag:
-        x_uni_NM, q3_NM, Q3_NM, sumvol_uni_NM = find.algo.p_NM.return_distribution(t=-1, flag='x_uni, q3, Q3, sumvol_uni')
-        v_uni_NM = find.algo.calc_v_uni(find.algo.p_NM)
-        visualize_distribution_smoothing(find, find.algo.p_NM, x_uni_NM, q3_NM, Q3_NM, sumvol_uni_NM)
-    if find.multi_flag:    
-        x_uni_M, q3_M, Q3_M, sumvol_uni_M = find.algo.p_M.return_distribution(t=-1, flag='x_uni, q3, Q3, sumvol_uni')
-        v_uni_M = find.algo.calc_v_uni(find.algo.p_M)
-        visualize_distribution_smoothing(find, find.algo.p_M, x_uni_M, q3_M, Q3_M, sumvol_uni_M)
+    if smoothing_test:
+        x_uni, q3, Q3, sumvol_uni = find.algo.p.return_distribution(t=-1, flag='x_uni, q3, Q3, sumvol_uni')
+        v_uni = find.algo.calc_v_uni(find.algo.p)
+        visualize_distribution_smoothing(find, find.algo.p, x_uni, q3, Q3, sumvol_uni)
+        if find.multi_flag:
+            x_uni_NM, q3_NM, Q3_NM, sumvol_uni_NM = find.algo.p_NM.return_distribution(t=-1, flag='x_uni, q3, Q3, sumvol_uni')
+            v_uni_NM = find.algo.calc_v_uni(find.algo.p_NM)
+            visualize_distribution_smoothing(find, find.algo.p_NM, x_uni_NM, q3_NM, Q3_NM, sumvol_uni_NM)
+        if find.multi_flag:    
+            x_uni_M, q3_M, Q3_M, sumvol_uni_M = find.algo.p_M.return_distribution(t=-1, flag='x_uni, q3, Q3, sumvol_uni')
+            v_uni_M = find.algo.calc_v_uni(find.algo.p_M)
+            visualize_distribution_smoothing(find, find.algo.p_M, x_uni_M, q3_M, Q3_M, sumvol_uni_M)
     
     # visualize_distribution_smoothing_v(find, find.algo.p, v_uni, q3, Q3)
     # visualize_distribution_smoothing_v(find, find.algo.p_NM, v_uni_NM, q3_NM, Q3_NM)

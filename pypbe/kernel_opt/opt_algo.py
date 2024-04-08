@@ -564,6 +564,10 @@ class opt_algo():
             self.set_pop_para(self.p_NM, pop_params)
         if hasattr(self, 'p_M'):
             self.set_pop_para(self.p_M, pop_params)
+            ## P3 and P4 correspond to the breakage rate parameters of magnetic particles
+            if 'BREAKRVAL' in pop_params and pop_params['BREAKRVAL'] == 4:
+                self.p_M.pl_P1 = pop_params['pl_P3']
+                self.p_M.pl_P2 = pop_params['pl_P4']
         
         self.set_init_pop_para_flag = True
 
@@ -596,7 +600,7 @@ class opt_algo():
                 setattr(pop, key, value)
         
     def set_comp_para(self, R01_0='r0_005', R03_0='r0_005', dist_path_NM=None, dist_path_M=None,
-                      R_NM=2.9e-7, R_M=2.9e-7,R01_0_scl=1,R03_0_scl=1):
+                      R_NM=2.9e-7, R_M=2.9e-7,R01_0_scl=1e-2,R03_0_scl=1e-2):
         """
         Set component parameters for non-magnetic and magnetic particle.
         
