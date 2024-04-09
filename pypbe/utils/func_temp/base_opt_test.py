@@ -27,24 +27,14 @@ def normal_test():
     end_time = time.time()
     elapsed_time = end_time - start_time
     print(f"The execution of optimierer takes：{elapsed_time} seconds")
-        
-    fig_mix = find.visualize_distribution(find.algo.p, pop_params, 
-                                opt_values, exp_data_path=None)
-    # fig_NM = find.visualize_distribution(find.algo.p_NM, find.algo.corr_beta, find.algo.alpha_prim[0], 
-    #                             corr_beta_opt, alpha_prim_opt[0], exp_data_path=None)
-    # fig_M = find.visualize_distribution(find.algo.p_M, find.algo.corr_beta, find.algo.alpha_prim[2], 
-    #                             corr_beta_opt, alpha_prim_opt[2], exp_data_path=None)
-    find.save_as_png(fig_mix, "PSD")
-    # find.save_as_png(fig_NM, "PSD-NM")
-    # find.save_as_png(fig_M, "PSD-M")
     
     return delta_opt, opt_values
     
 def calc_N_test():
     find.algo.calc_init_N = False
     pth = os.path.dirname( __file__ )
-    dist_path_1 = os.path.join(pth, "..", "data", "PSD_data", conf.config['dist_scale_1'])
-    find.algo.set_comp_para('r0_001', 'r0_001', dist_path_1, dist_path_1)
+    dist_path_1 = os.path.join(pth, "..", "..","data", "PSD_data", conf.config['dist_scale_1'])
+    find.algo.set_comp_para('r0_001', 'r0_001', dist_path_1, dist_path_1,R01_0_scl=1e-1,R03_0_scl=1e-1)
     
     fig=plt.figure()    
     axq3=fig.add_subplot(1,1,1)
@@ -54,7 +44,7 @@ def calc_N_test():
     axq3_M=fig_M.add_subplot(1,1,1)
     
     ## Calculate PBE direkt with psd-data, result is raw exp-data
-    find.algo.calc_all_pop(find.algo.corr_beta, find.algo.alpha_prim, find.algo.t_all)
+    find.algo.calc_all_pop()
     return_pop_num_distribution(find.algo.p, axq3, fig, clr='b', q3lbl='q3_psd')
     q3_psd = return_pop_num_distribution(find.algo.p_NM, axq3_NM, fig_NM, clr='b', q3lbl='q3_psd')
     return_pop_num_distribution(find.algo.p_M, axq3_M, fig_M, clr='b', q3lbl='q3_psd')
@@ -65,9 +55,9 @@ def calc_N_test():
     N_exp_1D = find.algo.p_NM.N
     ## Calculate PBE with exp-data
     find.algo.calc_init_N = True
-    find.algo.set_comp_para(R_NM=8.68e-7, R_M=8.68e-7)
+    find.algo.set_comp_para(R_NM=8.68e-7, R_M=8.68e-7,R01_0_scl=1e-1,R03_0_scl=1e-1)
     find.algo.set_init_N(find.algo.sample_num, exp_data_paths, 'mean')
-    find.algo.calc_all_pop(find.algo.corr_beta, find.algo.alpha_prim, find.algo.t_all)
+    find.algo.calc_all_pop()
     return_pop_num_distribution(find.algo.p, axq3, fig, clr='r', q3lbl='q3_exp')
     q3_exp = return_pop_num_distribution(find.algo.p_NM, axq3_NM, fig_NM, clr='r', q3lbl='q3_exp')
     return_pop_num_distribution(find.algo.p_M, axq3_M, fig_M, clr='r', q3lbl='q3_exp')   
@@ -81,8 +71,7 @@ def calc_N_test():
 
 def return_pop_num_distribution(pop, axq3=None,fig=None, clr='b', q3lbl='q3'):
 
-    x_uni = find.algo.calc_x_uni(pop)
-    q3, Q3, sumvol_uni = pop.return_distribution(t=-1, flag='q3, Q3, sumvol_uni')
+    x_uni, q3, Q3, sumvol_uni = pop.return_distribution(t=-1, flag='x_uni, q3, Q3,sumvol_uni')
     # kde = find.algo.KDE_fit(x_uni, q3)
     # q3_sm = find.algo.KDE_score(kde, x_uni)
 
@@ -103,6 +92,9 @@ def return_pop_num_distribution(pop, axq3=None,fig=None, clr='b', q3lbl='q3'):
     #                         lbl='sumN_uni',clr='r',mrk='o') 
     
     df = pd.DataFrame(data=q3_sm, index=x_uni)
+    axq3.grid('minor')
+    axq3.set_xscale('log')
+    # axq3.set_yscale('log')
     return df
 
 def return_pop_distribution(pop, axq3=None,fig=None, clr='b', q3lbl='q3'):
@@ -172,8 +164,7 @@ if __name__ == '__main__':
     find.algo.set_init_pop_para(pop_params)
     
     ## 1. The diameter ratio of the primary particles can also be used as a variable
-    find.algo.set_comp_para(R_NM=conf.config['R_NM'], R_M=conf.config['R_M'])
-    
+    find.algo.set_comp_para(R_NM=conf.config['R_NM'], R_M=conf.config['R_M'],R01_0_scl=1e-1,R03_0_scl=1e-1)
     ## 5. Weight of 2D data
     ## The error of 2d pop may be more important, so weight needs to be added
     find.algo.weight_2d = conf.config['weight_2d']
@@ -206,7 +197,18 @@ if __name__ == '__main__':
     # find.algo.set_comp_para('r0_001', 'r0_001', dist_path_1, dist_path_1)
     # find.generate_data(pop_params, find.algo.sample_num, add_info='_para_15.0_0.2_0.6_0.8_1')
     
+    # Run an optimization and generate graphs of the results
     delta_opt, opt_values = normal_test()
+    fig_mix = find.visualize_distribution(find.algo.p, pop_params, 
+                                opt_values, exp_data_path=None,log_output=True)
+    fig_NM = find.visualize_distribution(find.algo.p_NM, pop_params,  
+                                opt_values, exp_data_path=None,log_output=True)
+    fig_M = find.visualize_distribution(find.algo.p_M, pop_params, 
+                                opt_values, exp_data_path=None,log_output=True)
+    find.save_as_png(fig_mix, "PSD")
+    find.save_as_png(fig_NM, "PSD-NM")
+    find.save_as_png(fig_M, "PSD-M")
+    
         
     # N_exp, N_calc, N_exp_1D, N_calc_1D, q3_psd, q3_exp = calc_N_test()
     

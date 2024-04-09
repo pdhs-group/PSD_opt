@@ -6,7 +6,7 @@ Read or interpolate experimental data based on the time step of the simulated da
 
 @author: px2030
 """
-
+import os
 import pandas as pd
 from datetime import datetime, timedelta
 from scipy.interpolate import interp1d
@@ -17,6 +17,7 @@ class write_read_exp():
         
         if read:
             # read the original data
+            self.file_name = os.path.basename(path_exp_data)
             self.exp_data = pd.read_excel(path_exp_data)
             self.exp_data = self.exp_data.set_index('Circular Equivalent Diameter')
                     
@@ -81,7 +82,7 @@ class write_read_exp():
             # make sure that t_exp not out of the range
             # if t_exp < min(time_points) or t_exp > max(time_points):
             if t_exp < 0 or t_exp > max(time_points):
-                raise ValueError("The experimental time is out of the range of the data table.")
+                raise ValueError(f"The experimental time is out of the range of the data file {self.file_name}.")
             
             # interpolation for time
             interpolated_data = {}

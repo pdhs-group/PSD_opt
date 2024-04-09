@@ -8,7 +8,7 @@ import sys
 import os
 sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),"../../.."))
 import numpy as np
-# from general_scripts.generate_psd import full_psd
+from pypbe.utils.general_scripts.generate_psd import full_psd
 import pypbe.kernel_opt.opt_find as opt
 import config.opt_config as conf
 ## For plots
@@ -115,6 +115,16 @@ if __name__ == '__main__':
     algo_params = conf.config['algo_params']
     pop_params = conf.config['pop_params']
     
+    pop_params['CORR_BETA'] = 10.0
+    pop_params['alpha_prim'] = np.array([0.5, 0.5, 0.5])
+    pop_params['pl_v'] = 2
+    pop_params['pl_P1'] = 1e-2
+    pop_params['pl_P2'] = 1e-1
+    pop_params['pl_P3'] = 1e-2
+    pop_params['pl_P4'] = 1e-1
+    pop_params['pl_P5'] = 1e-2
+    pop_params['pl_P6'] = 1.0
+    
     ## Instantiate find and algo.
     ## The find class determines how the experimental 
     ## data is used, while algo determines the optimization process.
@@ -132,7 +142,7 @@ if __name__ == '__main__':
     find.algo.set_init_pop_para(pop_params)
     
     ## 1. The diameter ratio of the primary particles can also be used as a variable
-    find.algo.set_comp_para(R_NM=1e-6, R_M=1e-6)
+    # find.algo.set_comp_para(R_NM=conf.config['R_NM'], R_M=conf.config['R_M'],R01_0_scl=1e-1,R03_0_scl=1e-1)
     
     delta_flag_target = ['','q3','Q3','x_10','x_50','x_90']
     
@@ -146,21 +156,19 @@ if __name__ == '__main__':
     ## wait to write hier 
    
     ## Input for generating psd-data
-    # x50 = 1   # /um
-    # resigma = 1.5
-    # minscale = 1e-3
-    # maxscale = 1e3
-    # dist_path = full_psd(x50, resigma, minscale=minscale, maxscale=maxscale, plot_psd=True)
+    # x50 = 2   # /um
+    # resigma = 0.15
+    # minscale = 0.5
+    # maxscale = 2
+    # dist_path = full_psd(x50, resigma, minscale=minscale, maxscale=maxscale, plot_psd=False)
     # psd_dict = np.load(dist_path,allow_pickle=True).item()
     
     ## Reinitialization of pop equations using psd data  
     find.algo.calc_init_N = False
     pth = os.path.dirname( __file__ )
-    # dist_path_1 = os.path.join(pth, "..", "data", "PSD_data", conf.config['dist_scale_1'])
+    dist_path_1 = os.path.join(pth, "..", "..","data", "PSD_data", conf.config['dist_scale_1'])
     # dist_path_1 = dist_path
-    # find.algo.set_comp_para('r0_001', 'r0_001', dist_path_1, dist_path_1,R01_0_scl=1,R03_0_scl=1)
-    # find.algo.corr_beta = 150
-    # find.algo.alpha_prim = np.array([1, 1, 1])
+    find.algo.set_comp_para('r0_001', 'r0_001', dist_path_1, dist_path_1,R01_0_scl=1e-1,R03_0_scl=1e-1)
     
     ## Calculate PBE direkt with psd-data, result is raw exp-data
     find.algo.calc_all_pop()

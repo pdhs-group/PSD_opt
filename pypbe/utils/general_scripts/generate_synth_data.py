@@ -29,10 +29,10 @@ def calc_function(R01_0, R03_0, dist_path_NM, dist_path_M, var_pop_params):
     # find.algo.set_comp_para(R_NM=conf.config['R_NM'], R_M=conf.config['R_M'])
     
     find.algo.weight_2d = conf.config['weight_2d']
+    find.algo.calc_init_N = False
+    find.algo.set_comp_para(R01_0, R03_0, dist_path_NM, dist_path_M,R01_0_scl=1e-1,R03_0_scl=1e-1)
     
-    find.algo.set_comp_para(R01_0, R03_0, dist_path_NM, dist_path_M)
-    
-    find.algo.calc_all_pop(var_pop_params, find.algo.t_vec)
+    # find.algo.calc_all_pop(var_pop_params, find.algo.t_vec)
     # calc_status = find.algo.p.calc_status
     # calc_NM_status = find.algo.p_NM.calc_status
     # calc_M_status = find.algo.p_M.calc_status
@@ -50,7 +50,7 @@ def calc_function(R01_0, R03_0, dist_path_NM, dist_path_M, var_pop_params):
     find.generate_data(var_pop_params, find.algo.sample_num, add_info=add_info)
     
 if __name__ == '__main__':
-    generate_new_psd = False
+    generate_new_psd = True
     
     if generate_new_psd:
         ## Input for generating psd-data
@@ -68,7 +68,7 @@ if __name__ == '__main__':
         dist_path_10 = os.path.join(pth, "..","..", "data", "PSD_data", conf.config['dist_scale_10'])
 
     ## define the range of corr_beta
-    var_corr_beta = np.array([1e1, 1e0, 1e1])
+    var_corr_beta = np.array([1e-2, 1e0, 1e2])
     # var_corr_beta = np.array([1e-2])
     ## define the range of alpha_prim 27x3
     values = np.array([0, 0.5, 1])
@@ -78,15 +78,15 @@ if __name__ == '__main__':
     var_alpha_prim = var_alpha_prim[~np.all(var_alpha_prim == 0, axis=1)]
 
     ## define the range of v(breakage function)
-    var_v = np.array([2])
+    var_v = np.array([0.1,1,2])
     # var_v = np.array([0.01])
     ## define the range of P1, P2 for power law breakage rate
-    var_P1 = np.array([1e-6])
-    var_P2 = np.array([1e-1])
-    var_P3 = np.array([1e-6])
-    var_P4 = np.array([1e-1])
-    var_P5 = np.array([1e-6])
-    var_P6 = np.array([1e0])
+    var_P1 = np.array([1e-4,1e-2])
+    var_P2 = np.array([0.1,0.5])
+    var_P3 = np.array([1e-4,1e-2])
+    var_P4 = np.array([0.1,0.5])
+    var_P5 = np.array([1e-4,1e-2])
+    var_P6 = np.array([0.1,1])
     # var_P1 = np.array([1])
     # var_P2 = np.array([0.0])
     

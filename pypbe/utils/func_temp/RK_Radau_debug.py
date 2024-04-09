@@ -6,6 +6,11 @@ from scipy.linalg import lu_factor, lu_solve
 S6 = 6 ** 0.5
 # Butcher tableau. A is not used directly, see below.
 C = np.array([(4 - S6) / 10, (4 + S6) / 10, 1])
+A_ij = np.array([
+    [11/45-7*S6/360, 37/225-169*S6/1800, -2/225+S6/75],
+    [37/225+169*S6/1800, 11/45 + 7*S6/360, -2/225-S6/75],
+    [4/9-S6/36, 4/9+S6/36, 1/9]
+    ])
 E = np.array([-13 - 7 * S6, -13 + 7 * S6, -1]) / 3
 
 # Eigendecomposition of A is done: A = T L T**-1. There is 1 real eigenvalue
