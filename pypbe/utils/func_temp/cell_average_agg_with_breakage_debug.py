@@ -26,19 +26,19 @@ pt.close()
 pt.plot_init(mrksze=8,lnewdth=1)
     
 #%% PARAM
-t = np.arange(0,101,10, dtype=float)
+t = np.arange(0,10,1, dtype=float)
 NS = 15
 S = 4
 R01, R02 = 1e-6, 1e-6
 V01, V02 = 4*math.pi*R01**3/3, 4*math.pi*R02**3/3
-V_crit = 1e4
+V_crit = 8
 COLEVAL = 2
 CORR_BETA = 150
 G= 1 
 EFFEVAL = 2 
 alpha_prim = np.array([0.5,1,1,0.5]) 
 SIZEEVAL = 1
-dim = 2
+dim = 1
 ## BREAKRVAL == 1: 1, constant breakage rate
 ## BREAKRVAL == 2: x*y or x + y, breakage rate is related to particle size
 ## BREAKRVAL == 3: power low
@@ -385,7 +385,7 @@ if __name__ == "__main__":
             # ith pivot is mean between ith and (i+1)th edge
             V_p[i-1] = (V_e[i] + V_e[i-1])/2
             R[i-1] = (4*V_p[i-1]/3/math.pi)**(1/3)
-        index_crit = np.where(V_p < V_crit*V_p[1])[0]
+        index_crit = np.where(V_p < S**(V_crit)*V_p[1])[0]
         agg_crit = index_crit[-1] if (index_crit.size > 0 and index_crit.size < len(V_p)) else (len(V_p) -1)
         agg_crit = agg_crit
         ## Let the integration range associated with the breakage function start from zero 
@@ -439,15 +439,27 @@ if __name__ == "__main__":
                     bf_int[idx],err = quad(my_jit.breakage_func_1d,V_e_tem[a],V_e_tem[a+1],args=args)
                     xbf_int[idx],err = quad(my_jit.breakage_func_1d_vol,V_e_tem[a],V_e_tem[a+1],args=args)
         # SOLVE    
-        import scipy.integrate as integrate
-        RES = integrate.solve_ivp(my_jit.get_dNdt_1d_geo,
-                                  [0, max(t)], 
-                                  N[:,0], t_eval=t,
-                                  args=(NS,V_p,V_e,F_M,B_R,bf_int,xbf_int,type_flag,agg_crit),
-                                  method='Radau',first_step=0.1,rtol=1e-1)
-        # Reshape and save result to N and t_vec
-        N = RES.y
-        t = RES.t
+        # import scipy.integrate as integrate
+        # RES = integrate.solve_ivp(my_jit.get_dNdt_1d_geo,
+        #                           [0, max(t)], 
+        #                           N[:,0], t_eval=t,
+        #                           args=(NS,V_p,V_e,F_M,B_R,bf_int,xbf_int,type_flag,agg_crit),
+        #                           method='Radau',first_step=0.1,rtol=1e-1)
+        # # Reshape and save result to N and t_vec
+        # N = RES.y
+        # t = RES.t
+        
+        start_time = time.time()  
+        import RK_Radau_debug as RK
+        ode_sys = RK.radau_ii_a(my_jit.get_dNdt_1d_geo, N[:,0], t_eval=t,
+                                args=(NS,V_p,V_e,F_M,B_R,bf_int,xbf_int,type_flag,agg_crit),
+                                dt_first=0.1)
+        y_evaluated, y_res_tem, t_res_tem = ode_sys.solve_ode()
+        
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        print(f"time with radau_ii_a is {elapsed_time}")
+        N = y_evaluated
         
         N0 = N[:,0]
         NE = N[:,-1]
@@ -548,10 +560,10 @@ if __name__ == "__main__":
             V_p1[i] = (V_e1[i] + V_e1[i+1]) / 2#S**(i-1)*V01
             V_p2[i] = (V_e2[i] + V_e2[i+1]) / 2#S**(i-1)*V02
         if type_flag == "agglomeration":
-            N[0,1,0] = 0.3
-            N[1,0,0] = 0.3
+            N[0,1,0] = 1e14
+            N[1,0,0] = 1e14
         elif type_flag == "breakage":
-            N[-1,-1,0] = 1
+            N[-1,-1,0] = 1e14
         else:
             N[-1,-1,0] = 1e14
             N[0,1,0] = 1e14
@@ -628,18 +640,33 @@ if __name__ == "__main__":
         # deltabfinty[ybf_int_q!=0]= abs(ybf_int[ybf_int_q!=0] - ybf_int_q[ybf_int_q!=0])/ybf_int_q[ybf_int_q!=0]
         
             
-        # SOLVE    
-        import scipy.integrate as integrate
-        RES = integrate.solve_ivp(dNdt_2D,
-                                  [0, max(t)], 
-                                  N[:,:,0].reshape(-1), t_eval=t,
-                                  args=(NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,type_flag,agg_crit),
-                                  method='Radau',first_step=0.1,rtol=1e-1)
+        # SOLVE   
+        # start_time = time.time()  
+        # import scipy.integrate as integrate
+        # RES = integrate.solve_ivp(dNdt_2D,
+        #                           [0, max(t)], 
+        #                           N[:,:,0].reshape(-1), t_eval=t,
+        #                           args=(NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,type_flag,agg_crit),
+        #                           method='Radau',first_step=0.1,rtol=1e-1)
+        # end_time = time.time()
+        # elapsed_time = end_time - start_time
+        # print(f"time with solve_ivp is {elapsed_time}")
+        # # Reshape and save result to N and t_vec
+        # t = RES.t
+        # N = RES.y.reshape((NS,NS,len(t))) #RES.y.reshape((NS,NS,len(t)))
+        # int_flag = RES.status
         
-        # Reshape and save result to N and t_vec
-        t = RES.t
-        N = RES.y.reshape((NS,NS,len(t))) #RES.y.reshape((NS,NS,len(t)))
-        int_flag = RES.status
+        start_time = time.time()  
+        import RK_Radau_debug as RK
+        ode_sys = RK.radau_ii_a(dNdt_2D, N[:,:,0].reshape(-1), t_eval=t,
+                                args=(NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,type_flag,agg_crit),
+                                dt_first=0.1)
+        y_evaluated, y_res_tem, t_res_tem = ode_sys.solve_ode()
+        
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        print(f"time with radau_ii_a is {elapsed_time}")
+        N = y_evaluated.reshape((NS,NS,len(t)))
         
         N0 = N[:,:,0]
         NE = N[:,:,-1]

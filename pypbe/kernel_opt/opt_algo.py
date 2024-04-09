@@ -564,6 +564,10 @@ class opt_algo():
             self.set_pop_para(self.p_NM, pop_params)
         if hasattr(self, 'p_M'):
             self.set_pop_para(self.p_M, pop_params)
+            ## P3 and P4 correspond to the breakage rate parameters of magnetic particles
+            if 'BREAKRVAL' in pop_params and pop_params['BREAKRVAL'] == 4:
+                self.p_M.pl_P1 = pop_params['pl_P3']
+                self.p_M.pl_P2 = pop_params['pl_P4']
         
         self.set_init_pop_para_flag = True
 
@@ -573,16 +577,28 @@ class opt_algo():
         self.set_pop_attributes(pop, params)
         ## Because alpha_prim can be an arry, it needs to be handled separatedly 
         if self.dim == 1:
+            if 'corr_agg' in params:
+                params['CORR_BETA'] = self.return_syth_beta(params['corr_agg'])
+                params['alpha_prim'] = params['corr_agg'] / params['CORR_BETA']
+                del params["corr_agg"]
             if 'alpha_prim' in params:
-                pop.alpha_prim = params['alpha_prim']
-            
+                if params['alpha_prim'].ndim != 0 and pop is self.p_NM:
+                    pop.alpha_prim = params['alpha_prim'][0]
+                elif params['alpha_prim'].ndim != 0 and pop is self.p_M:
+                    pop.alpha_prim = params['alpha_prim'][2]
+                else:
+                    pop.alpha_prim = params['alpha_prim']
         elif self.dim == 2:
+            if 'corr_agg' in params:
+                params['CORR_BETA'] = self.return_syth_beta(params['corr_agg'])
+                params['alpha_prim'] = params['corr_agg'] / params['CORR_BETA']
+                del params["corr_agg"]
             if 'alpha_prim' in params:
                 alpha_prim_value = params['alpha_prim']
                 if pop is self.p:
                     alpha_prim_temp = np.zeros(4)
                     alpha_prim_temp[0] = alpha_prim_value[0]
-                    alpha_prim_temp[1] = alpha_prim_value[2] = alpha_prim_value[1]
+                    alpha_prim_temp[1] = alpha_prim_temp[2] = alpha_prim_value[1]
                     alpha_prim_temp[3] = alpha_prim_value[2]
                     pop.alpha_prim = alpha_prim_temp
                 elif pop is self.p_NM:
@@ -628,8 +644,8 @@ class opt_algo():
             self.p.R03 = psd_dict_M[R03_0] * R03_0_scl
         else:
             self.p.USE_PSD = False
-            self.p.R01 = R_NM
-            self.p.R03 = R_M
+            self.p.R01 = R_NM * R01_0_scl
+            self.p.R03 = R_M * R03_0_scl
         if self.dim > 1:
             ## Set particle parameter for 1D PBE
             self.p_NM.USE_PSD = self.p_M.USE_PSD = self.p.USE_PSD

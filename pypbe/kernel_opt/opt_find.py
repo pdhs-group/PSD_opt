@@ -156,7 +156,6 @@ class opt_find():
             warnings.warn("Please specify the name of the training data without labels!")
         else:
             exp_data_path = os.path.join(self.base_path, data_name)
-
             exp_data_paths = [
                 exp_data_path,
                 exp_data_path.replace(".xlsx", "_NM.xlsx"),
@@ -242,6 +241,8 @@ class opt_find():
         exp_data_path : `str`
             The file path where the experimental data will be saved.
         """
+        if not pop.calc_status:
+            return
         # save the calculation result in experimental data form
         x_uni = self.algo.calc_x_uni(pop)
         v_uni = self.algo.calc_v_uni(pop)
@@ -273,7 +274,7 @@ class opt_find():
     
     # Visualize only the last time step of the specified time vector and the last used experimental data
     def visualize_distribution(self, pop, ori_params, opt_values, exp_data_path=None,ax=None,fig=None,
-                               close_all=False,clr='k',scl_a4=1,figsze=[12.8,6.4*1.5]):
+                               close_all=False,clr='k',scl_a4=1,figsze=[12.8,6.4*1.5],log_output=False):
         """
         Visualizes the distribution at the last time step.
         
@@ -282,7 +283,7 @@ class opt_find():
         ## Todo: set_comp_para with original parameter
         self.algo.calc_pop(pop, ori_params)
 
-        x_uni_ori, sumvol_uni_ori = pop.return_distribution(t=-1, flag='x_uni, sumvol_uni')
+        x_uni_ori, q3_ori, Q3_ori, sumvol_uni_ori = pop.return_distribution(t=-1, flag='x_uni, q3, Q3,sumvol_uni')
 
         if self.algo.smoothing:
             kde = self.algo.KDE_fit(x_uni_ori, sumvol_uni_ori)
@@ -291,7 +292,7 @@ class opt_find():
 
         self.algo.calc_pop(pop, opt_values)  
             
-        x_uni, sumvol_uni= pop.return_distribution(t=-1, flag='x_uni, sumvol_uni')
+        x_uni, q3, Q3, sumvol_uni= pop.return_distribution(t=-1, flag='x_uni, q3, Q3,sumvol_uni')
         if self.algo.smoothing:
             kde = self.algo.KDE_fit(x_uni, sumvol_uni)
             q3 = self.algo.KDE_score(kde, x_uni)
@@ -325,6 +326,9 @@ class opt_find():
         
         axq3.grid('minor')
         axQ3.grid('minor')
+        if log_output:
+            axq3.set_xscale('log')
+            axQ3.set_xscale('log')
         plt.tight_layout()   
         
         return fig
