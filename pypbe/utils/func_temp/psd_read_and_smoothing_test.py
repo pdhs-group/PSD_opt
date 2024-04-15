@@ -115,13 +115,13 @@ if __name__ == '__main__':
     algo_params = conf.config['algo_params']
     pop_params = conf.config['pop_params']
     
-    pop_params['CORR_BETA'] = 10.0
-    pop_params['alpha_prim'] = np.array([0.5, 0.5, 0.5])
-    pop_params['pl_v'] = 2
+    pop_params['CORR_BETA'] = 100.0
+    pop_params['alpha_prim'] = np.array([1, 1, 1])
+    pop_params['pl_v'] = 0.1
     pop_params['pl_P1'] = 1e-2
-    pop_params['pl_P2'] = 1e-1
+    pop_params['pl_P2'] = 0.5
     pop_params['pl_P3'] = 1e-2
-    pop_params['pl_P4'] = 1e-1
+    pop_params['pl_P4'] = 0.5
     pop_params['pl_P5'] = 1e-2
     pop_params['pl_P6'] = 1.0
     

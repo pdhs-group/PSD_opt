@@ -21,7 +21,7 @@ config = {
         'noise_strength': 0.1,
         'sample_num': 5,
         'method': 'BO',
-        'n_iter': 1,
+        'n_iter': 200,
         'calc_init_N': True,
         ## delta_flag = q3: use q3
         ## delta_flag = Q3: use Q3
