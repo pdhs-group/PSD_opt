@@ -11,7 +11,7 @@ from numba.typed import List as nb_List
 
 # Simulate N_GRIDS grids that each fracture N_FRACS times
 # For debugging/testing use single_sim, as this function is "optimized" by not plotting and printing stuff
-# @jit(nopython=True)
+@jit(nopython=True)
 def MC_breakage(A, X1, X2, STR, NO_FRAG, N_GRIDS=100, N_FRACS=100, A0=0, init_break_random=False):
     """Perform a 2D, 2 material Monte Carlo breakage simulation.
     
@@ -118,7 +118,7 @@ def MC_breakage(A, X1, X2, STR, NO_FRAG, N_GRIDS=100, N_FRACS=100, A0=0, init_br
                 
     return F
 
-# @jit(nopython=True)
+@jit(nopython=True)
 def rand_choice_nb(arr, prob):
     """
     :param arr: A 1D numpy array of values to sample from.
@@ -127,7 +127,7 @@ def rand_choice_nb(arr, prob):
     """
     return arr[np.searchsorted(np.cumsum(prob), np.random.random(), side="right")]
 
-# @jit(nopython=True)
+@jit(nopython=True)
 def float_gcd(a, b, rtol = 1e-3, atol = 1e-8):
     t = min(abs(a), abs(b))
     while abs(b) > rtol * t + atol:
@@ -135,7 +135,7 @@ def float_gcd(a, b, rtol = 1e-3, atol = 1e-8):
     return a
 
 # Generate 2D grid containing both pivots and edges
-# @jit(nopython=True)
+@jit(nopython=True)
 def generate_grid_2D(A, X1, X2, A0=0):
     """
     Generate a two-dimensional grid to represent the distribution 
@@ -220,7 +220,7 @@ def generate_grid_2D(A, X1, X2, A0=0):
             
     return G, N, B, A0, R
 
-# @jit(nopython=True)
+@jit(nopython=True)
 def break_one_bond(G, STR, idx=None, init_break_random=False):
     """
     Simulates the process of breaking a bond in a given 2D mesh.
@@ -376,7 +376,7 @@ def break_one_bond(G, STR, idx=None, init_break_random=False):
         
     return G_new, idx_new, fracture_flag, str_array[b_idx]    
 
-# @jit(nopython=True)
+@jit(nopython=True)
 def recursive_fun(G, i, j, cnt_1, cnt_2, new_value=0):
     DIM = G.shape[0]
     
@@ -404,34 +404,37 @@ def recursive_fun(G, i, j, cnt_1, cnt_2, new_value=0):
     
     return G, cnt_1, cnt_2        
 
-# @jit(nopython=True)
+@jit(nopython=True)
 def iterative_fun(G, i, j, new_value=0):
     DIM = G.shape[0]
     stack = [(i, j)]
     cnt_1 = cnt_2 = 0
-
+    
     while stack:
         ci, cj = stack.pop()
-        if ci < 0 or ci >= DIM or cj < 0 or cj >= DIM or (G[ci, cj] != 1 and G[ci, cj] != 2):
+        if ci < 0 or ci >= DIM or cj < 0 or cj >= DIM or G[ci, cj] not in (1, 2):
             continue
-        
+    
         if G[ci, cj] == 1:
             cnt_1 += 1
         elif G[ci, cj] == 2:
             cnt_2 += 1
-        G[ci, cj] = new_value
-
-        # Add neighbors to the stack
-        directions = [(2, 0), (-2, 0), (0, 2), (0, -2)]
-        for di, dj in directions:
-            ni, nj = ci + di, cj + dj
-            if 0 <= ni < DIM and 0 <= nj < DIM and G[ni, nj] != -1:
-                stack.append((ni, nj))
-                G[ni, nj] = -2
-
+        
+        G[ci, cj] = new_value  # Mark the cell as processed by changing its value
+    
+        # Add the adjacent material cells in the grid to the stack, checking connections first
+        for di, dj in [(2, 0), (-2, 0), (0, 2), (0, -2)]:
+            conn_i, conn_j = ci + di//2, cj + dj//2  # Connection index
+            ni, nj = ci + di, cj + dj  # Next material cell index
+            
+            if 0 <= ni < DIM and 0 <= nj < DIM:
+                if G[conn_i, conn_j] not in (-1, -2):  # Check if connection is not broken
+                    stack.append((ni, nj))
+                    G[conn_i, conn_j] = -2  # Mark the connection as checked
+    
     return G, cnt_1, cnt_2
 
-# @jit(nopython=True)      
+@jit(nopython=True)      
 def analyze_fragments(G):
     DIM = G.shape[0]
     
@@ -451,7 +454,7 @@ def analyze_fragments(G):
                 
     return G, np.array(cnt_1_arr), np.array(cnt_2_arr), val_arr 
               
-# @jit(nopython=True)
+@jit(nopython=True)
 def check_idx_hist(idx, idx_hist):
     # idx is numpy array
     # idx_hist is numpy array of numpy arrays
@@ -461,7 +464,7 @@ def check_idx_hist(idx, idx_hist):
             return True    
     return False
 
-# @jit(nopython=True)
+@jit(nopython=True)
 def check_deadend(idx, idx_hist, G):
     # A deadend is reached (return True) if all surrounding pivots are in idx_hist       
     bool_list = np.array([check_idx_hist(idx+np.array([2,0]), idx_hist), 
