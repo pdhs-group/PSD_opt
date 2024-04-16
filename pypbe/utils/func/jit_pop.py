@@ -455,7 +455,7 @@ def lam_2d(x,y,Vx,Vy,i,j,m1,m2):
                 
     if math.isnan(lam):
         lam = 0 
-        print('lam is NaN!')        
+        # print('lam is NaN!')        
     
     return lam 
 

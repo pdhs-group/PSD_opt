@@ -137,15 +137,15 @@ if __name__ == '__main__':
     algo_params = conf.config['algo_params']
     pop_params = conf.config['pop_params']
     
-    pop_params['CORR_BETA'] = 10.0
-    pop_params['alpha_prim'] = np.array([0.5, 0.5, 0.5])
-    pop_params['pl_v'] = 2
-    pop_params['pl_P1'] = 1e-6
-    pop_params['pl_P2'] = 1e-1
-    pop_params['pl_P3'] = 1e-6
+    pop_params['CORR_BETA'] = 1e-2
+    pop_params['alpha_prim'] = np.array([1.0, 0.0, 0.5])
+    pop_params['pl_v'] = 1
+    pop_params['pl_P1'] = 1e-4
+    pop_params['pl_P2'] = 0.5
+    pop_params['pl_P3'] = 1e-4
     pop_params['pl_P4'] = 1e-1
-    pop_params['pl_P5'] = 1e-6
-    pop_params['pl_P6'] = 1.0
+    pop_params['pl_P5'] = 1e-2
+    pop_params['pl_P6'] = 1e-1
     
     ## Instantiate find and algo.
     ## The find class determines how the experimental 
@@ -173,7 +173,7 @@ if __name__ == '__main__':
     ## kernels: Find the kernel for each set of data, and then average these kernels.
     ## delta: Read all input directly and use all data to find the kernel once
     ## wait to write hier 
-    data_name = f"Sim_{find.algo.noise_type}_{find.algo.noise_strength}_para_10.0_0.5_0.5_0.5_2_1e-06_0.1_1e-06_0.1_1e-06_1.0.xlsx"
+    data_name = f"Sim_{find.algo.noise_type}_{find.algo.noise_strength}_para_0.01_1.0_0.0_0.5_1.0_0.0001_0.5_0.0001_0.1_0.01_0.1.xlsx"
         
     base_path = os.path.join(find.algo.p.pth, "data")
     

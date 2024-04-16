@@ -219,8 +219,8 @@ class population():
             self.X1_a = np.ones(self.NS) 
             ## Large particle agglomeration may cause the integration to not converge. 
             ## A Limit can be placed on the particle size.
-            aggl_crit_ids = np.where(self.V <= self.V[1]*self.S**(self.aggl_crit))[0]
-            if (aggl_crit_ids.size > 0 and aggl_crit_ids.size < len(self.V)):
+            aggl_crit_ids = self.aggl_crit + 1
+            if (aggl_crit_ids > 0 and aggl_crit_ids < len(self.V)):
                 self.aggl_crit_id = aggl_crit_ids[-1]  
             else: 
                 self.aggl_crit_id = (len(self.V) -1)
@@ -280,18 +280,17 @@ class population():
                         self.X3_a[i,j] = A3[j]/(A1[i]+A3[j])
             ## Large particle agglomeration may cause the integration to not converge. 
             ## A Limit can be placed on the particle size.
-            aggl_crit_ids1 = np.where(self.V1 <= self.S**(self.aggl_crit)*self.V1[1])[0]
-            aggl_crit_ids2 = np.where(self.V3 <= self.S**(self.aggl_crit)*self.V3[1])[0]
+            aggl_crit_ids1 = self.aggl_crit + 1
+            aggl_crit_ids2 = self.aggl_crit + 1
             self.aggl_crit_id = np.zeros(2, dtype=int)
-            if (aggl_crit_ids1.size > 0 and aggl_crit_ids1.size < len(self.V1)):
+            if (aggl_crit_ids1 > 0 and aggl_crit_ids1 < len(self.V1)):
                 self.aggl_crit_id[0] = aggl_crit_ids1[-1]  
             else: 
                 self.aggl_crit_id[0] = (len(self.V1) -1)
-            if (aggl_crit_ids2.size > 0 and aggl_crit_ids2.size < len(self.V3)):
+            if (aggl_crit_ids2 > 0 and aggl_crit_ids2 < len(self.V3)):
                 self.aggl_crit_id[1] = aggl_crit_ids2[-1]  
             else: 
                 self.aggl_crit_id[1] = (len(self.V3) -1)
-                
         # 3-D case                
         elif self.dim == 3:
             

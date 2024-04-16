@@ -404,6 +404,36 @@ def recursive_fun(G, i, j, cnt_1, cnt_2, new_value=0):
     
     return G, cnt_1, cnt_2        
 
+@jit(nopython=True)
+def iterative_fun(G, i, j, new_value=0):
+    DIM = G.shape[0]
+    stack = [(i, j)]
+    cnt_1 = cnt_2 = 0
+    
+    while stack:
+        ci, cj = stack.pop()
+        if ci < 0 or ci >= DIM or cj < 0 or cj >= DIM or G[ci, cj] not in (1, 2):
+            continue
+    
+        if G[ci, cj] == 1:
+            cnt_1 += 1
+        elif G[ci, cj] == 2:
+            cnt_2 += 1
+        
+        G[ci, cj] = new_value  # Mark the cell as processed by changing its value
+    
+        # Add the adjacent material cells in the grid to the stack, checking connections first
+        for di, dj in [(2, 0), (-2, 0), (0, 2), (0, -2)]:
+            conn_i, conn_j = ci + di//2, cj + dj//2  # Connection index
+            ni, nj = ci + di, cj + dj  # Next material cell index
+            
+            if 0 <= ni < DIM and 0 <= nj < DIM:
+                if G[conn_i, conn_j] not in (-1, -2):  # Check if connection is not broken
+                    stack.append((ni, nj))
+                    G[conn_i, conn_j] = -2  # Mark the connection as checked
+    
+    return G, cnt_1, cnt_2
+
 @jit(nopython=True)      
 def analyze_fragments(G):
     DIM = G.shape[0]
@@ -415,7 +445,8 @@ def analyze_fragments(G):
     for i in range(1,DIM,2):
         for j in range(1,DIM,2):
             if G[i,j]==1 or G[i,j]==2:
-                G, cnt_1, cnt_2 = recursive_fun(G, i, j, 0, 0, new_value=3+val_cnt) 
+                # G, cnt_1, cnt_2 = recursive_fun(G, i, j, 0, 0, new_value=3+val_cnt) 
+                G, cnt_1, cnt_2 = iterative_fun(G, i, j, new_value=3+val_cnt) 
                 cnt_1_arr.append(cnt_1)
                 cnt_2_arr.append(cnt_2)
                 val_arr.append(3+val_cnt)
