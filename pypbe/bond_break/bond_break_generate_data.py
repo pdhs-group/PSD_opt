@@ -159,7 +159,7 @@ def calc_1d_V(NS,S):
     
 def generate_one_1d_data(args):
     idx, A, V, output_dir, STR, NO_FRAG, N_GRIDS, N_FRACS, A0, INIT_BREAK_RANDOM = args
-    X1 = 0.5
+    X1 = 1
     X2 = 1 - X1
     
     # 假设MC_breakage是一个已定义的函数，可以进行蒙特卡罗破碎模拟

@@ -644,7 +644,7 @@ if __name__ == '__main__':
     
     A = 10
     A0 = 0.025
-    X1 = 0.21
+    X1 = 1
     X2 = 1-X1
     STR = np.array([1,1,1])
     NO_FRAG = 4

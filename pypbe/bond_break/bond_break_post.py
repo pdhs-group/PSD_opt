@@ -53,15 +53,13 @@ def kde_psd(NS, S, V01, V03):
     # print("Integral of x * breakage_func over [0,1]:", integral_volume)
     
 def direkt_psd(NS, S, V01, V03):
-    int_B_F = np.zeros((NS-1, NS-1, NS-1, NS-1))
-    intx_B_F = np.zeros((NS-1, NS-1, NS-1, NS-1))
-    inty_B_F = np.zeros((NS-1, NS-1, NS-1, NS-1))
-    _,_,V_e1,V_e3,_,_ = calc_2d_V(NS, S, V01, V03)
-    V_e1_tem = np.zeros(NS) 
-    V_e1_tem[:] = V_e1[1:]
+    int_B_F = np.zeros((NS, NS, NS, NS))
+    intx_B_F = np.zeros((NS, NS, NS, NS))
+    inty_B_F = np.zeros((NS, NS, NS, NS))
+    _,_,V_e1,V_e3,_,_ = calc_2d_V(NS, S, V01, V03) 
+    V_e1_tem = np.copy(V_e1)
     V_e1_tem[0] = 0.0
-    V_e3_tem = np.zeros(NS) 
-    V_e3_tem[:] = V_e3[1:]
+    V_e3_tem = np.copy(V_e3)
     V_e3_tem[0] = 0.0
     # PSD = np.zeros((NO_FRAG*NO_TESTS, NS-2,NS-2))
     # X1 = np.zeros((NO_FRAG*NO_TESTS, NS-2,NS-2))
@@ -77,9 +75,9 @@ def direkt_psd(NS, S, V01, V03):
             x1 = PSD * X1
             x3 = PSD * (1 - X1)
             counts, x1_vol_sum, x3_vol_sum = calc_int_BF(x1,x3,V_e1_tem,V_e3_tem)
-            int_B_F[:,:,i-1,j-1] = counts / NO_TESTS
-            intx_B_F[:,:,i-1,j-1] = x1_vol_sum / NO_TESTS
-            inty_B_F[:,:,i-1,j-1] = x3_vol_sum / NO_TESTS
+            int_B_F[:,:,i,j] = counts / NO_TESTS
+            intx_B_F[:,:,i,j] = x1_vol_sum / NO_TESTS
+            inty_B_F[:,:,i,j] = x3_vol_sum / NO_TESTS
     save_path = os.path.join(data_path,'int_B_F')
     np.savez(save_path,
              int_B_F=int_B_F,
