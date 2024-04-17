@@ -80,12 +80,9 @@ class population():
             ode_sys = RK.radau_ii_a(rhs, self.N[:,0], t_eval=t_vec,
                                     args = args,
                                     dt_first=0.1)
-            y_evaluated, y_res_tem, t_res_tem = ode_sys.solve_ode()
+            y_evaluated, y_res_tem, t_res_tem, rate_res_tem, error_res_tem = ode_sys.solve_ode()
             
-            self.t_vec = t_vec 
             self.N = y_evaluated
-            self.y_res_tem = y_res_tem
-            self.t_res_tem = t_res_tem
             
         elif self.dim == 2:
             # Define right-hand-side function depending on discretization
@@ -108,12 +105,9 @@ class population():
             ode_sys = RK.radau_ii_a(rhs, np.reshape(self.N[:,:,0],-1), t_eval=t_vec,
                                     args = args,
                                     dt_first=0.1)
-            y_evaluated, y_res_tem, t_res_tem = ode_sys.solve_ode()
+            y_evaluated, y_res_tem, t_res_tem, rate_res_tem, error_res_tem = ode_sys.solve_ode()
             
-            self.t_vec = t_vec 
             self.N = y_evaluated.reshape((self.NS,self.NS,len(t_vec)))
-            self.y_res_tem = y_res_tem
-            self.t_res_tem = t_res_tem
         
         elif self.dim == 3:
             # Define right-hand-side function depending on discretization
@@ -131,7 +125,12 @@ class population():
             # Reshape and save result to N and t_vec
             self.N = self.RES.y.reshape((self.NS+3,self.NS+3,self.NS+3,len(self.RES.t)))
             self.t_vec = self.RES.t
-        # Monitor whether integration are completed    
+        # Monitor whether integration are completed  
+        self.t_vec = t_vec 
+        self.N_res_tem = y_res_tem
+        self.t_res_tem = t_res_tem
+        self.rate_res_tem = rate_res_tem
+        self.error_res_tem = error_res_tem
         self.calc_status = not ode_sys.dt_is_too_small   
     ## Solve ODE (forward Euler scheme):
     def solve_PBE_Euler(self):

@@ -253,7 +253,8 @@ class radau_ii_a():
         # 创建保存原始结果的容器，用于后续的对t_eval的点进行插值
         y_res_tem_list = []
         t_res_tem_list = []
-        erro_list = []
+        error_list = []
+        rate_list = []
         Q_list = []
         
         newton_tol = max(10 * EPS / re_tol, min(0.03, re_tol ** 0.5))
@@ -269,10 +270,13 @@ class radau_ii_a():
                 break
             y_res_tem_list.append(self.y_current)
             t_res_tem_list.append(self.t_current)
-            erro_list.append(self.error_norm_old)
+            error_list.append(self.error_norm_old)
+            rate_list.append(self.rate)
             Q_list.append(self.Q)
         
         y_res_tem = np.array(y_res_tem_list).T
+        rate_res_tem = np.array(rate_list) 
+        error_res_tem = np.array(error_list) 
         t_res_tem = np.array(t_res_tem_list)   
         Q_res_tem = np.array(Q_list)  
         # 预分配y_evaluated数组
@@ -295,7 +299,7 @@ class radau_ii_a():
             # 计算插值
             y_evaluated[:,i] = interpolation_radau(t_old, t_current,self.t_eval[i], y_old, Q)
         
-        return y_evaluated, y_res_tem, t_res_tem
+        return y_evaluated, y_res_tem, t_res_tem, rate_res_tem, error_res_tem
 
     def radau_ii_a_step(self, re_tol, abs_tol,newton_tol):
         dt_current = self.dt_current
@@ -401,6 +405,7 @@ class radau_ii_a():
         self.t_old = self.t_current
         self.dt_old = self.dt_current
         self.error_norm_old = error_norm
+        self.rate = rate
         
         self.y_current = y_new
         self.t_current = t_new
