@@ -14,7 +14,7 @@ from .utils.plotter import plotter as pt
 from .utils.plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
 ## For math
 from .utils.func.func_math import float_in_list, float_equal, isZero
-from .utils.func_temp import RK_Radau_debug as RK
+from .utils.func import RK_Radau as RK
 
 ### ------ POPULATION CLASS DEFINITION ------ ###
 class population():
@@ -52,6 +52,7 @@ class population():
         # If t_vec is not given (=None), let solver decide where to export time data
         if t_max is None and t_vec is None:
             t_max = self.NUM_T*self.DEL_T
+            t_vec = self.t_vec
         elif t_vec is not None:
             t_max = max(t_vec)
         
@@ -221,7 +222,7 @@ class population():
             ## A Limit can be placed on the particle size.
             aggl_crit_ids = self.aggl_crit + 1
             if (aggl_crit_ids > 0 and aggl_crit_ids < len(self.V)):
-                self.aggl_crit_id = aggl_crit_ids[-1]  
+                self.aggl_crit_id = aggl_crit_ids 
             else: 
                 self.aggl_crit_id = (len(self.V) -1)
                         
@@ -284,11 +285,11 @@ class population():
             aggl_crit_ids2 = self.aggl_crit + 1
             self.aggl_crit_id = np.zeros(2, dtype=int)
             if (aggl_crit_ids1 > 0 and aggl_crit_ids1 < len(self.V1)):
-                self.aggl_crit_id[0] = aggl_crit_ids1[-1]  
+                self.aggl_crit_id[0] = aggl_crit_ids1  
             else: 
                 self.aggl_crit_id[0] = (len(self.V1) -1)
             if (aggl_crit_ids2 > 0 and aggl_crit_ids2 < len(self.V3)):
-                self.aggl_crit_id[1] = aggl_crit_ids2[-1]  
+                self.aggl_crit_id[1] = aggl_crit_ids2 
             else: 
                 self.aggl_crit_id[1] = (len(self.V3) -1)
         # 3-D case                
@@ -379,8 +380,8 @@ class population():
         elif self.dim == 2:
             self.N = np.zeros((self.NS,self.NS,self.NUM_T+1))
             if self.USE_PSD:
-                self.N[1:,1,0] = self.new_initialize_psd(2*self.R[1:,0],self.DIST1,self.V01)
-                self.N[1,1:,0] = self.new_initialize_psd(2*self.R[0,1:],self.DIST3,self.V03)
+                self.N[1:,0,0] = self.new_initialize_psd(2*self.R[1:,0],self.DIST1,self.V01)
+                self.N[0,1:,0] = self.new_initialize_psd(2*self.R[0,1:],self.DIST3,self.V03)
             else:
                 if self.process_type == "agglomeration":
                     self.N[1,0,0] = self.N01
