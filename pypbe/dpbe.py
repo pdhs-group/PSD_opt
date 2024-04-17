@@ -769,44 +769,45 @@ class population():
             ## Note: The breakage rate of the smallest particle is 0. 
             ## Note: Because particles with a volume of zero are skipped, 
             ##       calculation with V requires (index+1)
-            self.B_R = np.zeros(self.NS-1)
+            self.B_R = np.zeros(self.NS)
             if self.process_type == 'agglomeration':
                 return
             # Size independent breakage rate --> See Leong2023 (10)
             # only for validation with analytical results
             if self.BREAKRVAL == 1:
-                self.B_R[1:] = 1
+                self.B_R[2:] = 1
                 
             # Size dependent breakage rate --> See Leong2023 (10)
             # only for validation with analytical results
             elif self.BREAKRVAL == 2:
                 for idx, tmp in np.ndenumerate(self.B_R):
                     a = idx[0]
-                    if a != 0:
-                        self.B_R[a] = self.V[a+1]
+                    if a != 0 and a != 1:
+                        self.B_R[a] = self.V[a]
                         
             # Power Law Pandy and Spielmann --> See Jeldres2018 (28)
             elif self.BREAKRVAL == 3:
                 for idx, tmp in np.ndenumerate(self.B_R):
                     a = idx[0]
-                    if a != 0:
-                        self.B_R[a] = self.pl_P1*self.G*(self.V[a+1]/self.V[1])**self.pl_P2     
+                    if a != 0 and a!= 1:
+                        self.B_R[a] = self.pl_P1*self.G*(self.V[a]/self.V[1])**self.pl_P2     
             # Hypothetical formula considering volume fraction
             elif self.BREAKRVAL == 4:
                 for idx, tmp in np.ndenumerate(self.B_R):
                     a = idx[0]
-                    if a != 0:
-                        self.B_R[a] = self.pl_P1*self.G*(self.V[a+1]/self.V[1])**self.pl_P2   
+                    if a != 0 and a != 1:
+                        self.B_R[a] = self.pl_P1*self.G*(self.V[a]/self.V[1])**self.pl_P2   
         # 2-D case            
         if self.dim == 2:
-            self.B_R = np.zeros((self.NS-1, self.NS-1))
+            self.B_R = np.zeros((self.NS, self.NS))
             if self.process_type == 'agglomeration':
                 return
             # Size independent breakage rate --> See Leong2023 (10)
             # only for validation with analytical results
             if self.BREAKRVAL == 1:
                 self.B_R[:,:] = 1
-                self.B_R[0,0] = 0
+                self.B_R[:1,:1] = 0
+                
                 
             # Size dependent breakage rate --> See Leong2023 (10)
             elif self.BREAKRVAL == 2:
@@ -814,41 +815,41 @@ class population():
                     a = idx[0]; b = idx[1]
                     ## Note: Because of the conditional restrictions of breakage on the boundary, 
                     ##       1d calculation needs to be performed on the boundary.
-                    if a == 0 and b == 0:
+                    if a <= 1 and b <= 1:
                         continue
-                    elif a == 0:
-                        self.B_R[idx] = self.V3[b+1]
-                    elif b == 0:
-                        self.B_R[idx] = self.V1[a+1]
+                    elif a == 0 or a == 1:
+                        self.B_R[idx] = self.V3[b]
+                    elif b == 0 or b == 1:
+                        self.B_R[idx] = self.V1[a]
                     else:
                         if self.BREAKFVAL == 1:
-                            self.B_R[idx] = self.V1[a+1]*self.V3[b+1]
+                            self.B_R[idx] = self.V1[a]*self.V3[b]
                         elif self.BREAKFVAL == 2:
-                            self.B_R[idx] = self.V1[a+1] + self.V3[b+1]
+                            self.B_R[idx] = self.V1[a] + self.V3[b]
             elif self.BREAKRVAL == 3:
                 for idx, tmp in np.ndenumerate(self.B_R):
                     a = idx[0]; b = idx[1]
-                    if a == 0 and b == 0:
+                    if a <= 1 and b <= 1:
                         continue
-                    elif a == 0:
-                        self.B_R[idx] = self.pl_P1 * self.G * (self.V3[b+1]/self.V3[1])**self.pl_P2
-                    elif b == 0:
-                        self.B_R[idx] = self.pl_P1 * self.G * (self.V1[a+1]/self.V1[1])**self.pl_P2
+                    elif a == 0 or a == 1:
+                        self.B_R[idx] = self.pl_P1 * self.G * (self.V3[b]/self.V3[1])**self.pl_P2
+                    elif b == 0 or b == 1:
+                        self.B_R[idx] = self.pl_P1 * self.G * (self.V1[a]/self.V1[1])**self.pl_P2
                     else:
                         self.B_R[idx] = self.pl_P1 * self.G * (self.V[a+1,b+1]/self.V[1,1])**self.pl_P2
             # Hypothetical formula considering volume fraction
             elif self.BREAKRVAL == 4:
                 for idx, tmp in np.ndenumerate(self.B_R):
                     a = idx[0]; b = idx[1]
-                    if a == 0 and b == 0:
+                    if a <= 1 and b <= 1:
                         continue
-                    elif a == 0:
-                        self.B_R[idx] = self.pl_P3 * self.G * (self.V3[b+1]/self.V3[1])**self.pl_P4
-                    elif b == 0:
-                        self.B_R[idx] = self.pl_P1 * self.G * (self.V1[a+1]/self.V1[1])**self.pl_P2
+                    elif a == 0 or a == 1:
+                        self.B_R[idx] = self.pl_P3 * self.G * (self.V3[b]/self.V3[1])**self.pl_P4
+                    elif b == 0 or b == 1:
+                        self.B_R[idx] = self.pl_P1 * self.G * (self.V1[a]/self.V1[1])**self.pl_P2
                     else:
-                        self.B_R[idx] = (self.pl_P1 * self.G * (self.V1[a+1]/self.V1[1])**self.pl_P2 + \
-                                         self.pl_P3 * self.G * (self.V3[b+1]/self.V3[1])**self.pl_P4) * \
+                        self.B_R[idx] = (self.pl_P1 * self.G * (self.V1[a]/self.V1[1])**self.pl_P2 + \
+                                         self.pl_P3 * self.G * (self.V3[b]/self.V3[1])**self.pl_P4) * \
                                         self.pl_P5 * self.X1_vol[idx] ** self.pl_P6
             
     ## Calculate integrated breakage function matrix.         
@@ -864,31 +865,30 @@ class population():
             ##       And small particle can not break into large one. 
             ## Note: Because particles with a volume of zero are skipped, 
             ##       calculation with V requires (index+1)
-            self.int_B_F = np.zeros((self.NS-1, self.NS-1))
-            self.intx_B_F = np.zeros((self.NS-1, self.NS-1))
+            self.int_B_F = np.zeros((self.NS, self.NS))
+            self.intx_B_F = np.zeros((self.NS, self.NS))
             if self.process_type == 'agglomeration':
                 return
             ## Let the integration range associated with the breakage function start from zero 
             ## to ensure mass conservation  
-            V_e_tem = np.zeros(self.NS) 
-            V_e_tem[:] = self.V_e[1:]
+            V_e_tem = np.copy(self.V_e)
             V_e_tem[0] = 0.0
             for idx, tmp in np.ndenumerate(self.int_B_F):
                 a = idx[0]; i = idx[1]
-                if i != 0 and a <= i:
-                    args = (self.V[i+1],self.pl_v,self.pl_q,self.BREAKFVAL)
+                if i != 0 and i != 1 and a <= i:
+                    args = (self.V[i],self.pl_v,self.pl_q,self.BREAKFVAL)
                     if a == i:
-                        self.int_B_F[idx],err = integrate.quad(jit.breakage_func_1d,V_e_tem[a],self.V[a+1],args=args)
-                        self.intx_B_F[idx],err = integrate.quad(jit.breakage_func_1d_vol,V_e_tem[a],self.V[a+1],args=args)
+                        self.int_B_F[idx],err = integrate.quad(jit.breakage_func_1d,V_e_tem[a],self.V[a],args=args)
+                        self.intx_B_F[idx],err = integrate.quad(jit.breakage_func_1d_vol,V_e_tem[a],self.V[a],args=args)
                     else:
                         self.int_B_F[idx],err = integrate.quad(jit.breakage_func_1d,V_e_tem[a],V_e_tem[a+1],args=args)
                         self.intx_B_F[idx],err = integrate.quad(jit.breakage_func_1d_vol,V_e_tem[a],V_e_tem[a+1],args=args)
                     
         # 2-D case
         elif self.dim == 2:
-            self.int_B_F = np.zeros((self.NS-1, self.NS-1, self.NS-1, self.NS-1))
-            self.intx_B_F = np.zeros((self.NS-1, self.NS-1, self.NS-1, self.NS-1))
-            self.inty_B_F = np.zeros((self.NS-1, self.NS-1, self.NS-1, self.NS-1))
+            self.int_B_F = np.zeros((self.NS, self.NS, self.NS, self.NS))
+            self.intx_B_F = np.zeros((self.NS, self.NS, self.NS, self.NS))
+            self.inty_B_F = np.zeros((self.NS, self.NS, self.NS, self.NS))
             if self.process_type == 'agglomeration':
                 return
             if self.JIT_BF == True:
@@ -897,32 +897,30 @@ class population():
                 # self.int_B_F, self.intx_B_F, self.inty_B_F = jit.calc_int_B_F_2D(
                 #     self.NS,self.V1,self.V3,self.V_e1,self.V_e3,self.BREAKFVAL,self.pl_v,self.pl_q)
             else:
-                V_e1_tem = np.zeros(self.NS) 
-                V_e1_tem[:] = self.V_e1[1:]
+                V_e1_tem = np.copy(self.V_e1)
                 V_e1_tem[0] = 0.0
-                V_e3_tem = np.zeros(self.NS) 
-                V_e3_tem[:] = self.V_e3[1:]
+                V_e3_tem = np.copy(self.V_e3)
                 V_e3_tem[0] = 0.0
                 for idx, tmp in np.ndenumerate(self.int_B_F):
                     a = idx[0] ; b = idx[1]; i = idx[2]; j = idx[3]
                     if i + j != 0 and a<=i or b <= j:
-                        if i == 0:
+                        if i == 0 or i == 1:
                             ## for left boundary/y
                             args = (self.V3[j+1],self.pl_v,self.pl_q,self.BREAKFVAL)
-                            if j == 0:
+                            if j == 0 or j == 1:
                                 continue
                             elif b == j:
-                                self.int_B_F[idx],err  = integrate.quad(jit.breakage_func_1d,V_e3_tem[b],self.V3[b+1],args=args)
-                                self.inty_B_F[idx],err  = integrate.quad(jit.breakage_func_1d_vol,V_e3_tem[b],self.V3[b+1],args=args)
+                                self.int_B_F[idx],err  = integrate.quad(jit.breakage_func_1d,V_e3_tem[b],self.V3[b],args=args)
+                                self.inty_B_F[idx],err  = integrate.quad(jit.breakage_func_1d_vol,V_e3_tem[b],self.V3[b],args=args)
                             else:
                                 self.int_B_F[idx],err  = integrate.quad(jit.breakage_func_1d,V_e3_tem[b],V_e3_tem[b+1],args=args)
                                 self.inty_B_F[idx],err  = integrate.quad(jit.breakage_func_1d_vol,V_e3_tem[b],V_e3_tem[b+1],args=args)
-                        elif j == 0:
+                        elif j == 0 or j == 1:
                             ## for low boundary/x
                             args = (self.V1[i+1],self.pl_v,self.pl_q,self.BREAKFVAL)
                             if a == i:
-                                self.int_B_F[idx],err = integrate.quad(jit.breakage_func_1d,V_e1_tem[a],self.V1[a+1],args=args)
-                                self.intx_B_F[idx],err = integrate.quad(jit.breakage_func_1d_vol,V_e1_tem[a],self.V1[a+1],args=args)
+                                self.int_B_F[idx],err = integrate.quad(jit.breakage_func_1d,V_e1_tem[a],self.V1[a],args=args)
+                                self.intx_B_F[idx],err = integrate.quad(jit.breakage_func_1d_vol,V_e1_tem[a],self.V1[a],args=args)
                             else:
                                 self.int_B_F[idx],err = integrate.quad(jit.breakage_func_1d,V_e1_tem[a],V_e1_tem[a+1],args=args)
                                 self.intx_B_F[idx],err = integrate.quad(jit.breakage_func_1d_vol,V_e1_tem[a],V_e1_tem[a+1],args=args)
@@ -930,18 +928,18 @@ class population():
                             args = (self.V1[i+1],self.V3[j+1],self.pl_v,self.pl_q,self.BREAKFVAL)
                             ## The contributions of fragments on the same vertical axis
                             if a == i and b == j:
-                                self.int_B_F[idx],err  = integrate.dblquad(jit.breakage_func_2d,V_e1_tem[a],self.V1[a+1],V_e3_tem[b],self.V3[b+1],args=args)
-                                self.intx_B_F[idx],err = integrate.dblquad(jit.breakage_func_2d_x1vol,V_e1_tem[a],self.V1[a+1],V_e3_tem[b],self.V3[b+1],args=args)
-                                self.inty_B_F[idx],err = integrate.dblquad(jit.breakage_func_2d_x3vol,V_e1_tem[a],self.V1[a+1],V_e3_tem[b],self.V3[b+1],args=args)
+                                self.int_B_F[idx],err  = integrate.dblquad(jit.breakage_func_2d,V_e1_tem[a],self.V1[a],V_e3_tem[b],self.V3[b],args=args)
+                                self.intx_B_F[idx],err = integrate.dblquad(jit.breakage_func_2d_x1vol,V_e1_tem[a],self.V1[a],V_e3_tem[b],self.V3[b],args=args)
+                                self.inty_B_F[idx],err = integrate.dblquad(jit.breakage_func_2d_x3vol,V_e1_tem[a],self.V1[a],V_e3_tem[b],self.V3[b],args=args)
                             elif a == i:
-                                self.int_B_F[idx],err  = integrate.dblquad(jit.breakage_func_2d,V_e1_tem[a],self.V1[a+1],V_e3_tem[b],V_e3_tem[b+1],args=args)
-                                self.intx_B_F[idx],err = integrate.dblquad(jit.breakage_func_2d_x1vol,V_e1_tem[a],self.V1[a+1],V_e3_tem[b],V_e3_tem[b+1],args=args)
-                                self.inty_B_F[idx],err = integrate.dblquad(jit.breakage_func_2d_x3vol,V_e1_tem[a],self.V1[a+1],V_e3_tem[b],V_e3_tem[b+1],args=args)
+                                self.int_B_F[idx],err  = integrate.dblquad(jit.breakage_func_2d,V_e1_tem[a],self.V1[a],V_e3_tem[b],V_e3_tem[b+1],args=args)
+                                self.intx_B_F[idx],err = integrate.dblquad(jit.breakage_func_2d_x1vol,V_e1_tem[a],self.V1[a],V_e3_tem[b],V_e3_tem[b+1],args=args)
+                                self.inty_B_F[idx],err = integrate.dblquad(jit.breakage_func_2d_x3vol,V_e1_tem[a],self.V1[a],V_e3_tem[b],V_e3_tem[b+1],args=args)
                             ## The contributions of fragments on the same horizontal axis
                             elif b == j:   
-                                self.int_B_F[idx],err  = integrate.dblquad(jit.breakage_func_2d,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],self.V3[b+1],args=args)
-                                self.intx_B_F[idx],err = integrate.dblquad(jit.breakage_func_2d_x1vol,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],self.V3[b+1],args=args)
-                                self.inty_B_F[idx],err = integrate.dblquad(jit.breakage_func_2d_x3vol,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],self.V3[b+1],args=args)
+                                self.int_B_F[idx],err  = integrate.dblquad(jit.breakage_func_2d,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],self.V3[b],args=args)
+                                self.intx_B_F[idx],err = integrate.dblquad(jit.breakage_func_2d_x1vol,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],self.V3[b],args=args)
+                                self.inty_B_F[idx],err = integrate.dblquad(jit.breakage_func_2d_x3vol,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],self.V3[b],args=args)
                             ## The contribution from the fragments of large particles on the upper right side 
                             else:
                                 self.int_B_F[idx],err  = integrate.dblquad(jit.breakage_func_2d,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V_e3_tem[b+1],args=args)
