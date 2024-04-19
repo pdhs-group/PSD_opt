@@ -283,7 +283,7 @@ class radau_ii_a():
         y_evaluated = np.zeros((len(self.y0), len(self.t_eval)))
         if self.dt_is_too_small:
             y_evaluated[:] = -1
-            return y_evaluated, y_res_tem, t_res_tem
+            return y_evaluated, y_res_tem, t_res_tem, rate_res_tem, error_res_tem
         # 使用searchsorted找到t_eval中每个时间点对应的区间索引
         indexes = np.searchsorted(t_res_tem, self.t_eval) - 1
         

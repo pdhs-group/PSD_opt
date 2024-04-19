@@ -82,8 +82,6 @@ class population():
                                     dt_first=0.1)
             y_evaluated, y_res_tem, t_res_tem, rate_res_tem, error_res_tem = ode_sys.solve_ode()
             
-            self.N = y_evaluated
-            
         elif self.dim == 2:
             # Define right-hand-side function depending on discretization
             if self.disc == 'geo':
@@ -106,9 +104,9 @@ class population():
                                     args = args,
                                     dt_first=0.1)
             y_evaluated, y_res_tem, t_res_tem, rate_res_tem, error_res_tem = ode_sys.solve_ode()
-            
-            self.N = y_evaluated.reshape((self.NS,self.NS,len(t_vec)))
-        
+            y_evaluated = y_evaluated.reshape((self.NS,self.NS,len(t_vec)))
+            y_res_tem = y_res_tem.reshape((self.NS,self.NS,len(t_res_tem)))
+ 
         elif self.dim == 3:
             # Define right-hand-side function depending on discretization
             if self.disc == 'geo':
@@ -127,6 +125,7 @@ class population():
             self.t_vec = self.RES.t
         # Monitor whether integration are completed  
         self.t_vec = t_vec 
+        self.N = y_evaluated
         self.N_res_tem = y_res_tem
         self.t_res_tem = t_res_tem
         self.rate_res_tem = rate_res_tem
@@ -842,7 +841,7 @@ class population():
                     a = idx[0]; b = idx[1]
                     if a <= 1 and b <= 1:
                         continue
-                    elif a == 0 or a == 1:
+                    elif a == 0 or a == 1: 
                         self.B_R[idx] = self.pl_P3 * self.G * (self.V3[b]/self.V3[1])**self.pl_P4
                     elif b == 0 or b == 1:
                         self.B_R[idx] = self.pl_P1 * self.G * (self.V1[a]/self.V1[1])**self.pl_P2
@@ -868,29 +867,55 @@ class population():
             self.intx_B_F = np.zeros((self.NS, self.NS))
             if self.process_type == 'agglomeration':
                 return
-            ## Let the integration range associated with the breakage function start from zero 
-            ## to ensure mass conservation  
-            V_e_tem = np.copy(self.V_e)
-            V_e_tem[0] = 0.0
-            for idx, tmp in np.ndenumerate(self.int_B_F):
-                a = idx[0]; i = idx[1]
-                if i != 0 and i != 1 and a <= i:
-                    args = (self.V[i],self.pl_v,self.pl_q,self.BREAKFVAL)
-                    if a == i:
-                        self.int_B_F[idx],err = integrate.quad(jit.breakage_func_1d,V_e_tem[a],self.V[a],args=args)
-                        self.intx_B_F[idx],err = integrate.quad(jit.breakage_func_1d_vol,V_e_tem[a],self.V[a],args=args)
-                    else:
-                        self.int_B_F[idx],err = integrate.quad(jit.breakage_func_1d,V_e_tem[a],V_e_tem[a+1],args=args)
-                        self.intx_B_F[idx],err = integrate.quad(jit.breakage_func_1d_vol,V_e_tem[a],V_e_tem[a+1],args=args)
+            
+            if self.USE_MC_BOND:
+                mc_bond = np.load(self.PTH_MC_BOND, allow_pickle=True)
+                self.int_B_F = mc_bond['int_B_F'][:,0,:,0]
+                self.intx_B_F = mc_bond['intx_B_F'][:,0,:,0] * self.V_e[1]
+                # for i in range(2, self.NS):
+                #     self.intx_B_F[:,i] = mc_bond['intx_B_F'][:,0,i,0] * self.V[i]
+            else:
+                ## Let the integration range associated with the breakage function start from zero 
+                ## to ensure mass conservation  
+                V_e_tem = np.copy(self.V_e)
+                V_e_tem[0] = 0.0
+                for idx, tmp in np.ndenumerate(self.int_B_F):
+                    a = idx[0]; i = idx[1]
+                    if i != 0 and i != 1 and a <= i:
+                        args = (self.V[i],self.pl_v,self.pl_q,self.BREAKFVAL)
+                        if a == i:
+                            self.int_B_F[idx],err = integrate.quad(jit.breakage_func_1d,V_e_tem[a],self.V[a],args=args)
+                            self.intx_B_F[idx],err = integrate.quad(jit.breakage_func_1d_vol,V_e_tem[a],self.V[a],args=args)
+                        else:
+                            self.int_B_F[idx],err = integrate.quad(jit.breakage_func_1d,V_e_tem[a],V_e_tem[a+1],args=args)
+                            self.intx_B_F[idx],err = integrate.quad(jit.breakage_func_1d_vol,V_e_tem[a],V_e_tem[a+1],args=args)
                     
         # 2-D case
         elif self.dim == 2:
             self.int_B_F = np.zeros((self.NS, self.NS, self.NS, self.NS))
             self.intx_B_F = np.zeros((self.NS, self.NS, self.NS, self.NS))
-            self.inty_B_F = np.zeros((self.NS, self.NS, self.NS, self.NS))
+            self.inty_B_F = np.zeros((self.NS, self.NS, self.NS, self.NS)) 
             if self.process_type == 'agglomeration':
                 return
-            if self.JIT_BF == True:
+            
+            if self.USE_MC_BOND:
+                mc_bond = np.load(self.PTH_MC_BOND, allow_pickle=True)
+                self.int_B_F = mc_bond['int_B_F']
+                # for i in range (0, self.NS):
+                #     for j in range(0, self.NS):
+                #         if i < 2 and j < 2:
+                #             continue
+                #         elif i < 2 and j >=2:
+                #             self.inty_B_F[i,:,i,j] = mc_bond['inty_B_F'][i,:,i,j] * self.V3[j]
+                #         elif i >=2 and j < 2:
+                #             self.intx_B_F[:,j,i,j] = mc_bond['intx_B_F'][:,j,i,j] * self.V1[i]
+                #         else:
+                #             self.intx_B_F[:,:,i,j] = mc_bond['intx_B_F'][:,:,i,j] * self.V[i,j]
+                #             self.inty_B_F[:,:,i,j] = mc_bond['inty_B_F'][:,:,i,j] * self.V[i,j]
+                self.intx_B_F = mc_bond['intx_B_F'] * self.V_e1[1]
+                self.inty_B_F = mc_bond['inty_B_F'] * self.V_e3[1]
+
+            elif self.JIT_BF:
                 self.int_B_F, self.intx_B_F, self.inty_B_F = jit.calc_int_B_F_2D_GL(
                     self.NS,self.V1,self.V3,self.V_e1,self.V_e3,self.BREAKFVAL,self.pl_v,self.pl_q)
                 # self.int_B_F, self.intx_B_F, self.inty_B_F = jit.calc_int_B_F_2D(
@@ -1572,6 +1597,9 @@ class population():
         self.pl_P4 = 0.5                      # 4. parameter in power law for breakage rate  2d
         self.pl_P5 = 1e-6                     # 5. parameter in power law for breakage rate  2d
         self.pl_P6 = 0.5                      # 6. parameter in power law for breakage rate  2d
+        
+        self.USE_MC_BOND = False
+        self.PTH_MC_BOND = os.path.join(self.pth,'bond_break','int_B_F.npz')
                        
         self.SIZEEVAL = 2                     # Case for implementation of size dependency. 1 = No size dependency, 2 = Model from Soos2007 
         self.POTEVAL = 1                      # Case for the set of used interaction potentials. See int_fun_Xd for infos.

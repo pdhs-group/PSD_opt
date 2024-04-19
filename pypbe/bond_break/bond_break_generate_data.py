@@ -122,7 +122,7 @@ def generate_one_2d_data(args):
     file_path = os.path.join(output_dir, file_name)
     np.save(file_path, F) 
 
-def generate_complete_1d_data(NS,S,V01,V03):
+def generate_complete_1d_data(NS,S):
     V,_ = calc_1d_V(NS, S)
     # Define other unchanged parameters
     STR = np.array([1, 1, 1])
@@ -174,7 +174,7 @@ def generate_one_1d_data(args):
 if __name__ == '__main__':
     # generate_dataset()
     generate_complete_1d_data(NS=15,S=2)
-    generate_complete_2d_data(NS=15,S=2,V01=1,V03=1)
+    # generate_complete_2d_data(NS=15,S=2,V01=1,V03=1)
     
 
     
