@@ -48,7 +48,7 @@ def get_dNdt_1d_geo(t,N,NS,V_p,V_e,F_M,B_R,bf_int,xbf_int,type_flag,agg_crit):
     
     return dNdt 
 
-# @jit(nopython=True)
+@jit(nopython=True)
 def get_dNdt_2d_geo(t,NN,NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,type_flag,agg_crit):       
     N = np.copy(NN) 
     N = np.reshape(N,(NS,NS))
@@ -148,8 +148,8 @@ def get_dNdt_2d_geo(t,NN,NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,type_fl
                         #     print(f'mass flux in [{i},{j}] is', tem)
                             
     dNdt = B + D
-    volume_error = (dNdt*V_p).sum()
-    print('volume error after assignment is ', volume_error)
+    # volume_error = (dNdt*V_p).sum()
+    # print('volume error after assignment is ', volume_error)
 
     # if type_flag == "breakage" or type_flag == "mix":
     #     dNdt[:,0] += dNdt_bound_x0
@@ -1039,7 +1039,7 @@ def calc_2d_agglomeration(N,V_p,V_e1,V_e2,F_M,B_c,M1_c,M2_c,D,agg_crit):
                                 D[i,j] -= F*N[i,j]*N[a,b]
 
     return B_c,M1_c,M2_c,D
-# @jit(nopython=True)
+@jit(nopython=True)
 def calc_2d_breakage(N,V_p,V_e1,V_e2,B_R,bf_int,xbf_int,ybf_int,B_c,M1_c,M2_c,D):
     ## only to check volume conservation
     # D_M = np.zeros(N.shape)

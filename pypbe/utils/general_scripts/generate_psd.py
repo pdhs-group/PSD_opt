@@ -129,8 +129,9 @@ def full_psd(x50, resigma=0.2, minscale=None, maxscale=None, plot_psd=False):
         ax.set_xscale('log')
         ax.legend(['Density distribution q','Sum distribution Q'])
     # Generate full filestring
-    dist = os.path.join(os.path.dirname( __file__ ),
-                        "..","..","data","PSD_data",f"PSD_x50_{Decimal(x50):.1E}_RelSigmaV_{Decimal(resigma):.1E}.npy")
+    output_dir = os.path.join(os.path.dirname( __file__ ),"..","..","data","PSD_data")
+    os.makedirs(output_dir, exist_ok=True)
+    dist = os.path.join(output_dir, f"PSD_x50_{Decimal(x50):.1E}_RelSigmaV_{Decimal(resigma):.1E}.npy")
     
     # Create and save PSD dictionary
     dict_Qx={'Q_PSD':Q,'x_PSD':x, 'r0_001':r0_001, 'r0_005':r0_005, 'r0_01':r0_01}

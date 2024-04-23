@@ -273,13 +273,17 @@ class opt_find():
         return 
     
     # Visualize only the last time step of the specified time vector and the last used experimental data
-    def visualize_distribution(self, pop, ori_params, opt_values, exp_data_path=None,ax=None,fig=None,
-                               close_all=False,clr='k',scl_a4=1,figsze=[12.8,6.4*1.5],log_output=False):
+    def visualize_distribution(self, pop, ori_params, opt_values, exp_data_paths,
+                               R_NM, R_M, R01_0_scl, R03_0_scl,dist_path_1,dist_path_2, 
+                               ax=None,fig=None,close_all=False,clr='k',scl_a4=1,figsze=[12.8,6.4*1.5],log_output=False):
         """
         Visualizes the distribution at the last time step.
         
         """
         ## Recalculate PSD using original parameter
+        self.algo.calc_init_N = False
+        self.algo.set_comp_para(R_NM=R_NM, R_M=R_M,R01_0_scl=R01_0_scl,R03_0_scl=R03_0_scl,
+                                dist_path_NM=dist_path_1,dist_path_M=dist_path_2)
         ## Todo: set_comp_para with original parameter
         self.algo.calc_pop(pop, ori_params)
 
@@ -289,7 +293,10 @@ class opt_find():
             kde = self.algo.KDE_fit(x_uni_ori, sumvol_uni_ori)
             q3_ori = self.algo.KDE_score(kde, x_uni_ori)
             Q3_ori = self.algo.calc_Q3(x_uni_ori, q3_ori)
-
+            
+        self.algo.calc_init_N = True
+        self.algo.set_comp_para(R_NM=R_NM, R_M=R_M,R01_0_scl=R01_0_scl,R03_0_scl=R03_0_scl)
+        self.algo.set_init_N(self.algo.sample_num, exp_data_paths, 'mean')
         self.algo.calc_pop(pop, opt_values)  
             
         x_uni, q3, Q3, sumvol_uni= pop.return_distribution(t=-1, flag='x_uni, q3, Q3,sumvol_uni')
@@ -309,7 +316,7 @@ class opt_find():
         
         axq3, fig = pt.plot_data(x_uni, q3, fig=fig, ax=axq3,
                                xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
-                               ylbl='number distribution of agglomerates $q3$ / $-$',
+                               ylbl='volume distribution of agglomerates $q3$ / $-$',
                                lbl='q3_mod',clr='b',mrk='o')
         
 
@@ -318,7 +325,7 @@ class opt_find():
         
         axQ3, fig = pt.plot_data(x_uni, Q3, fig=fig, ax=axQ3,
                                xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
-                               ylbl='accumulated number distribution of agglomerates $Q3$ / $-$',
+                               ylbl='accumulated volume distribution of agglomerates $Q3$ / $-$',
                                lbl='Q3_mod',clr='b',mrk='o')
 
         axQ3, fig = pt.plot_data(x_uni_ori, Q3_ori, fig=fig, ax=axQ3,

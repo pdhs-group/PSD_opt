@@ -21,7 +21,7 @@ config = {
         'noise_strength': 0.1,
         'sample_num': 5,
         'method': 'BO',
-        'n_iter': 200,
+        'n_iter': 400,
         'calc_init_N': True,
         ## delta_flag = q3: use q3
         ## delta_flag = Q3: use Q3
@@ -53,12 +53,16 @@ config = {
         'pl_P4' : 0.4,
         # 'pl_P5' : 3e-4,
         # 'pl_P6' : 0.3,
-        'COLEVAL' : 2,
+        'COLEVAL' : 1,
         'EFFEVAL' : 1,
-        'SIZEEVAL' : 2,
+        'SIZEEVAL' : 1,
         'alpha_prim': np.array([1, 0.5, 1]),
         # 'alpha_prim': 0.5,
         'CORR_BETA' : 15,
+        ## Reduce particle total volume concentration to improve calculation stability
+        ## Original value = 1e-4
+        'V01': 1e-10,
+        'V03': 1e-10,
         },
     
     ## Parameters which should be optimized
@@ -78,6 +82,9 @@ config = {
     ## The diameter ratio of the primary particles can also be used as a variable
     'R_NM': 8.68e-7,
     'R_M': 8.68e-7*1,
+    ## Adjust the coordinate of PBE(optional)
+    'R01_0_scl': 1e-1,
+    'R03_0_scl': 1e-1,
     
     ## The error of 2d pop may be more important, so weight needs to be added
     'weight_2d': 1,
