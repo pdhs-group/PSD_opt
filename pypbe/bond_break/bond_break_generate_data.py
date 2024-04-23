@@ -105,8 +105,7 @@ def calc_2d_V(NS,S,V01,V03):
             if i==0 and j==0:
                 X1_vol[i,j] = 0
             else:
-                # X1_vol[i,j] = V1[i]/V[i,j]
-                X1_vol[i,j] = 0.6
+                X1_vol[i,j] = V1[i]/V[i,j]
     return V1,V3,V_e1,V_e3,V,X1_vol
     
 def generate_one_2d_data(args):
@@ -162,11 +161,9 @@ def generate_one_1d_data(args):
     X1 = 1
     X2 = 1 - X1
     
-    # 假设MC_breakage是一个已定义的函数，可以进行蒙特卡罗破碎模拟
     F = MC_breakage(A, X1, X2, STR, NO_FRAG, N_GRIDS=N_GRIDS, N_FRACS=N_FRACS, 
                     A0=A0, init_break_random=INIT_BREAK_RANDOM)
-    
-    # 构建文件名并保存结果
+
     file_name = f"i{idx}.npy"
     file_path = os.path.join(output_dir, file_name)
     np.save(file_path, F) 
@@ -174,7 +171,7 @@ def generate_one_1d_data(args):
 if __name__ == '__main__':
     # generate_dataset()
     generate_complete_1d_data(NS=15,S=2)
-    # generate_complete_2d_data(NS=15,S=2,V01=1,V03=1)
+    generate_complete_2d_data(NS=15,S=2,V01=1,V03=1)
     
 
     

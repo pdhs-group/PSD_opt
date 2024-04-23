@@ -116,32 +116,41 @@ def get_dNdt_2d_geo(t,NN,NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,type_fl
                             *lam_2d(v1[i-p,j-q],v2[i-p,j-q],V_p[:,0],V_p[0,:],i,j,"-","-") \
                             *heaviside((-1)**p*(V_p[i-p,0]-v1[i-p,j-q]),0.5) \
                             *heaviside((-1)**q*(V_p[0,j-q]-v2[i-p,j-q]),0.5) 
+                        # B[i,j] += tem 
                         ## PRINTS FOR DEBUGGING / TESTING
-                        # if i==2 and j==0:
-                        #     print('B1', B[i,j])
-                    # if (i!=0) and (j!=len(V_p[0,:])-1):                           
+                        # if i-p==0 and j-q==0:
+                        #     print(f'mass flux in [{i},{j}] is', tem)
+                    # if (i!=0) and (j!=len(V_p[0,:])-1):      
                         B[i,j] += B_c[i-p,j+q] \
                             *lam_2d(v1[i-p,j+q],v2[i-p,j+q],V_p[:,0],V_p[0,:],i,j,"-","+") \
                             *heaviside((-1)**p*(V_p[i-p,0]-v1[i-p,j+q]),0.5) \
                             *heaviside((-1)**(q+1)*(V_p_ex[0,j+q]-v2[i-p,j+q]),0.5) 
+                        # B[i,j] += tem 
                         ## PRINTS FOR DEBUGGING / TESTING
-                        # if i==2 and j==0:
-                        #     print('B2', B[i,j])
+                        # if i-p==0 and j+q==0:
+                        #     print(f'mass flux in [{i},{j}] is', tem)
                     # if (i!=len(V_p[:,0])-1) and (j!=0):
                         B[i,j] += B_c[i+p,j-q] \
                             *lam_2d(v1[i+p,j-q],v2[i+p,j-q],V_p[:,0],V_p[0,:],i,j,"+","-") \
                             *heaviside((-1)**(p+1)*(V_p_ex[i+p,0]-v1[i+p,j-q]),0.5) \
                             *heaviside((-1)**q*(V_p[0,j-q]-v2[i+p,j-q]),0.5)
+                        # B[i,j] += tem
                         ## PRINTS FOR DEBUGGING / TESTING
-                        # if i==2 and j==0:
-                        #     print('B3', B[i,j])
+                        # if i+p==0 and j-q==0:
+                        #     print(f'mass flux in [{i},{j}] is', tem)
                     # if (i!=len(V_p[:,0])-1) and (j!=len(V_p[0,:])-1): 
                         B[i,j] += B_c[i+p,j+q] \
                             *lam_2d(v1[i+p,j+q],v2[i+p,j+q],V_p[:,0],V_p[0,:],i,j,"+","+") \
                             *heaviside((-1)**(p+1)*(V_p_ex[i+p,0]-v1[i+p,j+q]),0.5) \
                             *heaviside((-1)**(q+1)*(V_p_ex[0,j+q]-v2[i+p,j+q]),0.5)
+                        # B[i,j] += tem
+                        # if i+p==0 and j+q==0:
+                        #     print(f'mass flux in [{i},{j}] is', tem)
                             
     dNdt = B + D
+    volume_error = (dNdt*V_p).sum()
+    print('volume error after assignment is ', volume_error)
+
     # if type_flag == "breakage" or type_flag == "mix":
     #     dNdt[:,0] += dNdt_bound_x0
     #     dNdt[:,1] += dNdt_bound_x1
@@ -1033,7 +1042,7 @@ def calc_2d_agglomeration(N,V_p,V_e1,V_e2,F_M,B_c,M1_c,M2_c,D,agg_crit):
 # @jit(nopython=True)
 def calc_2d_breakage(N,V_p,V_e1,V_e2,B_R,bf_int,xbf_int,ybf_int,B_c,M1_c,M2_c,D):
     ## only to check volume conservation
-    D_M = np.zeros(N.shape)
+    # D_M = np.zeros(N.shape)
     for e1 in range(len(V_p[:,0])):
         for e2 in range(len(V_p[0,:])):
             ## The contribution of self-fragmentation
@@ -1048,7 +1057,7 @@ def calc_2d_breakage(N,V_p,V_e1,V_e2,B_R,bf_int,xbf_int,ybf_int,B_c,M1_c,M2_c,D)
             
             # calculate death rate    
             D[e1,e2] -= S*N[e1,e2]
-            D_M[e1,e2] = D[e1,e2]*V_p[e1,e2]
+            # D_M[e1,e2] = D[e1,e2]*V_p[e1,e2]
             
             # ## The contributions of fragments on the same horizontal axis
             # for i in range(e1+1,len(V_p[:,0])):
@@ -1092,6 +1101,6 @@ def calc_2d_breakage(N,V_p,V_e1,V_e2,B_R,bf_int,xbf_int,ybf_int,B_c,M1_c,M2_c,D)
                     B_c[e1,e2] += S*b*N[i,j]
                     M1_c[e1,e2] += S*xb*N[i,j]
                     M2_c[e1,e2] += S*yb*N[i,j]    
-    volume_erro = M1_c.sum() + M2_c.sum() + D_M.sum()    
-    print(volume_erro)            
+    # volume_erro = M1_c.sum() + M2_c.sum() + D_M.sum()    
+    # print('volume_error before assignment is ', volume_erro)            
     return B_c,M1_c,M2_c,D    

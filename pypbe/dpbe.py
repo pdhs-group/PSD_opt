@@ -385,7 +385,7 @@ class population():
                     self.N[1,0,0] = self.N01
                     self.N[0,1,0] = self.N03
                 elif self.process_type == "breakage":
-                    self.N[-1,-1,0] = self.N01
+                    self.N[-2,-2,0] = self.N01
                 elif self.process_type == "mix":
                     self.N[1,0,0] = self.N01
                     self.N[0,1,0] = self.N03  
