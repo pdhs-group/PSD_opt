@@ -846,10 +846,8 @@ class population():
                     elif b == 0 or b == 1:
                         self.B_R[idx] = self.pl_P1 * self.G * (self.V1[a]/self.V1[1])**self.pl_P2
                     else:
-                        self.B_R[idx] = (self.pl_P1 * self.G * (self.V1[a]/self.V1[1])**self.pl_P2 + \
-                                         self.pl_P3 * self.G * (self.V3[b]/self.V3[1])**self.pl_P4) * \
-                                        self.pl_P5 * self.X1_vol[idx] ** self.pl_P6
-            
+                        self.B_R[idx] = self.pl_P1 * self.G * (self.V1[a]/self.V1[1])**self.pl_P2 + \
+                                         self.pl_P3 * self.G * (self.V3[b]/self.V3[1])**self.pl_P4
     ## Calculate integrated breakage function matrix.         
     def calc_int_B_F(self):
         if self.BREAKFVAL == 4:
@@ -1595,8 +1593,8 @@ class population():
         self.pl_P2 = 0.5                      # 2. parameter in power law for breakage rate  1d/2d
         self.pl_P3 = 1e-6                     # 3. parameter in power law for breakage rate  2d
         self.pl_P4 = 0.5                      # 4. parameter in power law for breakage rate  2d
-        self.pl_P5 = 1e-6                     # 5. parameter in power law for breakage rate  2d
-        self.pl_P6 = 0.5                      # 6. parameter in power law for breakage rate  2d
+        # self.pl_P5 = 1e-6                     # 5. parameter in power law for breakage rate  2d
+        # self.pl_P6 = 0.5                      # 6. parameter in power law for breakage rate  2d
         
         self.USE_MC_BOND = False
         self.PTH_MC_BOND = os.path.join(self.pth,'bond_break','int_B_F.npz')

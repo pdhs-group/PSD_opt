@@ -51,8 +51,8 @@ config = {
         'pl_P2' : 0.5,
         'pl_P3' : 2e-4,
         'pl_P4' : 0.4,
-        'pl_P5' : 3e-4,
-        'pl_P6' : 0.3,
+        # 'pl_P5' : 3e-4,
+        # 'pl_P6' : 0.3,
         'COLEVAL' : 2,
         'EFFEVAL' : 1,
         'SIZEEVAL' : 2,
@@ -71,8 +71,8 @@ config = {
         'pl_P2': {'bounds': (-3, 0), 'log_scale': True},
         'pl_P3': {'bounds': (-6, -1), 'log_scale': True},
         'pl_P4': {'bounds': (-3, 0), 'log_scale': True},
-        'pl_P5': {'bounds': (-6, -1), 'log_scale': True},
-        'pl_P6': {'bounds': (-3, 0), 'log_scale': True},
+        # 'pl_P5': {'bounds': (-6, -1), 'log_scale': True},
+        # 'pl_P6': {'bounds': (-3, 0), 'log_scale': True},
 
     },
     ## The diameter ratio of the primary particles can also be used as a variable
