@@ -56,13 +56,17 @@ class population():
         elif t_vec is not None:
             t_max = max(t_vec)
         
+        ## N_scale is used to increase/decrease the overall order of magnitude of a calculated value(N)
+        ## Reducing the magnitude of N can improve the stability of calculation
+        N = self.N * self.N_scale
+        
         # 1-D case
         if self.dim == 1:
             # Define right-hand-side function depending on discretization
             if self.disc == 'geo':
                 rhs = jit.get_dNdt_1d_geo
                 args=(self.NS,self.V,self.V_e,self.F_M,self.B_R,self.int_B_F,
-                      self.intx_B_F,self.process_type,self.aggl_crit_id)
+                      self.intx_B_F,self.process_type,self.aggl_crit_id,self.N_scale)
             elif self.disc == 'uni':
                 rhs = jit.get_dNdt_1d_uni                
                 args=(self.V,self.F_M,self.NS,self.THR_DN)
@@ -77,7 +81,7 @@ class population():
             # self.t_vec = self.RES.t
             # self.N = self.RES.y
             
-            ode_sys = RK.radau_ii_a(rhs, self.N[:,0], t_eval=t_vec,
+            ode_sys = RK.radau_ii_a(rhs, N[:,0], t_eval=t_vec,
                                     args = args,
                                     dt_first=0.1)
             y_evaluated, y_res_tem, t_res_tem, rate_res_tem, error_res_tem = ode_sys.solve_ode()
@@ -87,7 +91,7 @@ class population():
             if self.disc == 'geo':
                 rhs = jit.get_dNdt_2d_geo
                 args=(self.NS,self.V,self.V_e1,self.V_e3,self.F_M,self.B_R,self.int_B_F,
-                      self.intx_B_F,self.inty_B_F,self.process_type,self.aggl_crit_id)
+                      self.intx_B_F,self.inty_B_F,self.process_type,self.aggl_crit_id,self.N_scale)
             elif self.disc == 'uni':
                 rhs = jit.get_dNdt_2d_uni   
                 args=(self.V,self.V1,self.V3,self.F_M,self.NS,self.THR_DN)
@@ -100,7 +104,7 @@ class population():
             # # Reshape and save result to N and t_vec
             # self.t_vec = self.RES.t
             # self.N = self.RES.y.reshape((self.NS,self.NS,len(self.RES.t)))
-            ode_sys = RK.radau_ii_a(rhs, np.reshape(self.N[:,:,0],-1), t_eval=t_vec,
+            ode_sys = RK.radau_ii_a(rhs, np.reshape(N[:,:,0],-1), t_eval=t_vec,
                                     args = args,
                                     dt_first=0.1)
             y_evaluated, y_res_tem, t_res_tem, rate_res_tem, error_res_tem = ode_sys.solve_ode()
@@ -125,8 +129,8 @@ class population():
             self.t_vec = self.RES.t
         # Monitor whether integration are completed  
         self.t_vec = t_vec 
-        self.N = y_evaluated
-        self.N_res_tem = y_res_tem
+        self.N = y_evaluated / self.N_scale
+        self.N_res_tem = y_res_tem / self.N_scale
         self.t_res_tem = t_res_tem
         self.rate_res_tem = rate_res_tem
         self.error_res_tem = error_res_tem
@@ -1704,7 +1708,8 @@ class population():
         self.V02 = self.cv_2*1e-2             # Total volume concentration of component 2 [m³/m³] - NM2
         self.N02 = 3*self.V02/(4*math.pi*self.R02**3)     # Total number concentration of primary particles component 2 [1/m³] - NM2 (if no PSD)
         self.V03 = self.c_mag_exp*1e-2        # Total volume concentration of component 3 [m³/m³] - M
-        self.N03 = 3*self.V03/(4*math.pi*self.R03**3)     # Total number concentration of primary particles component 1 [1/m³] - M (if no PSD)   
+        self.N03 = 3*self.V03/(4*math.pi*self.R03**3)     # Total number concentration of primary particles component 1 [1/m³] - M (if no PSD) 
+        self.N_scale = 1
         self.N_INF = self.NA*self.I           # Total number concentration of ions [1/m³] 
         self.NUM_T = round(self.t_exp*60/self.DEL_T)      # Number of timesteps for calculation [-]
         self.t_vec = np.arange(self.NUM_T+1)*self.DEL_T        

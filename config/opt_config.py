@@ -39,30 +39,30 @@ config = {
     ## PBE parameters
     'pop_params': {
         'NS' : 15,
-        'S' : 4,
+        'S' : 2,
         'BREAKRVAL' : 4,
         'BREAKFVAL' : 5,
         ## aggl_crit: The sequence number of the particle that allows further agglomeration
-        'aggl_crit' : 10,
+        'aggl_crit' : 100,
         'process_type' : "mix",
-        'pl_v' : 1,
-        'pl_q' : 1,
+        'pl_v' : 2,
         'pl_P1' : 1e-4,
         'pl_P2' : 0.5,
         'pl_P3' : 2e-4,
         'pl_P4' : 0.4,
         # 'pl_P5' : 3e-4,
         # 'pl_P6' : 0.3,
-        'COLEVAL' : 1,
+        'COLEVAL' : 2,
         'EFFEVAL' : 1,
         'SIZEEVAL' : 1,
         'alpha_prim': np.array([1, 0.5, 1]),
         # 'alpha_prim': 0.5,
         'CORR_BETA' : 15,
-        ## Reduce particle total volume concentration to improve calculation stability
-        ## Original value = 1e-4
-        'V01': 1e-10,
-        'V03': 1e-10,
+        ## Reduce particle number desity concentration to improve calculation stability
+        ## Default value = 1e14 
+        'N_scale': 1e-14,
+        ## When True, use distribution data simulated using MC-bond-break methods
+        'USE_MC_BOND': False,
         },
     
     ## Parameters which should be optimized
