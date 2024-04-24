@@ -116,21 +116,6 @@ def direkt_psd(NS, S, V01, V03):
              intx_B_F = intx_B_F,
              inty_B_F = inty_B_F)
     return int_B_F,intx_B_F,inty_B_F
-
-def find_and_print_elements_greater_than(arr, V):
-    # 找出所有大于V的元素
-    greater_elements = arr > V
-    
-    # 获取这些元素的索引
-    indices = np.where(greater_elements)
-    
-    # 如果数组中有大于V的元素，打印它们的位置和大小
-    if indices[0].size > 0:
-        print(f"存在大于{V}的元素：")
-        for idx in zip(*indices):
-            print(f"位置 {idx} 大小 {arr[idx]}")
-    else:
-        print(f"数组中不存在大于{V}的元素。")
         
 def calc_int_BF(x1,e1,x3=None,e3=None,V3=None):
     if x3 is None and e3 is None:
