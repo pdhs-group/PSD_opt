@@ -9,35 +9,42 @@ import numpy as np
 import os
 from sklearn.preprocessing import MinMaxScaler
 from keras.models import Sequential
-from keras.layers import Dense
+from keras.layers import Dense, Flatten, InputLayer
+from keras.optimizers import Adam
 
-def load_and_process_data(directory):
-    scaler = MinMaxScaler()
-    all_data = []
+def load_data(directory):
+    data = np.load(directory)
+    STR = data['STR']
+    FRAG = data['FRAG'].reshape(-1, 1)  # Reshaping for compatibility with neural network input
+    int_B_F = data['int_B_F']
+    intx_B_B = data['intx_B_B']
+    iny_B_F = data['iny_B_F']
+    return STR, FRAG, int_B_F, intx_B_B, iny_B_F
+    
+def create_model(input_shape_str, input_shape_frag, output_shape):
+    model = Sequential([
+        InputLayer(input_shape=(input_shape_str + input_shape_frag,)),  # Adjust input shape as necessary
+        Dense(128, activation='relu'),
+        Dense(64, activation='relu'),
+        Flatten(),
+        Dense(np.prod(output_shape), activation='linear')  # Output layer nodes = product of output dimensions
+    ])
+    
+    model.compile(optimizer=Adam(), loss='mse', metrics=['mae'])
+    return model
 
-    for filename in os.listdir(directory):
-        if filename.endswith('.npy'):
-            F = np.load(os.path.join(directory, filename))
-            total_area = F[:, 0]
-            X1 = F[:, 1]
-            X2 = F[:, 2]
-            x = total_area * X1
-            y = total_area * X2
-            ## normalization processing
-            xy = np.vstack((x, y)).T
-            xy_scaled = scaler.fit_transform(xy)
-            all_data.append(xy_scaled)
+def train_model(model, inputs, outputs, epochs=10, batch_size=32):
+    # Combine STR and FRAG inputs for training
+    combined_inputs = np.hstack((inputs[0], inputs[1]))
+    # Reshape outputs if they are not already in the required shape (flattened if needed)
+    reshaped_outputs = np.reshape(outputs, (outputs.shape[0], -1))
+    history = model.fit(combined_inputs, reshaped_outputs, epochs=epochs, batch_size=batch_size, validation_split=0.2)
+    return history
 
-    aggregated_data = np.vstack(all_data)
-    return aggregated_data
-
-def train_model(data):
-    # 假设你已经有一个模型构建的函数
-    # 这里只是一个训练模型的示例框架
-    return
 
 if __name__ == '__main__':
     # 使用函数
-    directory = os.path.join('simulation_data','NS_15_S_2_V11_STR_0.6_0.8_0.2_FRAG_4')
-    data = load_and_process_data(directory)
-    train_model(data)
+    directory = 'int_B_F'
+    STR, FRAG, int_B_F, intx_B_B, iny_B_F = load_data(directory)
+    model = create_model(input_shape_str=3, input_shape_frag=1, output_shape=int_B_F.shape[1:])
+    history = train_model(model, (STR, FRAG), np.stack((int_B_F, intx_B_B, iny_B_F), axis=-1))

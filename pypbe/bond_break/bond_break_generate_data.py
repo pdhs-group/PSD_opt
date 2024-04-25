@@ -8,7 +8,7 @@ Created on Thu Apr 11 08:37:52 2024
 import numpy as np
 import itertools
 import os
-from bond_break_jit import MC_breakage
+from .bond_break_jit import MC_breakage
 import multiprocessing
 
 def generate_dataset():
@@ -53,10 +53,9 @@ def generate_one_data(args):
     file_path = os.path.join(output_dir, file_name)
     # save array
     np.save(file_path, F)
-def generate_complete_2d_data(NS,S,STR,NO_FRAG,V01,V03):
+def generate_complete_2d_data(NS,S,STR,NO_FRAG,N_GRIDS, N_FRACS, V01,V03):
     V1,V3,_,_,V,X1_vol = calc_2d_V(NS, S, V01, V03)
     # Define other unchanged parameters
-    N_GRIDS, N_FRACS = 200, 100
     INIT_BREAK_RANDOM = False
     A0 = min(V1[1],V3[1])/ NO_FRAG
     
@@ -119,10 +118,9 @@ def generate_one_2d_data(args):
     file_path = os.path.join(output_dir, file_name)
     np.save(file_path, F) 
 
-def generate_complete_1d_data(NS,S,STR,NO_FRAG,):
+def generate_complete_1d_data(NS,S,STR,NO_FRAG,N_GRIDS, N_FRACS):
     V,_ = calc_1d_V(NS, S)
     # Define other unchanged parameters
-    N_GRIDS, N_FRACS = 200, 100
     INIT_BREAK_RANDOM = False
     A0 = V[1]/ NO_FRAG
     
@@ -170,8 +168,9 @@ if __name__ == '__main__':
     S = 2
     STR = np.array([0.5,1,0.5])
     NO_FRAG = 4
-    generate_complete_1d_data(NS,S,STR,NO_FRAG)
-    generate_complete_2d_data(NS,S,STR,NO_FRAG,V01=1,V03=1)
+    N_GRIDS, N_FRACS = 200, 100
+    generate_complete_1d_data(NS,S,STR,NO_FRAG, N_GRIDS, N_FRACS)
+    generate_complete_2d_data(NS,S,STR,NO_FRAG,N_GRIDS, N_FRACS, V01=1,V03=1)
     
 
     

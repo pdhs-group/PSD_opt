@@ -6,11 +6,11 @@ Created on Mon Apr 15 13:14:13 2024
 """
 import numpy as np
 import os
-import math
+# import math
 import matplotlib.pyplot as plt
 from scipy.stats import gaussian_kde
-from scipy.integrate import quad
-from bond_break_generate_data import calc_2d_V
+# from scipy.integrate import quad
+from .bond_break_generate_data import calc_2d_V
 
 def breakage_func(NO_FRAG,kde,x):
     return kde(x) * NO_FRAG
@@ -53,7 +53,7 @@ def kde_psd(NS, S, V01, V03):
     # print("Integral of the breakage_func over [0,1]:", integral_total)
     # print("Integral of x * breakage_func over [0,1]:", integral_volume)
     
-def direkt_psd(NS, S, V01, V03):
+def direkt_psd(NS, S, STR, NO_FRAG, N_GRIDS, N_FRACS, V01, V03, data_path):
     int_B_F = np.zeros((NS, NS, NS, NS))
     intx_B_F = np.zeros((NS, NS, NS, NS))
     inty_B_F = np.zeros((NS, NS, NS, NS))
@@ -62,18 +62,19 @@ def direkt_psd(NS, S, V01, V03):
     V_e1_tem[0] = 0.0
     V_e3_tem = np.copy(V_e3)
     V_e3_tem[0] = 0.0
+    NO_TESTS = N_GRIDS*N_FRACS
     # PSD = np.zeros((NO_FRAG*NO_TESTS, NS-2,NS-2))
     # X1 = np.zeros((NO_FRAG*NO_TESTS, NS-2,NS-2))
     for i in range(NS):
         if i <= 1:
             continue
-        file_name = f"i{i}.npy"
+        file_name = f"{STR[0]}_{STR[1]}_{STR[2]}_{NO_FRAG}_i{i}.npy"
         file_path = os.path.join(data_path,file_name)
         data = np.load(file_path,allow_pickle=True)
         PSD=data[:,0]
         X1=data[:,1]
         x1 = PSD * X1
-        counts, x1_vol_sum, x3_vol_sum= calc_int_BF(x1,V_e1_tem,V3=V3[1])
+        counts, x1_vol_sum, x3_vol_sum= calc_int_BF(NO_TESTS,x1,V_e1_tem,V3=V3[1])
         counts, x1_vol_sum = adjust_BF(counts, x1_vol_sum, V1[i])
         int_B_F[:,0,i,0] = counts
         int_B_F[:,1,i,1] = counts
@@ -95,29 +96,31 @@ def direkt_psd(NS, S, V01, V03):
         for j in range(NS):
             if j <= 1:
                 continue
-            file_name = f"i{i}_j{j}.npy"
+            file_name = f"{STR[0]}_{STR[1]}_{STR[2]}_{NO_FRAG}_i{i}_j{j}.npy"
             file_path = os.path.join(data_path,file_name)
             data = np.load(file_path,allow_pickle=True)
             PSD=data[:,0]
             X1=data[:,1]
             x1 = PSD * X1
             x3 = PSD * (1 - X1)
-            counts, x1_vol_sum, x3_vol_sum = calc_int_BF(x1,V_e1_tem,x3,V_e3_tem)
+            counts, x1_vol_sum, x3_vol_sum = calc_int_BF(NO_TESTS,x1,V_e1_tem,x3,V_e3_tem)
             counts, x1_vol_sum, x3_vol_sum = adjust_BF(counts, x1_vol_sum, V1[i],x3_vol_sum,V3[j])
             int_B_F[:,:,i,j] = counts
             ## Use relative value
             intx_B_F[:,:,i,j] = x1_vol_sum # / V[i,j]
             inty_B_F[:,:,i,j] = x3_vol_sum # / V[i,j]
     ## TODO: if V01 != V03        
-    save_path = os.path.join('int_B_F')
+    save_path = os.path.join(f'{STR[0]}_{STR[1]}_{STR[2]}_{NO_FRAG}_int_B_F')
     
     np.savez(save_path,
+             STR=STR,
+             NO_FRAG=NO_FRAG,
              int_B_F=int_B_F,
              intx_B_F = intx_B_F,
              inty_B_F = inty_B_F)
     return int_B_F,intx_B_F,inty_B_F
         
-def calc_int_BF(x1,e1,x3=None,e3=None,V3=None):
+def calc_int_BF(NO_TESTS,x1,e1,x3=None,e3=None,V3=None):
     if x3 is None and e3 is None:
         counts, _ = np.histogram(x1, e1)
 
@@ -179,8 +182,8 @@ if __name__ == '__main__':
     V03 = 1
     data_path = os.path.join('simulation_data','NS_15_S_2_V11_STR_0.6_0.8_0.2_FRAG_4')
     NO_FRAG = 4
-    N_GRIDS, N_FRACS = 500, 100
-    NO_TESTS = N_GRIDS*N_FRACS
+    STR = np.array([0.5,1,0.5])
+    N_GRIDS, N_FRACS = 200, 100
     
     # kde_psd(NS, S, V01, V03)
-    int_B_F,intx_B_F,inty_B_F = direkt_psd(NS, S, V01, V03)
+    int_B_F,intx_B_F,inty_B_F = direkt_psd(NS, S, STR, NO_FRAG, N_GRIDS, N_FRACS, V01, V03)
