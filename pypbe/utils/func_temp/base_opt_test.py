@@ -257,8 +257,8 @@ if __name__ == '__main__':
     dist_path_2 = os.path.join(base_path, "PSD_data", conf.config['dist_scale_1'])
     
     # Run an optimization and generate graphs of the results
-    # delta_opt, opt_values = normal_test()
+    delta_opt, opt_values = normal_test()
     
-    N_exp, N_calc, N_exp_1D, N_calc_1D, q3_psd, q3_exp = calc_N_test()
+    # N_exp, N_calc, N_exp_1D, N_calc_1D, q3_psd, q3_exp = calc_N_test()
     
     # delta = calc_delta_test()

@@ -15,13 +15,19 @@ config = {
         'dim': 2,
         't_init' : np.array([1, 3, 5, 9]),
         't_vec' : np.arange(0, 61, 10, dtype=float),
+        ## Sometimes there is a gap between the initial conditions calculated based on experimental data 
+        ## and the real values, resulting in unavoidable errors in the first few time steps. 
+        ## These errors will gradually disappear as the calculation time becomes longer. 
+        ## Therefore, skipping the data of the first few time steps during optimization 
+        ## may yield better results.
+        'delta_t_start_step' : 3,
         'add_noise': True,
         'smoothing': True,
         'noise_type': 'Mul',
         'noise_strength': 0.1,
         'sample_num': 5,
         'method': 'BO',
-        'n_iter': 400,
+        'n_iter': 1,
         'calc_init_N': True,
         ## delta_flag = q3: use q3
         ## delta_flag = Q3: use Q3

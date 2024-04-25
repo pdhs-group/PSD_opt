@@ -69,11 +69,13 @@ class opt_find():
 
         self.algo.num_t_init = len(self.algo.t_init)
         self.algo.num_t_steps = len(self.algo.t_vec)
+        if self.algo.delta_t_start_step < 0 or self.algo.delta_t_start_step >= self.algo.num_t_steps:
+            raise Exception("The value of delta_t_start_step must be within the indices range of t_vec!")
         ## Get the complete simulation time and get the indices corresponding 
         ## to the vec and init time vectors
         self.algo.t_all = np.sort(np.concatenate((self.algo.t_init, self.algo.t_vec)))
-        self.algo.idt_vec = [np.where(self.algo.t_all == t_time)[0][0] for t_time in self.algo.t_vec]
         self.algo.idt_init = [np.where(self.algo.t_all == t_time)[0][0] for t_time in self.algo.t_init]
+        self.idt_vec = [np.where(self.algo.t_all == t_time)[0][0] for t_time in self.algo.t_vec]
         
         self.algo.p = population(dim=dim, disc='geo')
         ## The 1D-pop data is also used when calculating the initial N of 2/3D-pop.
@@ -250,7 +252,7 @@ class opt_find():
         sumN_uni = np.zeros((len(x_uni), len(self.algo.t_all)))
         sumvol_uni = np.zeros(len(x_uni))
         
-        for idt in self.algo.idt_vec:
+        for idt in self.idt_vec:
             sumvol_uni = pop.return_distribution(t=idt, flag='sumvol_uni')[0]
             kde = self.algo.KDE_fit(x_uni, sumvol_uni)
             ## Recalculate the values of after smoothing
