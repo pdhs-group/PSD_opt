@@ -15,7 +15,7 @@ from .bond_break_generate_data import calc_2d_V
 def breakage_func(NO_FRAG,kde,x):
     return kde(x) * NO_FRAG
 
-def kde_psd(NS, S, V01, V03):
+def kde_psd(NS, S, V01, V03,NO_FRAG,data_path):
     # PSD = np.zeros((NO_FRAG*NO_TESTS, NS-2,NS-2))
     # X1 = np.zeros((NO_FRAG*NO_TESTS, NS-2,NS-2))
     plt.figure(figsize=(10, 8))
@@ -174,16 +174,3 @@ def adjust_BF(counts, x1_vol_sum, V1, x3_vol_sum=None, V3=None):
         return adjested_counts, adjusted_x1_vol_sum, adjusted_x3_vol_sum
     else:
         return adjested_counts, adjusted_x1_vol_sum
-if __name__ == '__main__':
-    # Parameters of MC-Bond-Break
-    NS = 15
-    S = 2
-    V01 = 1
-    V03 = 1
-    data_path = os.path.join('simulation_data','NS_15_S_2_V11_STR_0.6_0.8_0.2_FRAG_4')
-    NO_FRAG = 4
-    STR = np.array([0.5,1,0.5])
-    N_GRIDS, N_FRACS = 200, 100
-    
-    # kde_psd(NS, S, V01, V03)
-    int_B_F,intx_B_F,inty_B_F = direkt_psd(NS, S, STR, NO_FRAG, N_GRIDS, N_FRACS, V01, V03)

@@ -11,7 +11,7 @@ import pypbe.bond_break.bond_break_generate_data as mc_gen
 import pypbe.bond_break.bond_break_post as mc_post
 
 if __name__ == '__main__':
-    NS = 6
+    NS = 7
     S = 2
     STR = np.array([0.5,1,0.5])
     NO_FRAG = 4
@@ -19,10 +19,18 @@ if __name__ == '__main__':
     V03 = 1
     N_GRIDS, N_FRACS = 200, 100
     data_path = 'simulation_data'
-    ## Generate complete data
-    mc_gen.generate_complete_1d_data(NS, S, STR, NO_FRAG, N_GRIDS, N_FRACS)
-    mc_gen.generate_complete_2d_data(NS, S, STR, NO_FRAG, N_GRIDS, N_FRACS, V01, V03)
     
-    ## Calculate breakage function using calculated data
-    int_B_F,intx_B_F,inty_B_F = mc_post.direkt_psd(NS, S, STR, NO_FRAG, N_GRIDS, N_FRACS, V01, V03, data_path)
+    values = np.array([0.1, 0.5, 1])
+    STR1, STR2, STR3 = np.meshgrid(values, values, values, indexing='ij')
+    var_STR = np.column_stack((STR1.flatten(), STR2.flatten(), STR3.flatten()))
+    ## The case of all zero α is meaningless, that means no Agglomeration occurs
+    var_STR = var_STR[~np.all(var_STR == 0, axis=1)]
     
+    for STR in var_STR:
+        ## Generate complete data
+        mc_gen.generate_complete_1d_data(NS, S, STR, NO_FRAG, N_GRIDS, N_FRACS)
+        mc_gen.generate_complete_2d_data(NS, S, STR, NO_FRAG, N_GRIDS, N_FRACS, V01, V03)
+        
+        ## Calculate breakage function using calculated data
+        int_B_F,intx_B_F,inty_B_F = mc_post.direkt_psd(NS, S, STR, NO_FRAG, N_GRIDS, N_FRACS, V01, V03, data_path)
+        

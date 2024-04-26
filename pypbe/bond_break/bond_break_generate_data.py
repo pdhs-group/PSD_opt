@@ -161,16 +161,6 @@ def generate_one_1d_data(args):
     file_name = f"{STR[0]}_{STR[1]}_{STR[2]}_{NO_FRAG}_i{idx}.npy"
     file_path = os.path.join(output_dir, file_name)
     np.save(file_path, F) 
-       
-if __name__ == '__main__':
-    # generate_dataset()
-    NS = 15
-    S = 2
-    STR = np.array([0.5,1,0.5])
-    NO_FRAG = 4
-    N_GRIDS, N_FRACS = 200, 100
-    generate_complete_1d_data(NS,S,STR,NO_FRAG, N_GRIDS, N_FRACS)
-    generate_complete_2d_data(NS,S,STR,NO_FRAG,N_GRIDS, N_FRACS, V01=1,V03=1)
     
 
     

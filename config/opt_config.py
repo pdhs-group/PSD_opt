@@ -13,22 +13,22 @@ config = {
     
     'algo_params': {
         'dim': 2,
-        't_init' : np.array([1, 3, 5, 9]),
-        't_vec' : np.arange(0, 61, 10, dtype=float),
+        't_init' : np.array([0, 1, 3, 5, 9]),
+        't_vec' : np.arange(0, 61, 2, dtype=float),
         ## Sometimes there is a gap between the initial conditions calculated based on experimental data 
         ## and the real values, resulting in unavoidable errors in the first few time steps. 
         ## These errors will gradually disappear as the calculation time becomes longer. 
         ## Therefore, skipping the data of the first few time steps during optimization 
         ## may yield better results.
-        'delta_t_start_step' : 3,
-        'add_noise': True,
-        'smoothing': True,
+        'delta_t_start_step' : 1,
+        'add_noise': False,
+        'smoothing': False,
         'noise_type': 'Mul',
         'noise_strength': 0.1,
         'sample_num': 5,
         'method': 'BO',
-        'n_iter': 1,
-        'calc_init_N': True,
+        'n_iter': 400,
+        'calc_init_N': False,
         ## delta_flag = q3: use q3
         ## delta_flag = Q3: use Q3
         ## delta_flag = x_10: use x_10
@@ -50,20 +50,20 @@ config = {
         'BREAKFVAL' : 5,
         ## aggl_crit: The sequence number of the particle that allows further agglomeration
         'aggl_crit' : 100,
-        'process_type' : "mix",
+        'process_type' : "breakage",
         'pl_v' : 2,
-        'pl_P1' : 1e-4,
+        'pl_P1' : 1e-2,
         'pl_P2' : 0.5,
-        'pl_P3' : 2e-4,
-        'pl_P4' : 0.4,
+        'pl_P3' : 1e-2,
+        'pl_P4' : 0.5,
         # 'pl_P5' : 3e-4,
         # 'pl_P6' : 0.3,
         'COLEVAL' : 2,
         'EFFEVAL' : 1,
         'SIZEEVAL' : 1,
-        'alpha_prim': np.array([1, 0.5, 1]),
+        'alpha_prim': np.array([0.5, 0.5, 1.0]),
         # 'alpha_prim': 0.5,
-        'CORR_BETA' : 15,
+        'CORR_BETA' : 100,
         ## Reduce particle number desity concentration to improve calculation stability
         ## Default value = 1e14 
         'N_scale': 1e-14,
@@ -73,9 +73,9 @@ config = {
     
     ## Parameters which should be optimized
     'opt_params' : {
-        'corr_agg_0': {'bounds': (-3.0, 3.0), 'log_scale': True},
-        'corr_agg_1': {'bounds': (-3.0, 3.0), 'log_scale': True},
-        'corr_agg_2': {'bounds': (-3.0, 3.0), 'log_scale': True},
+        # 'corr_agg_0': {'bounds': (-3.0, 3.0), 'log_scale': True},
+        # 'corr_agg_1': {'bounds': (-3.0, 3.0), 'log_scale': True},
+        # 'corr_agg_2': {'bounds': (-3.0, 3.0), 'log_scale': True},
         'pl_v': {'bounds': (0.1, 2), 'log_scale': False},
         'pl_P1': {'bounds': (-6, -1), 'log_scale': True},
         'pl_P2': {'bounds': (-3, 0), 'log_scale': True},
@@ -86,8 +86,8 @@ config = {
 
     },
     ## The diameter ratio of the primary particles can also be used as a variable
-    'R_NM': 8.68e-7,
-    'R_M': 8.68e-7*1,
+    'R_NM': 8.677468940430804e-07,
+    'R_M': 8.677468940430804e-07*1,
     ## Adjust the coordinate of PBE(optional)
     'R01_0_scl': 1e-1,
     'R03_0_scl': 1e-1,

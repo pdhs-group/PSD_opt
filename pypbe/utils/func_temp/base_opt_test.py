@@ -48,18 +48,18 @@ def normal_test():
     pop_params['pl_P3'] = converted_params[7]
     pop_params['pl_P4'] = converted_params[8]
     find.algo.set_init_pop_para(pop_params)
-    find.algo.calc_init_N = False
-    find.algo.set_comp_para('r0_001', 'r0_001',R01_0_scl=R01_0_scl,R03_0_scl=R03_0_scl,
-                            dist_path_NM=dist_path_1,dist_path_M=dist_path_2)
+    # find.algo.calc_init_N = False
+    # find.algo.set_comp_para('r0_001', 'r0_001',R01_0_scl=R01_0_scl,R03_0_scl=R03_0_scl,
+    #                         dist_path_NM=dist_path_1,dist_path_M=dist_path_2)
     find.algo.calc_all_pop()
     return_pop_distribution(find.algo.p, axq3, fig, clr='b', q3lbl='q3_ori')
     return_pop_distribution(find.algo.p_NM, axq3_NM, fig_NM, clr='b', q3lbl='q3_ori')
     return_pop_distribution(find.algo.p_M, axq3_M, fig_M, clr='b', q3lbl='q3_ori')
     ## Calculate PBE with exp-data and parameter from optimization
     find.algo.set_init_pop_para(opt_values)
-    find.algo.calc_init_N = True
-    find.algo.set_comp_para(R_NM=R_NM, R_M=R_M,R01_0_scl=R01_0_scl,R03_0_scl=R03_0_scl)
-    find.algo.set_init_N(find.algo.sample_num, exp_data_paths, 'mean')
+    # find.algo.calc_init_N = True
+    # find.algo.set_comp_para(R_NM=R_NM, R_M=R_M,R01_0_scl=R01_0_scl,R03_0_scl=R03_0_scl)
+    # find.algo.set_init_N(find.algo.sample_num, exp_data_paths, 'mean')
     find.algo.calc_all_pop()
     return_pop_distribution(find.algo.p, axq3, fig, clr='r', q3lbl='q3_opt')
     return_pop_distribution(find.algo.p_NM, axq3_NM, fig_NM, clr='r', q3lbl='q3_opt')
@@ -75,7 +75,6 @@ def calc_N_test():
     find.algo.calc_init_N = False
     pth = os.path.dirname( __file__ )
     dist_path_1 = os.path.join(pth, "..", "..","data", "PSD_data", conf.config['dist_scale_1'])
-    find.algo.set_comp_para('r0_001', 'r0_001', dist_path_1, dist_path_1,R01_0_scl=1e-1,R03_0_scl=1e-1)
     
     fig=plt.figure()    
     axq3=fig.add_subplot(1,1,1)
@@ -104,59 +103,58 @@ def calc_N_test():
     # return_pop_num_distribution(find.algo.p, axq3, fig, clr='b', q3lbl='q3_psd')
     # q3_psd = return_pop_num_distribution(find.algo.p_NM, axq3_NM, fig_NM, clr='b', q3lbl='q3_psd')
     # return_pop_num_distribution(find.algo.p_M, axq3_M, fig_M, clr='b', q3lbl='q3_psd')
-    return_pop_distribution(find.algo.p, axq3, fig, clr='b', q3lbl='q3_psd')
-    q3_psd = return_pop_distribution(find.algo.p_NM, axq3_NM, fig_NM, clr='b', q3lbl='q3_psd')
+    q3_psd = return_pop_distribution(find.algo.p, axq3, fig, clr='b', q3lbl='q3_psd')
+    return_pop_distribution(find.algo.p_NM, axq3_NM, fig_NM, clr='b', q3lbl='q3_psd')
     return_pop_distribution(find.algo.p_M, axq3_M, fig_M, clr='b', q3lbl='q3_psd')
     N_exp = find.algo.p.N
     N_exp_1D = find.algo.p_NM.N
     ## Calculate PBE with exp-data
     find.algo.calc_init_N = True
-    find.algo.set_comp_para(R_NM=8.68e-7, R_M=8.68e-7,R01_0_scl=1e-1,R03_0_scl=1e-1)
     find.algo.set_init_N(find.algo.sample_num, exp_data_paths, 'mean')
     find.algo.calc_all_pop()
     # return_pop_num_distribution(find.algo.p, axq3, fig, clr='r', q3lbl='q3_exp')
     # q3_exp = return_pop_num_distribution(find.algo.p_NM, axq3_NM, fig_NM, clr='r', q3lbl='q3_exp')
     # return_pop_num_distribution(find.algo.p_M, axq3_M, fig_M, clr='r', q3lbl='q3_exp')   
-    return_pop_distribution(find.algo.p, axq3, fig, clr='r', q3lbl='q3_exp')
-    q3_exp = return_pop_distribution(find.algo.p_NM, axq3_NM, fig_NM, clr='r', q3lbl='q3_exp')
+    q3_exp = return_pop_distribution(find.algo.p, axq3, fig, clr='r', q3lbl='q3_exp')
+    return_pop_distribution(find.algo.p_NM, axq3_NM, fig_NM, clr='r', q3lbl='q3_exp')
     return_pop_distribution(find.algo.p_M, axq3_M, fig_M, clr='r', q3lbl='q3_exp')   
     N_calc = find.algo.p.N
     N_calc_1D = find.algo.p_NM.N
     
     return N_exp, N_calc, N_exp_1D, N_calc_1D, q3_psd, q3_exp
 
-def return_pop_num_distribution(pop, axq3=None,fig=None, clr='b', q3lbl='q3'):
+# def return_pop_num_distribution(pop, axq3=None,fig=None, clr='b', q3lbl='q3'):
 
-    x_uni, q3, Q3, sumvol_uni = pop.return_distribution(t=-1, flag='x_uni, q3, Q3,sumvol_uni')
-    # kde = find.algo.KDE_fit(x_uni, q3)
-    # q3_sm = find.algo.KDE_score(kde, x_uni)
+#     x_uni, q3, Q3, sumvol_uni = pop.return_distribution(t=1, flag='x_uni, q3, Q3,sumvol_uni')
+#     # kde = find.algo.KDE_fit(x_uni, q3)
+#     # q3_sm = find.algo.KDE_score(kde, x_uni)
 
-    kde = find.algo.KDE_fit(x_uni, sumvol_uni)
-    q3_sm = find.algo.KDE_score(kde, x_uni)
+#     kde = find.algo.KDE_fit(x_uni, sumvol_uni)
+#     q3_sm = find.algo.KDE_score(kde, x_uni)
     
-    axq3, fig = pt.plot_data(x_uni, q3, fig=fig, ax=axq3,
-                           xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
-                           ylbl='number distribution of agglomerates $q3$ / $-$',
-                           lbl=q3lbl,clr=clr,mrk='o')
+#     axq3, fig = pt.plot_data(x_uni, q3, fig=fig, ax=axq3,
+#                            xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
+#                            ylbl='number distribution of agglomerates $q3$ / $-$',
+#                            lbl=q3lbl,clr=clr,mrk='o')
     
-    axq3, fig = pt.plot_data(x_uni, q3_sm, fig=fig, ax=axq3,
-                            lbl=q3lbl+'_sm',clr=clr,mrk='^')
+#     axq3, fig = pt.plot_data(x_uni, q3_sm, fig=fig, ax=axq3,
+#                             lbl=q3lbl+'_sm',clr=clr,mrk='^')
     
-    # axq3, fig = pt.plot_data(x_uni, sumN_uni, fig=fig, ax=axq3,
-    #                         xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
-    #                         ylbl='number distribution of agglomerates $q3$ / $-$',
-    #                         lbl='sumN_uni',clr='r',mrk='o') 
+#     # axq3, fig = pt.plot_data(x_uni, sumN_uni, fig=fig, ax=axq3,
+#     #                         xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
+#     #                         ylbl='number distribution of agglomerates $q3$ / $-$',
+#     #                         lbl='sumN_uni',clr='r',mrk='o') 
     
-    df = pd.DataFrame(data=q3_sm, index=x_uni)
-    axq3.grid('minor')
-    axq3.set_xscale('log')
-    # axq3.set_yscale('log')
-    return df
+#     df = pd.DataFrame(data=q3_sm, index=x_uni)
+#     axq3.grid('minor')
+#     axq3.set_xscale('log')
+#     # axq3.set_yscale('log')
+#     return df
 
 def return_pop_distribution(pop, axq3=None,fig=None, clr='b', q3lbl='q3'):
 
     x_uni = find.algo.calc_x_uni(pop)
-    q3, Q3, sumvol_uni = pop.return_distribution(t=3, flag='q3, Q3, sumvol_uni')
+    q3, Q3, sumvol_uni = pop.return_distribution(t=-1, flag='q3, Q3, sumvol_uni')
     # kde = find.algo.KDE_fit(x_uni, q3)
     # q3_sm = find.algo.KDE_score(kde, x_uni)
 
@@ -181,14 +179,21 @@ def return_pop_distribution(pop, axq3=None,fig=None, clr='b', q3lbl='q3'):
     df = pd.DataFrame(data=q3_sm, index=x_uni)
     return df
 
-def calc_delta_test():
+def calc_delta_test(var_delta=False):
     find.algo.set_init_N(find.algo.sample_num, exp_data_paths, 'mean')
     
     corr_agg = pop_params['CORR_BETA'] * pop_params['alpha_prim']
     pop_params_test = {}
     pop_params_test['corr_agg'] = corr_agg
-    delta = find.algo.calc_delta_agg(pop_params_test, sample_num=find.algo.sample_num, exp_data_path=exp_data_paths)
-    return delta
+    if var_delta:
+        delta_arr = np.zeros(len(find.algo.t_vec))
+        for start_step in range(1,len(find.algo.t_vec)):
+            find.algo.delta_t_start_step = start_step
+            delta_arr[start_step] = find.algo.calc_delta_agg(pop_params_test, sample_num=find.algo.sample_num, exp_data_path=exp_data_paths)
+        return delta_arr
+    else:
+        delta = find.algo.calc_delta_agg(pop_params_test, sample_num=find.algo.sample_num, exp_data_path=exp_data_paths)
+        return delta
 
 if __name__ == '__main__':
     #%%  Input for Opt
@@ -235,8 +240,8 @@ if __name__ == '__main__':
     ## kernels: Find the kernel for each set of data, and then average these kernels.
     ## delta: Read all input directly and use all data to find the kernel once
     ## wait to write hier 
-    data_name = "Sim_Mul_0.1_para_100.0_0.5_0.5_1.0_2_0.01_0.5_0.01_0.5.xlsx"
-        
+    # data_name = "Sim_Mul_0.1_para_100.0_0.5_0.5_1.0_2_0.01_0.5_0.01_0.5.xlsx"
+    data_name = "Sim_para_100.0_0.5_0.5_1.0_2_0.01_0.5_0.01_0.5.xlsx"  
     base_path = os.path.join(find.algo.p.pth, "data")
     
     # conf_params = {
@@ -253,12 +258,14 @@ if __name__ == '__main__':
         exp_data_path.replace(".xlsx", "_M.xlsx")
     ]
     
-    dist_path_1 = os.path.join(base_path, "PSD_data", conf.config['dist_scale_1'])
-    dist_path_2 = os.path.join(base_path, "PSD_data", conf.config['dist_scale_1'])
+    # dist_path_1 = os.path.join(base_path, "PSD_data", conf.config['dist_scale_1'])
+    # dist_path_2 = os.path.join(base_path, "PSD_data", conf.config['dist_scale_1'])
+    dist_path_1 = None
+    dist_path_2 = None
     
     # Run an optimization and generate graphs of the results
     delta_opt, opt_values = normal_test()
     
     # N_exp, N_calc, N_exp_1D, N_calc_1D, q3_psd, q3_exp = calc_N_test()
     
-    # delta = calc_delta_test()
+    # delta = calc_delta_test(var_delta=False)

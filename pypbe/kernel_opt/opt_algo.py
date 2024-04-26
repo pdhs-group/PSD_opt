@@ -114,7 +114,7 @@ class opt_algo():
             del params["corr_agg"]
 
         self.calc_pop(self.p, params, self.t_vec)
-        if self.p.calc_status == 0:
+        if self.p.calc_status:
             return self.calc_delta_tem(sample_num, exp_data_path, scale, self.p)
         else:
             return scale
@@ -137,13 +137,15 @@ class opt_algo():
         (delta_sum * scale) / x_uni_num : `float`
             Average value of PSD's difference for corresponding to all particle sizes. 
         """
-        kde_list = []
+        if self.smoothing:
+            kde_list = []
         x_uni = self.calc_x_uni(pop)
         for idt in range(self.delta_t_start_step, self.num_t_steps):
-            sumvol_uni = pop.return_distribution(t=idt, flag='sumvol_uni')[0]
-            kde = self.KDE_fit(x_uni, sumvol_uni)
-            kde_list.append(kde)
-        
+            if self.smoothing:
+                sumvol_uni = pop.return_distribution(t=idt, flag='sumvol_uni')[0]
+                kde = self.KDE_fit(x_uni, sumvol_uni)
+                kde_list.append(kde)
+            
         if sample_num == 1:
             x_uni_exp, sumN_uni_exp = self.read_exp(exp_data_path, self.t_vec[self.delta_t_start_step:]) 
             vol_uni = np.tile((1/6)*np.pi*x_uni_exp**3, (self.num_t_steps-self.delta_t_start_step, 1)).T
@@ -171,8 +173,11 @@ class opt_algo():
                 q3_mod = np.zeros((len(x_uni_exp), self.num_t_steps-self.delta_t_start_step))
                 
                 for idt in range(self.num_t_steps-self.delta_t_start_step):
-                    q3_mod_tem = self.KDE_score(kde_list[idt], x_uni_exp)
-                    q3_mod[:, idt] = q3_mod_tem
+                    if self.smoothing:
+                        q3_mod_tem = self.KDE_score(kde_list[idt], x_uni_exp)
+                        q3_mod[:, idt] = q3_mod_tem
+                    else:
+                        q3_mod[:, idt] = pop.return_distribution(t=idt, flag='q3')[0]
 
                 data_mod = self.re_calc_distribution(x_uni_exp, q3=q3_mod, flag=self.delta_flag)[0]
                 data_exp = self.re_calc_distribution(x_uni_exp, sum_uni=sumvol_uni_exp, flag=self.delta_flag)[0]
@@ -709,15 +714,15 @@ class opt_algo():
         """
         x_uni = self.calc_x_uni(pop)
         if sample_num == 1:
-            x_uni_exp, sumN_uni_init_sets = self.read_exp(exp_data_path, self.t_init)
+            x_uni_exp, sumN_uni_init_sets = self.read_exp(exp_data_path, self.t_init[1:])
         else:
             exp_data_path=self.traverse_path(0, exp_data_path)
-            x_uni_exp, sumN_uni_tem = self.read_exp(exp_data_path, self.t_init)
-            sumN_uni_all_samples = np.zeros((len(x_uni_exp), len(self.t_init), sample_num))
+            x_uni_exp, sumN_uni_tem = self.read_exp(exp_data_path, self.t_init[1:])
+            sumN_uni_all_samples = np.zeros((len(x_uni_exp), len(self.t_init[1:]), sample_num))
             sumN_uni_all_samples[:, :, 0] = sumN_uni_tem
             for i in range(1, sample_num):
                 exp_data_path=self.traverse_path(i, exp_data_path)
-                _, sumN_uni_tem = self.read_exp(exp_data_path, self.t_init)
+                _, sumN_uni_tem = self.read_exp(exp_data_path, self.t_init[1:])
                 sumN_uni_all_samples[:, :, i] = sumN_uni_tem
             sumN_uni_init_sets = sumN_uni_all_samples.mean(axis=2)
             
@@ -725,7 +730,7 @@ class opt_algo():
             
         if init_flag == 'int':
             for idx in range(len(x_uni_exp)):
-                interp_time = interp1d(self.t_init, sumN_uni_init_sets[idx, :], kind='linear', fill_value="extrapolate")
+                interp_time = interp1d(self.t_init[1:], sumN_uni_init_sets[idx, :], kind='linear', fill_value="extrapolate")
                 sumN_uni_init[idx] = interp_time(0.0)
 
         elif init_flag == 'mean':

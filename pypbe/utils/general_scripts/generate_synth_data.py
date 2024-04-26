@@ -30,7 +30,7 @@ def calc_function(R01_0, R03_0, dist_path_NM, dist_path_M, var_pop_params):
     
     find.algo.weight_2d = conf.config['weight_2d']
     find.algo.calc_init_N = False
-    find.algo.set_comp_para(R01_0, R03_0, dist_path_NM, dist_path_M,
+    find.algo.set_comp_para(R01_0, R03_0, dist_path_NM, dist_path_M,R_NM=conf.config['R_NM'], R_M=conf.config['R_M'],
                             R01_0_scl=conf.config['R01_0_scl'],R03_0_scl=conf.config['R03_0_scl'])
     
     # find.algo.calc_all_pop(var_pop_params, find.algo.t_vec)
@@ -98,8 +98,10 @@ if __name__ == '__main__':
     func_list = []
     for i, dist in enumerate(dist_path):
         ## Reinitialization of pop equations using psd data  
-        dist_path_NM = dist_path[0]
-        dist_path_M = dist
+        # dist_path_NM = dist_path[0]
+        # dist_path_M = dist
+        dist_path_NM = None
+        dist_path_M = None
         scale = size_scale[i]
         for j,corr_beta in enumerate(var_corr_beta):
             for k,alpha_prim in enumerate(var_alpha_prim):

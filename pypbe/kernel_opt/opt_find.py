@@ -69,11 +69,12 @@ class opt_find():
 
         self.algo.num_t_init = len(self.algo.t_init)
         self.algo.num_t_steps = len(self.algo.t_vec)
-        if self.algo.delta_t_start_step < 0 or self.algo.delta_t_start_step >= self.algo.num_t_steps:
-            raise Exception("The value of delta_t_start_step must be within the indices range of t_vec!")
+        if self.algo.delta_t_start_step < 1 or self.algo.delta_t_start_step >= self.algo.num_t_steps:
+            raise Exception("The value of delta_t_start_step must be within the indices range of t_vec! and >0")
         ## Get the complete simulation time and get the indices corresponding 
         ## to the vec and init time vectors
-        self.algo.t_all = np.sort(np.concatenate((self.algo.t_init, self.algo.t_vec)))
+        self.algo.t_all = np.concatenate((self.algo.t_init, self.algo.t_vec))
+        self.algo.t_all = np.unique(self.algo.t_all)
         self.algo.idt_init = [np.where(self.algo.t_all == t_time)[0][0] for t_time in self.algo.t_init]
         self.idt_vec = [np.where(self.algo.t_all == t_time)[0][0] for t_time in self.algo.t_vec]
         
@@ -252,20 +253,23 @@ class opt_find():
         sumN_uni = np.zeros((len(x_uni), len(self.algo.t_all)))
         sumvol_uni = np.zeros(len(x_uni))
         
-        for idt in self.idt_vec:
-            sumvol_uni = pop.return_distribution(t=idt, flag='sumvol_uni')[0]
-            kde = self.algo.KDE_fit(x_uni, sumvol_uni)
-            ## Recalculate the values of after smoothing
-            q3 = self.algo.KDE_score(kde, x_uni)
-            Q3 = self.algo.calc_Q3(x_uni, q3)
-            sumvol_uni = self.algo.calc_sum_uni(Q3, sumvol_uni.sum())
-            sumN_uni[1:, idt] = sumvol_uni[1:] / v_uni
+        for idt in self.idt_vec[1:]:
+            if self.algo.smoothing:
+                sumvol_uni = pop.return_distribution(t=idt, flag='sumvol_uni')[0]
+                kde = self.algo.KDE_fit(x_uni, sumvol_uni)
+                ## Recalculate the values of after smoothing
+                q3 = self.algo.KDE_score(kde, x_uni)
+                Q3 = self.algo.calc_Q3(x_uni, q3)
+                sumvol_uni = self.algo.calc_sum_uni(Q3, sumvol_uni.sum())
+                sumN_uni[1:, idt] = sumvol_uni[1:] / v_uni
+            else:
+                sumN_uni[:, idt] = pop.return_num_distribution(t=idt, flag='sumN_uni')[0]
         ## Data used for initialization should not be smoothed
         for idt in self.algo.idt_init:
             sumN_uni[:, idt] = pop.return_num_distribution(t=idt, flag='sumN_uni')[0]
         
         if self.algo.add_noise:
-            sumN_uni = self.algo.function_noise(sumN_uni)
+            sumN_uni = self.algo.function_noise()
 
         df = pd.DataFrame(data=sumN_uni, index=x_uni, columns=formatted_times)
         df.index.name = 'Circular Equivalent Diameter'
