@@ -153,7 +153,9 @@ class opt_algo():
             q3_mod = np.zeros((len(x_uni_exp), self.num_t_steps-self.delta_t_start_step))
             for idt in range(self.delta_t_start_step, self.num_t_steps):
                 q3_mod_tem = self.KDE_score(kde_list[idt], x_uni_exp)
-                q3_mod[:, idt] = q3_mod_tem
+                ## The volume of particles with index=0 is 0. 
+                ## In theory, such particles do not exist.
+                q3_mod[1:, idt] = q3_mod_tem
             data_mod = self.re_calc_distribution(x_uni_exp, q3=q3_mod, flag=self.delta_flag)[0]
             data_exp = self.re_calc_distribution(x_uni_exp, sum_uni=sumvol_uni_exp, flag=self.delta_flag)[0]
             # Calculate the error between experimental data and simulation results
@@ -175,9 +177,11 @@ class opt_algo():
                 for idt in range(self.num_t_steps-self.delta_t_start_step):
                     if self.smoothing:
                         q3_mod_tem = self.KDE_score(kde_list[idt], x_uni_exp)
-                        q3_mod[:, idt] = q3_mod_tem
+                        ## The volume of particles with index=0 is 0. 
+                        ## In theory, such particles do not exist.
+                        q3_mod[1:, idt] = q3_mod_tem[1:]
                     else:
-                        q3_mod[:, idt] = pop.return_distribution(t=idt, flag='q3')[0]
+                        q3_mod[:, idt] = pop.return_distribution(t=idt+self.delta_t_start_step, flag='q3')[0]
 
                 data_mod = self.re_calc_distribution(x_uni_exp, q3=q3_mod, flag=self.delta_flag)[0]
                 data_exp = self.re_calc_distribution(x_uni_exp, sum_uni=sumvol_uni_exp, flag=self.delta_flag)[0]

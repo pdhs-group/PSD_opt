@@ -22,7 +22,7 @@ config = {
         ## may yield better results.
         'delta_t_start_step' : 1,
         'add_noise': False,
-        'smoothing': False,
+        'smoothing': True,
         'noise_type': 'Mul',
         'noise_strength': 0.1,
         'sample_num': 5,
@@ -78,9 +78,9 @@ config = {
         # 'corr_agg_2': {'bounds': (-3.0, 3.0), 'log_scale': True},
         'pl_v': {'bounds': (0.1, 2), 'log_scale': False},
         'pl_P1': {'bounds': (-6, -2), 'log_scale': True},
-        'pl_P2': {'bounds': (0.1, 1), 'log_scale': False},
+        'pl_P2': {'bounds': (0.1, 0.7), 'log_scale': False},
         'pl_P3': {'bounds': (-6, -2), 'log_scale': True},
-        'pl_P4': {'bounds': (0.1, 1), 'log_scale': False},
+        'pl_P4': {'bounds': (0.1, 0.7), 'log_scale': False},
         # 'pl_P5': {'bounds': (-6, -1), 'log_scale': True},
         # 'pl_P6': {'bounds': (-3, 0), 'log_scale': True},
 
