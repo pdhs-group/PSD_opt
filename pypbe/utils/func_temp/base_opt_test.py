@@ -241,7 +241,7 @@ if __name__ == '__main__':
     ## delta: Read all input directly and use all data to find the kernel once
     ## wait to write hier 
     # data_name = "Sim_Mul_0.1_para_100.0_0.5_0.5_1.0_2_0.01_0.5_0.01_0.5.xlsx"
-    data_name = "Sim_para_100.0_0.5_0.5_1.0_2_0.01_0.5_0.01_0.5.xlsx"  
+    data_name = "Sim_para_100.0_0.5_0.5_0.5_1_0.001_0.5_0.001_0.5.xlsx"  
     base_path = os.path.join(find.algo.p.pth, "data")
     
     # conf_params = {

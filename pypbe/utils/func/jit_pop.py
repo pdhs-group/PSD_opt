@@ -826,47 +826,30 @@ def calc_int_B_F_2D_GL(NS,V1,V3,V_e1,V_e3,BREAKFVAL,v,q):
     ## for low boundary/x
     for a in range(NS):
         for i in range(a, NS):
-            if i == 0 or i == 1:
+            if i == 0:
                 continue
             args = (V1[i],v,q,BREAKFVAL)
             if a == i:
                 int_B_F[a,0,i,0] = gauss_legendre(breakage_func_1d,V_e1_tem[a],V1[a],xs1,ws1,args=args)
                 intx_B_F[a,0,i,0] = gauss_legendre(breakage_func_1d_vol,V_e1_tem[a],V1[a],xs1,ws1,args=args) 
-                int_B_F[a,1,i,1] = gauss_legendre(breakage_func_1d,V_e1_tem[a],V1[a],xs1,ws1,args=args)
-                intx_B_F[a,1,i,1] = gauss_legendre(breakage_func_1d_vol,V_e1_tem[a],V1[a],xs1,ws1,args=args)
-                ## Because the particle with coordinate 1 always carries a primary particle. 
-                ## So it's equivalent to appending a constant integral.
-                ## But in fact, it is assumed that this primary particle will be broken evenly. 
-                ## There is no problem with mathematics. Have questions about physics?
-                inty_B_F[a,1,i,1] = (V1[a] - V_e1_tem[a]) / (V1[i] - V_e1_tem[0]) * V3[1]
             else:
                 int_B_F[a,0,i,0] = gauss_legendre(breakage_func_1d,V_e1_tem[a],V_e1_tem[a+1],xs1,ws1,args=args)
                 intx_B_F[a,0,i,0] = gauss_legendre(breakage_func_1d_vol,V_e1_tem[a],V_e1_tem[a+1],xs1,ws1,args=args)
-                int_B_F[a,1,i,1] = gauss_legendre(breakage_func_1d,V_e1_tem[a],V_e1_tem[a+1],xs1,ws1,args=args)
-                intx_B_F[a,1,i,1] = gauss_legendre(breakage_func_1d_vol,V_e1_tem[a],V_e1_tem[a+1],xs1,ws1,args=args)
-                inty_B_F[a,1,i,1] = (V_e1_tem[a+1] - V_e1_tem[a]) / (V1[i] - V_e1_tem[0]) * V3[1]
     ## for left boundary/y            
     for b in range(NS):
         for j in range(b,NS):
-            if j == 0 or j == 1:
+            if j == 0:
                 continue
             args = (V3[j],v,q,BREAKFVAL)
             if b == j:
                 int_B_F[0,b,0,j] = gauss_legendre(breakage_func_1d,V_e3_tem[b],V3[b],xs3,ws3,args=args)
                 inty_B_F[0,b,0,j] = gauss_legendre(breakage_func_1d_vol,V_e3_tem[b],V3[b],xs3,ws3,args=args)
-                int_B_F[1,b,1,j] = gauss_legendre(breakage_func_1d,V_e3_tem[b],V3[b],xs3,ws3,args=args)
-                inty_B_F[1,b,1,j] = gauss_legendre(breakage_func_1d_vol,V_e3_tem[b],V3[b],xs3,ws3,args=args)
-                intx_B_F[1,b,1,j] = (V3[b] - V_e3_tem[b]) / (V3[j] - V_e3_tem[0]) * V1[1]
             else:
                 int_B_F[0,b,0,j] = gauss_legendre(breakage_func_1d,V_e3_tem[b],V_e3_tem[b+1],xs3,ws3,args=args)
                 inty_B_F[0,b,0,j] = gauss_legendre(breakage_func_1d_vol,V_e3_tem[b],V_e3_tem[b+1],xs3,ws3,args=args)
-                int_B_F[1,b,1,j] = gauss_legendre(breakage_func_1d,V_e3_tem[b],V_e3_tem[b+1],xs3,ws3,args=args)
-                inty_B_F[1,b,1,j] = gauss_legendre(breakage_func_1d_vol,V_e3_tem[b],V_e3_tem[b+1],xs3,ws3,args=args)   
-                ## 
-                intx_B_F[1,b,1,j] = (V_e3_tem[b+1] - V_e3_tem[b]) / (V3[j] - V_e3_tem[0]) * V1[1]
     for idx, tmp in np.ndenumerate(int_B_F):
         a = idx[0] ; b = idx[1]; i = idx[2]; j = idx[3]
-        if i < 2 or j < 2:
+        if i == 0 or j == 0:
             continue
         elif a <= i and b <= j:
             args = (V1[i],V3[j],v,q,BREAKFVAL)
@@ -904,51 +887,56 @@ def calc_int_B_F_2D_quad(NS,V1,V3,V_e1,V_e3,BREAKFVAL,v,q):
     V_e3_tem[:] = V_e3[1:]
     V_e3_tem[0] = 0.0
     
+    ## for low boundary/x
+    for a in range(NS):
+        for i in range(a, NS):
+            if i == 0:
+                continue
+            args = (V1[i],v,q,BREAKFVAL)
+            if a == i:
+                int_B_F[a,0,i,0],err = quad(breakage_func_1d,V_e1_tem[a],V1[a],args=args)
+                intx_B_F[a,0,i,0],err = quad(breakage_func_1d_vol,V_e1_tem[a],V1[a],args=args) 
+            else:
+                int_B_F[a,0,i,0],err = quad(breakage_func_1d,V_e1_tem[a],V_e1_tem[a+1],args=args)
+                intx_B_F[a,0,i,0],err = quad(breakage_func_1d_vol,V_e1_tem[a],V_e1_tem[a+1],args=args)
+    ## for left boundary/y            
+    for b in range(NS):
+        for j in range(b,NS):
+            if j == 0:
+                continue
+            args = (V3[j],v,q,BREAKFVAL)
+            if b == j:
+                int_B_F[0,b,0,j],err = quad(breakage_func_1d,V_e3_tem[b],V3[b],args=args)
+                inty_B_F[0,b,0,j],err = quad(breakage_func_1d_vol,V_e3_tem[b],V3[b],args=args)
+            else:
+                int_B_F[0,b,0,j],err = gauss_legendre(breakage_func_1d,V_e3_tem[b],V_e3_tem[b+1],args=args)
+                inty_B_F[0,b,0,j],err = gauss_legendre(breakage_func_1d_vol,V_e3_tem[b],V_e3_tem[b+1],args=args)
     for idx, tmp in np.ndenumerate(int_B_F):
         a = idx[0] ; b = idx[1]; i = idx[2]; j = idx[3]
-        if i + j != 0 and a<=i or b <= j:
-            if i == 0:
-                ## for left boundary/y
-                args = (V3[j],v,q,BREAKFVAL)
-                if j == 0:
-                    continue
-                elif b == j:
-                    int_B_F[idx],err  = quad(breakage_func_1d,V_e3_tem[b],V3[b],args=args)
-                    inty_B_F[idx],err  = quad(breakage_func_1d_vol,V_e3_tem[b],V3[b],args=args)
-                else:
-                    int_B_F[idx],err  = quad(breakage_func_1d,V_e3_tem[b],V_e3_tem[b+1],args=args)
-                    inty_B_F[idx],err  = quad(breakage_func_1d_vol,V_e3_tem[b],V_e3_tem[b+1],args=args)
-            elif j == 0:
-                ## for low boundary/x
-                args = (V1[i],v,q,BREAKFVAL)
-                if a == i:
-                    int_B_F[idx],err = quad(breakage_func_1d,V_e1_tem[a],V1[a],args=args)
-                    intx_B_F[idx],err = quad(breakage_func_1d_vol,V_e1_tem[a],V1[a],args=args)
-                else:
-                    int_B_F[idx],err = quad(breakage_func_1d,V_e1_tem[a],V_e1_tem[a+1],args=args)
-                    intx_B_F[idx],err = quad(breakage_func_1d_vol,V_e1_tem[a],V_e1_tem[a+1],args=args)
+        if i == 0 or j == 0:
+            continue
+        elif a <= i and b <= j:
+            args = (V1[i],V3[j],v,q,BREAKFVAL)
+            ## The contributions of fragments on the same vertical axis
+            if a == i and b == j:
+                int_B_F[idx],err  = dblquad(breakage_func_2d,V_e1_tem[a],V1[a],V_e3_tem[b],V3[b],args=args)
+                intx_B_F[idx],err = dblquad(breakage_func_2d_x1vol,V_e1_tem[a],V1[a],V_e3_tem[b],V3[b],args=args)
+                inty_B_F[idx],err = dblquad(breakage_func_2d_x3vol,V_e1_tem[a],V1[a],V_e3_tem[b],V3[b],args=args)
+            elif a == i:
+                int_B_F[idx],err  = dblquad(breakage_func_2d,V_e1_tem[a],V1[a],V_e3_tem[b],V_e3_tem[b+1],args=args)
+                intx_B_F[idx],err = dblquad(breakage_func_2d_x1vol,V_e1_tem[a],V1[a],V_e3_tem[b],V_e3_tem[b+1],args=args)
+                inty_B_F[idx],err = dblquad(breakage_func_2d_x3vol,V_e1_tem[a],V1[a],V_e3_tem[b],V_e3_tem[b+1],args=args)
+            ## The contributions of fragments on the same horizontal axis
+            elif b == j:   
+                int_B_F[idx],err  = dblquad(breakage_func_2d,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V3[b],args=args)
+                intx_B_F[idx],err = dblquad(breakage_func_2d_x1vol,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V3[b],args=args)
+                inty_B_F[idx],err = dblquad(breakage_func_2d_x3vol,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V3[b],args=args)
+            ## The contribution from the fragments of large particles on the upper right side 
             else:
-                args = (V1[i],V3[j],v,q,BREAKFVAL)
-                ## The contributions of fragments on the same vertical axis
-                if a == i and b == j:
-                    int_B_F[idx],err  = dblquad(breakage_func_2d,V_e1_tem[a],V1[a],V_e3_tem[b],V3[b],args=args)
-                    intx_B_F[idx],err = dblquad(breakage_func_2d_x1vol,V_e1_tem[a],V1[a],V_e3_tem[b],V3[b],args=args)
-                    inty_B_F[idx],err = dblquad(breakage_func_2d_x3vol,V_e1_tem[a],V1[a],V_e3_tem[b],V3[b],args=args)
-                elif a == i:
-                    int_B_F[idx],err  = dblquad(breakage_func_2d,V_e1_tem[a],V1[a],V_e3_tem[b],V_e3_tem[b+1],args=args)
-                    intx_B_F[idx],err = dblquad(breakage_func_2d_x1vol,V_e1_tem[a],V1[a],V_e3_tem[b],V_e3_tem[b+1],args=args)
-                    inty_B_F[idx],err = dblquad(breakage_func_2d_x3vol,V_e1_tem[a],V1[a],V_e3_tem[b],V_e3_tem[b+1],args=args)
-                ## The contributions of fragments on the same horizontal axis
-                elif b == j:   
-                    int_B_F[idx],err  = dblquad(breakage_func_2d,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V3[b],args=args)
-                    intx_B_F[idx],err = dblquad(breakage_func_2d_x1vol,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V3[b],args=args)
-                    inty_B_F[idx],err = dblquad(breakage_func_2d_x3vol,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V3[b],args=args)
-                ## The contribution from the fragments of large particles on the upper right side 
-                else:
-                    int_B_F[idx],err  = dblquad(breakage_func_2d,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V_e3_tem[b+1],args=args)
-                    intx_B_F[idx],err = dblquad(breakage_func_2d_x1vol,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V_e3_tem[b+1],args=args)
-                    inty_B_F[idx],err = dblquad(breakage_func_2d_x3vol,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V_e3_tem[b+1],args=args)
-                            
+                int_B_F[idx],err  = dblquad(breakage_func_2d,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V_e3_tem[b+1],args=args)
+                intx_B_F[idx],err = dblquad(breakage_func_2d_x1vol,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V_e3_tem[b+1],args=args)
+                inty_B_F[idx],err = dblquad(breakage_func_2d_x3vol,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V_e3_tem[b+1],args=args)
+                                            
     return int_B_F, intx_B_F, inty_B_F
 
 @jit(nopython=True)

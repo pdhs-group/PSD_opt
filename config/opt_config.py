@@ -14,7 +14,7 @@ config = {
     'algo_params': {
         'dim': 2,
         't_init' : np.array([0, 1, 3, 5, 9]),
-        't_vec' : np.arange(0, 61, 2, dtype=float),
+        't_vec' : np.arange(0, 601, 60, dtype=float),
         ## Sometimes there is a gap between the initial conditions calculated based on experimental data 
         ## and the real values, resulting in unavoidable errors in the first few time steps. 
         ## These errors will gradually disappear as the calculation time becomes longer. 
@@ -45,16 +45,16 @@ config = {
     ## PBE parameters
     'pop_params': {
         'NS' : 15,
-        'S' : 2,
+        'S' : 4,
         'BREAKRVAL' : 4,
         'BREAKFVAL' : 5,
         ## aggl_crit: The sequence number of the particle that allows further agglomeration
         'aggl_crit' : 100,
         'process_type' : "breakage",
-        'pl_v' : 2,
-        'pl_P1' : 1e-2,
+        'pl_v' : 1,
+        'pl_P1' : 1e-3,
         'pl_P2' : 0.5,
-        'pl_P3' : 1e-2,
+        'pl_P3' : 1e-3,
         'pl_P4' : 0.5,
         # 'pl_P5' : 3e-4,
         # 'pl_P6' : 0.3,
@@ -77,10 +77,10 @@ config = {
         # 'corr_agg_1': {'bounds': (-3.0, 3.0), 'log_scale': True},
         # 'corr_agg_2': {'bounds': (-3.0, 3.0), 'log_scale': True},
         'pl_v': {'bounds': (0.1, 2), 'log_scale': False},
-        'pl_P1': {'bounds': (-6, -1), 'log_scale': True},
-        'pl_P2': {'bounds': (-3, 0), 'log_scale': True},
-        'pl_P3': {'bounds': (-6, -1), 'log_scale': True},
-        'pl_P4': {'bounds': (-3, 0), 'log_scale': True},
+        'pl_P1': {'bounds': (-6, -2), 'log_scale': True},
+        'pl_P2': {'bounds': (0.1, 1), 'log_scale': False},
+        'pl_P3': {'bounds': (-6, -2), 'log_scale': True},
+        'pl_P4': {'bounds': (0.1, 1), 'log_scale': False},
         # 'pl_P5': {'bounds': (-6, -1), 'log_scale': True},
         # 'pl_P6': {'bounds': (-3, 0), 'log_scale': True},
 
