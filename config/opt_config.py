@@ -5,6 +5,7 @@ Created on Thu Jan 18 15:42:20 2024
 @author: px2030
 """
 import numpy as np
+import os
 ## Config for Optimization
 
 config = {
@@ -68,7 +69,7 @@ config = {
         ## Default value = 1e14 
         'N_scale': 1e-14,
         ## When True, use distribution data simulated using MC-bond-break methods
-        'USE_MC_BOND': False,
+        'USE_MC_BOND' : False,
         },
     
     ## Parameters which should be optimized

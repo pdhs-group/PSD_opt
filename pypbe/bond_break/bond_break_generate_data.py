@@ -66,7 +66,7 @@ def generate_complete_2d_data(NS,S,STR,NO_FRAG,N_GRIDS, N_FRACS, V01,V03):
     # Prepare arguments for multiprocessing
     tasks = []
     for idx, A in np.ndenumerate(V):
-        if idx[0] <= 1 or idx[1] <= 1:
+        if idx[0] == 0 and idx[1] == 0:
             continue
         args = (idx, A, X1_vol[idx], V1, V3, output_dir, STR, NO_FRAG, N_GRIDS, N_FRACS, A0, INIT_BREAK_RANDOM)
         tasks.append(args)
@@ -131,7 +131,7 @@ def generate_complete_1d_data(NS,S,STR,NO_FRAG,N_GRIDS, N_FRACS):
     # Prepare arguments for multiprocessing
     tasks = []
     for idx, A in enumerate(V):
-        if idx <= 1:
+        if idx == 0:
             continue
         args = (idx, A, V, output_dir, STR, NO_FRAG, N_GRIDS, N_FRACS, A0, INIT_BREAK_RANDOM)
         tasks.append(args)

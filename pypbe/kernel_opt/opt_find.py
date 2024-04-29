@@ -269,7 +269,7 @@ class opt_find():
             sumN_uni[:, idt] = pop.return_num_distribution(t=idt, flag='sumN_uni')[0]
         
         if self.algo.add_noise:
-            sumN_uni = self.algo.function_noise()
+            sumN_uni = self.algo.function_noise(sumN_uni)
 
         df = pd.DataFrame(data=sumN_uni, index=x_uni, columns=formatted_times)
         df.index.name = 'Circular Equivalent Diameter'

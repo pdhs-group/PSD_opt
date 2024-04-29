@@ -65,36 +65,10 @@ def direkt_psd(NS, S, STR, NO_FRAG, N_GRIDS, N_FRACS, V01, V03, data_path):
     NO_TESTS = N_GRIDS*N_FRACS
     # PSD = np.zeros((NO_FRAG*NO_TESTS, NS-2,NS-2))
     # X1 = np.zeros((NO_FRAG*NO_TESTS, NS-2,NS-2))
-    for i in range(NS):
-        if i <= 1:
-            continue
-        file_name = f"{STR[0]}_{STR[1]}_{STR[2]}_{NO_FRAG}_i{i}.npy"
-        file_path = os.path.join(data_path,file_name)
-        data = np.load(file_path,allow_pickle=True)
-        PSD=data[:,0]
-        X1=data[:,1]
-        x1 = PSD * X1
-        counts, x1_vol_sum, x3_vol_sum= calc_int_BF(NO_TESTS,x1,V_e1_tem,V3=V3[1])
-        counts, x1_vol_sum = adjust_BF(counts, x1_vol_sum, V1[i])
-        int_B_F[:,0,i,0] = counts
-        int_B_F[:,1,i,1] = counts
-        ## Use relative value
-        intx_B_F[:,0,i,0] = x1_vol_sum #/ V1[i]
-        intx_B_F[:,1,i,1] = x1_vol_sum # / V1[i]
-        ## Because the particle with coordinate 1 always carries a primary particle. 
-        ## So it's equivalent to appending a constant integral.
-        ## But in fact, it is assumed that this primary particle will be broken evenly(divide by NO_FRAG). 
-        ## There is no problem with mathematics. Have questions about physics?
-        inty_B_F[:,1,i,1] = x3_vol_sum / NO_FRAG
-        if V01 == V03:
-            int_B_F[0,:,0,i] = int_B_F[:,0,i,0]
-            int_B_F[1,:,1,i] = int_B_F[:,1,i,1]
-            inty_B_F[0,:,0,i] = intx_B_F[:,0,i,0]
-            inty_B_F[1,:,1,i] = intx_B_F[:,1,i,1]
-            intx_B_F[1,:,1,i] = inty_B_F[:,1,i,1]
 
+    for i in range(NS):
         for j in range(NS):
-            if j <= 1:
+            if i == 0 and j == 0:
                 continue
             file_name = f"{STR[0]}_{STR[1]}_{STR[2]}_{NO_FRAG}_i{i}_j{j}.npy"
             file_path = os.path.join(data_path,file_name)
@@ -109,9 +83,9 @@ def direkt_psd(NS, S, STR, NO_FRAG, N_GRIDS, N_FRACS, V01, V03, data_path):
             ## Use relative value
             intx_B_F[:,:,i,j] = x1_vol_sum # / V[i,j]
             inty_B_F[:,:,i,j] = x3_vol_sum # / V[i,j]
-    ## TODO: if V01 != V03        
-    save_path = os.path.join(f'{STR[0]}_{STR[1]}_{STR[2]}_{NO_FRAG}_int_B_F')
-    
+    output_dir = 'int_B_F_data'
+    os.makedirs(output_dir, exist_ok=True)   
+    save_path = os.path.join(output_dir, f'{STR[0]}_{STR[1]}_{STR[2]}_{NO_FRAG}_int_B_F')
     np.savez(save_path,
              STR=STR,
              NO_FRAG=NO_FRAG,

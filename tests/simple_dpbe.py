@@ -47,19 +47,19 @@ def visualize_convergence():
     
 #%% MAIN   
 if __name__ == "__main__":
-    dim=1
+    dim=2
     p = pop(dim=dim)
     
     ## Set the PBE parameters
-    t_vec = np.arange(0, 101, 10, dtype=float)
+    t_vec = np.arange(0, 601, 60, dtype=float)
     # Note that it must correspond to the settings of MC-Bond-Break.
-    p.NS = 15
-    p.S = 4
+    p.NS = 10
+    p.S = 2
     
     p.BREAKRVAL= 4
     p.BREAKFVAL= 5
     p.aggl_crit= 100
-    p.process_type= "breakage"
+    p.process_type= "mix"
     p.pl_v= 1
     p.pl_P1= 1e-2
     p.pl_P2= 0.5
@@ -77,17 +77,17 @@ if __name__ == "__main__":
     p.CORR_BETA= 100
     ## The original value is the particle size at 1% of the PSD distribution. 
     ## The position of this value in the coordinate system can be adjusted by multiplying by size_scale.
-    size_scale = 1e-1
+    size_scale = 5e-1
     p.R01 = 8.677468940430804e-07*size_scale
     p.R03 = 8.677468940430804e-07*size_scale
     
     ## If you need to read PSD data as initial conditions, set the PSD data path
-    p.USE_PSD = False
+    p.USE_PSD = True
     p.DIST1 = os.path.join(p.pth,'data','PSD_data','PSD_x50_2.0E-6_RelSigmaV_1.5E-1.npy')
     p.DIST3 = os.path.join(p.pth,'data','PSD_data','PSD_x50_2.0E-6_RelSigmaV_1.5E-1.npy')
     
     ## Use the breakage function calculated by the MC-Bond-Break method
-    # p.USE_MC_BOND = True
+    p.USE_MC_BOND = True
     
     ## Additional modifications for testing
     ## Total volume concentration of component, original value = 0.0001
