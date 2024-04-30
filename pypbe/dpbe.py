@@ -1203,7 +1203,7 @@ class population():
             N = self.N
         
         # Extract unique values that are NOT -1 or 0 (border)
-        v_uni = np.setdiff1d(self.V,[-1])
+        v_uni = np.setdiff1d(self.V,[-1,0])
         # v_uni = unique_with_tolerance(v_uni)
         q3 = np.zeros(len(v_uni))
         x_uni = np.zeros(len(v_uni))
@@ -1270,7 +1270,7 @@ class population():
         
         # Extract unique values that are NOT -1 or 0 (border)
         # At the same time, v_uni will be rearranged according to size.
-        v_uni = np.setdiff1d(self.V,[-1])
+        v_uni = np.setdiff1d(self.V,[-1,0])
 
         q3 = np.zeros(len(v_uni))
         x_uni = np.zeros(len(v_uni))

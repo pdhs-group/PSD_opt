@@ -182,17 +182,17 @@ def return_pop_distribution(pop, axq3=None,fig=None, clr='b', q3lbl='q3'):
 def calc_delta_test(var_delta=False):
     find.algo.set_init_N(find.algo.sample_num, exp_data_paths, 'mean')
     
-    corr_agg = pop_params['CORR_BETA'] * pop_params['alpha_prim']
-    pop_params_test = {}
-    pop_params_test['corr_agg'] = corr_agg
+    # corr_agg = pop_params['CORR_BETA'] * pop_params['alpha_prim']
+    # pop_params_test = {}
+    # pop_params_test['corr_agg'] = corr_agg
     if var_delta:
         delta_arr = np.zeros(len(find.algo.t_vec))
         for start_step in range(1,len(find.algo.t_vec)):
             find.algo.delta_t_start_step = start_step
-            delta_arr[start_step] = find.algo.calc_delta_agg(pop_params_test, sample_num=find.algo.sample_num, exp_data_path=exp_data_paths)
+            delta_arr[start_step] = find.algo.calc_delta_agg(pop_params, sample_num=find.algo.sample_num, exp_data_path=exp_data_paths)
         return delta_arr
     else:
-        delta = find.algo.calc_delta_agg(pop_params_test, sample_num=find.algo.sample_num, exp_data_path=exp_data_paths)
+        delta = find.algo.calc_delta_agg(pop_params, sample_num=find.algo.sample_num, exp_data_path=exp_data_paths)
         return delta
 
 if __name__ == '__main__':
@@ -231,7 +231,7 @@ if __name__ == '__main__':
     R_M=conf.config['R_M']
     R01_0_scl=conf.config['R01_0_scl']
     R03_0_scl=conf.config['R03_0_scl']
-    find.algo.set_comp_para(R_NM=R_NM, R_M=R_M,R01_0_scl=R01_0_scl,R03_0_scl=R03_0_scl)
+    find.algo.set_comp_para(USE_PSD=False, R_NM=R_NM, R_M=R_M,R01_0_scl=R01_0_scl,R03_0_scl=R03_0_scl)
     ## 5. Weight of 2D data
     ## The error of 2d pop may be more important, so weight needs to be added
     find.algo.weight_2d = conf.config['weight_2d']
@@ -241,7 +241,7 @@ if __name__ == '__main__':
     ## delta: Read all input directly and use all data to find the kernel once
     ## wait to write hier 
     # data_name = "Sim_Mul_0.1_para_100.0_0.5_0.5_1.0_2_0.01_0.5_0.01_0.5.xlsx"
-    data_name = "Sim_para_100.0_0.5_0.5_0.5_1_0.001_0.5_0.001_0.5.xlsx"  
+    data_name = "Sim_Mul_0.1_para_100.0_0.5_0.5_0.5_1_0.001_0.5_0.001_0.5.xlsx"  
     base_path = os.path.join(find.algo.p.pth, "data")
     
     # conf_params = {
@@ -264,8 +264,8 @@ if __name__ == '__main__':
     dist_path_2 = None
     
     # Run an optimization and generate graphs of the results
-    delta_opt, opt_values = normal_test()
+    # delta_opt, opt_values = normal_test()
     
     # N_exp, N_calc, N_exp_1D, N_calc_1D, q3_psd, q3_exp = calc_N_test()
     
-    # delta = calc_delta_test(var_delta=False)
+    delta = calc_delta_test(var_delta=False)

@@ -261,7 +261,7 @@ class opt_find():
                 q3 = self.algo.KDE_score(kde, x_uni)
                 Q3 = self.algo.calc_Q3(x_uni, q3)
                 sumvol_uni = self.algo.calc_sum_uni(Q3, sumvol_uni.sum())
-                sumN_uni[1:, idt] = sumvol_uni[1:] / v_uni
+                sumN_uni[:, idt] = sumvol_uni / v_uni
             else:
                 sumN_uni[:, idt] = pop.return_num_distribution(t=idt, flag='sumN_uni')[0]
         ## Data used for initialization should not be smoothed

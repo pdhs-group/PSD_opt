@@ -5,122 +5,135 @@ Created on Wed Jan  3 14:03:49 2024
 @author: px2030
 """
 
-import sys
-import os
+import sys, os
 import numpy as np
-sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),".."))
-from general_scripts.generate_psd import full_psd
-import opt_find as opt
-import opt_config as conf
+sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),"../../.."))
+import pypbe.kernel_opt.opt_find as opt
+import config.opt_config as conf
 ## For plots
 import matplotlib.pyplot as plt
-import plotter.plotter as pt  
+import pypbe.utils.plotter.plotter as pt 
 
-def return_results(find, pop):
-    x_uni, q3, Q3, sumvol_uni = pop.return_distribution(t=-1, flag='x_uni, q3, Q3, sumvol_uni')
+def return_results(find, pop, t_frame):
+    x_uni, q3, Q3, sumvol_uni = pop.return_distribution(t=t_frame, flag='x_uni, q3, Q3, sumvol_uni')
     # Conversion unit
-    kde = find.algo.KDE_fit(x_uni, sumvol_uni, bandwidth='scott', kernel_func='epanechnikov')    
-    q3_sm = find.algo.KDE_score(kde, x_uni)
-    Q3_sm = find.algo.calc_Q3(x_uni,q3_sm)
-    x_50_sm = np.interp(0.5, Q3_sm, x_uni)
+    if find.algo.smoothing:
+        kde = find.algo.KDE_fit(x_uni, sumvol_uni, bandwidth='scott', kernel_func='epanechnikov')    
+        q3 = find.algo.KDE_score(kde, x_uni)
+        Q3 = find.algo.calc_Q3(x_uni,q3)
+    x_50 = np.interp(0.5, Q3, x_uni)
     
-    return x_uni, q3_sm, Q3_sm, x_50_sm
+    return x_uni, q3, Q3, x_50
     
-def return_all_results(find, corr_beta, alpha_prim):
-    # Opt.k.set_comp_para(R_NM=2.9e-7, R_M=2.9e-7*x3x1)
-    find.algo.calc_all_pop(corr_beta, alpha_prim)
+def return_all_results(paras, t_vec, t_frame):
+    find.algo.calc_all_pop(paras, t_vec)
     
-    x_uni, q3, Q3, x_50 = return_results(find, find.algo.p)
-    x_uni_NM, q3_NM, Q3_NM, x_50_NM = return_results(find, find.algo.p_NM)
-    x_uni_M, q3_M, Q3_M, x_50_M = return_results(find, find.algo.p_M)
+    x_uni, q3, Q3, x_50 = return_results(find, find.algo.p, t_frame)
+    x_uni_NM, q3_NM, Q3_NM, x_50_NM = return_results(find, find.algo.p_NM, t_frame)
+    x_uni_M, q3_M, Q3_M, x_50_M = return_results(find, find.algo.p_M, t_frame)
     
     return x_uni, q3, Q3, x_50, x_uni_NM, q3_NM, Q3_NM, x_50_NM, x_uni_M, q3_M, Q3_M, x_50_M
     
-def depend_test(find, test_case):
-    corr_beta = 10
-    alpha_prim = np.array([1, 1, 1])
-    x3x1 = 1
-    x_50=x_50_NM=x_50_M=np.zeros(11)
+def depend_test(find, test_case, t_frame):
     q3 = []
     Q3 = []
+    x_50 = []
     q3_NM = []
     Q3_NM = []
+    x_50_NM = []
     q3_M = []
     Q3_M = []        
-    
-    if test_case == 'kernels':
-        corr_beta = np.zeros(11)
-        for i in range(11):
-            corr_beta[i] = 0.01 * 5 * 2**i
-            x_uni, q3_i, Q3_i, x_50[i], \
-            x_uni_NM, q3_NM_i, Q3_NM_i, x_50_NM[i], \
-            x_uni_M, q3_M_i, Q3_M_i, x_50_M[i] = return_all_results(find, corr_beta[i], alpha_prim)
-            q3.append(q3_i)
-            Q3.append(Q3_i)
-            q3_NM.append(q3_NM_i)
-            Q3_NM.append(Q3_NM_i)
-            q3_M.append(q3_M_i)
-            Q3_M.append(Q3_M_i)
-            
+    x_50_M = []
+    if test_case == 'pl_v':
+        variable = np.arange(0.1, 2.1, 0.1, dtype=float)
+    elif test_case == 'pl_P1' or test_case == 'pl_P3':
+        variable_ex = np.arange(-8, -1, 1, dtype=float)
+        variable = 10**variable_ex
+    elif test_case == 'pl_P2' or test_case == 'pl_P4':
+        variable = np.arange(0.01, 0.7, 0.05, dtype=float)
+    for var in variable:
+        pop_params[test_case] = var
+        x_uni, q3_tem, Q3_tem, x_50_tem, \
+        x_uni_NM, q3_NM_tem, Q3_NM_tem, x_50_NM_tem, \
+        x_uni_M, q3_M_tem, Q3_M_tem, x_50_M_tem = return_all_results(pop_params, find.algo.t_vec, t_frame)
+        q3.append(q3_tem)
+        Q3.append(Q3_tem)
+        x_50.append(x_50_tem)
+        q3_NM.append(q3_NM_tem)
+        Q3_NM.append(Q3_NM_tem)
+        x_50_NM.append(x_50_NM_tem)
+        q3_M.append(q3_M_tem)
+        Q3_M.append(Q3_M_tem)
+        x_50_M.append(x_50_M_tem)
 
     pt.plot_init(scl_a4=1,figsze=[6.4*2.5,6.4*1.5],lnewdth=0.8,mrksze=0,use_locale=True,
-                 scl=2,fontsize=5,labelfontsize=4.5,tickfontsize=4)
-    fig=plt.figure()    
-    fig_NM=plt.figure()   
-    fig_M=plt.figure()   
-    colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k', 'orange', 'purple', 'brown', 'pink']
-    if test_case == 'kernels':
-        varlabel = corr_beta
+                 scl=2,fontsize=5,labelfontsize=4.5,tickfontsize=4)  
+    cmap = plt.cm.viridis  # or plt.cm.plasma, plt.cm.inferno, plt.cm.magma
+    num_colors = len(variable)
+    colors = [cmap(i / num_colors) for i in range(num_colors)]
     
-    file_name = "test_data\\" + test_case
-    pth = os.path.dirname( __file__ )
-    file_path = os.path.join(pth, file_name)
-    file_path_NM = os.path.join(pth, file_name+'_NM')
-    file_path_M = os.path.join(pth, file_name+'_M')
+    output_dir = 'dependency_test'
+    os.makedirs(output_dir, exist_ok=True)
+    file_path = os.path.join(output_dir, test_case)
+    file_path_NM = os.path.join(output_dir, test_case+'_NM')
+    file_path_M = os.path.join(output_dir, test_case+'_M')
     
-    visualize_results(file_path, fig, test_case, varlabel, colors, x_uni, q3, Q3, x3x1, x_50)
-    visualize_results(file_path_NM,fig_NM, test_case, varlabel, colors, x_uni_NM, q3_NM, Q3_NM, x3x1, x_50_NM)
-    visualize_results(file_path_M, fig_M, test_case, varlabel, colors, x_uni_M, q3_M, Q3_M, x3x1, x_50_M)   
+    visualize_results(file_path, test_case, variable, colors, x_uni, q3, Q3, x_50)
+    visualize_results(file_path_NM,test_case, variable, colors, x_uni_NM, q3_NM, Q3_NM, x_50_NM)
+    visualize_results(file_path_M, test_case, variable, colors, x_uni_M, q3_M, Q3_M, x_50_M)   
 
 
-def visualize_results(path, fig, test_case, varlabel, colors, x_uni, q3, Q3, x3x1, x_50):
-    axq3=fig.add_subplot(2,2,1)   
-    axQ3=fig.add_subplot(2,2,2)
-    axq3, fig = pt.plot_data(x_uni, q3[0], fig=fig, ax=axq3,
-                           xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
-                           ylbl='number density distribution of agglomerates $q3$ / $-$',
-                           lbl=test_case+f'={varlabel[0]:.2f}',clr=colors[0])
-    axQ3, fig = pt.plot_data(x_uni, Q3[0], fig=fig, ax=axQ3,
-                           xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
-                           ylbl='accumulated number distribution of agglomerates $Q3$ / $-$',
-                           lbl=test_case+f'={varlabel[0]:.2f}',clr=colors[0])
-    
-    for i in range(1,11):
-        axq3, fig = pt.plot_data(x_uni, q3[i], fig=fig, ax=axq3,
-                               lbl=test_case+f'={varlabel[i]:.2f}',clr=colors[i])
-        axQ3, fig = pt.plot_data(x_uni, Q3[i], fig=fig, ax=axQ3,
-                               lbl=test_case+f'={varlabel[i]:.2f}',clr=colors[i])
+def visualize_results(path, test_case, variable, colors, x_uni, q3, Q3, x_50):
+    figq3, axq3 = plt.subplots()
+    for i, q3_data in enumerate(q3):
+        axq3, figq3 = pt.plot_data(x_uni, q3_data, fig=figq3, ax=axq3,
+                               xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
+                               ylbl='number density distribution of agglomerates $q3$ / $-$',
+                               lbl=test_case+f'={variable[i]:.2e}',clr=colors[i])
+    axq3.grid('minor')
+    axq3.set_xscale('log')
+    plt.tight_layout()
+    figq3.savefig(f"{path}_q3.png", dpi=300)
+    plt.close(figq3)
         
-    axx_50=fig.add_subplot(2,1,2) 
-    axx_50, fig = pt.plot_data(varlabel, x_50, fig=fig, ax=axx_50,
+    figQ3, axQ3 = plt.subplots()
+    for i, Q3_data in enumerate(Q3):
+        axQ3, figQ3 = pt.plot_data(x_uni, Q3_data, fig=figQ3, ax=axQ3,
+                               xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
+                               ylbl='number density distribution of agglomerates $q3$ / $-$',
+                               lbl=test_case+f'={variable[i]:.2e}',clr=colors[i])
+    axQ3.grid('minor')
+    axQ3.set_xscale('log')
+    plt.tight_layout()
+    figQ3.savefig(f"{path}_QQ3.png", dpi=300)
+    plt.close(figQ3)    
+    
+    figx_50, axx_50 = plt.subplots()
+    axx_50, figx_50 = pt.plot_data(variable, x_50, fig=figx_50, ax=axx_50,
                            xlbl=test_case+' / $-$',
                            ylbl='Median particle size $x_50$ / $-$',
-                           lbl='$x_50$',clr=colors[0]) 
-    axq3.grid('minor')
-    axQ3.grid('minor')
-    # plt.tight_layout()  
-    fig.savefig(path, dpi=300)
-            
+                           lbl='$x_50$',clr='red') 
+    axx_50.grid('minor')
+    plt.tight_layout()
+    figx_50.savefig(f"{path}_x_50.png", dpi=300)
+    plt.close(figx_50)        
 if __name__ == '__main__':
+     USE_PSD = False
+     test_case = 'pl_P2'
+     t_frame = -1
      #%%  Input for Opt
-     dim = conf.config['dim']
-     t_init = conf.config['t_init']
-     t_vec = conf.config['t_vec']
-     add_noise = conf.config['add_noise']
-     smoothing = conf.config['smoothing']
-     noise_type=conf.config['noise_type']
-     noise_strength = conf.config['noise_strength']
-     sample_num = conf.config['sample_num']
+     algo_params = conf.config['algo_params']
+     pop_params = conf.config['pop_params']
+     
+     # pop_params['CORR_BETA'] = 1e2
+     # pop_params['alpha_prim'] = np.array([0.5, 0.5, 0.5])
+     # pop_params['pl_v'] = 2
+     # pop_params['pl_P1'] = 1e-2
+     # pop_params['pl_P2'] = 0.5
+     # pop_params['pl_P3'] = 1e-2
+     # pop_params['pl_P4'] = 0.5
+     # pop_params['pl_P5'] = 1e-2
+     # pop_params['pl_P6'] = 1e-1
      
      ## Instantiate find and algo.
      ## The find class determines how the experimental 
@@ -131,48 +144,49 @@ if __name__ == '__main__':
      ## Set the R0 particle radius and 
      ## whether to calculate the initial conditions from experimental data
      ## 0. Use only 2D Data or 1D+2D
-     find.multi_flag = conf.config['multi_flag']
-     find.init_opt_algo(dim, t_init, t_vec, add_noise, noise_type, noise_strength, smoothing)
-     ## Iteration steps for optimierer
-     find.algo.n_iter = conf.config['n_iter']
+     multi_flag = conf.config['multi_flag']
+     opt_params = conf.config['opt_params']
+     
+     find.init_opt_algo(multi_flag, algo_params, opt_params)
+     
+     find.algo.set_init_pop_para(pop_params)
      
      ## 1. The diameter ratio of the primary particles can also be used as a variable
-     find.algo.calc_init_N = False
-     pth = os.path.dirname( __file__ )
-     dist_path_1 = os.path.join(pth, "..", "data", "PSD_data", conf.config['dist_scale_1'])
-     find.algo.set_comp_para('r0_001', 'r0_001', dist_path_1, dist_path_1)
-     find.algo.corr_beta = 15
-     find.algo.alpha_prim = np.array([0.5, 1, 0.5])
-     
-     ## 2. Criteria of optimization target
-     ## delta_flag = 1: use q3
-     ## delta_flag = 2: use Q3
-     ## delta_flag = 3: use x_10
-     ## delta_flag = 4: use x_50
-     ## delta_flag = 5: use x_90
-     find.algo.delta_flag = conf.config['multi_flag']
-     delta_flag_target = ['','q3','Q3','x_10','x_50','x_90']
-     
-     ## 3. Optimize method: 
-     ##   'BO': Bayesian Optimization with package BayesianOptimization
-     find.algo.method='BO'
-     
-     ## 4. Type of cost function to use
-     ##   'MSE': Mean Squared Error
-     ##   'RMSE': Root Mean Squared Error
-     ##   'MAE': Mean Absolute Error
-     ##   'KL': Kullback–Leibler divergence(Only q3 and Q3 are compatible with KL) 
-     find.algo.cost_func_type = 'KL'
-     
+     R_NM = conf.config['R_NM']
+     R_M=conf.config['R_M']
+     R01_0_scl=conf.config['R01_0_scl']
+     R03_0_scl=conf.config['R03_0_scl']
+     find.algo.set_comp_para(USE_PSD, R_NM=R_NM, R_M=R_M,R01_0_scl=R01_0_scl,R03_0_scl=R03_0_scl)
      ## 5. Weight of 2D data
      ## The error of 2d pop may be more important, so weight needs to be added
-     find.algo.weight_2d = 1
+     find.algo.weight_2d = conf.config['weight_2d']
      
-     test_case = 'kernels'
-     # test_case = 'alpha_prim_1'
-     # test_case = 'alpha_prim_2'
-     # test_case = 'alpha_prim_3'
-     # test_case = 'x3x1' # not implement
-     depend_test(find, test_case)
+     ## 6. Method how to use the datasets, kernels or delta
+     ## kernels: Find the kernel for each set of data, and then average these kernels.
+     ## delta: Read all input directly and use all data to find the kernel once
+     ## wait to write hier 
+     # data_name = "Sim_Mul_0.1_para_100.0_0.5_0.5_1.0_2_0.01_0.5_0.01_0.5.xlsx"
+     data_name = "Sim_Mul_0.1_para_100.0_0.5_0.5_0.5_1_0.001_0.5_0.001_0.5.xlsx"  
+     base_path = os.path.join(find.algo.p.pth, "data")
+     
+     # conf_params = {
+     #     'pop_params':{
+     #         'CORR_BETA' : 15,
+     #         'alpha_prim' : np.array([0.2, 0.6, 0.8])
+     #         }
+     #     }
+     # pop_params = conf_params['pop_params']
+     exp_data_path = os.path.join(base_path, data_name)
+     exp_data_paths = [
+         exp_data_path,
+         exp_data_path.replace(".xlsx", "_NM.xlsx"),
+         exp_data_path.replace(".xlsx", "_M.xlsx")
+     ]
+     
+     # dist_path_1 = os.path.join(base_path, "PSD_data", conf.config['dist_scale_1'])
+     # dist_path_2 = os.path.join(base_path, "PSD_data", conf.config['dist_scale_1'])
+     
+     find.generate_data(pop_params,find.algo.sample_num)
+     # depend_test(find, test_case, t_frame)
 
      

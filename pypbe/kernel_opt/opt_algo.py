@@ -6,6 +6,7 @@ Minimize the difference by optimization algorithm to obtain the kernel of PBE.
 import numpy as np
 import math
 from bayes_opt import BayesianOptimization
+from scipy.optimize import basinhopping
 from scipy.stats import entropy
 from sklearn.neighbors import KernelDensity
 from sklearn.metrics import mean_squared_error, mean_absolute_error
@@ -155,7 +156,7 @@ class opt_algo():
                 q3_mod_tem = self.KDE_score(kde_list[idt], x_uni_exp)
                 ## The volume of particles with index=0 is 0. 
                 ## In theory, such particles do not exist.
-                q3_mod[1:, idt] = q3_mod_tem
+                q3_mod[:, idt] = q3_mod_tem
             data_mod = self.re_calc_distribution(x_uni_exp, q3=q3_mod, flag=self.delta_flag)[0]
             data_exp = self.re_calc_distribution(x_uni_exp, sum_uni=sumvol_uni_exp, flag=self.delta_flag)[0]
             # Calculate the error between experimental data and simulation results
@@ -179,7 +180,7 @@ class opt_algo():
                         q3_mod_tem = self.KDE_score(kde_list[idt], x_uni_exp)
                         ## The volume of particles with index=0 is 0. 
                         ## In theory, such particles do not exist.
-                        q3_mod[1:, idt] = q3_mod_tem[1:]
+                        q3_mod[:, idt] = q3_mod_tem
                     else:
                         q3_mod[:, idt] = pop.return_distribution(t=idt+self.delta_t_start_step, flag='q3')[0]
 
@@ -256,7 +257,7 @@ class opt_algo():
             
         return delta_opt  
     
-    def optimierer_agg(self, opt_params, method='BO', init_points=4, sample_num=1, hyperparameter=None, exp_data_path=None):
+    def optimierer_agg(self, opt_params, init_points=4, sample_num=1, hyperparameter=None, exp_data_path=None):
         """
         Optimize the corr_agg based on :meth:`~.calc_delta_agg`. 
         Results are saved in corr_agg_opt.
@@ -277,31 +278,30 @@ class opt_algo():
         delta_opt : `float`
             Optimized value of the objective.
         """
-        if method == 'BO':
-            pbounds = {}
-            transform = {}
-            
-            # Prepare bounds and transformation based on parameters definition
-            for param, info in opt_params.items():
-                bounds = info['bounds']
-                log_scale = info.get('log_scale', False)
-                pbounds[param] = bounds
-                if log_scale:
-                    transform[param] = lambda x: 10**x
-                else:
-                    transform[param] = lambda x: x
-                    
-            # Objective function considering the log scale transformation if necessary
-            def objective(**kwargs):
-                transformed_params = {}
-                for param, func in transform.items():
-                    transformed_params[param] = func(kwargs[param])
+        pbounds = {}
+        transform = {}
+        # Prepare bounds and transformation based on parameters definition
+        for param, info in opt_params.items():
+            bounds = info['bounds']
+            log_scale = info.get('log_scale', False)
+            pbounds[param] = bounds
+            if log_scale:
+                transform[param] = lambda x: 10**x
+            else:
+                transform[param] = lambda x: x
                 
-                # Special handling for corr_agg based on dimension
-                if 'corr_agg_0' in transformed_params:
-                    transformed_params = self.array_dict_transform(transformed_params)
-                return self.calc_delta_agg(transformed_params, scale=-1, sample_num=sample_num, exp_data_path=exp_data_path)
+        # Objective function considering the log scale transformation if necessary
+        def objective(**kwargs):
+            transformed_params = {}
+            for param, func in transform.items():
+                transformed_params[param] = func(kwargs[param])
             
+            # Special handling for corr_agg based on dimension
+            if 'corr_agg_0' in transformed_params:
+                transformed_params = self.array_dict_transform(transformed_params)
+            return self.calc_delta_agg(transformed_params, scale=-1, sample_num=sample_num, exp_data_path=exp_data_path)
+            
+        if self.method == 'BO':            
             opt = BayesianOptimization(f=objective, pbounds=pbounds, random_state=1, allow_duplicate_points=True)
             opt.maximize(init_points=init_points, n_iter=self.n_iter)
             
@@ -310,8 +310,27 @@ class opt_algo():
             delta_opt = -opt.max['target']
             if 'corr_agg_0' in opt_values:
                 opt_values =self.array_dict_transform(opt_values)
+        elif self.method == 'basinhopping':
+            # Convert bounds to scipy-compatible limits
+            limits = [(pbounds[param][0], pbounds[param][1]) for param in opt_params]
+    
+            # Create a wrapper to adapt the objective function to basinhopping
+            def scipy_objective(x):
+                kwargs = dict(zip(opt_params.keys(), x))
+                return objective(**kwargs)
+    
+            # Initial guess (middle of bounds)
+            x0 = [(bound[0] + bound[1]) / 2 for bound in limits]
             
-            return delta_opt, opt_values
+            minimizer_kwargs={"method": "L-BFGS-B", "bounds": limits}
+            # Perform basinhopping optimization
+            result = basinhopping(scipy_objective, x0, minimizer_kwargs=minimizer_kwargs,
+                                  niter=self.n_iter)
+            
+            # Extract results and apply transformations
+            opt_values = {param: transform[param](val) for param, val in zip(opt_params.keys(), result.x)}
+            delta_opt = result.fun
+        return delta_opt, opt_values
     def array_dict_transform(self, array_dict):
         # Special handling for array in dictionary like corr_agg based on dimension
             if self.p.dim == 1:
@@ -614,13 +633,17 @@ class opt_algo():
                     pop.alpha_prim = alpha_prim_value[0]
                 elif pop is self.p_M:
                     pop.alpha_prim = alpha_prim_value[2]
+            if 'pl_P3' and 'pl_P4' in params:
+                if pop is self.p_M:
+                    pop.pl_P1 = params['pl_P3']
+                    pop.pl_P2 = params['pl_P4']
 
     def set_pop_attributes(self, pop, params):
         for key, value in params.items():
             if key != 'alpha_prim':
                 setattr(pop, key, value)
         
-    def set_comp_para(self, R01_0='r0_005', R03_0='r0_005', dist_path_NM=None, dist_path_M=None,
+    def set_comp_para(self, USE_PSD, R01_0='r0_005', R03_0='r0_005', dist_path_NM=None, dist_path_M=None,
                       R_NM=2.9e-7, R_M=2.9e-7,R01_0_scl=1,R03_0_scl=1):
         """
         Set component parameters for non-magnetic and magnetic particle.
@@ -643,8 +666,10 @@ class opt_algo():
         R_M : `float`, optional
             Default radius for M particles if `dist_path_M` is not provided. Defaults to 2.9e-7.
         """
-        if (not self.calc_init_N) and (dist_path_NM is not None and dist_path_M is not None):
-            self.p.USE_PSD = True
+        self.p.USE_PSD = USE_PSD
+        if self.p.USE_PSD:
+            if dist_path_NM is None or dist_path_M is None:
+                raise Exception("Please give the full path to all PSD data!")
             psd_dict_NM = np.load(dist_path_NM,allow_pickle=True).item()
             psd_dict_M = np.load(dist_path_M,allow_pickle=True).item()
             self.p.DIST1 = dist_path_NM
@@ -652,7 +677,6 @@ class opt_algo():
             self.p.R01 = psd_dict_NM[R01_0] * R01_0_scl
             self.p.R03 = psd_dict_M[R03_0] * R03_0_scl
         else:
-            self.p.USE_PSD = False
             self.p.R01 = R_NM * R01_0_scl
             self.p.R03 = R_M * R03_0_scl
         if self.dim > 1:
@@ -749,7 +773,7 @@ class opt_algo():
                 
         pop.N = np.zeros((pop.NS, len(pop.t_vec)))
         ## Because sumN_uni_init[0] = 0
-        pop.N[1:, 0]= sumN_uni_init[1:]
+        pop.N[1:, 0]= sumN_uni_init
         thr = 1e-5
         pop.N[pop.N < (thr * pop.N[1:, 0].max())]=0     
         
@@ -767,8 +791,8 @@ class opt_algo():
         # Because the length unit in the experimental data is millimeters 
         # and in the simulation it is meters, so it needs to be converted 
         # before use.
-        x_uni = np.zeros(len(v_uni)+1)
-        x_uni[1:]=(6*v_uni/np.pi)**(1/3)
+        # x_uni = np.zeros(len(v_uni))
+        x_uni = (6*v_uni/np.pi)**(1/3)
         return x_uni
         
     def re_calc_distribution(self, x_uni, q3=None, sum_uni=None, flag='all'):

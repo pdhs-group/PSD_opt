@@ -22,12 +22,12 @@ config = {
         ## Therefore, skipping the data of the first few time steps during optimization 
         ## may yield better results.
         'delta_t_start_step' : 1,
-        'add_noise': False,
+        'add_noise': True,
         'smoothing': True,
         'noise_type': 'Mul',
         'noise_strength': 0.1,
         'sample_num': 5,
-        'method': 'BO',
+        'method': 'basinhopping',
         'n_iter': 400,
         'calc_init_N': False,
         ## delta_flag = q3: use q3
@@ -40,7 +40,7 @@ config = {
         ##   'RMSE': Root Mean Squared Error
         ##   'MAE': Mean Absolute Error
         ##   'KL': Kullback–Leibler divergence(Only q3 and Q3 are compatible with KL) 
-        'cost_func_type': 'KL',
+        'cost_func_type': 'MSE',
         },
     
     ## PBE parameters
