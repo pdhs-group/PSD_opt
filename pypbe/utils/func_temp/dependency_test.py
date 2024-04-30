@@ -51,6 +51,8 @@ def depend_test(find, test_case, t_frame):
         variable = 10**variable_ex
     elif test_case == 'pl_P2' or test_case == 'pl_P4':
         variable = np.arange(0.01, 0.7, 0.05, dtype=float)
+    elif test_case == 'CORR_BETA':
+        variable = np.arange(1, 1002, 50, dtype=float)
     for var in variable:
         pop_params[test_case] = var
         x_uni, q3_tem, Q3_tem, x_50_tem, \
@@ -118,75 +120,56 @@ def visualize_results(path, test_case, variable, colors, x_uni, q3, Q3, x_50):
     figx_50.savefig(f"{path}_x_50.png", dpi=300)
     plt.close(figx_50)        
 if __name__ == '__main__':
-     USE_PSD = False
-     test_case = 'pl_P2'
-     t_frame = -1
-     #%%  Input for Opt
-     algo_params = conf.config['algo_params']
-     pop_params = conf.config['pop_params']
+    test_case = 'CORR_BETA'
+    t_frame = -1
+    #%%  Input for Opt
+    algo_params = conf.config['algo_params']
+    pop_params = conf.config['pop_params']
+    
+    # pop_params['CORR_BETA'] = 1e2
+    # pop_params['alpha_prim'] = np.array([0.5, 0.5, 0.5])
+    # pop_params['pl_v'] = 2
+    # pop_params['pl_P1'] = 1e-2
+    # pop_params['pl_P2'] = 0.5
+    # pop_params['pl_P3'] = 1e-2
+    # pop_params['pl_P4'] = 0.5
+    # pop_params['pl_P5'] = 1e-2
+    # pop_params['pl_P6'] = 1e-1
+    
+    ## Instantiate find and algo.
+    ## The find class determines how the experimental 
+    ## data is used, while algo determines the optimization process.
+    find = opt.opt_find()
      
-     # pop_params['CORR_BETA'] = 1e2
-     # pop_params['alpha_prim'] = np.array([0.5, 0.5, 0.5])
-     # pop_params['pl_v'] = 2
-     # pop_params['pl_P1'] = 1e-2
-     # pop_params['pl_P2'] = 0.5
-     # pop_params['pl_P3'] = 1e-2
-     # pop_params['pl_P4'] = 0.5
-     # pop_params['pl_P5'] = 1e-2
-     # pop_params['pl_P6'] = 1e-1
-     
-     ## Instantiate find and algo.
-     ## The find class determines how the experimental 
-     ## data is used, while algo determines the optimization process.
-     find = opt.opt_find()
-      
-     #%% Variable parameters
-     ## Set the R0 particle radius and 
-     ## whether to calculate the initial conditions from experimental data
-     ## 0. Use only 2D Data or 1D+2D
-     multi_flag = conf.config['multi_flag']
-     opt_params = conf.config['opt_params']
-     
-     find.init_opt_algo(multi_flag, algo_params, opt_params)
-     
-     find.algo.set_init_pop_para(pop_params)
-     
-     ## 1. The diameter ratio of the primary particles can also be used as a variable
-     R_NM = conf.config['R_NM']
-     R_M=conf.config['R_M']
-     R01_0_scl=conf.config['R01_0_scl']
-     R03_0_scl=conf.config['R03_0_scl']
-     find.algo.set_comp_para(USE_PSD, R_NM=R_NM, R_M=R_M,R01_0_scl=R01_0_scl,R03_0_scl=R03_0_scl)
-     ## 5. Weight of 2D data
-     ## The error of 2d pop may be more important, so weight needs to be added
-     find.algo.weight_2d = conf.config['weight_2d']
-     
-     ## 6. Method how to use the datasets, kernels or delta
-     ## kernels: Find the kernel for each set of data, and then average these kernels.
-     ## delta: Read all input directly and use all data to find the kernel once
-     ## wait to write hier 
-     # data_name = "Sim_Mul_0.1_para_100.0_0.5_0.5_1.0_2_0.01_0.5_0.01_0.5.xlsx"
-     data_name = "Sim_Mul_0.1_para_100.0_0.5_0.5_0.5_1_0.001_0.5_0.001_0.5.xlsx"  
-     base_path = os.path.join(find.algo.p.pth, "data")
-     
-     # conf_params = {
-     #     'pop_params':{
-     #         'CORR_BETA' : 15,
-     #         'alpha_prim' : np.array([0.2, 0.6, 0.8])
-     #         }
-     #     }
-     # pop_params = conf_params['pop_params']
-     exp_data_path = os.path.join(base_path, data_name)
-     exp_data_paths = [
-         exp_data_path,
-         exp_data_path.replace(".xlsx", "_NM.xlsx"),
-         exp_data_path.replace(".xlsx", "_M.xlsx")
-     ]
-     
-     # dist_path_1 = os.path.join(base_path, "PSD_data", conf.config['dist_scale_1'])
-     # dist_path_2 = os.path.join(base_path, "PSD_data", conf.config['dist_scale_1'])
-     
-     find.generate_data(pop_params,find.algo.sample_num)
-     # depend_test(find, test_case, t_frame)
+    #%% Variable parameters
+    ## Set the R0 particle radius and 
+    ## whether to calculate the initial conditions from experimental data
+    ## 0. Use only 2D Data or 1D+2D
+    multi_flag = conf.config['multi_flag']
+    opt_params = conf.config['opt_params']
+    
+    find.init_opt_algo(multi_flag, algo_params, opt_params)
+    
+    find.algo.set_init_pop_para(pop_params)
+    
+    base_path = os.path.join(find.algo.p.pth, "data")
+    if find.algo.p.process_type == 'breakage':
+        USE_PSD = False
+        dist_path_NM = None
+        dist_path_M = None
+    else:
+        USE_PSD = True
+        dist_path_NM = os.path.join(base_path, "PSD_data", conf.config['dist_scale_1'])
+        dist_path_M = os.path.join(base_path, "PSD_data", conf.config['dist_scale_1'])
+        
+    R_NM = conf.config['R_NM']
+    R_M=conf.config['R_M']
+    R01_0_scl=conf.config['R01_0_scl']
+    R03_0_scl=conf.config['R03_0_scl']
+    find.algo.set_comp_para(USE_PSD, R_NM=R_NM, R_M=R_M,R01_0_scl=R01_0_scl,R03_0_scl=R03_0_scl,
+                            dist_path_NM=dist_path_NM, dist_path_M=dist_path_M)
+    find.algo.weight_2d = conf.config['weight_2d']
+    
+    depend_test(find, test_case, t_frame)
 
      

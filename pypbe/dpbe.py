@@ -1203,7 +1203,7 @@ class population():
             N = self.N
         
         # Extract unique values that are NOT -1 or 0 (border)
-        v_uni = np.setdiff1d(self.V,[-1,0])
+        v_uni = np.setdiff1d(self.V,[-1])
         # v_uni = unique_with_tolerance(v_uni)
         q3 = np.zeros(len(v_uni))
         x_uni = np.zeros(len(v_uni))
@@ -1236,8 +1236,7 @@ class population():
             
             # Calculate sum and density distribution
             Q3 = np.cumsum(sumvol_uni)/sumV
-            for i in range(1,len(x_uni)):
-                q3[i] = (Q3[i] - Q3[i-1]) / (x_uni[i]-x_uni[i-1])
+            q3[1:] = np.diff(Q3) / np.diff(x_uni)
             
             # Retrieve x10, x50 and x90 through interpolation
             x_10=np.interp(0.1, Q3, x_uni)
@@ -1270,7 +1269,7 @@ class population():
         
         # Extract unique values that are NOT -1 or 0 (border)
         # At the same time, v_uni will be rearranged according to size.
-        v_uni = np.setdiff1d(self.V,[-1,0])
+        v_uni = np.setdiff1d(self.V,[-1])
 
         q3 = np.zeros(len(v_uni))
         x_uni = np.zeros(len(v_uni))
@@ -1302,8 +1301,7 @@ class population():
             
             # Calculate sum and density distribution
             Q3 = np.cumsum(sumN_uni)/sumN
-            for i in range(1,len(x_uni)):
-                q3[i] = (Q3[i] - Q3[i-1]) / (x_uni[i]-x_uni[i-1])
+            q3[1:] = np.diff(Q3) / np.diff(x_uni)
             
             # Retrieve x10, x50 and x90 through interpolation
             x_10=np.interp(0.1, Q3, x_uni)

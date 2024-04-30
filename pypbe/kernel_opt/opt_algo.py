@@ -118,7 +118,9 @@ class opt_algo():
         for idt in range(self.delta_t_start_step, self.num_t_steps):
             if self.smoothing:
                 sumvol_uni = pop.return_distribution(t=idt, flag='sumvol_uni')[0]
-                kde = self.KDE_fit(x_uni, sumvol_uni)
+                ## The volume of particles with index=0 is 0. 
+                ## In theory, such particles do not exist.
+                kde = self.KDE_fit(x_uni[1:], sumvol_uni[1:])
                 kde_list.append(kde)
             
         if sample_num == 1:
@@ -128,8 +130,6 @@ class opt_algo():
             q3_mod = np.zeros((len(x_uni_exp), self.num_t_steps-self.delta_t_start_step))
             for idt in range(self.delta_t_start_step, self.num_t_steps):
                 q3_mod_tem = self.KDE_score(kde_list[idt], x_uni_exp)
-                ## The volume of particles with index=0 is 0. 
-                ## In theory, such particles do not exist.
                 q3_mod[:, idt] = q3_mod_tem
             data_mod = self.re_calc_distribution(x_uni_exp, q3=q3_mod, flag=self.delta_flag)[0]
             data_exp = self.re_calc_distribution(x_uni_exp, sum_uni=sumvol_uni_exp, flag=self.delta_flag)[0]
@@ -152,8 +152,6 @@ class opt_algo():
                 for idt in range(self.num_t_steps-self.delta_t_start_step):
                     if self.smoothing:
                         q3_mod_tem = self.KDE_score(kde_list[idt], x_uni_exp)
-                        ## The volume of particles with index=0 is 0. 
-                        ## In theory, such particles do not exist.
                         q3_mod[:, idt] = q3_mod_tem
                     else:
                         q3_mod[:, idt] = pop.return_distribution(t=idt+self.delta_t_start_step, flag='q3')[0]
@@ -169,7 +167,7 @@ class opt_algo():
             # the average value needs to be used instead of the sum.
             x_uni_num = len(x_uni_exp)  
             return (delta_sum * scale) / x_uni_num
-
+    
     def optimierer_agg(self, opt_params, init_points=4, sample_num=1, hyperparameter=None, exp_data_path=None):
         """
         Optimize the corr_agg based on :meth:`~.calc_delta_agg`. 
@@ -686,7 +684,7 @@ class opt_algo():
                 
         pop.N = np.zeros((pop.NS, len(pop.t_vec)))
         ## Because sumN_uni_init[0] = 0
-        pop.N[1:, 0]= sumN_uni_init
+        pop.N[:, 0]= sumN_uni_init
         thr = 1e-5
         pop.N[pop.N < (thr * pop.N[1:, 0].max())]=0     
         
@@ -694,7 +692,7 @@ class opt_algo():
         """
         Calculate unique volume values for a given population.
         """
-        return np.setdiff1d(pop.V, [-1, 0])*1e18
+        return np.setdiff1d(pop.V, [-1])*1e18
     
     def calc_x_uni(self, pop):
         """
@@ -784,6 +782,7 @@ class opt_algo():
         Calculate the sum_uni distribution from the Q3 cumulative distribution and total sum.
         """
         sum_uni = np.zeros_like(Q3)
+        sum_uni[0] = sum_total * Q3[0]
         for i in range(1, len(Q3)):
             sum_uni[i] = sum_total * max((Q3[i] -Q3[i-1] ), 0)
         return sum_uni

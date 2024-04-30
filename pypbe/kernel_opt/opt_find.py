@@ -250,32 +250,34 @@ class opt_find():
         x_uni = self.algo.calc_x_uni(pop)
         v_uni = self.algo.calc_v_uni(pop)
         formatted_times = write_read_exp.convert_seconds_to_time(self.algo.t_all)
-        sumN_uni = np.zeros((len(x_uni), len(self.algo.t_all)))
-        sumvol_uni = np.zeros(len(x_uni))
+        sumN_uni = np.zeros((len(x_uni)-1, len(self.algo.t_all)))
         
         for idt in self.idt_vec[1:]:
             if self.algo.smoothing:
                 sumvol_uni = pop.return_distribution(t=idt, flag='sumvol_uni')[0]
-                kde = self.algo.KDE_fit(x_uni, sumvol_uni)
+                ## The volume of particles with index=0 is 0. 
+                ## In theory, such particles do not exist.
+                kde = self.algo.KDE_fit(x_uni[1:], sumvol_uni[1:])
                 ## Recalculate the values of after smoothing
-                q3 = self.algo.KDE_score(kde, x_uni)
-                Q3 = self.algo.calc_Q3(x_uni, q3)
+                q3 = self.algo.KDE_score(kde, x_uni[1:])
+                Q3 = self.algo.calc_Q3(x_uni[1:], q3)
                 sumvol_uni = self.algo.calc_sum_uni(Q3, sumvol_uni.sum())
-                sumN_uni[:, idt] = sumvol_uni / v_uni
+                sumN_uni[:, idt] = sumvol_uni / v_uni[1:]
             else:
                 sumN_uni[:, idt] = pop.return_num_distribution(t=idt, flag='sumN_uni')[0]
         ## Data used for initialization should not be smoothed
         for idt in self.algo.idt_init:
-            sumN_uni[:, idt] = pop.return_num_distribution(t=idt, flag='sumN_uni')[0]
+            ## The volume of particles with index=0 is 0. 
+            ## In theory, such particles do not exist.
+            sumN_uni[:, idt] = pop.return_num_distribution(t=idt, flag='sumN_uni')[0][1:]
         
         if self.algo.add_noise:
             sumN_uni = self.algo.function_noise(sumN_uni)
 
-        df = pd.DataFrame(data=sumN_uni, index=x_uni, columns=formatted_times)
+        df = pd.DataFrame(data=sumN_uni, index=x_uni[1:], columns=formatted_times)
         df.index.name = 'Circular Equivalent Diameter'
         # save DataFrame as Excel file
         df.to_excel(exp_data_path)
-        
         return 
     
     # Visualize only the last time step of the specified time vector and the last used experimental data

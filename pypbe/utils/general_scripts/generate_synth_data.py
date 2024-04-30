@@ -30,7 +30,11 @@ def calc_function(R01_0, R03_0, dist_path_NM, dist_path_M, var_pop_params):
     
     find.algo.weight_2d = conf.config['weight_2d']
     find.algo.calc_init_N = False
-    find.algo.set_comp_para(R01_0, R03_0, dist_path_NM, dist_path_M,R_NM=conf.config['R_NM'], R_M=conf.config['R_M'],
+    if find.algo.p.process_type == 'breakage':
+        USE_PSD = False
+    else:
+        USE_PSD = True
+    find.algo.set_comp_para(USE_PSD, R01_0, R03_0, dist_path_NM, dist_path_M,R_NM=conf.config['R_NM'], R_M=conf.config['R_M'],
                             R01_0_scl=conf.config['R01_0_scl'],R03_0_scl=conf.config['R03_0_scl'])
     
     # find.algo.calc_all_pop(var_pop_params, find.algo.t_vec)
@@ -82,10 +86,10 @@ if __name__ == '__main__':
     var_v = np.array([1])
     # var_v = np.array([0.01])
     ## define the range of P1, P2 for power law breakage rate
-    var_P1 = np.array([1e-3])
-    var_P2 = np.array([0.5])
-    var_P3 = np.array([1e-3])
-    var_P4 = np.array([0.5])
+    var_P1 = np.array([1e-4])
+    var_P2 = np.array([0.6])
+    var_P3 = np.array([2e-2])
+    var_P4 = np.array([0.4])
     # var_P5 = np.array([1e-4,1e-2])
     # var_P6 = np.array([0.1,1])
 

@@ -15,7 +15,7 @@ config = {
     'algo_params': {
         'dim': 2,
         't_init' : np.array([0, 1, 3, 5, 9]),
-        't_vec' : np.arange(0, 601, 60, dtype=float),
+        't_vec' : np.arange(0, 301, 30, dtype=float),
         ## Sometimes there is a gap between the initial conditions calculated based on experimental data 
         ## and the real values, resulting in unavoidable errors in the first few time steps. 
         ## These errors will gradually disappear as the calculation time becomes longer. 
@@ -53,10 +53,10 @@ config = {
         'aggl_crit' : 100,
         'process_type' : "breakage",
         'pl_v' : 1,
-        'pl_P1' : 1e-3,
-        'pl_P2' : 0.5,
-        'pl_P3' : 1e-3,
-        'pl_P4' : 0.5,
+        'pl_P1' : 1e-4,
+        'pl_P2' : 0.6,
+        'pl_P3' : 2e-2,
+        'pl_P4' : 0.4,
         # 'pl_P5' : 3e-4,
         # 'pl_P6' : 0.3,
         'COLEVAL' : 2,

@@ -226,46 +226,33 @@ if __name__ == '__main__':
     
     find.algo.set_init_pop_para(pop_params)
     
-    ## 1. The diameter ratio of the primary particles can also be used as a variable
+    base_path = os.path.join(find.algo.p.pth, "data")
+    if find.algo.p.process_type == 'breakage':
+        USE_PSD = False
+        dist_path_NM = None
+        dist_path_M = None
+    else:
+        USE_PSD = True
+        dist_path_NM = os.path.join(base_path, "PSD_data", conf.config['dist_scale_1'])
+        dist_path_M = os.path.join(base_path, "PSD_data", conf.config['dist_scale_1'])
+        
     R_NM = conf.config['R_NM']
     R_M=conf.config['R_M']
     R01_0_scl=conf.config['R01_0_scl']
     R03_0_scl=conf.config['R03_0_scl']
-    if find.algo.p.process_type == 'breakage':
-        USE_PSD = False
-    else:
-        USE_PSD = True
-    find.algo.set_comp_para(USE_PSD, R_NM=R_NM, R_M=R_M,R01_0_scl=R01_0_scl,R03_0_scl=R03_0_scl)
-    ## 5. Weight of 2D data
-    ## The error of 2d pop may be more important, so weight needs to be added
+    find.algo.set_comp_para(USE_PSD, R_NM=R_NM, R_M=R_M,R01_0_scl=R01_0_scl,R03_0_scl=R03_0_scl,
+                            dist_path_NM=dist_path_NM, dist_path_M=dist_path_M)
     find.algo.weight_2d = conf.config['weight_2d']
+
+    data_name = "Sim_Mul_0.1_para_100.0_1.0_0.5_1.0_1_0.0001_0.6_0.02_0.4.xlsx"  
     
-    ## 6. Method how to use the datasets, kernels or delta
-    ## kernels: Find the kernel for each set of data, and then average these kernels.
-    ## delta: Read all input directly and use all data to find the kernel once
-    ## wait to write hier 
-    # data_name = "Sim_Mul_0.1_para_100.0_0.5_0.5_1.0_2_0.01_0.5_0.01_0.5.xlsx"
-    data_name = "Sim_Mul_0.1_para_100.0_0.5_0.5_0.5_1_0.001_0.5_0.001_0.5.xlsx"  
-    base_path = os.path.join(find.algo.p.pth, "data")
-    
-    # conf_params = {
-    #     'pop_params':{
-    #         'CORR_BETA' : 15,
-    #         'alpha_prim' : np.array([0.2, 0.6, 0.8])
-    #         }
-    #     }
-    # pop_params = conf_params['pop_params']
+
     exp_data_path = os.path.join(base_path, data_name)
     exp_data_paths = [
         exp_data_path,
         exp_data_path.replace(".xlsx", "_NM.xlsx"),
         exp_data_path.replace(".xlsx", "_M.xlsx")
     ]
-    
-    # dist_path_1 = os.path.join(base_path, "PSD_data", conf.config['dist_scale_1'])
-    # dist_path_2 = os.path.join(base_path, "PSD_data", conf.config['dist_scale_1'])
-    dist_path_1 = None
-    dist_path_2 = None
     
     # Run an optimization and generate graphs of the results
     # delta_opt, opt_values = normal_test()
