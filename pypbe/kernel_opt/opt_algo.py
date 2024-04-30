@@ -59,32 +59,6 @@ class opt_algo():
         self.set_init_pop_para_flag = False
         self.set_comp_para_flag = False
     #%%  Optimierer    
-    def calc_delta(self, CORR_BETA=None, alpha_prim=None, scale=1, sample_num=1, exp_data_path=None):
-        """
-        Calculate the difference (delta) of PSD.
-        
-        - This method first calls :meth:`~.calc_pop` to calculate the PBE under the current kernel.
-        - Then calls :meth:`~.calc_delta_tem` to calculate delta corresponding to experimental data.
-        
-        Parameters
-        ----------
-        CORR_BETA : `float`
-            Collision frequency correction factor for agglomeration in PBE.
-        alpha_prim : `array`
-            Collision efficiency for agglomeration in PBE.
-        scale : `int`, optional. Default 1.
-            The actual return result is delta*scale. delta is absolute and always positive. 
-            Setting scale to 1 is suitable for optimizers that look for minimum values, 
-            and -1 is suitable for those that look for maximum values.
-        sample_num : `int`, optional. Default 1.
-            Set how many sets of experimental data are used simultaneously for optimization.
-        exp_data_path : `str`
-            path for experimental data.
-        """
-        self.calc_pop(self.p, CORR_BETA, alpha_prim, self.t_vec)
-
-        return self.calc_delta_tem(sample_num, exp_data_path, scale, self.p)
-    
     def calc_delta_agg(self, params, scale=1, sample_num=1, exp_data_path=None):
         """
         Calculate the difference (delta) of PSD.
@@ -195,68 +169,7 @@ class opt_algo():
             # the average value needs to be used instead of the sum.
             x_uni_num = len(x_uni_exp)  
             return (delta_sum * scale) / x_uni_num
-    
-    def optimierer(self, method='BO', init_points=4, sample_num=1, hyperparameter=None, exp_data_path=None):
-        """
-        Optimize the CORR_BETA and alpha_prim based on :meth:`~.calc_delta`. 
-        Results are saved in CORR_BETA_opt and alpha_prim_opt.
-        
-        Parameters
-        ----------
-        method : `str`
-            Which algorithm to use for optimization.
-        init_points : `int`, optional. Default 4.
-            Number of steps for random exploration in BayesianOptimization.
-        sample_num : `int`, optional. Default 1.
-            Set how many sets of experimental data are used simultaneously for optimization.
-        exp_data_path : `str`
-            path for experimental data.
-            
-        Returns   
-        -------
-        delta_opt : `float`
-            Optimized value of the objective.
-        """
-        if method == 'BO':
-            if self.p.dim == 1:
-                pbounds = {'CORR_BETA_log': (-3, 3), 'alpha_prim': (0, 1)}
-                objective = lambda CORR_BETA_log, alpha_prim: self.calc_delta(
-                    CORR_BETA=10**CORR_BETA_log, alpha_prim=np.array([alpha_prim]),
-                    scale=-1, sample_num=sample_num, exp_data_path=exp_data_path)
-                
-            elif self.p.dim == 2:
-                pbounds = {'CORR_BETA_log': (-3, 3), 'alpha_prim_0': (0, 1), 'alpha_prim_1': (0, 1), 'alpha_prim_2': (0, 1)}
-                objective = lambda CORR_BETA_log, alpha_prim_0, alpha_prim_1, alpha_prim_2: self.calc_delta(
-                    CORR_BETA=10**CORR_BETA_log, 
-                    alpha_prim=np.array([alpha_prim_0, alpha_prim_1, alpha_prim_2]), 
-                    scale=-1, sample_num=sample_num, exp_data_path=exp_data_path)
-                
-            opt = BayesianOptimization(
-                f=objective, 
-                pbounds=pbounds,
-                random_state=1,
-                allow_duplicate_points=True
-            )
-            
-            opt.maximize(
-                init_points=init_points,
-                n_iter=self.n_iter,
-            )   
-            if self.p.dim == 1:
-                self.CORR_BETA_opt = 10**opt.max['params']['CORR_BETA_log']
-                self.alpha_prim_opt = opt.max['params']['alpha_prim']
-                
-            elif self.p.dim == 2:
-                self.alpha_prim_opt = np.zeros(3)
-                self.CORR_BETA_opt = 10**opt.max['params']['CORR_BETA_log']
-                self.alpha_prim_opt[0] = opt.max['params']['alpha_prim_0']
-                self.alpha_prim_opt[1] = opt.max['params']['alpha_prim_1']
-                self.alpha_prim_opt[2] = opt.max['params']['alpha_prim_2']
-            
-            delta_opt = -opt.max['target']           
-            
-        return delta_opt  
-    
+
     def optimierer_agg(self, opt_params, init_points=4, sample_num=1, hyperparameter=None, exp_data_path=None):
         """
         Optimize the corr_agg based on :meth:`~.calc_delta_agg`. 

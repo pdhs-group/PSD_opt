@@ -231,7 +231,11 @@ if __name__ == '__main__':
     R_M=conf.config['R_M']
     R01_0_scl=conf.config['R01_0_scl']
     R03_0_scl=conf.config['R03_0_scl']
-    find.algo.set_comp_para(USE_PSD=False, R_NM=R_NM, R_M=R_M,R01_0_scl=R01_0_scl,R03_0_scl=R03_0_scl)
+    if find.algo.p.process_type == 'breakage':
+        USE_PSD = False
+    else:
+        USE_PSD = True
+    find.algo.set_comp_para(USE_PSD, R_NM=R_NM, R_M=R_M,R01_0_scl=R01_0_scl,R03_0_scl=R03_0_scl)
     ## 5. Weight of 2D data
     ## The error of 2d pop may be more important, so weight needs to be added
     find.algo.weight_2d = conf.config['weight_2d']
