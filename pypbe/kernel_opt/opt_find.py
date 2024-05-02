@@ -259,12 +259,17 @@ class opt_find():
                 ## In theory, such particles do not exist.
                 kde = self.algo.KDE_fit(x_uni[1:], sumvol_uni[1:])
                 ## Recalculate the values of after smoothing
+                ## In order to facilitate subsequent processing, 
+                ## a 0 needs to be filled in the first bit of q3
                 q3 = self.algo.KDE_score(kde, x_uni[1:])
-                Q3 = self.algo.calc_Q3(x_uni[1:], q3)
+                q3 = np.insert(q3, 0, 0.0)
+                Q3 = self.algo.calc_Q3(x_uni, q3)
+                ## Normalize Q3 to ensure that its maximum value is 1 
+                Q3 = Q3 / Q3.max()
                 sumvol_uni = self.algo.calc_sum_uni(Q3, sumvol_uni.sum())
-                sumN_uni[:, idt] = sumvol_uni / v_uni[1:]
+                sumN_uni[:, idt] = sumvol_uni[1:] / v_uni[1:]
             else:
-                sumN_uni[:, idt] = pop.return_num_distribution(t=idt, flag='sumN_uni')[0]
+                sumN_uni[:, idt] = pop.return_num_distribution(t=idt, flag='sumN_uni')[0][1:]
         ## Data used for initialization should not be smoothed
         for idt in self.algo.idt_init:
             ## The volume of particles with index=0 is 0. 

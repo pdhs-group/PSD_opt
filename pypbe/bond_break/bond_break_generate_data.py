@@ -53,14 +53,13 @@ def generate_one_data(args):
     file_path = os.path.join(output_dir, file_name)
     # save array
     np.save(file_path, F)
-def generate_complete_2d_data(NS,S,STR,NO_FRAG,N_GRIDS, N_FRACS, V01,V03):
+def generate_complete_2d_data(NS,S,STR,NO_FRAG,N_GRIDS, N_FRACS, V01,V03,output_dir):
     V1,V3,_,_,V,X1_vol = calc_2d_V(NS, S, V01, V03)
     # Define other unchanged parameters
     INIT_BREAK_RANDOM = False
     A0 = min(V1[1],V3[1])/ NO_FRAG
     
     # Make sure there is a directory to save the data
-    output_dir = 'simulation_data'
     os.makedirs(output_dir, exist_ok=True)
     
     # Prepare arguments for multiprocessing
@@ -118,14 +117,13 @@ def generate_one_2d_data(args):
     file_path = os.path.join(output_dir, file_name)
     np.save(file_path, F) 
 
-def generate_complete_1d_data(NS,S,STR,NO_FRAG,N_GRIDS, N_FRACS):
+def generate_complete_1d_data(NS,S,STR,NO_FRAG,N_GRIDS, N_FRACS,output_dir):
     V,_ = calc_1d_V(NS, S)
     # Define other unchanged parameters
     INIT_BREAK_RANDOM = False
     A0 = V[1]/ NO_FRAG
     
     # Make sure there is a directory to save the data
-    output_dir = 'simulation_data'
     os.makedirs(output_dir, exist_ok=True)
     
     # Prepare arguments for multiprocessing

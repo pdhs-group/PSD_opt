@@ -29,8 +29,8 @@ if __name__ == '__main__':
     
     for STR in filtered_var_STR:
     ## Generate complete data
-    # mc_gen.generate_complete_1d_data(NS, S, STR, NO_FRAG, N_GRIDS, N_FRACS)
-        mc_gen.generate_complete_2d_data(NS, S, STR, NO_FRAG, N_GRIDS, N_FRACS, V01, V03)
+    # mc_gen.generate_complete_1d_data(NS, S, STR, NO_FRAG, N_GRIDS, N_FRACS, data_path)
+        mc_gen.generate_complete_2d_data(NS, S, STR, NO_FRAG, N_GRIDS, N_FRACS, V01, V03, data_path)
         
         ## Calculate breakage function using calculated data
         int_B_F,intx_B_F,inty_B_F = mc_post.direkt_psd(NS, S, STR, NO_FRAG, N_GRIDS, N_FRACS, V01, V03, data_path)

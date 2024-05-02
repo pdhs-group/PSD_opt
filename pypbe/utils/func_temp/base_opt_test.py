@@ -73,8 +73,6 @@ def normal_test():
     
 def calc_N_test():
     find.algo.calc_init_N = False
-    pth = os.path.dirname( __file__ )
-    dist_path_1 = os.path.join(pth, "..", "..","data", "PSD_data", conf.config['dist_scale_1'])
     
     fig=plt.figure()    
     axq3=fig.add_subplot(1,1,1)
@@ -98,7 +96,7 @@ def calc_N_test():
     find.algo.set_init_pop_para(pop_params)
     find.algo.calc_init_N = False
     find.algo.set_comp_para('r0_001', 'r0_001',R01_0_scl=R01_0_scl,R03_0_scl=R03_0_scl,
-                            dist_path_NM=dist_path_1,dist_path_M=dist_path_2)
+                            dist_path_NM=dist_path_NM,dist_path_M=dist_path_M)
     find.algo.calc_all_pop()
     # return_pop_num_distribution(find.algo.p, axq3, fig, clr='b', q3lbl='q3_psd')
     # q3_psd = return_pop_num_distribution(find.algo.p_NM, axq3_NM, fig_NM, clr='b', q3lbl='q3_psd')
@@ -244,7 +242,7 @@ if __name__ == '__main__':
                             dist_path_NM=dist_path_NM, dist_path_M=dist_path_M)
     find.algo.weight_2d = conf.config['weight_2d']
 
-    data_name = "Sim_Mul_0.1_para_100.0_1.0_0.5_1.0_1_0.0001_0.6_0.02_0.4.xlsx"  
+    data_name = "Sim_para_100.0_1.0_0.5_1.0_1_0.0001_0.6_0.02_0.4.xlsx"  
     
 
     exp_data_path = os.path.join(base_path, data_name)
@@ -255,8 +253,8 @@ if __name__ == '__main__':
     ]
     
     # Run an optimization and generate graphs of the results
-    # delta_opt, opt_values = normal_test()
+    delta_opt, opt_values = normal_test()
     
     # N_exp, N_calc, N_exp_1D, N_calc_1D, q3_psd, q3_exp = calc_N_test()
     
-    delta = calc_delta_test(var_delta=False)
+    # delta = calc_delta_test(var_delta=False)

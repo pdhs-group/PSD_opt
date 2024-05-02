@@ -125,12 +125,23 @@ class opt_algo():
             
         if sample_num == 1:
             x_uni_exp, sumN_uni_exp = self.read_exp(exp_data_path, self.t_vec[self.delta_t_start_step:]) 
+            x_uni_exp = np.insert(x_uni_exp, 0, 0.0)
+            sumN_uni_exp = np.insert(sumN_uni_exp, 0, 0.0, axis=0)
             vol_uni = np.tile((1/6)*np.pi*x_uni_exp**3, (self.num_t_steps-self.delta_t_start_step, 1)).T
             sumvol_uni_exp = sumN_uni_exp * vol_uni
             q3_mod = np.zeros((len(x_uni_exp), self.num_t_steps-self.delta_t_start_step))
-            for idt in range(self.delta_t_start_step, self.num_t_steps):
-                q3_mod_tem = self.KDE_score(kde_list[idt], x_uni_exp)
-                q3_mod[:, idt] = q3_mod_tem
+            for idt in range(self.num_t_steps-self.delta_t_start_step):
+                if self.smoothing:
+                    q3_mod_tem = self.KDE_score(kde_list[idt], x_uni_exp[1:])
+                    q3_mod[1:, idt] = q3_mod_tem
+                else:
+                    q3_mod[:, idt] = pop.return_distribution(t=idt+self.delta_t_start_step, flag='q3')[0]
+                Q3 = self.calc_Q3(x_uni_exp, q3_mod[:, idt]) 
+                q3_mod[:, idt] = q3_mod[:, idt] / Q3.max() 
+            
+            sumvol_uni_exp = np.insert(sumvol_uni_exp, 0, 0.0, axis=0)
+            x_uni_exp = np.insert(x_uni_exp, 0, 0.0)
+            q3_mod = np.insert(q3_mod, 0, 0.0, axis=0)
             data_mod = self.re_calc_distribution(x_uni_exp, q3=q3_mod, flag=self.delta_flag)[0]
             data_exp = self.re_calc_distribution(x_uni_exp, sum_uni=sumvol_uni_exp, flag=self.delta_flag)[0]
             # Calculate the error between experimental data and simulation results
@@ -144,18 +155,20 @@ class opt_algo():
             delta_sum = 0           
             for i in range (0, sample_num):
                 exp_data_path = self.traverse_path(i, exp_data_path)
-                x_uni_exp, sumN_uni_exp = self.read_exp(exp_data_path, self.t_vec[self.delta_t_start_step:]) 
+                x_uni_exp, sumN_uni_exp = self.read_exp(exp_data_path, self.t_vec[self.delta_t_start_step:])
+                x_uni_exp = np.insert(x_uni_exp, 0, 0.0)
+                sumN_uni_exp = np.insert(sumN_uni_exp, 0, 0.0, axis=0)
                 vol_uni = np.tile((1/6)*np.pi*x_uni_exp**3, (self.num_t_steps-self.delta_t_start_step, 1)).T
                 sumvol_uni_exp = sumN_uni_exp * vol_uni
                 q3_mod = np.zeros((len(x_uni_exp), self.num_t_steps-self.delta_t_start_step))
-                
                 for idt in range(self.num_t_steps-self.delta_t_start_step):
                     if self.smoothing:
-                        q3_mod_tem = self.KDE_score(kde_list[idt], x_uni_exp)
-                        q3_mod[:, idt] = q3_mod_tem
+                        q3_mod_tem = self.KDE_score(kde_list[idt], x_uni_exp[1:])
+                        q3_mod[1:, idt] = q3_mod_tem
                     else:
                         q3_mod[:, idt] = pop.return_distribution(t=idt+self.delta_t_start_step, flag='q3')[0]
-
+                    Q3 = self.calc_Q3(x_uni_exp, q3_mod[:, idt]) 
+                    q3_mod[:, idt] = q3_mod[:, idt] / Q3.max()    
                 data_mod = self.re_calc_distribution(x_uni_exp, q3=q3_mod, flag=self.delta_flag)[0]
                 data_exp = self.re_calc_distribution(x_uni_exp, sum_uni=sumvol_uni_exp, flag=self.delta_flag)[0]
                 # Calculate the error between experimental data and simulation results
@@ -782,7 +795,7 @@ class opt_algo():
         Calculate the sum_uni distribution from the Q3 cumulative distribution and total sum.
         """
         sum_uni = np.zeros_like(Q3)
-        sum_uni[0] = sum_total * Q3[0]
+        # sum_uni[0] = sum_total * Q3[0]
         for i in range(1, len(Q3)):
             sum_uni[i] = sum_total * max((Q3[i] -Q3[i-1] ), 0)
         return sum_uni

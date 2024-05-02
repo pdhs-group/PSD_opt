@@ -27,7 +27,9 @@ config = {
         'noise_type': 'Mul',
         'noise_strength': 0.1,
         'sample_num': 5,
-        'method': 'basinhopping',
+        ## method = basinhopping
+        ## method = BO: use Bayesian Optimization
+        'method': 'BO',
         'n_iter': 400,
         'calc_init_N': False,
         ## delta_flag = q3: use q3
@@ -40,13 +42,13 @@ config = {
         ##   'RMSE': Root Mean Squared Error
         ##   'MAE': Mean Absolute Error
         ##   'KL': Kullback–Leibler divergence(Only q3 and Q3 are compatible with KL) 
-        'cost_func_type': 'MSE',
+        'cost_func_type': 'KL',
         },
     
     ## PBE parameters
     'pop_params': {
         'NS' : 15,
-        'S' : 4,
+        'S' : 3,
         'BREAKRVAL' : 4,
         'BREAKFVAL' : 5,
         ## aggl_crit: The sequence number of the particle that allows further agglomeration
