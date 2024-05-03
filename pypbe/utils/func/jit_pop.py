@@ -52,7 +52,10 @@ def get_dNdt_1d_geo(t,N,NS,V_p,V_e,F_M,B_R,bf_int,xbf_int,type_flag,agg_crit,N_s
         B[i] += B_c[i]*lam(v[i], V_p_ex, i, 'p')*heaviside(v[i]-V_p[i],0.5)
         # Right Cell, left half
         B[i] += B_c[i+1]*lam(v[i+1], V_p_ex, i, 'p')*heaviside(V_p_ex[i+1]-v[i+1],0.5)
-            
+    ## Particles with a volume of zero will not have any impact on physical processes 
+    ## and mass conservation, but may affect the convergence of differential equations, 
+    ## so they are set to zero manually.
+    dNdt[0] = 0.0        
     dNdt = B + D
     
     return dNdt 
@@ -136,6 +139,10 @@ def get_dNdt_2d_geo(t,NN,NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,type_fl
                     #     print(f'mass flux in [{i},{j}] is', tem)
                             
     dNdt = B + D
+    ## Particles with a volume of zero will not have any impact on physical processes 
+    ## and mass conservation, but may affect the convergence of differential equations, 
+    ## so they are set to zero manually.
+    dNdt[0,0] = 0.0
     # volume_error = (dNdt*V_p).sum()
     # print('volume error after assignment is ', volume_error)
     

@@ -92,7 +92,7 @@ class opt_algo():
         if self.p.calc_status:
             return self.calc_delta_tem(sample_num, exp_data_path, scale, self.p)
         else:
-            return scale
+            return scale*10
 
     def calc_delta_tem(self, sample_num, exp_data_path, scale, pop):
         """
@@ -122,7 +122,8 @@ class opt_algo():
                 ## In theory, such particles do not exist.
                 kde = self.KDE_fit(x_uni[1:], sumvol_uni[1:])
                 kde_list.append(kde)
-            
+                
+        delta_sum = 0    
         if sample_num == 1:
             x_uni_exp, sumN_uni_exp = self.read_exp(exp_data_path, self.t_vec[self.delta_t_start_step:]) 
             x_uni_exp = np.insert(x_uni_exp, 0, 0.0)
@@ -142,17 +143,17 @@ class opt_algo():
             sumvol_uni_exp = np.insert(sumvol_uni_exp, 0, 0.0, axis=0)
             x_uni_exp = np.insert(x_uni_exp, 0, 0.0)
             q3_mod = np.insert(q3_mod, 0, 0.0, axis=0)
-            data_mod = self.re_calc_distribution(x_uni_exp, q3=q3_mod, flag=self.delta_flag)[0]
-            data_exp = self.re_calc_distribution(x_uni_exp, sum_uni=sumvol_uni_exp, flag=self.delta_flag)[0]
-            # Calculate the error between experimental data and simulation results
-            delta = self.cost_fun(data_exp, data_mod)
-            
+            for flag, cost_func_type in self.delta_flag:
+                data_mod = self.re_calc_distribution(x_uni_exp, q3=q3_mod, flag=flag)[0]
+                data_exp = self.re_calc_distribution(x_uni_exp, sum_uni=sumvol_uni_exp, flag=flag)[0]
+                # Calculate the error between experimental data and simulation results
+                delta = self.cost_fun(data_exp, data_mod, cost_func_type, flag)
+                delta_sum += delta 
             # Because the number of x_uni is different in different pop equations, 
             # the average value needs to be used instead of the sum.
             x_uni_num = len(x_uni_exp)
             return (delta * scale) / x_uni_num
         else:
-            delta_sum = 0           
             for i in range (0, sample_num):
                 exp_data_path = self.traverse_path(i, exp_data_path)
                 x_uni_exp, sumN_uni_exp = self.read_exp(exp_data_path, self.t_vec[self.delta_t_start_step:])
@@ -168,12 +169,13 @@ class opt_algo():
                     else:
                         q3_mod[:, idt] = pop.return_distribution(t=idt+self.delta_t_start_step, flag='q3')[0]
                     Q3 = self.calc_Q3(x_uni_exp, q3_mod[:, idt]) 
-                    q3_mod[:, idt] = q3_mod[:, idt] / Q3.max()    
-                data_mod = self.re_calc_distribution(x_uni_exp, q3=q3_mod, flag=self.delta_flag)[0]
-                data_exp = self.re_calc_distribution(x_uni_exp, sum_uni=sumvol_uni_exp, flag=self.delta_flag)[0]
-                # Calculate the error between experimental data and simulation results
-                delta = self.cost_fun(data_exp, data_mod)
-                delta_sum +=delta
+                    q3_mod[:, idt] = q3_mod[:, idt] / Q3.max()
+                for flag, cost_func_type in self.delta_flag:
+                    data_mod = self.re_calc_distribution(x_uni_exp, q3=q3_mod, flag=flag)[0]
+                    data_exp = self.re_calc_distribution(x_uni_exp, sum_uni=sumvol_uni_exp, flag=flag)[0]
+                    # Calculate the error between experimental data and simulation results
+                    delta = self.cost_fun(data_exp, data_mod, cost_func_type, flag)
+                    delta_sum += delta 
             # Restore the original name of the file to prepare for the next step of training
             delta_sum /= sample_num
             # Because the number of x_uni is different in different pop equations, 
@@ -215,7 +217,7 @@ class opt_algo():
                 transform[param] = lambda x: x
                 
         # Objective function considering the log scale transformation if necessary
-        def objective(**kwargs):
+        def objective(scale, **kwargs):
             transformed_params = {}
             for param, func in transform.items():
                 transformed_params[param] = func(kwargs[param])
@@ -223,10 +225,12 @@ class opt_algo():
             # Special handling for corr_agg based on dimension
             if 'corr_agg_0' in transformed_params:
                 transformed_params = self.array_dict_transform(transformed_params)
-            return self.calc_delta_agg(transformed_params, scale=-1, sample_num=sample_num, exp_data_path=exp_data_path)
+            return self.calc_delta_agg(transformed_params, scale=scale, sample_num=sample_num, exp_data_path=exp_data_path)
             
-        if self.method == 'BO':            
-            opt = BayesianOptimization(f=objective, pbounds=pbounds, random_state=1, allow_duplicate_points=True)
+        if self.method == 'BO': 
+            scale = -1  ## BayesianOptimization find the maximum
+            bayesian_objective = lambda **kwargs: objective(scale, **kwargs)
+            opt = BayesianOptimization(f=bayesian_objective, pbounds=pbounds, random_state=1, allow_duplicate_points=True)
             opt.maximize(init_points=init_points, n_iter=self.n_iter)
             
             # Extract optimized values and apply transformations
@@ -234,22 +238,15 @@ class opt_algo():
             delta_opt = -opt.max['target']
             if 'corr_agg_0' in opt_values:
                 opt_values =self.array_dict_transform(opt_values)
+                
         elif self.method == 'basinhopping':
-            # Convert bounds to scipy-compatible limits
-            limits = [(pbounds[param][0], pbounds[param][1]) for param in opt_params]
-    
-            # Create a wrapper to adapt the objective function to basinhopping
-            def scipy_objective(x):
-                kwargs = dict(zip(opt_params.keys(), x))
-                return objective(**kwargs)
-    
+            scale = 1
+            minimizer_kwargs = {"method": "L-BFGS-B", "bounds": [(pbounds[param][0], pbounds[param][1]) for param in opt_params]}
+            basinhopping_objective = lambda x: objective(scale, **dict(zip(opt_params.keys(), x)))
             # Initial guess (middle of bounds)
-            x0 = [(bound[0] + bound[1]) / 2 for bound in limits]
-            
-            minimizer_kwargs={"method": "L-BFGS-B", "bounds": limits}
-            # Perform basinhopping optimization
-            result = basinhopping(scipy_objective, x0, minimizer_kwargs=minimizer_kwargs,
-                                  niter=self.n_iter)
+            x0 = [(bound[0] + bound[1]) / 2 for bound in minimizer_kwargs['bounds']]
+
+            result = basinhopping(basinhopping_objective, x0, minimizer_kwargs=minimizer_kwargs, niter=self.n_iter)
             
             # Extract results and apply transformations
             opt_values = {param: transform[param](val) for param, val in zip(opt_params.keys(), result.x)}
@@ -288,7 +285,7 @@ class opt_algo():
         power = np.ceil(power)
         return 10**power
     
-    def cost_fun(self, data_exp, data_mod):
+    def cost_fun(self, data_exp, data_mod, cost_func_type, flag):
         """
         Calculate the difference(cost) between experimental and model data.
         
@@ -307,14 +304,14 @@ class opt_algo():
         float
             The calculated cost based on the specified cost function type.
         """
-        if self.cost_func_type == 'MSE':
+        if cost_func_type == 'MSE':
             return mean_squared_error(data_mod, data_exp)
-        elif self.cost_func_type == 'RMSE':
+        elif cost_func_type == 'RMSE':
             mse = mean_squared_error(data_mod, data_exp)
             return np.sqrt(mse)
-        elif self.cost_func_type == 'MAE':
+        elif cost_func_type == 'MAE':
             return mean_absolute_error(data_mod, data_exp)
-        elif (self.delta_flag == 'q3' or self.delta_flag == 'Q3') and self.cost_func_type == 'KL':
+        elif (flag == 'q3' or flag == 'Q3') and cost_func_type == 'KL':
             data_mod = np.where(data_mod <= 10e-20, 10e-20, data_mod)
             data_exp = np.where(data_exp <= 10e-20, 10e-20, data_exp)
             return entropy(data_mod, data_exp).mean()

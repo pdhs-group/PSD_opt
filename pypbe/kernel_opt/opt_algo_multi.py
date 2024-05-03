@@ -19,15 +19,15 @@ class opt_algo_multi(opt_algo):
         if self.p.calc_status:
             delta = self.calc_delta_tem(sample_num, exp_data_path[0], scale, self.p)
         else:
-            delta = scale
+            delta = scale*10
         if self.p_NM.calc_status:
             delta_NM = self.calc_delta_tem(sample_num, exp_data_path[1], scale, self.p_NM)
         else:
-            delta_NM = scale
+            delta_NM = scale*10
         if self.p_M.calc_status:
             delta_M = self.calc_delta_tem(sample_num, exp_data_path[2], scale, self.p_M)
         else:
-            delta_M = scale
+            delta_M = scale*10
         # increase the weight of the 2D case
         delta_sum = delta * self.weight_2d + delta_NM + delta_M
             
@@ -49,17 +49,17 @@ class opt_algo_multi(opt_algo):
             delta = self.calc_delta_tem(sample_num, exp_data_path[0], scale, self.p)
         else:
             print('p not converged')
-            delta = scale
+            delta = scale*10
         if self.p_NM.calc_status:
             delta_NM = self.calc_delta_tem(sample_num, exp_data_path[1], scale, self.p_NM)
         else:
             print('p_NM not converged')
-            delta_NM = scale
+            delta_NM = scale*10
         if self.p_M.calc_status:    
             delta_M = self.calc_delta_tem(sample_num, exp_data_path[2], scale, self.p_M)
         else:
             print('p_M not converged')
-            delta_M = scale
+            delta_M = scale*10
             # increase the weight of the 2D case
         delta_sum = delta * self.weight_2d + delta_NM + delta_M
         return delta_sum        
