@@ -103,27 +103,27 @@ if __name__ == "__main__":
     t_vec = np.arange(0, 151, 15, dtype=float)
     # Note that it must correspond to the settings of MC-Bond-Break.
     p.NS = 15
-    p.S = 3
+    p.S = 4
     
     p.BREAKRVAL= 4
     p.BREAKFVAL= 5
     p.aggl_crit= 100
     p.process_type= "breakage"
     p.pl_v= 1
-    p.pl_P1= 5e-4
+    p.pl_P1= 1e-2
     p.pl_P2= 0.6
-    p.pl_P3= 2e-3
-    p.pl_P4= 0.4
+    p.pl_P3= 1e-2
+    p.pl_P4= 0.6
     # p.pl_P5= 1e-2
     # p.pl_P6= 1
     p.COLEVAL= 2
     p.EFFEVAL= 1
     p.SIZEEVAL= 1
     if dim == 2:
-        p.alpha_primp = np.array([0.5,0.5,1.0])
+        p.alpha_prim = np.array([1,1,1,1])
     elif dim == 1:
-        p.alpha_primp = 0.5
-    p.CORR_BETA= 100
+        p.alpha_prim = 0.5
+    p.CORR_BETA= 1000
     ## The original value is the particle size at 1% of the PSD distribution. 
     ## The position of this value in the coordinate system can be adjusted by multiplying by size_scale.
     size_scale = 1e-1
@@ -131,7 +131,7 @@ if __name__ == "__main__":
     p.R03 = 8.677468940430804e-07*size_scale
     
     ## If you need to read PSD data as initial conditions, set the PSD data path
-    p.USE_PSD = False
+    p.USE_PSD = True
     p.DIST1 = os.path.join(p.pth,'data','PSD_data','PSD_x50_2.0E-6_RelSigmaV_1.5E-1.npy')
     p.DIST3 = os.path.join(p.pth,'data','PSD_data','PSD_x50_2.0E-6_RelSigmaV_1.5E-1.npy')
     
@@ -142,7 +142,7 @@ if __name__ == "__main__":
     ## Total volume concentration of component, original value = 0.0001
     ## Used to increase/decrease the overall order of magnitude of a calculated value(N)
     ## Reducing the magnitude of N can improve the stability of calculation
-    p.N_scale = 1e-14
+    p.N_scale = 1e-18
     
     ## Initialize the PBE
     p.full_init(calc_alpha=False)

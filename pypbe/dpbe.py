@@ -1229,6 +1229,7 @@ class population():
                             # if self.V[i,j,k] in v_uni:
                             sumvol_uni[v_uni == self.V[i,j,k]] += self.V[i,j,k]*N[i,j,k,t]
             ## convert unit m into um
+            sumvol_uni[sumvol_uni<0] = 0
             sumvol_uni *= 1e18
             sumV = np.sum(sumvol_uni)
             # Calculate diameter array
@@ -1294,7 +1295,7 @@ class population():
                         for k in range(self.NS):
                             if float_in_list(self.V[i,j,k], v_uni) and (not N[i,j,t] < 0):
                                 sumN_uni[v_uni == self.V[i,j,k]] += N[i,j,k,t]
-                                
+            sumN_uni[sumN_uni<0] = 0                    
             sumN = np.sum(sumN_uni)
             # Calculate diameter array and convert into mm
             x_uni[1:]=(6*v_uni[1:]/np.pi)**(1/3)*1e6

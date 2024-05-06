@@ -81,6 +81,15 @@ if __name__ == '__main__':
     var_alpha_prim = np.column_stack((a1.flatten(), a2.flatten(), a3.flatten()))
     ## The case of all zero α is meaningless, that means no Agglomeration occurs
     var_alpha_prim = var_alpha_prim[~np.all(var_alpha_prim == 0, axis=1)]
+    ## For cases where R01 and R03 have the same size, the elements of alpha_prim mirror symmetry 
+    ## are equivalent and can be removed to simplify the calculation.
+    unique_alpha_prim = []
+    for comp in var_alpha_prim:
+        comp_reversed = comp[::-1]  
+        if not any(np.array_equal(comp, x) or np.array_equal(comp_reversed, x) for x in unique_alpha_prim):
+            unique_alpha_prim.append(comp)
+            
+    var_alpha_prim = np.array(unique_alpha_prim)
 
     ## define the range of v(breakage function)
     var_v = np.array([1])
@@ -102,10 +111,8 @@ if __name__ == '__main__':
     func_list = []
     for i, dist in enumerate(dist_path):
         ## Reinitialization of pop equations using psd data  
-        # dist_path_NM = dist_path[0]
-        # dist_path_M = dist
-        dist_path_NM = None
-        dist_path_M = None
+        dist_path_NM = dist_path[0]
+        dist_path_M = dist
         scale = size_scale[i]
         for j,corr_beta in enumerate(var_corr_beta):
             for k,alpha_prim in enumerate(var_alpha_prim):
