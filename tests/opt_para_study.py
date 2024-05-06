@@ -6,7 +6,6 @@ Created on Tue Dec  5 10:58:09 2023
 """
 import sys, os
 import numpy as np
-import time
 import multiprocessing
 import logging
 sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),".."))
@@ -27,7 +26,8 @@ def optimization_process(algo_params,pop_params,multi_flag,opt_params,ori_params
     
     find.algo.set_init_pop_para(pop_params)
     
-    find.algo.set_comp_para(R_NM=conf.config['R_NM'], R_M=conf.config['R_M'],R01_0_scl=1e-1,R03_0_scl=1e-1)
+    find.algo.set_comp_para(USE_PSD=False, R_NM=conf.config['R_NM'], R_M=conf.config['R_M'],
+                            R01_0_scl=conf.config['R01_0_scl'],R03_0_scl=conf.config['R03_0_scl'])
     
     find.algo.weight_2d = conf.config['weight_2d']
 
@@ -37,6 +37,7 @@ def optimization_process(algo_params,pop_params,multi_flag,opt_params,ori_params
     return delta_opt, opt_values, ori_params
 
 if __name__ == '__main__':
+    #%%  Input for Opt
     algo_params = conf.config['algo_params']
     pop_params = conf.config['pop_params']
     multi_flag = conf.config['multi_flag']
@@ -47,18 +48,18 @@ if __name__ == '__main__':
     noise_strength = algo_params['noise_strength']
     delta_flag = algo_params['delta_flag']
     method = algo_params['method']
-    cost_func_type = algo_params['cost_func_type']
+    n_iter = algo_params['n_iter']
+    
     #%% Prepare test data set
     ## define the range of corr_beta
-    # var_corr_beta = [1e-2, 1e-1, 1e0, 1e1, 1e2]
-    var_corr_beta = np.array([1e1, 1e0, 1e1])
+    var_corr_beta = np.array([1e2])
+    # var_corr_beta = np.array([1e-2])
     ## define the range of alpha_prim 27x3
-    values = [0, 0.5, 1]
+    values = np.array([0.5, 1])
     a1, a2, a3 = np.meshgrid(values, values, values, indexing='ij')
     var_alpha_prim = np.column_stack((a1.flatten(), a2.flatten(), a3.flatten()))
-    ## remove element [0, 0, 0]
+    ## The case of all zero α is meaningless, that means no Agglomeration occurs
     var_alpha_prim = var_alpha_prim[~np.all(var_alpha_prim == 0, axis=1)]
-    
     ## For cases where R01 and R03 have the same size, the elements of alpha_prim mirror symmetry 
     ## are equivalent and can be removed to simplify the calculation.
     unique_alpha_prim = []
@@ -68,22 +69,27 @@ if __name__ == '__main__':
             unique_alpha_prim.append(comp)
             
     var_alpha_prim = np.array(unique_alpha_prim)
-    
+
     ## define the range of v(breakage function)
-    var_v = np.array([2])
+    var_v = np.array([1])
     # var_v = np.array([0.01])
     ## define the range of P1, P2 for power law breakage rate
-    var_P1 = np.array([1e-6])
-    var_P2 = np.array([1e-1])
-    var_P3 = np.array([1e-6])
-    var_P4 = np.array([1e-1])
-    var_P5 = np.array([1e-6])
-    var_P6 = np.array([1e0])
-    # var_P1 = np.array([1])
-    # var_P2 = np.array([0.0])
-    
+    var_P1 = np.array([5e-4])
+    var_P2 = np.array([0.6])
+    var_P3 = np.array([2e-3])
+    var_P4 = np.array([0.4])
+    # var_P5 = np.array([1e-4,1e-2])
+    # var_P6 = np.array([0.1,1])
+
+    ## define the range of particle size scale and minimal size
     pth = os.path.dirname( __file__ )
     data_path = os.path.join(pth, "..", "pypbe", "data")
+    # dist_path_1 = os.path.join(data_path, "PSD_data", conf.config['dist_scale_1'])
+    # dist_path = [dist_path_1] # [dist_path_1, dist_path_10]
+    # size_scale = np.array([1, 10])
+    # R01_0 = 'r0_001'
+    # R03_0 = 'r0_001'
+    
     pool = multiprocessing.Pool(processes=12)
     tasks = []
     for j,corr_beta in enumerate(var_corr_beta):
@@ -93,8 +99,6 @@ if __name__ == '__main__':
                     for m2,P2 in enumerate(var_P2):
                         for m3,P3 in enumerate(var_P3):
                             for m4,P4 in enumerate(var_P4):
-                                for m5,P5 in enumerate(var_P5):
-                                    for m6,P6 in enumerate(var_P6):
                                         ## Set parameters for PBE
                                         conf_params = {
                                             'pop_params':{
@@ -105,11 +109,9 @@ if __name__ == '__main__':
                                                 'pl_P2' : P2,
                                                 'pl_P3' : P3,
                                                 'pl_P4' : P4,
-                                                'pl_P5' : P5,
-                                                'pl_P6' : P6,
                                                 }
                                             }
-                                        file_name = f"Sim_{noise_type}_{noise_strength}_para_{corr_beta}_{alpha_prim[0]}_{alpha_prim[1]}_{alpha_prim[2]}_{v}_{P1}_{P2}_{P3}_{P4}_{P5}_{P6}.xlsx"
+                                        file_name = f"Sim_{noise_type}_{noise_strength}_para_{corr_beta}_{alpha_prim[0]}_{alpha_prim[1]}_{alpha_prim[2]}_{v}_{P1}_{P2}_{P3}_{P4}.xlsx"
                                         file_path = os.path.join(data_path, file_name)
                                         file_path = file_path.replace(".xlsx", "_0.xlsx")
                                         if not os.path.exists(file_path):
@@ -122,9 +124,9 @@ if __name__ == '__main__':
 
     ## save the results in npz
     if multi_flag:
-        result_name = f'multi_{delta_flag}_{method}_{cost_func_type}_wight_{weight_2d}'
+        result_name = f'multi_{delta_flag}_{method}_wight_{weight_2d}_iter_{n_iter}'
     else:
-        result_name =  f'{delta_flag}_{method}_{cost_func_type}_wight_{weight_2d}'
+        result_name =  f'{delta_flag}_{method}_wight_{weight_2d}_iter_{n_iter}'
         
     np.savez(f'{result_name}.npz', 
           results=results, 

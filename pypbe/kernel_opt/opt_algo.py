@@ -6,6 +6,7 @@ Minimize the difference by optimization algorithm to obtain the kernel of PBE.
 import numpy as np
 import math
 from bayes_opt import BayesianOptimization
+from scipy.optimize import basinhopping
 from scipy.stats import entropy
 from sklearn.neighbors import KernelDensity
 from sklearn.metrics import mean_squared_error, mean_absolute_error
@@ -58,32 +59,6 @@ class opt_algo():
         self.set_init_pop_para_flag = False
         self.set_comp_para_flag = False
     #%%  Optimierer    
-    def calc_delta(self, CORR_BETA=None, alpha_prim=None, scale=1, sample_num=1, exp_data_path=None):
-        """
-        Calculate the difference (delta) of PSD.
-        
-        - This method first calls :meth:`~.calc_pop` to calculate the PBE under the current kernel.
-        - Then calls :meth:`~.calc_delta_tem` to calculate delta corresponding to experimental data.
-        
-        Parameters
-        ----------
-        CORR_BETA : `float`
-            Collision frequency correction factor for agglomeration in PBE.
-        alpha_prim : `array`
-            Collision efficiency for agglomeration in PBE.
-        scale : `int`, optional. Default 1.
-            The actual return result is delta*scale. delta is absolute and always positive. 
-            Setting scale to 1 is suitable for optimizers that look for minimum values, 
-            and -1 is suitable for those that look for maximum values.
-        sample_num : `int`, optional. Default 1.
-            Set how many sets of experimental data are used simultaneously for optimization.
-        exp_data_path : `str`
-            path for experimental data.
-        """
-        self.calc_pop(self.p, CORR_BETA, alpha_prim, self.t_vec)
-
-        return self.calc_delta_tem(sample_num, exp_data_path, scale, self.p)
-    
     def calc_delta_agg(self, params, scale=1, sample_num=1, exp_data_path=None):
         """
         Calculate the difference (delta) of PSD.
@@ -114,10 +89,10 @@ class opt_algo():
             del params["corr_agg"]
 
         self.calc_pop(self.p, params, self.t_vec)
-        if self.p.calc_status == 0:
+        if self.p.calc_status:
             return self.calc_delta_tem(sample_num, exp_data_path, scale, self.p)
         else:
-            return scale
+            return scale*10
 
     def calc_delta_tem(self, sample_num, exp_data_path, scale, pop):
         """
@@ -137,48 +112,70 @@ class opt_algo():
         (delta_sum * scale) / x_uni_num : `float`
             Average value of PSD's difference for corresponding to all particle sizes. 
         """
-        kde_list = []
+        if self.smoothing:
+            kde_list = []
         x_uni = self.calc_x_uni(pop)
-        for idt in range(self.num_t_steps):
-            sumvol_uni = pop.return_distribution(t=idt, flag='sumvol_uni')[0]
-            kde = self.KDE_fit(x_uni, sumvol_uni)
-            kde_list.append(kde)
-        
+        for idt in range(self.delta_t_start_step, self.num_t_steps):
+            if self.smoothing:
+                sumvol_uni = pop.return_distribution(t=idt, flag='sumvol_uni')[0]
+                ## The volume of particles with index=0 is 0. 
+                ## In theory, such particles do not exist.
+                kde = self.KDE_fit(x_uni[1:], sumvol_uni[1:])
+                kde_list.append(kde)
+                
+        delta_sum = 0    
         if sample_num == 1:
-            x_uni_exp, sumN_uni_exp = self.read_exp(exp_data_path, self.t_vec) 
-            vol_uni = np.tile((1/6)*np.pi*x_uni_exp**3, (len(self.idt_vec), 1)).T
+            x_uni_exp, sumN_uni_exp = self.read_exp(exp_data_path, self.t_vec[self.delta_t_start_step:]) 
+            x_uni_exp = np.insert(x_uni_exp, 0, 0.0)
+            sumN_uni_exp = np.insert(sumN_uni_exp, 0, 0.0, axis=0)
+            vol_uni = np.tile((1/6)*np.pi*x_uni_exp**3, (self.num_t_steps-self.delta_t_start_step, 1)).T
             sumvol_uni_exp = sumN_uni_exp * vol_uni
-            q3_mod = np.zeros((len(x_uni_exp), self.num_t_steps))
-            for idt in range(self.num_t_steps):
-                q3_mod_tem = self.KDE_score(kde_list[idt], x_uni_exp)
-                q3_mod[:, idt] = q3_mod_tem
-            data_mod = self.re_calc_distribution(x_uni_exp, q3=q3_mod, flag=self.delta_flag)[0]
-            data_exp = self.re_calc_distribution(x_uni_exp, sum_uni=sumvol_uni_exp, flag=self.delta_flag)[0]
-            # Calculate the error between experimental data and simulation results
-            delta = self.cost_fun(data_exp, data_mod)
+            q3_mod = np.zeros((len(x_uni_exp), self.num_t_steps-self.delta_t_start_step))
+            for idt in range(self.num_t_steps-self.delta_t_start_step):
+                if self.smoothing:
+                    q3_mod_tem = self.KDE_score(kde_list[idt], x_uni_exp[1:])
+                    q3_mod[1:, idt] = q3_mod_tem
+                else:
+                    q3_mod[:, idt] = pop.return_distribution(t=idt+self.delta_t_start_step, flag='q3')[0]
+                Q3 = self.calc_Q3(x_uni_exp, q3_mod[:, idt]) 
+                q3_mod[:, idt] = q3_mod[:, idt] / Q3.max() 
             
+            sumvol_uni_exp = np.insert(sumvol_uni_exp, 0, 0.0, axis=0)
+            x_uni_exp = np.insert(x_uni_exp, 0, 0.0)
+            q3_mod = np.insert(q3_mod, 0, 0.0, axis=0)
+            for flag, cost_func_type in self.delta_flag:
+                data_mod = self.re_calc_distribution(x_uni_exp, q3=q3_mod, flag=flag)[0]
+                data_exp = self.re_calc_distribution(x_uni_exp, sum_uni=sumvol_uni_exp, flag=flag)[0]
+                # Calculate the error between experimental data and simulation results
+                delta = self.cost_fun(data_exp, data_mod, cost_func_type, flag)
+                delta_sum += delta 
             # Because the number of x_uni is different in different pop equations, 
             # the average value needs to be used instead of the sum.
             x_uni_num = len(x_uni_exp)
             return (delta * scale) / x_uni_num
         else:
-            delta_sum = 0           
             for i in range (0, sample_num):
                 exp_data_path = self.traverse_path(i, exp_data_path)
-                x_uni_exp, sumN_uni_exp = self.read_exp(exp_data_path, self.t_vec) 
-                vol_uni = np.tile((1/6)*np.pi*x_uni_exp**3, (len(self.idt_vec), 1)).T
+                x_uni_exp, sumN_uni_exp = self.read_exp(exp_data_path, self.t_vec[self.delta_t_start_step:])
+                x_uni_exp = np.insert(x_uni_exp, 0, 0.0)
+                sumN_uni_exp = np.insert(sumN_uni_exp, 0, 0.0, axis=0)
+                vol_uni = np.tile((1/6)*np.pi*x_uni_exp**3, (self.num_t_steps-self.delta_t_start_step, 1)).T
                 sumvol_uni_exp = sumN_uni_exp * vol_uni
-                q3_mod = np.zeros((len(x_uni_exp), self.num_t_steps))
-                
-                for idt in range(self.num_t_steps):
-                    q3_mod_tem = self.KDE_score(kde_list[idt], x_uni_exp)
-                    q3_mod[:, idt] = q3_mod_tem
-
-                data_mod = self.re_calc_distribution(x_uni_exp, q3=q3_mod, flag=self.delta_flag)[0]
-                data_exp = self.re_calc_distribution(x_uni_exp, sum_uni=sumvol_uni_exp, flag=self.delta_flag)[0]
-                # Calculate the error between experimental data and simulation results
-                delta = self.cost_fun(data_exp, data_mod)
-                delta_sum +=delta
+                q3_mod = np.zeros((len(x_uni_exp), self.num_t_steps-self.delta_t_start_step))
+                for idt in range(self.num_t_steps-self.delta_t_start_step):
+                    if self.smoothing:
+                        q3_mod_tem = self.KDE_score(kde_list[idt], x_uni_exp[1:])
+                        q3_mod[1:, idt] = q3_mod_tem
+                    else:
+                        q3_mod[:, idt] = pop.return_distribution(t=idt+self.delta_t_start_step, flag='q3')[0]
+                    Q3 = self.calc_Q3(x_uni_exp, q3_mod[:, idt]) 
+                    q3_mod[:, idt] = q3_mod[:, idt] / Q3.max()
+                for flag, cost_func_type in self.delta_flag:
+                    data_mod = self.re_calc_distribution(x_uni_exp, q3=q3_mod, flag=flag)[0]
+                    data_exp = self.re_calc_distribution(x_uni_exp, sum_uni=sumvol_uni_exp, flag=flag)[0]
+                    # Calculate the error between experimental data and simulation results
+                    delta = self.cost_fun(data_exp, data_mod, cost_func_type, flag)
+                    delta_sum += delta 
             # Restore the original name of the file to prepare for the next step of training
             delta_sum /= sample_num
             # Because the number of x_uni is different in different pop equations, 
@@ -186,68 +183,7 @@ class opt_algo():
             x_uni_num = len(x_uni_exp)  
             return (delta_sum * scale) / x_uni_num
     
-    def optimierer(self, method='BO', init_points=4, sample_num=1, hyperparameter=None, exp_data_path=None):
-        """
-        Optimize the CORR_BETA and alpha_prim based on :meth:`~.calc_delta`. 
-        Results are saved in CORR_BETA_opt and alpha_prim_opt.
-        
-        Parameters
-        ----------
-        method : `str`
-            Which algorithm to use for optimization.
-        init_points : `int`, optional. Default 4.
-            Number of steps for random exploration in BayesianOptimization.
-        sample_num : `int`, optional. Default 1.
-            Set how many sets of experimental data are used simultaneously for optimization.
-        exp_data_path : `str`
-            path for experimental data.
-            
-        Returns   
-        -------
-        delta_opt : `float`
-            Optimized value of the objective.
-        """
-        if method == 'BO':
-            if self.p.dim == 1:
-                pbounds = {'CORR_BETA_log': (-3, 3), 'alpha_prim': (0, 1)}
-                objective = lambda CORR_BETA_log, alpha_prim: self.calc_delta(
-                    CORR_BETA=10**CORR_BETA_log, alpha_prim=np.array([alpha_prim]),
-                    scale=-1, sample_num=sample_num, exp_data_path=exp_data_path)
-                
-            elif self.p.dim == 2:
-                pbounds = {'CORR_BETA_log': (-3, 3), 'alpha_prim_0': (0, 1), 'alpha_prim_1': (0, 1), 'alpha_prim_2': (0, 1)}
-                objective = lambda CORR_BETA_log, alpha_prim_0, alpha_prim_1, alpha_prim_2: self.calc_delta(
-                    CORR_BETA=10**CORR_BETA_log, 
-                    alpha_prim=np.array([alpha_prim_0, alpha_prim_1, alpha_prim_2]), 
-                    scale=-1, sample_num=sample_num, exp_data_path=exp_data_path)
-                
-            opt = BayesianOptimization(
-                f=objective, 
-                pbounds=pbounds,
-                random_state=1,
-                allow_duplicate_points=True
-            )
-            
-            opt.maximize(
-                init_points=init_points,
-                n_iter=self.n_iter,
-            )   
-            if self.p.dim == 1:
-                self.CORR_BETA_opt = 10**opt.max['params']['CORR_BETA_log']
-                self.alpha_prim_opt = opt.max['params']['alpha_prim']
-                
-            elif self.p.dim == 2:
-                self.alpha_prim_opt = np.zeros(3)
-                self.CORR_BETA_opt = 10**opt.max['params']['CORR_BETA_log']
-                self.alpha_prim_opt[0] = opt.max['params']['alpha_prim_0']
-                self.alpha_prim_opt[1] = opt.max['params']['alpha_prim_1']
-                self.alpha_prim_opt[2] = opt.max['params']['alpha_prim_2']
-            
-            delta_opt = -opt.max['target']           
-            
-        return delta_opt  
-    
-    def optimierer_agg(self, opt_params, method='BO', init_points=4, sample_num=1, hyperparameter=None, exp_data_path=None):
+    def optimierer_agg(self, opt_params, init_points=4, sample_num=1, hyperparameter=None, exp_data_path=None):
         """
         Optimize the corr_agg based on :meth:`~.calc_delta_agg`. 
         Results are saved in corr_agg_opt.
@@ -268,32 +204,33 @@ class opt_algo():
         delta_opt : `float`
             Optimized value of the objective.
         """
-        if method == 'BO':
-            pbounds = {}
-            transform = {}
-            
-            # Prepare bounds and transformation based on parameters definition
-            for param, info in opt_params.items():
-                bounds = info['bounds']
-                log_scale = info.get('log_scale', False)
-                pbounds[param] = bounds
-                if log_scale:
-                    transform[param] = lambda x: 10**x
-                else:
-                    transform[param] = lambda x: x
-                    
-            # Objective function considering the log scale transformation if necessary
-            def objective(**kwargs):
-                transformed_params = {}
-                for param, func in transform.items():
-                    transformed_params[param] = func(kwargs[param])
+        pbounds = {}
+        transform = {}
+        # Prepare bounds and transformation based on parameters definition
+        for param, info in opt_params.items():
+            bounds = info['bounds']
+            log_scale = info.get('log_scale', False)
+            pbounds[param] = bounds
+            if log_scale:
+                transform[param] = lambda x: 10**x
+            else:
+                transform[param] = lambda x: x
                 
-                # Special handling for corr_agg based on dimension
-                if 'corr_agg_0' in transformed_params:
-                    transformed_params = self.array_dict_transform(transformed_params)
-                return self.calc_delta_agg(transformed_params, scale=-1, sample_num=sample_num, exp_data_path=exp_data_path)
+        # Objective function considering the log scale transformation if necessary
+        def objective(scale, **kwargs):
+            transformed_params = {}
+            for param, func in transform.items():
+                transformed_params[param] = func(kwargs[param])
             
-            opt = BayesianOptimization(f=objective, pbounds=pbounds, random_state=1, allow_duplicate_points=True)
+            # Special handling for corr_agg based on dimension
+            if 'corr_agg_0' in transformed_params:
+                transformed_params = self.array_dict_transform(transformed_params)
+            return self.calc_delta_agg(transformed_params, scale=scale, sample_num=sample_num, exp_data_path=exp_data_path)
+            
+        if self.method == 'BO': 
+            scale = -1  ## BayesianOptimization find the maximum
+            bayesian_objective = lambda **kwargs: objective(scale, **kwargs)
+            opt = BayesianOptimization(f=bayesian_objective, pbounds=pbounds, random_state=1, allow_duplicate_points=True)
             opt.maximize(init_points=init_points, n_iter=self.n_iter)
             
             # Extract optimized values and apply transformations
@@ -301,8 +238,20 @@ class opt_algo():
             delta_opt = -opt.max['target']
             if 'corr_agg_0' in opt_values:
                 opt_values =self.array_dict_transform(opt_values)
+                
+        elif self.method == 'basinhopping':
+            scale = 1
+            minimizer_kwargs = {"method": "L-BFGS-B", "bounds": [(pbounds[param][0], pbounds[param][1]) for param in opt_params]}
+            basinhopping_objective = lambda x: objective(scale, **dict(zip(opt_params.keys(), x)))
+            # Initial guess (middle of bounds)
+            x0 = [(bound[0] + bound[1]) / 2 for bound in minimizer_kwargs['bounds']]
+
+            result = basinhopping(basinhopping_objective, x0, minimizer_kwargs=minimizer_kwargs, niter=self.n_iter)
             
-            return delta_opt, opt_values
+            # Extract results and apply transformations
+            opt_values = {param: transform[param](val) for param, val in zip(opt_params.keys(), result.x)}
+            delta_opt = result.fun
+        return delta_opt, opt_values
     def array_dict_transform(self, array_dict):
         # Special handling for array in dictionary like corr_agg based on dimension
             if self.p.dim == 1:
@@ -336,7 +285,7 @@ class opt_algo():
         power = np.ceil(power)
         return 10**power
     
-    def cost_fun(self, data_exp, data_mod):
+    def cost_fun(self, data_exp, data_mod, cost_func_type, flag):
         """
         Calculate the difference(cost) between experimental and model data.
         
@@ -355,14 +304,14 @@ class opt_algo():
         float
             The calculated cost based on the specified cost function type.
         """
-        if self.cost_func_type == 'MSE':
+        if cost_func_type == 'MSE':
             return mean_squared_error(data_mod, data_exp)
-        elif self.cost_func_type == 'RMSE':
+        elif cost_func_type == 'RMSE':
             mse = mean_squared_error(data_mod, data_exp)
             return np.sqrt(mse)
-        elif self.cost_func_type == 'MAE':
+        elif cost_func_type == 'MAE':
             return mean_absolute_error(data_mod, data_exp)
-        elif (self.delta_flag == 'q3' or self.delta_flag == 'Q3') and self.cost_func_type == 'KL':
+        elif (flag == 'q3' or flag == 'Q3') and cost_func_type == 'KL':
             data_mod = np.where(data_mod <= 10e-20, 10e-20, data_mod)
             data_exp = np.where(data_exp <= 10e-20, 10e-20, data_exp)
             return entropy(data_mod, data_exp).mean()
@@ -605,13 +554,17 @@ class opt_algo():
                     pop.alpha_prim = alpha_prim_value[0]
                 elif pop is self.p_M:
                     pop.alpha_prim = alpha_prim_value[2]
+            if 'pl_P3' and 'pl_P4' in params:
+                if pop is self.p_M:
+                    pop.pl_P1 = params['pl_P3']
+                    pop.pl_P2 = params['pl_P4']
 
     def set_pop_attributes(self, pop, params):
         for key, value in params.items():
             if key != 'alpha_prim':
                 setattr(pop, key, value)
         
-    def set_comp_para(self, R01_0='r0_005', R03_0='r0_005', dist_path_NM=None, dist_path_M=None,
+    def set_comp_para(self, USE_PSD, R01_0='r0_005', R03_0='r0_005', dist_path_NM=None, dist_path_M=None,
                       R_NM=2.9e-7, R_M=2.9e-7,R01_0_scl=1,R03_0_scl=1):
         """
         Set component parameters for non-magnetic and magnetic particle.
@@ -634,8 +587,10 @@ class opt_algo():
         R_M : `float`, optional
             Default radius for M particles if `dist_path_M` is not provided. Defaults to 2.9e-7.
         """
-        if (not self.calc_init_N) and (dist_path_NM is not None and dist_path_M is not None):
-            self.p.USE_PSD = True
+        self.p.USE_PSD = USE_PSD
+        if self.p.USE_PSD:
+            if dist_path_NM is None or dist_path_M is None:
+                raise Exception("Please give the full path to all PSD data!")
             psd_dict_NM = np.load(dist_path_NM,allow_pickle=True).item()
             psd_dict_M = np.load(dist_path_M,allow_pickle=True).item()
             self.p.DIST1 = dist_path_NM
@@ -643,7 +598,6 @@ class opt_algo():
             self.p.R01 = psd_dict_NM[R01_0] * R01_0_scl
             self.p.R03 = psd_dict_M[R03_0] * R03_0_scl
         else:
-            self.p.USE_PSD = False
             self.p.R01 = R_NM * R01_0_scl
             self.p.R03 = R_M * R03_0_scl
         if self.dim > 1:
@@ -709,15 +663,15 @@ class opt_algo():
         """
         x_uni = self.calc_x_uni(pop)
         if sample_num == 1:
-            x_uni_exp, sumN_uni_init_sets = self.read_exp(exp_data_path, self.t_init)
+            x_uni_exp, sumN_uni_init_sets = self.read_exp(exp_data_path, self.t_init[1:])
         else:
             exp_data_path=self.traverse_path(0, exp_data_path)
-            x_uni_exp, sumN_uni_tem = self.read_exp(exp_data_path, self.t_init)
-            sumN_uni_all_samples = np.zeros((len(x_uni_exp), len(self.t_init), sample_num))
+            x_uni_exp, sumN_uni_tem = self.read_exp(exp_data_path, self.t_init[1:])
+            sumN_uni_all_samples = np.zeros((len(x_uni_exp), len(self.t_init[1:]), sample_num))
             sumN_uni_all_samples[:, :, 0] = sumN_uni_tem
             for i in range(1, sample_num):
                 exp_data_path=self.traverse_path(i, exp_data_path)
-                _, sumN_uni_tem = self.read_exp(exp_data_path, self.t_init)
+                _, sumN_uni_tem = self.read_exp(exp_data_path, self.t_init[1:])
                 sumN_uni_all_samples[:, :, i] = sumN_uni_tem
             sumN_uni_init_sets = sumN_uni_all_samples.mean(axis=2)
             
@@ -725,7 +679,7 @@ class opt_algo():
             
         if init_flag == 'int':
             for idx in range(len(x_uni_exp)):
-                interp_time = interp1d(self.t_init, sumN_uni_init_sets[idx, :], kind='linear', fill_value="extrapolate")
+                interp_time = interp1d(self.t_init[1:], sumN_uni_init_sets[idx, :], kind='linear', fill_value="extrapolate")
                 sumN_uni_init[idx] = interp_time(0.0)
 
         elif init_flag == 'mean':
@@ -740,7 +694,7 @@ class opt_algo():
                 
         pop.N = np.zeros((pop.NS, len(pop.t_vec)))
         ## Because sumN_uni_init[0] = 0
-        pop.N[1:, 0]= sumN_uni_init[1:]
+        pop.N[:, 0]= sumN_uni_init
         thr = 1e-5
         pop.N[pop.N < (thr * pop.N[1:, 0].max())]=0     
         
@@ -748,7 +702,7 @@ class opt_algo():
         """
         Calculate unique volume values for a given population.
         """
-        return np.setdiff1d(pop.V, [-1, 0])*1e18
+        return np.setdiff1d(pop.V, [-1])*1e18
     
     def calc_x_uni(self, pop):
         """
@@ -758,8 +712,8 @@ class opt_algo():
         # Because the length unit in the experimental data is millimeters 
         # and in the simulation it is meters, so it needs to be converted 
         # before use.
-        x_uni = np.zeros(len(v_uni)+1)
-        x_uni[1:]=(6*v_uni/np.pi)**(1/3)
+        # x_uni = np.zeros(len(v_uni))
+        x_uni = (6*v_uni/np.pi)**(1/3)
         return x_uni
         
     def re_calc_distribution(self, x_uni, q3=None, sum_uni=None, flag='all'):
@@ -838,6 +792,7 @@ class opt_algo():
         Calculate the sum_uni distribution from the Q3 cumulative distribution and total sum.
         """
         sum_uni = np.zeros_like(Q3)
+        # sum_uni[0] = sum_total * Q3[0]
         for i in range(1, len(Q3)):
             sum_uni[i] = sum_total * max((Q3[i] -Q3[i-1] ), 0)
         return sum_uni

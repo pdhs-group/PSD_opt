@@ -69,11 +69,14 @@ class opt_find():
 
         self.algo.num_t_init = len(self.algo.t_init)
         self.algo.num_t_steps = len(self.algo.t_vec)
+        if self.algo.delta_t_start_step < 1 or self.algo.delta_t_start_step >= self.algo.num_t_steps:
+            raise Exception("The value of delta_t_start_step must be within the indices range of t_vec! and >0")
         ## Get the complete simulation time and get the indices corresponding 
         ## to the vec and init time vectors
-        self.algo.t_all = np.sort(np.concatenate((self.algo.t_init, self.algo.t_vec)))
-        self.algo.idt_vec = [np.where(self.algo.t_all == t_time)[0][0] for t_time in self.algo.t_vec]
+        self.algo.t_all = np.concatenate((self.algo.t_init, self.algo.t_vec))
+        self.algo.t_all = np.unique(self.algo.t_all)
         self.algo.idt_init = [np.where(self.algo.t_all == t_time)[0][0] for t_time in self.algo.t_init]
+        self.idt_vec = [np.where(self.algo.t_all == t_time)[0][0] for t_time in self.algo.t_vec]
         
         self.algo.p = population(dim=dim, disc='geo')
         ## The 1D-pop data is also used when calculating the initial N of 2/3D-pop.
@@ -247,39 +250,53 @@ class opt_find():
         x_uni = self.algo.calc_x_uni(pop)
         v_uni = self.algo.calc_v_uni(pop)
         formatted_times = write_read_exp.convert_seconds_to_time(self.algo.t_all)
-        sumN_uni = np.zeros((len(x_uni), len(self.algo.t_all)))
-        sumvol_uni = np.zeros(len(x_uni))
+        sumN_uni = np.zeros((len(x_uni)-1, len(self.algo.t_all)))
         
-        for idt in self.algo.idt_vec:
-            sumvol_uni = pop.return_distribution(t=idt, flag='sumvol_uni')[0]
-            kde = self.algo.KDE_fit(x_uni, sumvol_uni)
-            ## Recalculate the values of after smoothing
-            q3 = self.algo.KDE_score(kde, x_uni)
-            Q3 = self.algo.calc_Q3(x_uni, q3)
-            sumvol_uni = self.algo.calc_sum_uni(Q3, sumvol_uni.sum())
-            sumN_uni[1:, idt] = sumvol_uni[1:] / v_uni
+        for idt in self.idt_vec[1:]:
+            if self.algo.smoothing:
+                sumvol_uni = pop.return_distribution(t=idt, flag='sumvol_uni')[0]
+                ## The volume of particles with index=0 is 0. 
+                ## In theory, such particles do not exist.
+                kde = self.algo.KDE_fit(x_uni[1:], sumvol_uni[1:])
+                ## Recalculate the values of after smoothing
+                ## In order to facilitate subsequent processing, 
+                ## a 0 needs to be filled in the first bit of q3
+                q3 = self.algo.KDE_score(kde, x_uni[1:])
+                q3 = np.insert(q3, 0, 0.0)
+                Q3 = self.algo.calc_Q3(x_uni, q3)
+                ## Normalize Q3 to ensure that its maximum value is 1 
+                Q3 = Q3 / Q3.max()
+                sumvol_uni = self.algo.calc_sum_uni(Q3, sumvol_uni.sum())
+                sumN_uni[:, idt] = sumvol_uni[1:] / v_uni[1:]
+            else:
+                sumN_uni[:, idt] = pop.return_num_distribution(t=idt, flag='sumN_uni')[0][1:]
         ## Data used for initialization should not be smoothed
         for idt in self.algo.idt_init:
-            sumN_uni[:, idt] = pop.return_num_distribution(t=idt, flag='sumN_uni')[0]
+            ## The volume of particles with index=0 is 0. 
+            ## In theory, such particles do not exist.
+            sumN_uni[:, idt] = pop.return_num_distribution(t=idt, flag='sumN_uni')[0][1:]
         
         if self.algo.add_noise:
             sumN_uni = self.algo.function_noise(sumN_uni)
 
-        df = pd.DataFrame(data=sumN_uni, index=x_uni, columns=formatted_times)
+        df = pd.DataFrame(data=sumN_uni, index=x_uni[1:], columns=formatted_times)
         df.index.name = 'Circular Equivalent Diameter'
         # save DataFrame as Excel file
         df.to_excel(exp_data_path)
-        
         return 
     
     # Visualize only the last time step of the specified time vector and the last used experimental data
-    def visualize_distribution(self, pop, ori_params, opt_values, exp_data_path=None,ax=None,fig=None,
-                               close_all=False,clr='k',scl_a4=1,figsze=[12.8,6.4*1.5],log_output=False):
+    def visualize_distribution(self, pop, ori_params, opt_values, exp_data_paths,
+                               R_NM, R_M, R01_0_scl, R03_0_scl,dist_path_1,dist_path_2, 
+                               ax=None,fig=None,close_all=False,clr='k',scl_a4=1,figsze=[12.8,6.4*1.5],log_output=False):
         """
         Visualizes the distribution at the last time step.
         
         """
         ## Recalculate PSD using original parameter
+        self.algo.calc_init_N = False
+        self.algo.set_comp_para(R_NM=R_NM, R_M=R_M,R01_0_scl=R01_0_scl,R03_0_scl=R03_0_scl,
+                                dist_path_NM=dist_path_1,dist_path_M=dist_path_2)
         ## Todo: set_comp_para with original parameter
         self.algo.calc_pop(pop, ori_params)
 
@@ -289,7 +306,10 @@ class opt_find():
             kde = self.algo.KDE_fit(x_uni_ori, sumvol_uni_ori)
             q3_ori = self.algo.KDE_score(kde, x_uni_ori)
             Q3_ori = self.algo.calc_Q3(x_uni_ori, q3_ori)
-
+            
+        self.algo.calc_init_N = True
+        self.algo.set_comp_para(R_NM=R_NM, R_M=R_M,R01_0_scl=R01_0_scl,R03_0_scl=R03_0_scl)
+        self.algo.set_init_N(self.algo.sample_num, exp_data_paths, 'mean')
         self.algo.calc_pop(pop, opt_values)  
             
         x_uni, q3, Q3, sumvol_uni= pop.return_distribution(t=-1, flag='x_uni, q3, Q3,sumvol_uni')
@@ -309,7 +329,7 @@ class opt_find():
         
         axq3, fig = pt.plot_data(x_uni, q3, fig=fig, ax=axq3,
                                xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
-                               ylbl='number distribution of agglomerates $q3$ / $-$',
+                               ylbl='volume distribution of agglomerates $q3$ / $-$',
                                lbl='q3_mod',clr='b',mrk='o')
         
 
@@ -318,7 +338,7 @@ class opt_find():
         
         axQ3, fig = pt.plot_data(x_uni, Q3, fig=fig, ax=axQ3,
                                xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
-                               ylbl='accumulated number distribution of agglomerates $Q3$ / $-$',
+                               ylbl='accumulated volume distribution of agglomerates $Q3$ / $-$',
                                lbl='Q3_mod',clr='b',mrk='o')
 
         axQ3, fig = pt.plot_data(x_uni_ori, Q3_ori, fig=fig, ax=axQ3,

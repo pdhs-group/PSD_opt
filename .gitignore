@@ -1,5 +1,6 @@
 # ignore file
 .log
+*.gif
 *.xlsx
 *.png
 *.npz

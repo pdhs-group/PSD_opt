@@ -41,73 +41,73 @@ def visualize_distribution_smoothing(Opt, pop, x_uni, q3, Q3, sumvol_uni, ax=Non
     # axq3, fig = pt.plot_data(x_uni, q3_sm/np.max(q3_sm), fig=fig, ax=axq3,
     #                         lbl='q3_sm',clr='r',mrk='v')
     
-    # axq3, fig = pt.plot_data(x_uni, q3, fig=fig, ax=axq3,
-    #                         xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
-    #                         ylbl='number distribution of agglomerates $q3$ / $-$',
-    #                         lbl='q3',clr='b',mrk='o')
-    # axq3, fig = pt.plot_data(x_uni, q3_sm, fig=fig, ax=axq3,
-    #                         lbl='q3_sm',clr='r',mrk='v')
+    axq3, fig = pt.plot_data(x_uni, q3, fig=fig, ax=axq3,
+                            xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
+                            ylbl='volume distribution of agglomerates $q3$ / $-$',
+                            lbl='q3',clr='b',mrk='o')
+    axq3, fig = pt.plot_data(x_uni, q3_sm, fig=fig, ax=axq3,
+                            lbl='q3_sm',clr='r',mrk='v')
     
     axQ3, fig = pt.plot_data(x_uni, Q3, fig=fig, ax=axQ3,
                             xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
-                            ylbl='accumulated number distribution of agglomerates $Q3$ / $-$',
+                            ylbl='accumulated volume distribution of agglomerates $Q3$ / $-$',
                             lbl='Q3',clr='b',mrk='o')
     axQ3, fig = pt.plot_data(x_uni, Q3_sm, fig=fig, ax=axQ3,
                             lbl='Q3_sm',clr='r',mrk='v')
     
-    axq3, fig = pt.plot_data(x_uni, sumN_uni_sm, fig=fig, ax=axq3,
-                            xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
-                            ylbl='number density of agglomerates $q3$ / $-$',
-                            lbl='data_origin',clr='r',mrk='o')
-    axq3, fig = pt.plot_data(x_uni, sumN_uni_noise, fig=fig, ax=axq3,
-                            lbl='data_noised',clr='k',mrk='v')
+    # axq3, fig = pt.plot_data(x_uni, sumN_uni_sm, fig=fig, ax=axq3,
+    #                         xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
+    #                         ylbl='number density of agglomerates $q3$ / $-$',
+    #                         lbl='data_origin',clr='r',mrk='o')
+    # axq3, fig = pt.plot_data(x_uni, sumN_uni_noise, fig=fig, ax=axq3,
+    #                         lbl='data_noised',clr='k',mrk='v')
 
     axq3.grid('minor')
     axq3.set_xscale('log')
-    axq3.set_yscale('log')
+    # axq3.set_yscale('log')
     axQ3.grid('minor')
     axQ3.set_xscale('log')
     plt.tight_layout() 
     
-def visualize_distribution_smoothing_v(Opt, pop, v_uni, q3, Q3, ax=None,fig=None,
-                           close_all=False,clr='k',scl_a4=1,figsze=[12.8,6.4*1.5]):
-    v_uni *= 1e18
-    ## smoothing the results
-    kde = find.algo.KDE_fit(np.log10(v_uni), q3, bandwidth='scott', kernel_func='epanechnikov')
-    sumN_uni = find.algo.KDE_score(kde, np.log10(v_uni))
-    _, q3_sm, Q3_sm, _, _,_ = find.algo.re_cal_distribution(v_uni, sumN_uni)
+# def visualize_distribution_smoothing_v(Opt, pop, v_uni, q3, Q3, ax=None,fig=None,
+#                            close_all=False,clr='k',scl_a4=1,figsze=[12.8,6.4*1.5]):
+#     v_uni *= 1e18
+#     ## smoothing the results
+#     kde = find.algo.KDE_fit(np.log10(v_uni), q3, bandwidth='scott', kernel_func='epanechnikov')
+#     sumN_uni = find.algo.KDE_score(kde, np.log10(v_uni))
+#     _, q3_sm, Q3_sm, _, _,_ = find.algo.re_cal_distribution(v_uni, sumN_uni)
     
-    pt.plot_init(scl_a4=scl_a4,figsze=figsze,lnewdth=0.8,mrksze=5,use_locale=True,scl=1.2)
-    fig=plt.figure()    
-    axq3=fig.add_subplot(1,2,1)   
-    axQ3=fig.add_subplot(1,2,2) 
+#     pt.plot_init(scl_a4=scl_a4,figsze=figsze,lnewdth=0.8,mrksze=5,use_locale=True,scl=1.2)
+#     fig=plt.figure()    
+#     axq3=fig.add_subplot(1,2,1)   
+#     axQ3=fig.add_subplot(1,2,2) 
     
-    # axq3, fig = pt.plot_data(x_uni, q3/np.max(q3), fig=fig, ax=axq3,
-    #                        xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
-    #                        ylbl='number distribution of agglomerates $q3$ / $-$',
-    #                        lbl='q3',clr='b',mrk='o')
-    # axq3, fig = pt.plot_data(x_uni, q3_sm/np.max(q3_sm), fig=fig, ax=axq3,
-    #                        lbl='q3_sm',clr='r',mrk='v')
+#     # axq3, fig = pt.plot_data(x_uni, q3/np.max(q3), fig=fig, ax=axq3,
+#     #                        xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
+#     #                        ylbl='number distribution of agglomerates $q3$ / $-$',
+#     #                        lbl='q3',clr='b',mrk='o')
+#     # axq3, fig = pt.plot_data(x_uni, q3_sm/np.max(q3_sm), fig=fig, ax=axq3,
+#     #                        lbl='q3_sm',clr='r',mrk='v')
     
-    axq3, fig = pt.plot_data(np.log10(v_uni), q3, fig=fig, ax=axq3,
-                            xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
-                            ylbl='number distribution of agglomerates $q3$ / $-$',
-                            lbl='q3',clr='b',mrk='o')
-    axq3, fig = pt.plot_data(np.log10(v_uni), q3_sm, fig=fig, ax=axq3,
-                            lbl='q3_sm',clr='r',mrk='v')
+#     axq3, fig = pt.plot_data(np.log10(v_uni), q3, fig=fig, ax=axq3,
+#                             xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
+#                             ylbl='number distribution of agglomerates $q3$ / $-$',
+#                             lbl='q3',clr='b',mrk='o')
+#     axq3, fig = pt.plot_data(np.log10(v_uni), q3_sm, fig=fig, ax=axq3,
+#                             lbl='q3_sm',clr='r',mrk='v')
     
-    axQ3, fig = pt.plot_data(np.log10(v_uni), Q3, fig=fig, ax=axQ3,
-                           xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
-                           ylbl='accumulated number distribution of agglomerates $Q3$ / $-$',
-                           lbl='Q3',clr='b',mrk='o')
-    axQ3, fig = pt.plot_data(np.log10(v_uni), Q3_sm, fig=fig, ax=axQ3,
-                           lbl='Q3_sm',clr='r',mrk='v')
+#     axQ3, fig = pt.plot_data(np.log10(v_uni), Q3, fig=fig, ax=axQ3,
+#                            xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
+#                            ylbl='accumulated number distribution of agglomerates $Q3$ / $-$',
+#                            lbl='Q3',clr='b',mrk='o')
+#     axQ3, fig = pt.plot_data(np.log10(v_uni), Q3_sm, fig=fig, ax=axQ3,
+#                            lbl='Q3_sm',clr='r',mrk='v')
 
-    axq3.grid('minor')
-    axq3.set_xscale('log')
-    axQ3.grid('minor')
-    axQ3.set_xscale('log')
-    plt.tight_layout()    
+#     axq3.grid('minor')
+#     axq3.set_xscale('log')
+#     axQ3.grid('minor')
+#     axQ3.set_xscale('log')
+#     plt.tight_layout()    
     
 if __name__ == '__main__':
     smoothing_test = True
@@ -116,14 +116,14 @@ if __name__ == '__main__':
     pop_params = conf.config['pop_params']
     
     pop_params['CORR_BETA'] = 100.0
-    pop_params['alpha_prim'] = np.array([1, 1, 1])
-    pop_params['pl_v'] = 0.1
+    pop_params['alpha_prim'] = np.array([0.5, 0.5, 0.5])
+    pop_params['pl_v'] = 2
     pop_params['pl_P1'] = 1e-2
     pop_params['pl_P2'] = 0.5
     pop_params['pl_P3'] = 1e-2
     pop_params['pl_P4'] = 0.5
-    pop_params['pl_P5'] = 1e-2
-    pop_params['pl_P6'] = 1.0
+    # pop_params['pl_P5'] = 1e-2
+    # pop_params['pl_P6'] = 1.0
     
     ## Instantiate find and algo.
     ## The find class determines how the experimental 

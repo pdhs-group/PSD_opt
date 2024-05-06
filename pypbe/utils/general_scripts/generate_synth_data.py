@@ -30,7 +30,12 @@ def calc_function(R01_0, R03_0, dist_path_NM, dist_path_M, var_pop_params):
     
     find.algo.weight_2d = conf.config['weight_2d']
     find.algo.calc_init_N = False
-    find.algo.set_comp_para(R01_0, R03_0, dist_path_NM, dist_path_M,R01_0_scl=1e-1,R03_0_scl=1e-1)
+    if find.algo.p.process_type == 'breakage':
+        USE_PSD = False
+    else:
+        USE_PSD = True
+    find.algo.set_comp_para(USE_PSD, R01_0, R03_0, dist_path_NM, dist_path_M,R_NM=conf.config['R_NM'], R_M=conf.config['R_M'],
+                            R01_0_scl=conf.config['R01_0_scl'],R03_0_scl=conf.config['R03_0_scl'])
     
     # find.algo.calc_all_pop(var_pop_params, find.algo.t_vec)
     # calc_status = find.algo.p.calc_status
@@ -43,9 +48,9 @@ def calc_function(R01_0, R03_0, dist_path_NM, dist_path_M, var_pop_params):
     p2 = var_pop_params['pl_P2']
     p3 = var_pop_params['pl_P3']
     p4 = var_pop_params['pl_P4']
-    p5 = var_pop_params['pl_P5']
-    p6 = var_pop_params['pl_P6']
-    add_info = f"_para_{b}_{a[0]}_{a[1]}_{a[2]}_{v}_{p1}_{p2}_{p3}_{p4}_{p5}_{p6}"
+    # p5 = var_pop_params['pl_P5']
+    # p6 = var_pop_params['pl_P6']
+    add_info = f"_para_{b}_{a[0]}_{a[1]}_{a[2]}_{v}_{p1}_{p2}_{p3}_{p4}"
     # Generate synthetic Data
     find.generate_data(var_pop_params, find.algo.sample_num, add_info=add_info)
     
@@ -68,28 +73,35 @@ if __name__ == '__main__':
         dist_path_10 = os.path.join(pth, "..","..", "data", "PSD_data", conf.config['dist_scale_10'])
 
     ## define the range of corr_beta
-    var_corr_beta = np.array([1e-2, 1e0, 1e2])
+    var_corr_beta = np.array([1e2])
     # var_corr_beta = np.array([1e-2])
     ## define the range of alpha_prim 27x3
-    values = np.array([0, 0.5, 1])
+    values = np.array([0.5, 1])
     a1, a2, a3 = np.meshgrid(values, values, values, indexing='ij')
     var_alpha_prim = np.column_stack((a1.flatten(), a2.flatten(), a3.flatten()))
     ## The case of all zero α is meaningless, that means no Agglomeration occurs
     var_alpha_prim = var_alpha_prim[~np.all(var_alpha_prim == 0, axis=1)]
+    ## For cases where R01 and R03 have the same size, the elements of alpha_prim mirror symmetry 
+    ## are equivalent and can be removed to simplify the calculation.
+    unique_alpha_prim = []
+    for comp in var_alpha_prim:
+        comp_reversed = comp[::-1]  
+        if not any(np.array_equal(comp, x) or np.array_equal(comp_reversed, x) for x in unique_alpha_prim):
+            unique_alpha_prim.append(comp)
+            
+    var_alpha_prim = np.array(unique_alpha_prim)
 
     ## define the range of v(breakage function)
-    var_v = np.array([0.1,1,2])
+    var_v = np.array([1])
     # var_v = np.array([0.01])
     ## define the range of P1, P2 for power law breakage rate
-    var_P1 = np.array([1e-4,1e-2])
-    var_P2 = np.array([0.1,0.5])
-    var_P3 = np.array([1e-4,1e-2])
-    var_P4 = np.array([0.1,0.5])
-    var_P5 = np.array([1e-4,1e-2])
-    var_P6 = np.array([0.1,1])
-    # var_P1 = np.array([1])
-    # var_P2 = np.array([0.0])
-    
+    var_P1 = np.array([5e-4])
+    var_P2 = np.array([0.6])
+    var_P3 = np.array([2e-3])
+    var_P4 = np.array([0.4])
+    # var_P5 = np.array([1e-4,1e-2])
+    # var_P6 = np.array([0.1,1])
+
     ## define the range of particle size scale and minimal size
     dist_path = [dist_path_1] # [dist_path_1, dist_path_10]
     size_scale = np.array([1, 10])
@@ -109,8 +121,8 @@ if __name__ == '__main__':
                         for m2,P2 in enumerate(var_P2):
                             for m3,P3 in enumerate(var_P3):
                                 for m4,P4 in enumerate(var_P4):
-                                    for m5,P5 in enumerate(var_P5):
-                                        for m6,P6 in enumerate(var_P6):
+                                    # for m5,P5 in enumerate(var_P5):
+                                    #     for m6,P6 in enumerate(var_P6):
                                             ## Set parameters for PBE
                                             conf_params = {
                                                 'pop_params':{
@@ -121,8 +133,8 @@ if __name__ == '__main__':
                                                     'pl_P2' : P2,
                                                     'pl_P3' : P3,
                                                     'pl_P4' : P4,
-                                                    'pl_P5' : P5,
-                                                    'pl_P6' : P6,
+                                                    # 'pl_P5' : P5,
+                                                    # 'pl_P6' : P6,
                                                     }
                                                 }
                                             var_pop_params = conf_params['pop_params']

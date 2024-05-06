@@ -8,7 +8,7 @@ Created on Thu Apr 11 08:37:52 2024
 import numpy as np
 import itertools
 import os
-from bond_break_jit import MC_breakage
+from .bond_break_jit import MC_breakage
 import multiprocessing
 
 def generate_dataset():
@@ -20,7 +20,7 @@ def generate_dataset():
     STR_elements = [1e-3, 0.5, 1]
     
     # Define other unchanged parameters
-    N_GRIDS, N_FRACS = 500, 100
+    N_GRIDS, N_FRACS = 200, 100
     INIT_BREAK_RANDOM = False
     
     # Make sure there is a directory to save the data
@@ -49,27 +49,23 @@ def generate_one_data(args):
     # convert absolute volume to relative volume
     # F[:,0] /= A 
     # construkt the file name
-    file_name = f"A{A}_X1{X1}_NO_FRAG{NO_FRAG}_STR{STR1}_{STR2}_{STR3}.npy"
+    file_name = f"{A}_{X1}_{NO_FRAG}_{STR1}_{STR2}_{STR3}.npy"
     file_path = os.path.join(output_dir, file_name)
     # save array
     np.save(file_path, F)
-def generate_complete_2d_data(NS,S,V01,V03):
+def generate_complete_2d_data(NS,S,STR,NO_FRAG,N_GRIDS, N_FRACS, V01,V03,output_dir):
     V1,V3,_,_,V,X1_vol = calc_2d_V(NS, S, V01, V03)
     # Define other unchanged parameters
-    STR = np.array([0.6, 0.8, 0.2])
-    NO_FRAG = 4
-    N_GRIDS, N_FRACS = 500, 100
     INIT_BREAK_RANDOM = False
     A0 = min(V1[1],V3[1])/ NO_FRAG
     
     # Make sure there is a directory to save the data
-    output_dir = 'simulation_data'
     os.makedirs(output_dir, exist_ok=True)
     
     # Prepare arguments for multiprocessing
     tasks = []
     for idx, A in np.ndenumerate(V):
-        if idx[0] <= 1 or idx[1] <= 1:
+        if idx[0] == 0 and idx[1] == 0:
             continue
         args = (idx, A, X1_vol[idx], V1, V3, output_dir, STR, NO_FRAG, N_GRIDS, N_FRACS, A0, INIT_BREAK_RANDOM)
         tasks.append(args)
@@ -105,8 +101,7 @@ def calc_2d_V(NS,S,V01,V03):
             if i==0 and j==0:
                 X1_vol[i,j] = 0
             else:
-                # X1_vol[i,j] = V1[i]/V[i,j]
-                X1_vol[i,j] = 0.6
+                X1_vol[i,j] = V1[i]/V[i,j]
     return V1,V3,V_e1,V_e3,V,X1_vol
     
 def generate_one_2d_data(args):
@@ -118,27 +113,23 @@ def generate_one_2d_data(args):
                     A0=A0, init_break_random=INIT_BREAK_RANDOM)
     
     # 构建文件名并保存结果
-    file_name = f"i{idx[0]}_j{idx[1]}.npy"
+    file_name = f"{STR[0]}_{STR[1]}_{STR[2]}_{NO_FRAG}_i{idx[0]}_j{idx[1]}.npy"
     file_path = os.path.join(output_dir, file_name)
     np.save(file_path, F) 
 
-def generate_complete_1d_data(NS,S,V01,V03):
+def generate_complete_1d_data(NS,S,STR,NO_FRAG,N_GRIDS, N_FRACS,output_dir):
     V,_ = calc_1d_V(NS, S)
     # Define other unchanged parameters
-    STR = np.array([1, 1, 1])
-    NO_FRAG = 4
-    N_GRIDS, N_FRACS = 500, 100
     INIT_BREAK_RANDOM = False
     A0 = V[1]/ NO_FRAG
     
     # Make sure there is a directory to save the data
-    output_dir = 'simulation_data'
     os.makedirs(output_dir, exist_ok=True)
     
     # Prepare arguments for multiprocessing
     tasks = []
     for idx, A in enumerate(V):
-        if idx <= 1:
+        if idx == 0:
             continue
         args = (idx, A, V, output_dir, STR, NO_FRAG, N_GRIDS, N_FRACS, A0, INIT_BREAK_RANDOM)
         tasks.append(args)
@@ -159,22 +150,15 @@ def calc_1d_V(NS,S):
     
 def generate_one_1d_data(args):
     idx, A, V, output_dir, STR, NO_FRAG, N_GRIDS, N_FRACS, A0, INIT_BREAK_RANDOM = args
-    X1 = 0.5
+    X1 = 1
     X2 = 1 - X1
     
-    # 假设MC_breakage是一个已定义的函数，可以进行蒙特卡罗破碎模拟
     F = MC_breakage(A, X1, X2, STR, NO_FRAG, N_GRIDS=N_GRIDS, N_FRACS=N_FRACS, 
                     A0=A0, init_break_random=INIT_BREAK_RANDOM)
-    
-    # 构建文件名并保存结果
-    file_name = f"i{idx}.npy"
+
+    file_name = f"{STR[0]}_{STR[1]}_{STR[2]}_{NO_FRAG}_i{idx}.npy"
     file_path = os.path.join(output_dir, file_name)
     np.save(file_path, F) 
-       
-if __name__ == '__main__':
-    # generate_dataset()
-    generate_complete_1d_data(NS=15,S=2)
-    generate_complete_2d_data(NS=15,S=2,V01=1,V03=1)
     
 
     

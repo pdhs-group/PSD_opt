@@ -6,21 +6,23 @@ Created on Mon Apr 15 13:14:13 2024
 """
 import numpy as np
 import os
+# import math
 import matplotlib.pyplot as plt
 from scipy.stats import gaussian_kde
-from scipy.integrate import quad
-from bond_break_generate_data import calc_V
+# from scipy.integrate import quad
+from .bond_break_generate_data import calc_2d_V
 
 def breakage_func(NO_FRAG,kde,x):
     return kde(x) * NO_FRAG
 
-def kde_psd():
-    PSD = np.zeros((NO_FRAG*NO_TESTS, NS-2,NS-2))
-    X1 = np.zeros((NO_FRAG*NO_TESTS, NS-2,NS-2))
+def kde_psd(NS, S, V01, V03,NO_FRAG,data_path):
+    # PSD = np.zeros((NO_FRAG*NO_TESTS, NS-2,NS-2))
+    # X1 = np.zeros((NO_FRAG*NO_TESTS, NS-2,NS-2))
     plt.figure(figsize=(10, 8))
     colors = plt.cm.viridis(np.linspace(0, 1, NS**2))
     x = np.linspace(0, 1, 1000)
     
+    _,_,_,_,V,_ = calc_2d_V(NS, S, V01, V03)
     for i in range(NS):
         # for j in range(NS):
             j = i
@@ -29,10 +31,11 @@ def kde_psd():
             file_name = f"i{i}_j{j}.npy"
             file_path = os.path.join(data_path,file_name)
             data = np.load(file_path,allow_pickle=True)
-            PSD[:,i-2,j-2]=data[:,0]
-            X1[:,i-2,j-2]=data[:,1]
+            # Using the relitve particle size 
+            PSD=data[:,0] / V[i,j]
+            # X1=data[:,1]
             
-            kde = gaussian_kde(PSD[:,i-2,j-2])  
+            kde = gaussian_kde(PSD)  
             y = breakage_func(NO_FRAG,kde,x)
             plt.plot(x, y, label=f'i{i}_j{j}', color=colors[i*NS + j - 2])
             
@@ -50,64 +53,98 @@ def kde_psd():
     # print("Integral of the breakage_func over [0,1]:", integral_total)
     # print("Integral of x * breakage_func over [0,1]:", integral_volume)
     
-def direkt_psd(NS, S, V01, V03):
-    int_B_F = np.zeros((NS-1, NS-1, NS-1, NS-1))
-    intx_B_F = np.zeros((NS-1, NS-1, NS-1, NS-1))
-    inty_B_F = np.zeros((NS-1, NS-1, NS-1, NS-1))
-    _,_,V_e1,V_e3,_,_ = calc_V(NS, S, V01, V03)
-    V_e1_tem = np.zeros(NS) 
-    V_e1_tem[:] = V_e1[1:]
+def direkt_psd(NS, S, STR, NO_FRAG, N_GRIDS, N_FRACS, V01, V03, data_path):
+    int_B_F = np.zeros((NS, NS, NS, NS))
+    intx_B_F = np.zeros((NS, NS, NS, NS))
+    inty_B_F = np.zeros((NS, NS, NS, NS))
+    V1,V3,V_e1,V_e3,V,_ = calc_2d_V(NS, S, V01, V03) 
+    V_e1_tem = np.copy(V_e1)
     V_e1_tem[0] = 0.0
-    V_e3_tem = np.zeros(NS) 
-    V_e3_tem[:] = V_e3[1:]
+    V_e3_tem = np.copy(V_e3)
     V_e3_tem[0] = 0.0
-    PSD = np.zeros((NO_FRAG*NO_TESTS, NS-2,NS-2))
-    X1 = np.zeros((NO_FRAG*NO_TESTS, NS-2,NS-2))
+    NO_TESTS = N_GRIDS*N_FRACS
+    # PSD = np.zeros((NO_FRAG*NO_TESTS, NS-2,NS-2))
+    # X1 = np.zeros((NO_FRAG*NO_TESTS, NS-2,NS-2))
+
     for i in range(NS):
         for j in range(NS):
-            j = i
-            if i <= 1 or j <= 1:
+            if i == 0 and j == 0:
                 continue
-            file_name = f"i{i}_j{j}.npy"
+            file_name = f"{STR[0]}_{STR[1]}_{STR[2]}_{NO_FRAG}_i{i}_j{j}.npy"
             file_path = os.path.join(data_path,file_name)
             data = np.load(file_path,allow_pickle=True)
-            PSD[:,i-2,j-2]=data[:,0]
-            X1[:,i-2,j-2]=data[:,1]
+            PSD=data[:,0]
+            X1=data[:,1]
             x1 = PSD * X1
             x3 = PSD * (1 - X1)
-            counts, x1_vol_sum, x3_vol_sum = calc_int_BF(x1,x3,V_e1_tem,V_e3_tem)
-            int_B_F[:,:,i-1,j-1] = counts / NO_TESTS
-            intx_B_F[:,:,i-1,j-1] = x1_vol_sum / NO_TESTS
-            inty_B_F[:,:,i-1,j-1] = x3_vol_sum / NO_TESTS
-    
-def calc_int_BF(x1,x3,e1,e3):
-    counts, _, _ = np.histogram2d(x1, x3, bins=[e1, e3])
+            counts, x1_vol_sum, x3_vol_sum = calc_int_BF(NO_TESTS,x1,V_e1_tem,x3,V_e3_tem)
+            counts, x1_vol_sum, x3_vol_sum = adjust_BF(counts, x1_vol_sum, V1[i],x3_vol_sum,V3[j])
+            int_B_F[:,:,i,j] = counts
+            ## Use relative value
+            intx_B_F[:,:,i,j] = x1_vol_sum # / V[i,j]
+            inty_B_F[:,:,i,j] = x3_vol_sum # / V[i,j]
+    output_dir = 'int_B_F_data'
+    os.makedirs(output_dir, exist_ok=True)   
+    save_path = os.path.join(output_dir, f'{STR[0]}_{STR[1]}_{STR[2]}_{NO_FRAG}_int_B_F')
+    np.savez(save_path,
+             STR=STR,
+             NO_FRAG=NO_FRAG,
+             int_B_F=int_B_F,
+             intx_B_F = intx_B_F,
+             inty_B_F = inty_B_F)
+    return int_B_F,intx_B_F,inty_B_F
+        
+def calc_int_BF(NO_TESTS,x1,e1,x3=None,e3=None,V3=None):
+    if x3 is None and e3 is None:
+        counts, _ = np.histogram(x1, e1)
 
-    # 初始化数组用于存储每个区间的x和y的总和
-    x1_vol_sum = np.zeros(counts.shape)
-    x3_vol_sum = np.zeros(counts.shape)
+        # 初始化数组用于存储每个区间的x和y的总和
+        x1_vol_sum = np.zeros(counts.shape)
+        x3_vol_sum = np.zeros(counts.shape)
+        
+        # 使用np.digitize找出每个数据点的区间索引
+        idxs = np.digitize(x1, e1) - 1
+        
+        # 根据索引累加到对应的区间总和中
+        for idx, x_vol in zip(idxs,x1):
+            if 0 <= idx < counts.shape[0]:
+                x1_vol_sum[idx] += x_vol
+                x3_vol_sum[idx] += V3
+    else:
+        counts, _, _ = np.histogram2d(x1, x3, bins=[e1, e3])
     
-    # 使用np.digitize找出每个数据点的区间索引
-    idxs1 = np.digitize(x1, e1) - 1
-    idxs3 = np.digitize(x3, e3) - 1
+        # 初始化数组用于存储每个区间的x和y的总和
+        x1_vol_sum = np.zeros(counts.shape)
+        x3_vol_sum = np.zeros(counts.shape)
+        
+        # 使用np.digitize找出每个数据点的区间索引
+        idxs1 = np.digitize(x1, e1) - 1
+        idxs3 = np.digitize(x3, e3) - 1
+        
+        # 根据索引累加到对应的区间总和中
+        for (idx1, idx3), (x1_vol, x3_vol) in zip(zip(idxs1, idxs3), zip(x1, x3)):
+            if 0 <= idx1 < counts.shape[0] and 0 <= idx3 < counts.shape[1]:
+                x1_vol_sum[idx1, idx3] += x1_vol
+                x3_vol_sum[idx1, idx3] += x3_vol
+                
+    return counts/NO_TESTS, x1_vol_sum/NO_TESTS, x3_vol_sum/NO_TESTS
     
-    # 根据索引累加到对应的区间总和中
-    for (idx1, idx3), (x1_vol, x3_vol) in zip(zip(idxs1, idxs3), zip(x1, x3)):
-        if 0 <= idx1 < counts.shape[0] and 0 <= idx3 < counts.shape[1]:
-            x1_vol_sum[idx1, idx3] += x1_vol
-            x3_vol_sum[idx1, idx3] += x3_vol
-    return counts, x1_vol_sum, x3_vol_sum
-if __name__ == '__main__':
-    # Parameters of MC-Bond-Break
-    NS = 15
-    S = 2
-    V01 = 1
-    V03 = 1
-    data_path = 'simulation_data'
-    NO_FRAG = 4
-    N_GRIDS, N_FRACS = 500, 100
-    NO_TESTS = N_GRIDS*N_FRACS
+def adjust_BF(counts, x1_vol_sum, V1, x3_vol_sum=None, V3=None):
+    # 计算当前统计的总体积
+    current_total_x1 = np.sum(x1_vol_sum)
+    if x3_vol_sum is not None:
+        current_total_x3 = np.sum(x3_vol_sum)
+    else:
+        V3 = 0.0
+        current_total_x3 = 0.0
     
-    kde_psd()
+    scale_factor = (V1 + V3) / (current_total_x1 + current_total_x3)
     
-    
+    # 调整B_F的值
+    adjested_counts = counts * scale_factor
+    adjusted_x1_vol_sum = x1_vol_sum * scale_factor
+    if x3_vol_sum is not None:
+        adjusted_x3_vol_sum = x3_vol_sum * scale_factor
+        return adjested_counts, adjusted_x1_vol_sum, adjusted_x3_vol_sum
+    else:
+        return adjested_counts, adjusted_x1_vol_sum

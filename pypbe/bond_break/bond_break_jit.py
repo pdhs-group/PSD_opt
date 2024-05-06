@@ -52,7 +52,7 @@ def MC_breakage(A, X1, X2, STR, NO_FRAG, N_GRIDS=100, N_FRACS=100, A0=0, init_br
     
     # Loop through all grids based on A, X1 and X2
     for g in range(N_GRIDS):
-        print(f'Calculating grid no. {g+1}/{N_GRIDS}')
+        # print(f'Calculating grid no. {g+1}/{N_GRIDS}')
         # Generate grid and copy it (identical initial conditions for other fractures)
         G, N, B, A0, R = generate_grid_2D(A, X1, X2, A0=A0)
         G0 = np.copy(G)
@@ -644,7 +644,7 @@ if __name__ == '__main__':
     
     A = 10
     A0 = 0.025
-    X1 = 0.21
+    X1 = 1
     X2 = 1-X1
     STR = np.array([1,1,1])
     NO_FRAG = 4
