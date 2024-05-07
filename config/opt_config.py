@@ -30,6 +30,7 @@ config = {
         ## method = basinhopping
         ## method = BO: use Bayesian Optimization
         'method': 'BO',
+
         'n_iter': 1,
         'calc_init_N': True,
         ## delta_flag = q3: use q3
@@ -41,6 +42,7 @@ config = {
         ## 'RMSE': Root Mean Squared Error
         ## 'MAE': Mean Absolute Error
         ## 'KL': Kullback–Leibler divergence(Only q3 and Q3 are compatible with KL) 
+
         'delta_flag': [('q3','KL'), 
                        # ('Q3','MSE'), 
                        # ('x_50','MSE')
