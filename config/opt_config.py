@@ -30,7 +30,7 @@ config = {
         ## method = basinhopping
         ## method = BO: use Bayesian Optimization
         'method': 'BO',
-        'n_iter': 4,
+        'n_iter': 1600,
         'calc_init_N': False,
         ## delta_flag = q3: use q3
         ## delta_flag = Q3: use Q3
@@ -41,7 +41,7 @@ config = {
         ## 'RMSE': Root Mean Squared Error
         ## 'MAE': Mean Absolute Error
         ## 'KL': Kullback–Leibler divergence(Only q3 and Q3 are compatible with KL) 
-        'delta_flag': [('q3','KL'), 
+        'delta_flag': [('q3','MSE'), 
                        ('Q3','MSE'), 
                        ('x_50','MSE')
                        ],
@@ -71,7 +71,7 @@ config = {
         'CORR_BETA' : 100,
         ## Reduce particle number desity concentration to improve calculation stability
         ## Default value = 1e14 
-        'N_scale': 1e-14,
+        'N_scale': 1e-18,
         ## When True, use distribution data simulated using MC-bond-break methods
         'USE_MC_BOND' : False,
         },

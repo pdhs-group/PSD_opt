@@ -1360,6 +1360,7 @@ class population():
         for t in range(len(self.t_vec)):
             for i in range(3):
                 if self.dim == 1:
+                    self.N[0,:] = 0.0
                     mu[i,0,t] = np.sum(self.V**i*self.N[:,t])
                     
                 # The following only applies for 2D and 3D case
@@ -1367,8 +1368,10 @@ class population():
                 else:
                     for j in range(3):
                         if self.dim == 2:
+                            self.N[0,0,:] = 0.0
                             mu[i,j,t] = np.sum((self.X1_vol*self.V)**i*(self.X3_vol*self.V)**j*self.N[:,:,t])
                         if self.dim == 3:
+                            self.N[0,0,0,:] = 0.0
                             mu[i,j,t] = np.sum((self.X1_vol*self.V)**i*(self.X3_vol*self.V)**j*self.N[:,:,:,t])
                         
         return mu

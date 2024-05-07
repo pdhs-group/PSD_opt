@@ -35,7 +35,7 @@ def calculate_case(CASE, PBE=True, MC=False):
         if PBE:
             p = pop_disc(1, disc=grid)
             
-            p.process_art = process_art
+            p.process_type = process_type
             p.BREAKFVAL = BREAKFVAL
             p.BREAKRVAL = BREAKRVAL
             p.pl_v = pl_v   ## number of fragments
@@ -46,8 +46,8 @@ def calculate_case(CASE, PBE=True, MC=False):
             
             p.NS = NS  
             p.S = S
-            p.COLEVAL = COLEVAL                          # Constant beta
-            p.EFFEVAL = EFFEVAL                           # Case for calculation of alpha
+            p.COLEVAL = 3                          # Constant beta
+            p.EFFEVAL = 2                           # Case for calculation of alpha
             p.CORR_BETA = beta0
             p.SIZEEVAL = 1
             p.R01 = x/2
@@ -92,10 +92,10 @@ def calculate_case(CASE, PBE=True, MC=False):
             if N_MC > 1: std_mu_mc = np.std(mu_tmp,ddof=1,axis=0)
         
         ### ANALYTICAL SOLUTION FROM KUMAR DISSERTATION A.7
-        if process_art == "agglomeration":
+        if process_type == "agglomeration":
             mu_as[0,0,:] = 2*n0/(2+beta0*n0*t)
             mu_as[1,0,:] = np.ones(t.shape)*c 
-        elif process_art == "breakage":
+        elif process_type == "breakage":
             # see Kumar Dissertation A.1
             N_as = np.zeros((NS,len(t)))
             V_sum = np.zeros((NS,len(t)))
@@ -121,7 +121,7 @@ def calculate_case(CASE, PBE=True, MC=False):
         if PBE:
             p = pop_disc(2, disc=grid)
             
-            p.process_art = process_art
+            p.process_type = process_type
             p.BREAKFVAL = BREAKFVAL
             p.BREAKRVAL = BREAKRVAL
             p.pl_v = pl_v   ## number of fragments
@@ -179,7 +179,7 @@ def calculate_case(CASE, PBE=True, MC=False):
             if N_MC > 1: std_mu_mc = np.std(mu_tmp,ddof=1,axis=0)
         
         ### ANALYTICAL SOLUTION FROM KUMAR 2008: Eq. (40), (A.11)-(A.12) 
-        if process_art == "agglomeration":
+        if process_type == "agglomeration":
             n0_tot = 2*n0
             mu_as[0,0,:] = 2*n0_tot/(2+beta0*n0_tot*t)
             mu_as[1,0,:] = np.ones(t.shape)*c         
@@ -187,7 +187,7 @@ def calculate_case(CASE, PBE=True, MC=False):
             mu_as[1,1,:] = c*c*beta0*n0_tot*t/n0_tot
             mu_as[2,0,:] = c*(v0+c*beta0*n0_tot*t/n0_tot) 
             mu_as[0,2,:] = c*(v0+c*beta0*n0_tot*t/n0_tot) 
-        elif process_art == "breakage":
+        elif process_type == "breakage":
             for k in range(2):
                 for l in range(2):
                     mu_as[k,l,:] = np.exp((2/((k+1)*(l+1))-1)*t)
@@ -203,7 +203,7 @@ def calculate_case(CASE, PBE=True, MC=False):
             p = pop_disc(3, disc=grid)
         
             p.NS = NS  
-            p.process_art = process_art
+            p.process_type = process_type
             p.S = S
             p.COLEVAL = 3                           # Constant beta
             p.EFFEVAL = 2                           # Case for calculation of alpha
@@ -260,7 +260,7 @@ def calculate_case(CASE, PBE=True, MC=False):
             p = pop_disc(1, disc=grid)
         
             p.NS = NS  
-            p.process_art = process_art
+            p.process_type = process_type
             p.S = S
             p.COLEVAL = 4                           # Sum kernel
             p.EFFEVAL = 2                           # Case for calculation of alpha
@@ -318,7 +318,7 @@ def calculate_case(CASE, PBE=True, MC=False):
             p = pop_disc(2, disc=grid)
         
             p.NS = NS  
-            p.process_art = process_art
+            p.process_type = process_type
             p.S = S
             p.COLEVAL = 4                           # Sum kernel
             p.EFFEVAL = 2                           # Case for calculation of alpha
@@ -378,7 +378,7 @@ def calculate_case(CASE, PBE=True, MC=False):
             p = pop_disc(2, disc=grid)
         
             p.NS = NS 
-            p.process_art = process_art
+            p.process_type = process_type
             p.S = S
             p.COLEVAL = 4                           # Sum kernel
             p.EFFEVAL = 2                           # Case for calculation of alpha
@@ -468,7 +468,7 @@ def calculate_case(CASE, PBE=True, MC=False):
             p = pop_disc(2, disc=grid)
         
             p.NS = NS  
-            p.process_art = process_art
+            p.process_type = process_type
             p.S = S
             p.COLEVAL = 1                           # Constant beta
             p.EFFEVAL = 2                           # Case for calculation of alpha
@@ -772,23 +772,23 @@ if __name__ == "__main__":
     #CASE = '2D_ortho_mono_ccm'
     
     ### General parameters
-    t = np.arange(0, 11, 1, dtype=float)     # Time array [s]
+    t = np.arange(0, 601, 60, dtype=float)     # Time array [s]
     c = 0.1e-2*1e-2                 # Volume concentration [-]
-    v0 = 1e-9
+    # v0 = 1e-9
     x = 1e-3                       # Particle diameter [m]
-    x = (v0*6/math.pi)**(1/3)
+    # x = (v0*6/math.pi)**(1/3)
     beta0 = 1e-16                   # Collision frequency parameter [m^3/s]
     n0 = 3*c/(4*math.pi*(x/2)**3)   # Total number concentration of primary particles
-    n0 = 1                        # validation for pure breakage
+    # n0 = 1                        # validation for pure breakage
     v0 = 4*math.pi*(x/2)**3/3       # Volume of a primary particle
     MULTI_INTERNAL = False
     
     ### PBE Parameters
     grid = 'geo'
     NS = 15
-    NS2 = None
+    # NS2 = 15
     #NS2 = 50
-    process_art = "mix"
+    process_type = "breakage"
     
     S = 4
     # alpha_pbe = np.array([1,0.2,0.2,0])
@@ -803,8 +803,8 @@ if __name__ == "__main__":
     
     EFFEVAL=2       #dPB
     COLEVAL=3       #dPB
-    BREAKFVAL = 4
-    BREAKRVAL = 3
+    BREAKFVAL = 2
+    BREAKRVAL = 2
     pl_v = 0.5   ## number of fragments
     pl_q = 1   ## parameter describes the breakage type
     pl_P1 = 1e-4 
@@ -840,25 +840,25 @@ if __name__ == "__main__":
     if p.dim == 2: ax3.legend().remove()
     ax4.legend().remove()
     
-    ax5, fig5, x_mc, x_mc_std, x_mc_full = plot_Q3(m_save, p, p2, alpha=ALPHA, label='(d)')
-    ax5.legend().remove()
+    # ax5, fig5, x_mc, x_mc_std, x_mc_full = plot_Q3(m_save, p, p2, alpha=ALPHA, label='(d)')
+    # ax5.legend().remove()
     
-    if EXP:
-        fig1.savefig(EXPPTH+f'{CASE}_MU00.png',dpi=300)
-        fig2.savefig(EXPPTH+f'{CASE}_MU10.png',dpi=300)
-        fig4.savefig(EXPPTH+f'{CASE}_MU20.png',dpi=300)
-        if p.dim == 2:
-            fig3.savefig(EXPPTH+f'{CASE}_MU11.png',dpi=300)   
-        fig5.savefig(EXPPTH+f'{CASE}_Q3.pdf')
+    # if EXP:
+    #     fig1.savefig(EXPPTH+f'{CASE}_MU00.png',dpi=300)
+    #     fig2.savefig(EXPPTH+f'{CASE}_MU10.png',dpi=300)
+    #     fig4.savefig(EXPPTH+f'{CASE}_MU20.png',dpi=300)
+    #     if p.dim == 2:
+    #         fig3.savefig(EXPPTH+f'{CASE}_MU11.png',dpi=300)   
+    #     fig5.savefig(EXPPTH+f'{CASE}_Q3.pdf')
             
-    if EXPRAW:
-        from datetime import datetime
-        current_time = datetime.now()
-        formatted_time = current_time.strftime('%Y%m%d_%H%M%S')
-        np.save(EXPPTH+'raw/raw_data_valid_'+formatted_time+'.npy',
-                {'mu_as':mu_as, 'mu_pbe':mu_pbe, 'mu_mc':mu_mc, 
-                 'std_mu_mc':std_mu_mc, 'p':p, 'm':m, 
-                 'mu_mc_reps':mu_mc_reps, 'm_save':m_save})
+    # if EXPRAW:
+    #     from datetime import datetime
+    #     current_time = datetime.now()
+    #     formatted_time = current_time.strftime('%Y%m%d_%H%M%S')
+    #     np.save(EXPPTH+'raw/raw_data_valid_'+formatted_time+'.npy',
+    #             {'mu_as':mu_as, 'mu_pbe':mu_pbe, 'mu_mc':mu_mc, 
+    #              'std_mu_mc':std_mu_mc, 'p':p, 'm':m, 
+    #              'mu_mc_reps':mu_mc_reps, 'm_save':m_save})
         
 
 
