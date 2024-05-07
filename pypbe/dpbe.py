@@ -70,7 +70,7 @@ class population():
             elif self.disc == 'uni':
                 rhs = jit.get_dNdt_1d_uni                
                 args=(self.V,self.B_R,self.F_M,self.NS,self.pl_v,self.pl_q,
-                      self.BREAKFVAL,self.aggl_crit_id,self.N_scale)
+                      self.BREAKFVAL,self.aggl_crit_id,self.N_scale,self.process_type)
                 
             # self.RES = integrate.solve_ivp(rhs, 
             #                                 [0, t_max], 
@@ -861,6 +861,8 @@ class population():
         ## So int_B_F and intx_B_F is (NS-1)^2 instead (NS)^2
         # 1-D case
         if self.dim == 1:
+            if self.disc == 'uni':
+                return
             ## Note: The breakage function of the smallest particle is 0. 
             ##       And small particle can not break into large one. 
             ## Note: Because particles with a volume of zero are skipped, 

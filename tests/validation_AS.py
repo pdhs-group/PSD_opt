@@ -96,17 +96,21 @@ def calculate_case(CASE, PBE=True, MC=False):
             mu_as[0,0,:] = 2*n0/(2+beta0*n0*t)
             mu_as[1,0,:] = np.ones(t.shape)*c 
         elif process_type == "breakage":
+            if grid == 'uni':
+                V = p.V
+            else:
+                V = p.V_e
             # see Kumar Dissertation A.1
             N_as = np.zeros((NS,len(t)))
             V_sum = np.zeros((NS,len(t)))
             for i in range(NS):
                 for j in range(len(t)):
                     if i != NS-1:
-                        N_as[i,j] = (-(t[j]*p.V[-1]+1)+t[j]*p.V_e[i+1])*np.exp(-p.V_e[i+1]*t[j])-\
-                            (-(t[j]*p.V[-1]+1)+t[j]*p.V_e[i])*np.exp(-p.V_e[i]*t[j])
+                        N_as[i,j] = (-(t[j]*p.V[-1]+1)+t[j]*V[i+1])*np.exp(-V[i+1]*t[j])-\
+                            (-(t[j]*p.V[-1]+1)+t[j]*V[i])*np.exp(-V[i]*t[j])
                     else:
                         N_as[i,j] = (-(t[j]*p.V[-1]+1)+t[j]*p.V[i])*np.exp(-p.V[i]*t[j])-\
-                            (-(t[j]*p.V[-1]+1)+t[j]*p.V_e[i])*np.exp(-p.V_e[i]*t[j]) + \
+                            (-(t[j]*p.V[-1]+1)+t[j]*V[i])*np.exp(-V[i]*t[j]) + \
                             (np.exp(-t[j]*p.V[i]))
                     V_sum[i,j] = N_as[i,j] * p.V[i]
             mu_as[0,0,:] = N_as.sum(axis=0)
@@ -772,20 +776,20 @@ if __name__ == "__main__":
     #CASE = '2D_ortho_mono_ccm'
     
     ### General parameters
-    t = np.arange(0, 601, 60, dtype=float)     # Time array [s]
+    t = np.arange(0, 6, 1, dtype=float)     # Time array [s]
     c = 0.1e-2*1e-2                 # Volume concentration [-]
     # v0 = 1e-9
-    x = 1e-3                       # Particle diameter [m]
+    x = 1e-3                      # Particle diameter [m]
     # x = (v0*6/math.pi)**(1/3)
-    beta0 = 1e-16                   # Collision frequency parameter [m^3/s]
+    beta0 = 1e-16                  # Collision frequency parameter [m^3/s]
     n0 = 3*c/(4*math.pi*(x/2)**3)   # Total number concentration of primary particles
     # n0 = 1                        # validation for pure breakage
     v0 = 4*math.pi*(x/2)**3/3       # Volume of a primary particle
     MULTI_INTERNAL = False
     
     ### PBE Parameters
-    grid = 'geo'
-    NS = 15
+    grid = 'uni'
+    NS = 8
     # NS2 = 15
     #NS2 = 50
     process_type = "breakage"
