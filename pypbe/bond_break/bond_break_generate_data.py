@@ -16,7 +16,7 @@ def generate_dataset():
     A0 = 0.025
     A_values = [2*A0, 4*A0, 8*A0, 16*A0, 64*A0, 256*A0, 2048*A0, 32768*A0] # 这里A0是一个具体的值
     NO_FRAG_values = [2, 4, 8]
-    X1_values = [0, 0.5, 1]
+    X1_values = [0, 0.33, 0.67, 1]
     STR_elements = [1e-3, 0.5, 1]
     
     # Define other unchanged parameters
@@ -32,7 +32,10 @@ def generate_dataset():
     for A, X1, NO_FRAG, STR1, STR2, STR3 in itertools.product(A_values, X1_values, NO_FRAG_values, STR_elements, STR_elements, STR_elements):
         if A/A0 < NO_FRAG:
             continue
-        
+        if (X1 == 0 or X1 == 1) and not (STR1 == 1 and STR2 == 1 and STR3 == 1):
+            continue
+        if (STR1 == 1e-3 and STR2 == 1e-3 and STR3 == 1e-3) or (STR1 == 0.5 and STR2 == 0.5 and STR3 == 0.5):
+            continue
         args = (A, X1, output_dir, STR1, STR2,STR3,NO_FRAG, N_GRIDS, N_FRACS, A0, INIT_BREAK_RANDOM)
         tasks.append(args)
     # Use a pool of workers to execute simulations in parallel

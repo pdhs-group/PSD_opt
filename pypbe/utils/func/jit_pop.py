@@ -280,7 +280,7 @@ def get_dNdt_3d_geo(t,NN,V,V1,V2,V3,F_M,NS,THR):
     return DN.reshape(-1) 
 
 @jit(nopython=True)
-def get_dNdt_1d_uni(t,N,V,F_M,NS,THR):       
+def get_dNdt_1d_uni(t,N,V,B_R,F_M,NS,v,q,BREAKFVAL,agg_crit,N_scale):       
 
     # Initialize DN with zeros
     DN = np.zeros(np.shape(N))
@@ -290,44 +290,42 @@ def get_dNdt_1d_uni(t,N,V,F_M,NS,THR):
     
     # Go through all possible combinations to calculate B and D matrix
     # First loop: All indices of DN 
-    for i in range(0,NS):
-            
-            # Second loop: All agglomeration partners that are smaller or equally sized
-            for a in range(0,i+1):
-                # Corresponding partner that i is produced (b = i-a + 1, because border) 
-                for b in range(0,i+1):              
-                                        
-                    # Only calculate if result of (a)+(b) yields agglomerate in 
-                    # class i with respect to total volume
-                    # if V[a]+V[b] == V[i]:
-                    if abs(V[a]+V[b]-V[i]) < 1e-5*V[2]:
-                        
-                        # Get corresponding F from F_M. Attention: F_M is defined without -1 borders
-                        # and is a (NS+1)^2 matrix. a and b represent "real" indices of the N or V
-                        # matrix --> It is necessary to subtract 1 in order to get the right entry
-                        F = F_M[a,b]
-                        
-                        # Calculate raw birth term as well as volumetric fluxes M.
-                        # Division by 2 resulting from loop definition (don't count processes double)
-                        B[i] = B[i]+F*N[a]*N[b]/2                       
-                           
-                        # Calculate death term of [a] and [b]. 
-                        # D is defined positively (addition) and subtracted later
-                        D[a] = D[a]+F*N[a]*N[b]/2
-                        D[b] = D[b]+F*N[a]*N[b]/2
-                        
+    for e in range(0,agg_crit):
+        S = B_R[e]
+        D[e] -= S*N[e]
+        # Second loop: All agglomeration partners that are smaller or equally sized
+        for i in range(agg_crit):
+            # Corresponding partner that i is produced (b = i-a + 1, because border) 
+            for j in range(agg_crit):              
+                if V[i]+V[j] >= V[agg_crit]:
+                    continue                    
+                # Only calculate if result of (a)+(b) yields agglomerate in 
+                # class i with respect to total volume
+                # if V[a]+V[b] == V[i]:
+                if abs(V[i]+V[j]-V[e]) < 1e-5*V[2]:
+                    # Get corresponding F from F_M. Attention: F_M is defined without -1 borders
+                    # and is a (NS+1)^2 matrix. a and b represent "real" indices of the N or V
+                    # matrix --> It is necessary to subtract 1 in order to get the right entry
+                    F = F_M[i,j]
+                    # Calculate raw birth term as well as volumetric fluxes M.
+                    # Division by 2 resulting from loop definition (don't count processes double)
+                    B[e] += F*N[i]*N[j]/2/N_scale                       
+                    # Calculate death term of [a] and [b]. 
+                    # D is defined positively (addition) and subtracted later
+                    D[j] -= F*N[i]*N[j]/2/N_scale     
+                    
             # Calculate breakage if current index is larger than 2 (primary particles cannot break)
             # ATTENTION: This is only valid for binary breakage and s=2! (Test purposes)
-            # if i > 2:
-            #     BR[i] = BD_br_1D[i] - B_M[i]*N[i]
-            #     BR[i-1] = BD_br_1D[i-1] + 2*B_M[i]*N[i]  
+            if i > 0:
+                B_F = breakage_func_1d(V[e],V[i],v,q,BREAKFVAL)
+                B[e] += B_F * N[i]
             
     # Calculate final result and return 
     DN = B-D+BR
         
     # Due to numerical issues it is necessary to define a threshold for DN
-    for i in range(NS+3): 
-        if abs(DN[i])<THR: DN[i] = 0
+    # for i in range(NS+3): 
+    #     if abs(DN[i])<THR: DN[i] = 0
     
     return DN
 

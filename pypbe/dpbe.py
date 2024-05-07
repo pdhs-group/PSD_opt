@@ -69,7 +69,8 @@ class population():
                       self.intx_B_F,self.process_type,self.aggl_crit_id,self.N_scale)
             elif self.disc == 'uni':
                 rhs = jit.get_dNdt_1d_uni                
-                args=(self.V,self.F_M,self.NS,self.THR_DN)
+                args=(self.V,self.B_R,self.F_M,self.NS,self.pl_v,self.pl_q,
+                      self.BREAKFVAL,self.aggl_crit_id,self.N_scale)
                 
             # self.RES = integrate.solve_ivp(rhs, 
             #                                 [0, t_max], 
@@ -1361,6 +1362,7 @@ class population():
         for t in range(len(self.t_vec)):
             for i in range(3):
                 if self.dim == 1:
+                    self.N[0,:] = 0.0
                     mu[i,0,t] = np.sum(self.V**i*self.N[:,t])
                     
                 # The following only applies for 2D and 3D case
@@ -1368,8 +1370,10 @@ class population():
                 else:
                     for j in range(3):
                         if self.dim == 2:
+                            self.N[0,0,:] = 0.0
                             mu[i,j,t] = np.sum((self.X1_vol*self.V)**i*(self.X3_vol*self.V)**j*self.N[:,:,t])
                         if self.dim == 3:
+                            self.N[0,0,0,:] = 0.0
                             mu[i,j,t] = np.sum((self.X1_vol*self.V)**i*(self.X3_vol*self.V)**j*self.N[:,:,:,t])
                         
         return mu

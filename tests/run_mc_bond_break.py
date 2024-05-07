@@ -27,11 +27,12 @@ if __name__ == '__main__':
     unique_var_STR = np.unique(sorted_var_STR, axis=0)
     filtered_var_STR = unique_var_STR[~(unique_var_STR[:, 0] == unique_var_STR[:, 1]) | ~(unique_var_STR[:, 1] == unique_var_STR[:, 2])]
     
-    for STR in filtered_var_STR:
-    ## Generate complete data
-    # mc_gen.generate_complete_1d_data(NS, S, STR, NO_FRAG, N_GRIDS, N_FRACS, data_path)
-        mc_gen.generate_complete_2d_data(NS, S, STR, NO_FRAG, N_GRIDS, N_FRACS, V01, V03, data_path)
+    mc_gen.generate_dataset()
+    # for STR in filtered_var_STR:
+    # ## Generate complete data
+    # # mc_gen.generate_complete_1d_data(NS, S, STR, NO_FRAG, N_GRIDS, N_FRACS, data_path)
+    #     mc_gen.generate_complete_2d_data(NS, S, STR, NO_FRAG, N_GRIDS, N_FRACS, V01, V03, data_path)
         
-        ## Calculate breakage function using calculated data
-        int_B_F,intx_B_F,inty_B_F = mc_post.direkt_psd(NS, S, STR, NO_FRAG, N_GRIDS, N_FRACS, V01, V03, data_path)
+    #     ## Calculate breakage function using calculated data
+    #     int_B_F,intx_B_F,inty_B_F = mc_post.direkt_psd(NS, S, STR, NO_FRAG, N_GRIDS, N_FRACS, V01, V03, data_path)
             
