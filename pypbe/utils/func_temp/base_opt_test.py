@@ -47,20 +47,20 @@ def normal_test():
     pop_params['pl_P2'] = converted_params[6]
     pop_params['pl_P3'] = converted_params[7]
     pop_params['pl_P4'] = converted_params[8]
-    find.algo.set_init_pop_para(pop_params)
+    # find.algo.set_init_pop_para(pop_params)
     # find.algo.calc_init_N = False
     # find.algo.set_comp_para('r0_001', 'r0_001',R01_0_scl=R01_0_scl,R03_0_scl=R03_0_scl,
     #                         dist_path_NM=dist_path_1,dist_path_M=dist_path_2)
-    find.algo.calc_all_pop()
+    find.algo.calc_all_pop(pop_params)
     return_pop_distribution(find.algo.p, axq3, fig, clr='b', q3lbl='q3_ori')
     return_pop_distribution(find.algo.p_NM, axq3_NM, fig_NM, clr='b', q3lbl='q3_ori')
     return_pop_distribution(find.algo.p_M, axq3_M, fig_M, clr='b', q3lbl='q3_ori')
     ## Calculate PBE with exp-data and parameter from optimization
-    find.algo.set_init_pop_para(opt_values)
+    # find.algo.set_init_pop_para(opt_values)
     # find.algo.calc_init_N = True
     # find.algo.set_comp_para(R_NM=R_NM, R_M=R_M,R01_0_scl=R01_0_scl,R03_0_scl=R03_0_scl)
     # find.algo.set_init_N(find.algo.sample_num, exp_data_paths, 'mean')
-    find.algo.calc_all_pop()
+    find.algo.calc_all_pop(opt_values)
     return_pop_distribution(find.algo.p, axq3, fig, clr='r', q3lbl='q3_opt')
     return_pop_distribution(find.algo.p_NM, axq3_NM, fig_NM, clr='r', q3lbl='q3_opt')
     return_pop_distribution(find.algo.p_M, axq3_M, fig_M, clr='r', q3lbl='q3_opt')   
@@ -239,13 +239,14 @@ if __name__ == '__main__':
     R_M=conf.config['R_M']
     R01_0_scl=conf.config['R01_0_scl']
     R03_0_scl=conf.config['R03_0_scl']
-    find.algo.set_comp_para(USE_PSD, R_NM=R_NM, R_M=R_M,R01_0_scl=R01_0_scl,R03_0_scl=R03_0_scl,
+    R01_0 = 'r0_001'
+    R03_0 = 'r0_001'
+    find.algo.set_comp_para(USE_PSD, R01_0, R03_0, R_NM=R_NM, R_M=R_M,R01_0_scl=R01_0_scl,R03_0_scl=R03_0_scl,
                             dist_path_NM=dist_path_NM, dist_path_M=dist_path_M)
     find.algo.weight_2d = conf.config['weight_2d']
 
     data_name = "Sim_Mul_0.1_para_100.0_0.5_0.5_0.5_1_0.0005_0.6_0.002_0.4.xlsx"  
     
-
     exp_data_path = os.path.join(base_path, data_name)
     exp_data_paths = [
         exp_data_path,

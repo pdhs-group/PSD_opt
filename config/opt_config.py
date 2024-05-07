@@ -30,8 +30,9 @@ config = {
         ## method = basinhopping
         ## method = BO: use Bayesian Optimization
         'method': 'BO',
-        'n_iter': 1600,
-        'calc_init_N': False,
+
+        'n_iter': 1,
+        'calc_init_N': True,
         ## delta_flag = q3: use q3
         ## delta_flag = Q3: use Q3
         ## delta_flag = x_10: use x_10
@@ -41,21 +42,22 @@ config = {
         ## 'RMSE': Root Mean Squared Error
         ## 'MAE': Mean Absolute Error
         ## 'KL': Kullback–Leibler divergence(Only q3 and Q3 are compatible with KL) 
-        'delta_flag': [('q3','MSE'), 
-                       ('Q3','MSE'), 
-                       ('x_50','MSE')
+
+        'delta_flag': [('q3','KL'), 
+                       # ('Q3','MSE'), 
+                       # ('x_50','MSE')
                        ],
         },
     
     ## PBE parameters
     'pop_params': {
         'NS' : 15,
-        'S' : 3,
+        'S' : 4,
         'BREAKRVAL' : 4,
         'BREAKFVAL' : 5,
         ## aggl_crit: The sequence number of the particle that allows further agglomeration
         'aggl_crit' : 100,
-        'process_type' : "breakage",
+        'process_type' : "agglomeration",
         'pl_v' : 1,
         'pl_P1' : 5e-4,
         'pl_P2' : 0.6,
@@ -66,7 +68,7 @@ config = {
         'COLEVAL' : 2,
         'EFFEVAL' : 1,
         'SIZEEVAL' : 1,
-        'alpha_prim': np.array([0.5, 0.5, 1.0]),
+        'alpha_prim': np.array([0.5, 0.5, 0.5]),
         # 'alpha_prim': 0.5,
         'CORR_BETA' : 100,
         ## Reduce particle number desity concentration to improve calculation stability
@@ -78,10 +80,10 @@ config = {
     
     ## Parameters which should be optimized
     'opt_params' : {
-        # 'corr_agg_0': {'bounds': (-3.0, 3.0), 'log_scale': True},
-        # 'corr_agg_1': {'bounds': (-3.0, 3.0), 'log_scale': True},
-        # 'corr_agg_2': {'bounds': (-3.0, 3.0), 'log_scale': True},
-        'pl_v': {'bounds': (0.5, 2), 'log_scale': False},
+        'corr_agg_0': {'bounds': (-3.0, 3.0), 'log_scale': True},
+        'corr_agg_1': {'bounds': (-3.0, 3.0), 'log_scale': True},
+        'corr_agg_2': {'bounds': (-3.0, 3.0), 'log_scale': True},
+        'pl_v': {'bounds': (0.1, 2), 'log_scale': False},
         'pl_P1': {'bounds': (-6, -2), 'log_scale': True},
         'pl_P2': {'bounds': (0.1, 0.6), 'log_scale': False},
         'pl_P3': {'bounds': (-6, -2), 'log_scale': True},

@@ -49,7 +49,7 @@ def generate_one_data(args):
     # convert absolute volume to relative volume
     # F[:,0] /= A 
     # construkt the file name
-    file_name = f"A{A}_X1{X1}_NO_FRAG{NO_FRAG}_STR{STR1}_{STR2}_{STR3}.npy"
+    file_name = f"{A}_{X1}_{NO_FRAG}_{STR1}_{STR2}_{STR3}.npy"
     file_path = os.path.join(output_dir, file_name)
     # save array
     np.save(file_path, F)
