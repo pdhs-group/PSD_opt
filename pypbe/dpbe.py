@@ -69,8 +69,7 @@ class population():
                       self.intx_B_F,self.process_type,self.aggl_crit_id,self.N_scale)
             elif self.disc == 'uni':
                 rhs = jit.get_dNdt_1d_uni                
-                args=(self.V,self.B_R,self.F_M,self.NS,self.pl_v,self.pl_q,
-                      self.BREAKFVAL,self.aggl_crit_id,self.N_scale,self.process_type)
+                args=(self.V,self.B_R,self.B_F,self.F_M,self.NS,self.aggl_crit_id,self.N_scale,self.process_type)
                 
             # self.RES = integrate.solve_ivp(rhs, 
             #                                 [0, t_max], 
@@ -862,37 +861,46 @@ class population():
         # 1-D case
         if self.dim == 1:
             if self.disc == 'uni':
-                return
-            ## Note: The breakage function of the smallest particle is 0. 
-            ##       And small particle can not break into large one. 
-            ## Note: Because particles with a volume of zero are skipped, 
-            ##       calculation with V requires (index+1)
-            self.int_B_F = np.zeros((self.NS, self.NS))
-            self.intx_B_F = np.zeros((self.NS, self.NS))
-            if self.process_type == 'agglomeration':
-                return
-            
-            if self.USE_MC_BOND:
-                mc_bond = np.load(self.PTH_MC_BOND, allow_pickle=True)
-                self.int_B_F = mc_bond['int_B_F'][:,0,:,0]
-                self.intx_B_F = mc_bond['intx_B_F'][:,0,:,0] * self.V_e[1]
-                # for i in range(2, self.NS):
-                #     self.intx_B_F[:,i] = mc_bond['intx_B_F'][:,0,i,0] * self.V[i]
-            else:
-                ## Let the integration range associated with the breakage function start from zero 
-                ## to ensure mass conservation  
-                V_e_tem = np.copy(self.V_e)
-                V_e_tem[0] = 0.0
-                for idx, tmp in np.ndenumerate(self.int_B_F):
+                self.B_F = np.zeros((self.NS,self.NS))
+                V = np.copy(self.V)
+                V[:-1] = self.V[1:]
+                V[-1] = self.V[-1] + self.V[1]
+                for idx, tep in np.ndenumerate(self.B_F):
                     a = idx[0]; i = idx[1]
                     if i != 0 and a <= i:
                         args = (self.V[i],self.pl_v,self.pl_q,self.BREAKFVAL)
-                        if a == i:
-                            self.int_B_F[idx],err = integrate.quad(jit.breakage_func_1d,V_e_tem[a],self.V[a],args=args)
-                            self.intx_B_F[idx],err = integrate.quad(jit.breakage_func_1d_vol,V_e_tem[a],self.V[a],args=args)
-                        else:
-                            self.int_B_F[idx],err = integrate.quad(jit.breakage_func_1d,V_e_tem[a],V_e_tem[a+1],args=args)
-                            self.intx_B_F[idx],err = integrate.quad(jit.breakage_func_1d_vol,V_e_tem[a],V_e_tem[a+1],args=args)
+                        self.B_F[idx] = jit.breakage_func_1d(V[a],V[i],self.pl_v,self.pl_q,self.BREAKFVAL) * V[0]
+            else:
+                ## Note: The breakage function of the smallest particle is 0. 
+                ##       And small particle can not break into large one. 
+                ## Note: Because particles with a volume of zero are skipped, 
+                ##       calculation with V requires (index+1)
+                self.int_B_F = np.zeros((self.NS, self.NS))
+                self.intx_B_F = np.zeros((self.NS, self.NS))
+                if self.process_type == 'agglomeration':
+                    return
+                
+                if self.USE_MC_BOND:
+                    mc_bond = np.load(self.PTH_MC_BOND, allow_pickle=True)
+                    self.int_B_F = mc_bond['int_B_F'][:,0,:,0]
+                    self.intx_B_F = mc_bond['intx_B_F'][:,0,:,0] * self.V_e[1]
+                    # for i in range(2, self.NS):
+                    #     self.intx_B_F[:,i] = mc_bond['intx_B_F'][:,0,i,0] * self.V[i]
+                else:
+                    ## Let the integration range associated with the breakage function start from zero 
+                    ## to ensure mass conservation  
+                    V_e_tem = np.copy(self.V_e)
+                    V_e_tem[0] = 0.0
+                    for idx, tmp in np.ndenumerate(self.int_B_F):
+                        a = idx[0]; i = idx[1]
+                        if i != 0 and a <= i:
+                            args = (self.V[i],self.pl_v,self.pl_q,self.BREAKFVAL)
+                            if a == i:
+                                self.int_B_F[idx],err = integrate.quad(jit.breakage_func_1d,V_e_tem[a],self.V[a],args=args)
+                                self.intx_B_F[idx],err = integrate.quad(jit.breakage_func_1d_vol,V_e_tem[a],self.V[a],args=args)
+                            else:
+                                self.int_B_F[idx],err = integrate.quad(jit.breakage_func_1d,V_e_tem[a],V_e_tem[a+1],args=args)
+                                self.intx_B_F[idx],err = integrate.quad(jit.breakage_func_1d_vol,V_e_tem[a],V_e_tem[a+1],args=args)
                     
         # 2-D case
         elif self.dim == 2:

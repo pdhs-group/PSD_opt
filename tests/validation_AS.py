@@ -776,7 +776,7 @@ if __name__ == "__main__":
     #CASE = '2D_ortho_mono_ccm'
     
     ### General parameters
-    t = np.arange(0, 6, 1, dtype=float)     # Time array [s]
+    t = np.arange(0, 601, 100, dtype=float)     # Time array [s]
     c = 0.1e-2*1e-2                 # Volume concentration [-]
     # v0 = 1e-9
     x = 1e-3                      # Particle diameter [m]
@@ -789,7 +789,7 @@ if __name__ == "__main__":
     
     ### PBE Parameters
     grid = 'uni'
-    NS = 8
+    NS = 15
     # NS2 = 15
     #NS2 = 50
     process_type = "breakage"

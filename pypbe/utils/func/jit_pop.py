@@ -280,7 +280,7 @@ def get_dNdt_3d_geo(t,NN,V,V1,V2,V3,F_M,NS,THR):
     return DN.reshape(-1) 
 
 # @jit(nopython=True)
-def get_dNdt_1d_uni(t,N,V,B_R,F_M,NS,v,q,BREAKFVAL,agg_crit,N_scale,process_type):       
+def get_dNdt_1d_uni(t,N,V,B_R,B_F,F_M,NS,agg_crit,N_scale,process_type):       
 
     # Initialize DN with zeros
     DN = np.zeros(np.shape(N))
@@ -316,13 +316,12 @@ def get_dNdt_1d_uni(t,N,V,B_R,F_M,NS,v,q,BREAKFVAL,agg_crit,N_scale,process_type
         for e in range(NS):
             S = B_R[e]
             D[e] -= S*N[e]
-            for i in range(NS):
+            for i in range(e+1, NS):
                 # Calculate breakage if current index is larger than 2 (primary particles cannot break)
                 # ATTENTION: This is only valid for binary breakage and s=2! (Test purposes)
                 if i > 0:
                     S = B_R[i]
-                    B_F = breakage_func_1d(V[e],V[i],v,q,BREAKFVAL)
-                    B[e] += S * B_F * N[i]
+                    B[e] += S * B_F[e,i] * N[i]
     # Calculate final result and return 
     DN = B+D+BR
         
