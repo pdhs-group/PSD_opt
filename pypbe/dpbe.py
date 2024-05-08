@@ -868,7 +868,6 @@ class population():
                 for idx, tep in np.ndenumerate(self.B_F):
                     a = idx[0]; i = idx[1]
                     if i != 0 and a <= i:
-                        args = (self.V[i],self.pl_v,self.pl_q,self.BREAKFVAL)
                         self.B_F[idx] = jit.breakage_func_1d(V[a],V[i],self.pl_v,self.pl_q,self.BREAKFVAL) * V[0]
             else:
                 ## Note: The breakage function of the smallest particle is 0. 

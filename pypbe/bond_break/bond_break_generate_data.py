@@ -14,7 +14,7 @@ import multiprocessing
 def generate_dataset():
     # Define variable parameters
     A0 = 0.025
-    A_values = [2*A0, 4*A0, 8*A0, 16*A0, 64*A0, 256*A0, 2048*A0, 32768*A0] # 这里A0是一个具体的值
+    A_values = [2*A0, 4*A0, 8*A0, 16*A0, 64*A0, 256*A0, 2048*A0, 32768*A0] 
     NO_FRAG_values = [2, 4, 8]
     X1_values = [0, 0.33, 0.67, 1]
     STR_elements = [1e-3, 0.5, 1]

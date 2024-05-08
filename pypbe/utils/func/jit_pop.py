@@ -313,22 +313,19 @@ def get_dNdt_1d_uni(t,N,V,B_R,B_F,F_M,NS,agg_crit,N_scale,process_type):
                         # D is defined positively (addition) and subtracted later
                         D[j] -= F*N[i]*N[j]/N_scale     
     if process_type == 'breakage' or process_type == 'mix':
-        for e in range(NS):
+        for e in range(1,NS):
             S = B_R[e]
             D[e] -= S*N[e]
-            for i in range(e+1, NS):
+            for i in range(e, NS):
                 # Calculate breakage if current index is larger than 2 (primary particles cannot break)
                 # ATTENTION: This is only valid for binary breakage and s=2! (Test purposes)
-                if i > 0:
                     S = B_R[i]
                     B[e] += S * B_F[e,i] * N[i]
     # Calculate final result and return 
     DN = B+D+BR
-        
     # Due to numerical issues it is necessary to define a threshold for DN
     # for i in range(NS+3): 
     #     if abs(DN[i])<THR: DN[i] = 0
-    
     return DN
 
 @jit(nopython=True)

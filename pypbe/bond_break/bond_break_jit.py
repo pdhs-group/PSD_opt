@@ -642,15 +642,15 @@ if __name__ == '__main__':
     # profiler.enable()
     ########### -----------
     
-    A = 10
     A0 = 0.025
-    X1 = 1
+    A = 8*A0
+    X1 = 0.33
     X2 = 1-X1
     STR = np.array([1,1,1])
     NO_FRAG = 4
     INIT_BREAK_RANDOM = False
     
-    N_GRIDS, N_FRACS = 500, 100
+    N_GRIDS, N_FRACS = 200, 100
     
     # Perform stochastic simulation
     # Fragment array [total area, X1, X2, fracture energy]
@@ -667,14 +667,14 @@ if __name__ == '__main__':
     ########### -----------
     
     # %% TESTS DEBUG
-    TEST = False
+    TEST = True
     if TEST:
         import sys, os
         sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),".."))
         import matplotlib.pyplot as plt
         from matplotlib.colors import to_rgba
-        import plotter.plotter as pt          
-        from plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue, KIT_black_green_white
+        import pypbe.utils.plotter.plotter as pt          
+        from pypbe.utils.plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue, KIT_black_green_white
         pt.close()
         pt.plot_init(mrksze=12,lnewdth=1)
             

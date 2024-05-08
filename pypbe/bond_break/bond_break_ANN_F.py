@@ -6,35 +6,47 @@ Created on Mon May  6 13:34:57 2024
 """
 import numpy as np
 import os
+from sklearn.neighbors import KernelDensity
 from keras.models import Sequential
 from keras.layers import Dense, InputLayer, Reshape
 from keras.optimizers import Adam
 import tensorflow as tf
 from tensorflow.keras.losses import MeanSquaredError
 
-def load_all_data(NS,max_len,directory):
+def load_all_data(max_len,directory,kde_gitter):
     files = [os.path.join(directory, f) for f in os.listdir(directory) if f.endswith('.npy')]
     all_Inputs = np.zeros((len(files), 6))
-    all_Outputs = np.zeros((len(files), max_len, 4))
+    all_kde = np.zeros((len(files),NS))
     
     for i, file in enumerate(files):
-        parsed_variables = file[:-4].split('_')
-        F_tem = np.data(file)
+        filename = os.path.basename(file)
+        parsed_variables = np.array(filename[:-4].split('_'),dtype=float)
+        F_tem = np.load(file,allow_pickle=True)
         shape = F_tem.shape[0]
+        F_norm = np.zeros((shape,3))
+        A = parsed_variables[0]
+        ## Normalize fragments volume
+        F_norm[:,0] = F_tem[:,0] * F_tem[:,1] / A
+        F_norm[:,1] = F_tem[:,0] * F_tem[:,2] / A
+        F_norm[:,2] = F_tem[:,3]
+        kde = KernelDensity(kernel='gaussian', bandwidth='scott').fit(F_norm[:,:2])
+        ## Each test produces NO_FRAG fragments
+        kde_dense = np.exp(kde.score_samples(kde_gitter)) / parsed_variables[2]
+        
         all_Inputs[i,:] = parsed_variables
-        all_Outputs[i,:shape,:] = F_tem
-
-    return all_Inputs, all_Outputs
+        all_kde[i,:] = kde_dense
+        
+    return all_Inputs, all_kde
     
-def create_model():
+def create_model(max_len):
     # The input layer accepts an array of length 4 (combined STR and FRAG)
     # The output layer should now match the flattened shape of the new combined output array
     model = Sequential([
-        InputLayer(input_shape=(4,)),  # Combined STR and FRAG input
+        InputLayer(input_shape=(6,)),  
         Dense(128, activation='relu'),
         Dense(64, activation='relu'),
-        Dense(max_len * 4, activation='linear'),  # Adjusted for the new output shape
-        Reshape((max_len, 4))  # Reshape the output to the desired shape
+        Dense(NS, activation='linear'),  # Adjusted for the new output shape
+        # Reshape((max_len, 4))  # Reshape the output to the desired shape
     ])
     
     # model.compile(optimizer=Adam(), loss=combined_custom_loss(V_value, NO_FRAG_value, alpha=0.01, beta=0.99), metrics=['mae'])
@@ -42,7 +54,7 @@ def create_model():
     return model
 
 def train_model(model, all_Inputs, all_Outputs, epochs=100, batch_size=32):
-    history = model.fit(combined_inputs, Outputs, epochs=epochs, batch_size=batch_size, validation_split=0.2)
+    history = model.fit(all_Inputs, all_Outputs, epochs=epochs, batch_size=batch_size, validation_split=0.2)
     return history
 
 def custom_loss(V, NO_FRAG):
@@ -92,16 +104,23 @@ def predictions_test(model,test_inputs,eva_inputs=None,eva_outputs=None):
     
 if __name__ == '__main__':
     # 使用函数
-    directory = 'train_data'
-    NS = 7
+    directory = '../../tests/simulation_data'
+    NS = 30
+    S = 2
     N_GRIDS, N_FRACS = 200, 100
     max_NO_FRAG = 8
     max_len = max_NO_FRAG * N_GRIDS * N_FRACS
     
-    all_Inputs, all_Outputs = load_all_data(NS,max_len,directory)
+    kde_gitter = np.zeros((NS,2))
+    for i in range(NS):
+            kde_gitter[i,0] = S ** (i)
+    kde_gitter[:,0] /= kde_gitter[-1,0]
+    kde_gitter[:,1] = 1 - kde_gitter[:,0]
+    
+    all_Inputs, all_Outputs = load_all_data(max_len,directory,kde_gitter)
     model = create_model(max_len)
     model.summary()
     history = train_model(model, all_Inputs, all_Outputs)
     
-    test_inputs = np.array([0.5,0.5,1.0,4]).reshape(1, 4)
-    pre_FRAG, pre_V=predictions_test(model,test_inputs)
+    # test_inputs = np.array([0.5,0.5,1.0,4]).reshape(1, 4)
+    # pre_FRAG, pre_V=predictions_test(model,test_inputs)

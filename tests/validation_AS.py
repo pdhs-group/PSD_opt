@@ -789,7 +789,7 @@ if __name__ == "__main__":
     
     ### PBE Parameters
     grid = 'uni'
-    NS = 15
+    NS = 90
     # NS2 = 15
     #NS2 = 50
     process_type = "breakage"
