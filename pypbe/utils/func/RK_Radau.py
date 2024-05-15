@@ -350,7 +350,7 @@ class radau_ii_a():
                 dt_current *= 0.5
                 self.LU_real_valid = False
                 self.LU_complex_valid = False
-                # print(f"at the time point t_current = {self.t_current}, not converged. dt_current = {dt_current}")
+                print(f"at the time point t_current = {self.t_current}, not converged. dt_current = {dt_current}")
                 # print(f"n_iter of newton solver is {n_iter}, convergenz rate is {rate}")
                 continue
             

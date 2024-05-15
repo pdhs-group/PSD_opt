@@ -109,8 +109,8 @@ if __name__ == "__main__":
     p.BREAKFVAL= 5
     p.aggl_crit= 100
     p.process_type= "breakage"
-    p.pl_v= 1
-    p.pl_P1= 1e-2
+    p.pl_v= 0.1
+    p.pl_P1= 1e-3
     p.pl_P2= 0.6
     p.pl_P3= 1e-2
     p.pl_P4= 0.6
@@ -123,7 +123,7 @@ if __name__ == "__main__":
         p.alpha_prim = np.array([1,1,1,1])
     elif dim == 1:
         p.alpha_prim = 0.5
-    p.CORR_BETA= 1000
+    p.CORR_BETA= 100
     ## The original value is the particle size at 1% of the PSD distribution. 
     ## The position of this value in the coordinate system can be adjusted by multiplying by size_scale.
     size_scale = 1e-1
@@ -131,7 +131,7 @@ if __name__ == "__main__":
     p.R03 = 8.677468940430804e-07*size_scale
     
     ## If you need to read PSD data as initial conditions, set the PSD data path
-    p.USE_PSD = True
+    p.USE_PSD = False
     p.DIST1 = os.path.join(p.pth,'data','PSD_data','PSD_x50_2.0E-6_RelSigmaV_1.5E-1.npy')
     p.DIST3 = os.path.join(p.pth,'data','PSD_data','PSD_x50_2.0E-6_RelSigmaV_1.5E-1.npy')
     
