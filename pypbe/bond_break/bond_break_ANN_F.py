@@ -12,55 +12,14 @@ from pypbe.utils.func.jit_pop import lam, lam_2d, heaviside
 ## external package
 from scipy.integrate import dblquad
 from sklearn.neighbors import KernelDensity
+from sklearn.metrics import mean_squared_error
 from keras.models import Sequential, load_model
 from keras.layers import Dense, InputLayer, Reshape
 from keras.optimizers import Adam
 import tensorflow as tf
 from tensorflow.keras.losses import MeanSquaredError
+import json
 
-def generate_grid():
-    e1 = np.zeros(NS+1)
-    e2 = np.zeros(NS+1)
-    ## Because of the subsequent CAT processing, x and y need to be expanded 
-    ## outward by one unit with value 0
-    x = np.zeros(NS+1)
-    y = np.zeros(NS+1)
-    e1[0] = -S
-    e2[0] = -S
-    for i in range(NS):
-        e1[i+1] = S**(i)
-        e2[i+1] = S**(i)
-        x[i] = (e1[i] + e1[i+1]) / 2
-        y[i] = (e2[i] + e2[i+1]) / 2
-    e1[:] /= x[-2] 
-    e2[:] /= y[-2] 
-    x[:] /= x[-2] 
-    y[:] /= y[-2] 
-    B_c = np.zeros((NS+1,NS+1)) 
-    v1 = np.zeros((NS+1,NS+1))
-    v2 = np.zeros((NS+1,NS+1))
-    M1_c = np.zeros((NS+1,NS+1))
-    M2_c = np.zeros((NS+1,NS+1))
-    return B_c,v1,v2,M1_c,M2_c,e1,e2,x,y
-
-def generate_grid_kde():
-    kde_value = np.zeros(NS+1)
-    grid = []
-    # Define grid with geo-grid
-    for i in range(NS):
-            kde_value[i+1] = S ** (i)
-    kde_value[:] /= kde_value[-1]
-    
-    ## Use the sin function to define a non-uniform grid. 
-    ## This grid is denser on the boundary.
-    # uniform_data = np.arange(0, NS+1, dtype=float)/NS
-    # kde_value = np.sin(np.pi * uniform_data - np.pi/2) / 2 + 0.5
-    for x in kde_value:
-        for y in kde_value:
-            if 0 < x+y <= 1 :
-                grid.append((x,y))
-    grid = np.array(grid)
-    return grid
 def load_all_data(directory):
     files = [os.path.join(directory, f) for f in os.listdir(directory) if f.endswith('.npy')]
     data_num = len(files)
@@ -89,21 +48,33 @@ def load_all_data(directory):
         
     return all_Inputs, F_norm, data_num
 
-def Outputs_on_kde_grid(all_Inputs, F_norm, data_num, grid):
-    all_Outputs = []
-    all_prob = np.zeros(data_num)
-    all_x_mass = np.zeros(data_num)
-    all_y_mass = np.zeros(data_num)
-    for i in range(data_num):
-        X1 = all_Inputs[i,1]
-        NO_FRAG = all_Inputs[i,2]
-        F_norm_tem = F_norm[i]
-        Outputs, all_prob[i], all_x_mass[i], all_y_mass[i] = kde_psd(F_norm_tem, X1, grid,NO_FRAG)
-        all_Outputs.append(Outputs)
-    return np.array(all_Outputs), all_prob, all_x_mass, all_y_mass
+# %% DATA PROCESSING
+def generate_grid():
+    e1 = np.zeros(NS+1)
+    e2 = np.zeros(NS+1)
+    ## Because of the subsequent CAT processing, x and y need to be expanded 
+    ## outward by one unit with value 0
+    x = np.zeros(NS+1)
+    y = np.zeros(NS+1)
+    e1[0] = -S
+    e2[0] = -S
+    for i in range(NS):
+        e1[i+1] = S**(i)
+        e2[i+1] = S**(i)
+        x[i] = (e1[i] + e1[i+1]) / 2
+        y[i] = (e2[i] + e2[i+1]) / 2
+    e1[:] /= x[-2] 
+    e2[:] /= y[-2] 
+    x[:] /= x[-2] 
+    y[:] /= y[-2] 
+    B_c = np.zeros((NS+1,NS+1)) 
+    v1 = np.zeros((NS+1,NS+1))
+    v2 = np.zeros((NS+1,NS+1))
+    M1_c = np.zeros((NS+1,NS+1))
+    M2_c = np.zeros((NS+1,NS+1))
+    return B_c,v1,v2,M1_c,M2_c,e1,e2,x,y
 
 def Outputs_on_grid(all_Inputs, F_norm, data_num,B_c,v1,v2,M1_c,M2_c,e1,e2,x,y):
-    all_Outputs = np.zeros((data_num,NS,NS))
     Inputs_2d = []
     Inputs_1dx1 = []
     Inputs_1dx2 = []
@@ -123,7 +94,7 @@ def Outputs_on_grid(all_Inputs, F_norm, data_num,B_c,v1,v2,M1_c,M2_c,e1,e2,x,y):
             tem_Inputs = [all_Inputs[i,j] for j in range(6) if j == 0 or j == 2]
             Inputs_1dx1.append(tem_Inputs)
         elif X1 == 0:
-            tem_Outputs, all_prob[i], all_x_mass[i] = direct_psd_1d(F_norm_tem[:,1],NO_FRAG,B_c,v1,M1_c,e1,x)
+            tem_Outputs, all_prob[i], all_x_mass[i] = direct_psd_1d(F_norm_tem[:,1],NO_FRAG,B_c,v1,M1_c,e1,y)
             Outputs_1dx2.append(tem_Outputs)
             tem_Inputs = [all_Inputs[i,j] for j in range(6) if j == 0 or j == 2]
             Inputs_1dx2.append(tem_Inputs)
@@ -136,12 +107,6 @@ def Outputs_on_grid(all_Inputs, F_norm, data_num,B_c,v1,v2,M1_c,M2_c,e1,e2,x,y):
                 [np.array(Inputs_2d),np.array(Outputs_2d)]]
             
     return all_data, all_prob, all_x_mass, all_y_mass
-
-def kde_psd(F_norm, X1, grid, NO_FRAG):
-    kde = KernelDensity(kernel='epanechnikov', bandwidth='scott',atol=0, rtol=0).fit(F_norm[:,:2])
-    kde_dense = np.exp(kde.score_samples(grid)) 
-    prob, x_mass, y_mass = prob_integral(kde,X1, NO_FRAG,method=int_method)
-    return kde_dense, prob, x_mass, y_mass
 
 def direct_psd_1d(F_norm,NO_FRAG,B_c_tem,v1_tem,M1_c,e1,x):
     B = np.zeros(NS)
@@ -211,7 +176,45 @@ def direct_psd_2d(F_norm, NO_FRAG,B_c,v1,v2,M1_c,M2_c,e1,e2,x,y):
     x_mass = np.sum(B * np.outer(x[:-1], np.ones(30)))
     y_mass = np.sum(B * np.outer(np.ones(30), y[:-1]))
     return B, prob, x_mass, y_mass
+# %% DATA PROCESSING KDE
+def generate_grid_kde():
+    kde_value = np.zeros(NS+1)
+    grid = []
+    # Define grid with geo-grid
+    for i in range(NS):
+            kde_value[i+1] = S ** (i)
+    kde_value[:] /= kde_value[-1]
     
+    ## Use the sin function to define a non-uniform grid. 
+    ## This grid is denser on the boundary.
+    # uniform_data = np.arange(0, NS+1, dtype=float)/NS
+    # kde_value = np.sin(np.pi * uniform_data - np.pi/2) / 2 + 0.5
+    for x in kde_value:
+        for y in kde_value:
+            if 0 < x+y <= 1 :
+                grid.append((x,y))
+    grid = np.array(grid)
+    return grid
+
+def Outputs_on_kde_grid(all_Inputs, F_norm, data_num, grid):
+    all_Outputs = []
+    all_prob = np.zeros(data_num)
+    all_x_mass = np.zeros(data_num)
+    all_y_mass = np.zeros(data_num)
+    for i in range(data_num):
+        X1 = all_Inputs[i,1]
+        NO_FRAG = all_Inputs[i,2]
+        F_norm_tem = F_norm[i]
+        Outputs, all_prob[i], all_x_mass[i], all_y_mass[i] = kde_psd(F_norm_tem, X1, grid,NO_FRAG)
+        all_Outputs.append(Outputs)
+    return np.array(all_Outputs), all_prob, all_x_mass, all_y_mass
+
+def kde_psd(F_norm, X1, grid, NO_FRAG):
+    kde = KernelDensity(kernel='epanechnikov', bandwidth='scott',atol=0, rtol=0).fit(F_norm[:,:2])
+    kde_dense = np.exp(kde.score_samples(grid)) 
+    prob, x_mass, y_mass = prob_integral(kde,X1, NO_FRAG,method=int_method)
+    return kde_dense, prob, x_mass, y_mass
+ 
 def prob_integral(kde,X1,NO_FRAG,method='dblquad'):
     if method == 'dblquad':
         args = (kde,NO_FRAG)
@@ -249,7 +252,7 @@ def x_mass_func(x,y,kde,NO_FRAG):
 def y_mass_func(x,y,kde,NO_FRAG):
     kde_input = np.array((x,y)).reshape(1,2)
     return np.exp(kde.score_samples(kde_input))[0] * y
-
+# %% MODEL TRAINING   
 def create_model_2d():
     # The input layer accepts an array of length 4 (combined STR and FRAG)
     # The output layer should now match the flattened shape of the new combined output array
@@ -316,24 +319,52 @@ def combined_custom_loss(V, NO_FRAG, alpha=0.5, beta=0.5):
 
     return loss
 
-def predictions_test(model_name,test_inputs,eva_inputs=None,eva_outputs=None):
+def train_and_evaluate_model(model, model_name, train_data, test_data, epochs, x=None, y=None):
+    # train model
+    train_model(model, train_data[0], train_data[1], epochs=epochs)
+    model.save(model_name + '.keras')
+    # evaluate_model
+    test_res = predictions_test(model_name + '.keras', test_data[0], test_data[1], x=x, y=y)
+    return test_res
+
+def predictions_test(model_name,test_all_Inputs, test_all_Outputs, x=None, y=None):
     model = load_model(model_name)
-    predicted_outputs = model.predict(test_inputs)
-    int_B_F = predicted_outputs[0,:,:,:,:,0]
-    intx_B_F = predicted_outputs[0,:,:,:,:,1]
-    inty_B_F = predicted_outputs[0,:,:,:,:,2]
-    pre_FRAG = int_B_F.sum(axis=0).sum(axis=0)
-    pre_V = intx_B_F.sum(axis=0).sum(axis=0) + inty_B_F.sum(axis=0).sum(axis=0)
+    predicted_all_Outputs = model.predict(test_all_Inputs)
+    test_mse, test_mae = model.evaluate(test_all_Inputs, test_all_Outputs)
+    length = test_all_Inputs.shape[0]
+    pre_all_prob = np.zeros(length)
+    pre_all_x_mass = np.zeros(length)
+    pre_all_y_mass = np.zeros(length)
+    true_all_x_mass = np.zeros(length)
+    true_all_y_mass = np.zeros(length)
+    for i in range(length):
+        if y is None:
+            pre_all_prob[i] = np.sum(predicted_all_Outputs[i,:])
+            pre_all_x_mass[i] = np.sum(predicted_all_Outputs[i,:] * x[:-1])
+            ## In the case of 1d, test_all_Inputs[i,1] represents the number of fragments
+            true_all_x_mass[i] = 1.0 / test_all_Inputs[i,1]
+        elif x is None:
+            pre_all_prob[i] = np.sum(predicted_all_Outputs[i,:])
+            pre_all_y_mass[i] = np.sum(predicted_all_Outputs[i,:] * y[:-1])
+            true_all_y_mass[i] = 1.0 / test_all_Inputs[i,1]
+        else:
+            pre_all_prob[i] = np.sum(predicted_all_Outputs[i,:,:])
+            pre_all_x_mass[i] = np.sum(predicted_all_Outputs[i,:,:] * np.outer(x[:-1], np.ones(30)))
+            pre_all_y_mass[i] = np.sum(predicted_all_Outputs[i,:,:] * np.outer(np.ones(30), y[:-1]))
+            ## In the case of 1d, test_all_Inputs[i,1] represents the Volume fraction of X1,
+            ## test_all_Inputs[i,2] represents the number of fragments
+            true_all_x_mass[i] = 1.0 * test_all_Inputs[i,1]  / test_all_Inputs[i,2]
+            true_all_y_mass[i] = 1.0 * (1 - test_all_Inputs[i,1])  / test_all_Inputs[i,2]
+    mse_all_x_mass = mean_squared_error(true_all_x_mass, pre_all_x_mass)
+    mse_all_y_mass = mean_squared_error(true_all_y_mass, pre_all_y_mass)
+    return test_mse, test_mae, pre_all_prob, pre_all_x_mass, pre_all_y_mass, mse_all_x_mass, mse_all_y_mass
     
-    if eva_inputs is not None and eva_outputs is not None:
-        test_loss, test_mae = model.evaluate(eva_inputs, eva_outputs)
-        return pre_FRAG, pre_V, test_loss, test_mae
-    return pre_FRAG, pre_V
-    
+# %% MAIN   
 if __name__ == '__main__':
     psd = 'direct'
     int_method = 'MC'
     directory = '../../tests/simulation_data'
+    test_directory = '../../tests/test_data'
     NS = 30
     S = 2
     N_GRIDS, N_FRACS = 200, 100
@@ -341,24 +372,74 @@ if __name__ == '__main__':
     max_len = max_NO_FRAG * N_GRIDS * N_FRACS
     
     all_Inputs, F_norm, data_num = load_all_data(directory)
+    ## Use data other than training data for testing
+    test_all_Inputs, test_F_norm, test_data_num = load_all_data(test_directory) 
     if psd == 'direct':
         B_c,v1,v2,M1_c,M2_c,e1,e2,x,y = generate_grid()
         all_data, all_prob, all_x_mass, all_y_mass = Outputs_on_grid(all_Inputs, F_norm, data_num,
+                                                                        B_c,v1,v2,M1_c,M2_c,e1,e2,x,y)
+        test_all_data, _, _, _ = Outputs_on_grid(test_all_Inputs, test_F_norm, test_data_num,
                                                                         B_c,v1,v2,M1_c,M2_c,e1,e2,x,y)
     elif psd == 'KDE':
         grid = generate_grid_kde()
         all_Outputs, all_prob, all_x_mass, all_y_mass = Outputs_on_kde_grid(all_Inputs, F_norm, data_num, grid)
     all_mass = all_x_mass + all_y_mass
     
-    model_1dx1 = create_model_1d()
-    model_1dx2 = create_model_1d()
-    model_2d = create_model_2d()
-    # model.summary()
-    history = train_model(model_1dx1, all_data[0][0], all_data[0][1], epochs=100)
-    history = train_model(model_1dx2, all_data[1][0], all_data[1][1], epochs=100)
-    history = train_model(model_2d, all_data[2][0], all_data[2][1], epochs=100)
-    model_1dx1.save('model_1dx1.keras')
-    model_1dx2.save('model_1dx2.keras')
-    model_2d.save('model_2d.keras')
-    # test_inputs = np.array([0.5,0.5,1.0,4]).reshape(1, 4)
-    # pre_FRAG, pre_V=predictions_test('model_KDE.keras',test_inputs)
+    # 
+    models = [
+        ("model_1dx1", create_model_1d(), all_data[0], test_all_data[0], {'x': x}),
+        ("model_1dx2", create_model_1d(), all_data[1], test_all_data[1], {'y': y}),
+        ("model_2d", create_model_2d(), all_data[2], test_all_data[2], {'x': x, 'y': y})
+    ]
+    
+    epochs = 2
+    num_training = 25
+    results = {name: {"mse": [], "mae": [], "mse_x_mass": [], "mse_y_mass": []} for name, _, _, _, _ in models}
+    
+    for training in range(num_training):
+        for name, model, train_data, test_data, params in models:
+            test_res = train_and_evaluate_model(model, name, train_data, test_data, epochs, **params)
+            results[name]["mse"].append(test_res[0])
+            results[name]["mae"].append(test_res[1])
+            results[name]["mse_x_mass"].append(test_res[5])
+            results[name]["mse_y_mass"].append(test_res[6])
+    ## write and read results, if needed
+    with open(f'epochs_{epochs}_num_{num_training}.json', 'w') as f:
+        json.dump(results, f)
+        
+    with open(f'epochs_{epochs}_num_{num_training}.json', 'r') as f:
+        loaded_res = json.load(f)
+    # model_1dx1 = create_model_1d()
+    # model_1dx2 = create_model_1d()
+    # model_2d = create_model_2d()
+    # # model.summary()
+    # epochs_arr = np.arange(50,1001,50)
+    # test_mse_arr = np.zeros((3,len(epochs_arr)))
+    # test_mae_arr = np.zeros((3,len(epochs_arr)))
+    # mse_all_x_mass_arr = np.zeros((3,len(epochs_arr)))
+    # mse_all_y_mass_arr = np.zeros((3,len(epochs_arr)))
+    # for i, epochs in enumerate(epochs_arr):
+    #     history = train_model(model_1dx1, all_data[0][0], all_data[0][1], epochs=epochs)
+    #     history = train_model(model_1dx2, all_data[1][0], all_data[1][1], epochs=epochs)
+    #     history = train_model(model_2d, all_data[2][0], all_data[2][1], epochs=epochs)
+    #     model_1dx1.save('model_1dx1.keras')
+    #     model_1dx2.save('model_1dx2.keras')
+    #     model_2d.save('model_2d.keras')
+        
+    #     test_res_1dx1 = predictions_test('model_1dx1.keras', test_all_data[0][0], test_all_data[0][0], x=x)
+    #     test_res_1dx2 = predictions_test('model_1dx2.keras', test_all_data[1][0], test_all_data[1][0], y=y)
+    #     test_res_2d = predictions_test('model_2d.keras', test_all_data[2][0], test_all_data[2][0], x, y)
+    #     test_mse_arr[0,i] = test_res_1dx1[0]
+    #     test_mse_arr[1,i] = test_res_1dx2[0]
+    #     test_mse_arr[2,i] = test_res_2d[0]
+    #     test_mae_arr[0,i] = test_res_1dx1[1]
+    #     test_mae_arr[1,i] = test_res_1dx2[1]
+    #     test_mae_arr[2,i] = test_res_2d[1]
+    #     mse_all_x_mass_arr[0,i] = test_res_1dx1[5]
+    #     mse_all_x_mass_arr[1,i] = test_res_1dx2[5]
+    #     mse_all_x_mass_arr[2,i] = test_res_2d[5]
+    #     mse_all_y_mass_arr[0,i] = test_res_1dx1[6]
+    #     mse_all_y_mass_arr[1,i] = test_res_1dx2[6]
+    #     mse_all_y_mass_arr[2,i] = test_res_2d[6]
+        
+    
