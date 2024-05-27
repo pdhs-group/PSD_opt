@@ -857,11 +857,12 @@ def calc_int_B_F_2D_GL(NS,V1,V3,V_e1,V_e3,BREAKFVAL,v,q):
             continue
         elif a <= i and b <= j:
             args = (V1[i],V3[j],v,q,BREAKFVAL)
-            ## The contributions of fragments on the same vertical axis
+            ## The contribution of fragments in the same cell
             if a == i and b == j:
                 int_B_F[idx]  = dblgauss_legendre(breakage_func_2d,V_e1_tem[a],V1[a],V_e3_tem[b],V3[b],xs1,ws1,xs3,ws3,args=args)
                 intx_B_F[idx] = dblgauss_legendre(breakage_func_2d_x1vol,V_e1_tem[a],V1[a],V_e3_tem[b],V3[b],xs1,ws1,xs3,ws3,args=args)
                 inty_B_F[idx] = dblgauss_legendre(breakage_func_2d_x3vol,V_e1_tem[a],V1[a],V_e3_tem[b],V3[b],xs1,ws1,xs3,ws3,args=args)
+            ## The contributions of fragments on the same vertical axis
             elif a == i:
                 int_B_F[idx]  = dblgauss_legendre(breakage_func_2d,V_e1_tem[a],V1[a],V_e3_tem[b],V_e3_tem[b+1],xs1,ws1,xs3,ws3,args=args)
                 intx_B_F[idx] = dblgauss_legendre(breakage_func_2d_x1vol,V_e1_tem[a],V1[a],V_e3_tem[b],V_e3_tem[b+1],xs1,ws1,xs3,ws3,args=args)

@@ -6,24 +6,26 @@ Created on Mon May  6 13:34:57 2024
 """
 import numpy as np
 import os,sys
-sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),".."))
+sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),"../.."))
 from pypbe.bond_break.bond_break_post import calc_int_BF
 from pypbe.utils.func.jit_pop import lam, lam_2d, heaviside
 ## external package
 from scipy.integrate import dblquad
 from sklearn.neighbors import KernelDensity
 from sklearn.metrics import mean_squared_error
-from keras.models import Sequential, load_model
-from keras.layers import Dense, InputLayer, Reshape
+from keras.models import Model, Sequential, load_model
+from keras.layers import Dense, InputLayer, Reshape, Layer
 from keras.optimizers import Adam
+from sklearn.model_selection import train_test_split
 import tensorflow as tf
 from tensorflow.keras.losses import MeanSquaredError
 import json
+import pickle
 
 def load_all_data(directory):
     files = [os.path.join(directory, f) for f in os.listdir(directory) if f.endswith('.npy')]
     data_num = len(files)
-    all_Inputs = np.zeros((data_num, 6))
+    all_Inputs = np.zeros((data_num, 7))
     F_norm = []
     num = 0
     for i, file in enumerate(files):
@@ -74,13 +76,11 @@ def generate_grid():
     M2_c = np.zeros((NS+1,NS+1))
     return B_c,v1,v2,M1_c,M2_c,e1,e2,x,y
 
-def Outputs_on_grid(all_Inputs, F_norm, data_num,B_c,v1,v2,M1_c,M2_c,e1,e2,x,y):
+def Outputs_on_grid(path_all_data, all_Inputs, F_norm, data_num,B_c,v1,v2,M1_c,M2_c,e1,e2,x,y):
     Inputs_2d = []
-    Inputs_1dx1 = []
-    Inputs_1dx2 = []
+    Inputs_1d = []
     Outputs_2d = []
-    Outputs_1dx1 = []
-    Outputs_1dx2 = []
+    Outputs_1d = []
     all_prob = np.zeros(data_num)
     all_x_mass = np.zeros(data_num)
     all_y_mass = np.zeros(data_num)
@@ -90,22 +90,19 @@ def Outputs_on_grid(all_Inputs, F_norm, data_num,B_c,v1,v2,M1_c,M2_c,e1,e2,x,y):
         F_norm_tem = F_norm[i]
         if X1 == 1:
             tem_Outputs, all_prob[i], all_x_mass[i] = direct_psd_1d(F_norm_tem[:,0],NO_FRAG,B_c,v1,M1_c,e1,x)
-            Outputs_1dx1.append(tem_Outputs)
-            tem_Inputs = [all_Inputs[i,j] for j in range(6) if j == 0 or j == 2]
-            Inputs_1dx1.append(tem_Inputs)
-        elif X1 == 0:
-            tem_Outputs, all_prob[i], all_x_mass[i] = direct_psd_1d(F_norm_tem[:,1],NO_FRAG,B_c,v1,M1_c,e1,y)
-            Outputs_1dx2.append(tem_Outputs)
-            tem_Inputs = [all_Inputs[i,j] for j in range(6) if j == 0 or j == 2]
-            Inputs_1dx2.append(tem_Inputs)
+            Outputs_1d.append(tem_Outputs)
+            tem_Inputs = [all_Inputs[i,j] for j in range(7) if j == 0 or j == 2 or j == 6]
+            Inputs_1d.append(tem_Inputs)
         else:
             tem_Outputs, all_prob[i], all_x_mass[i], all_y_mass[i]  = direct_psd_2d(F_norm_tem,NO_FRAG,B_c,v1,v2,M1_c,M2_c,e1,e2,x,y)   
             Outputs_2d.append(tem_Outputs)
             Inputs_2d.append(all_Inputs[i,:])
-    all_data = [[np.array(Inputs_1dx1),np.array(Outputs_1dx1)],
-                [np.array(Inputs_1dx2),np.array(Outputs_1dx2)],
+    all_data = [[np.array(Inputs_1d),np.array(Outputs_1d)],
                 [np.array(Inputs_2d),np.array(Outputs_2d)]]
-            
+    
+    with open(path_all_data, 'wb') as file:
+        pickle.dump((all_data, all_prob, all_x_mass, all_y_mass), file)    
+        
     return all_data, all_prob, all_x_mass, all_y_mass
 
 def direct_psd_1d(F_norm,NO_FRAG,B_c_tem,v1_tem,M1_c,e1,x):
@@ -252,85 +249,131 @@ def x_mass_func(x,y,kde,NO_FRAG):
 def y_mass_func(x,y,kde,NO_FRAG):
     kde_input = np.array((x,y)).reshape(1,2)
     return np.exp(kde.score_samples(kde_input))[0] * y
-# %% MODEL TRAINING   
+# %% MODEL TRAINING  
+class CustomLayer(Layer):
+    def __init__(self, x, y, **kwargs):
+        super(CustomLayer, self).__init__(**kwargs)
+        self.x = x
+        self.y = y
+
+    def call(self, inputs):
+        return inputs, self.x, self.y
+   
 def create_model_2d():
-    # The input layer accepts an array of length 4 (combined STR and FRAG)
+    # The input layer accepts an array of length 7 (combined STR and FRAG)
     # The output layer should now match the flattened shape of the new combined output array
     model = Sequential([
-        InputLayer(shape=(6,)),  
+        InputLayer(shape=(7,)),  
         Dense(128, activation='relu'),
         Dense(64, activation='relu'),
         Dense(NS*NS, activation='softmax'),  # Adjusted for the new output shape
-        Reshape((NS, NS))  # Reshape the output to the desired shape
+        Reshape((NS, NS)),  # Reshape the output to the desired shape
+        # custom_layer
     ])
     
-    # model.compile(optimizer=Adam(), loss=combined_custom_loss(value, NO_FRAG_value, alpha=0.01, beta=0.99), metrics=['mae'])
-    model.compile(optimizer=Adam(), loss='mse', metrics=['mae'])
     return model
 
 def create_model_1d():
     # The input layer accepts an array of length 4 (combined STR and FRAG)
     # The output layer should now match the flattened shape of the new combined output array
     model = Sequential([
-        InputLayer(shape=(2,)),  
+        InputLayer(shape=(3,)),  
         Dense(128, activation='relu'),
         Dense(64, activation='relu'),
         Dense(NS, activation='softmax'),  # Adjusted for the new output shape
         # Reshape((NS, NS))  # Reshape the output to the desired shape
+        # custom_layer
     ])
-    
-    # model.compile(optimizer=Adam(), loss=combined_custom_loss(value, NO_FRAG_value, alpha=0.01, beta=0.99), metrics=['mae'])
-    model.compile(optimizer=Adam(), loss='mse', metrics=['mae'])
+
     return model
 
-def train_model(model, all_Inputs, all_Outputs, epochs=100, batch_size=32):
-    history = model.fit(all_Inputs, all_Outputs, epochs=epochs, batch_size=batch_size, validation_split=0.2)
-    return history
+def train_model(model, all_Inputs, all_Outputs, x, y, epochs=100, batch_size=32, optimizer=Adam()):
+    # 
+    train_dataset = tf.data.Dataset.from_tensor_slices((all_Inputs.astype(np.float32), all_Outputs.astype(np.float32))).batch(batch_size)
+    optimizer = Adam()
+    # Convert numpy array to tensorflow format for calculation of loss function
+    x_tf = tf.convert_to_tensor(x, dtype=tf.float32)
+    if y is not None:
+        y_tf = tf.convert_to_tensor(y, dtype=tf.float32)
+    else:
+        y_tf = None
+    for epoch in range(epochs):
+        print(f'Starting epoch {epoch+1}')
+        # Training
+        for step, (batch_inputs, batch_outputs) in enumerate(train_dataset):
+            with tf.GradientTape() as tape:
+                prediction  = model(batch_inputs, training=True)
+                loss = combined_custom_loss(batch_outputs, prediction, batch_inputs, x_tf, y_tf, alpha=0.5, beta=0.5)
+            
+            grads = tape.gradient(loss, model.trainable_weights)
+            optimizer.apply_gradients(zip(grads, model.trainable_weights))
+            print(f'Training step {step+1}, Loss: {loss.numpy().mean()}')
+        
+    print(f"Training of Echos = {epochs} completed!")
+    # history = model.fit(all_Inputs, all_Outputs, epochs=epochs, batch_size=batch_size, validation_split=0.2)
+    # return history
 
-def custom_loss(V, NO_FRAG):
+def custom_loss_2d(inputs, x, y):
     def loss(y_true, y_pred):
+        outer_x = tf.tensordot(x[:-1], tf.ones_like(y[:-1]), axes=0)
+        outer_y = tf.tensordot(tf.ones_like(x[:-1]), y[:-1], axes=0)
         
-        # print("y_pred shape:", tf.shape(y_pred))
-        BF = y_pred[..., 0]
-        BFX = y_pred[..., 1]
-        BFY = y_pred[..., 2]
-        
-        BF_sum = tf.reduce_sum(BF, axis=[1, 2])
-        loss_bf = tf.reduce_mean(tf.square(BF_sum - NO_FRAG))  
-       
-        BFX_sum = tf.reduce_sum(BFX, axis=[1, 2])
-        BFY_sum = tf.reduce_sum(BFY, axis=[1, 2])
-        BFXY_sum = BFX_sum + BFY_sum  
-        loss_bfxy = tf.reduce_mean(tf.square(BFXY_sum - V))
-        
-        return loss_bf + loss_bfxy
+        pre_all_x_mass = tf.reduce_sum(y_pred * outer_x, axis=[1, 2])
+        pre_all_y_mass = tf.reduce_sum(y_pred * outer_y, axis=[1, 2])
+
+        true_all_x_mass = 1.0 * inputs[:, 1] / inputs[:, 2]
+        true_all_y_mass = 1.0 * (1 - inputs[:, 1]) / inputs[:, 2]
+
+        relative_error_x_mass = (pre_all_x_mass - true_all_x_mass) / true_all_x_mass
+        relative_error_y_mass = (pre_all_y_mass - true_all_y_mass) / true_all_y_mass
+
+        mse_all_x_mass = tf.reduce_mean(tf.square(relative_error_x_mass))
+        mse_all_y_mass = tf.reduce_mean(tf.square(relative_error_y_mass))
+
+        return mse_all_x_mass + mse_all_y_mass
     return loss
 
-def combined_custom_loss(V, NO_FRAG, alpha=0.5, beta=0.5):
-    mse_loss = MeanSquaredError()
-    custom_loss_func = custom_loss(V, NO_FRAG)
+def custom_loss_1d(inputs, x):
+    def loss(y_true, y_pred):
+        pre_all_mass = tf.reduce_sum(y_pred * x, axis=1)
+
+        true_all_mass = 1.0 / inputs[:, 1]
+
+        relative_error_mass = (pre_all_mass - true_all_mass) / true_all_mass
+
+
+        mse_all_mass = tf.reduce_mean(tf.square(relative_error_mass))
+
+        return mse_all_mass
+    return loss
+
+def combined_custom_loss(y_true, y_pred, inputs, x, y, alpha=0.5, beta=0.5):
+    if y is None:
+        custom_loss_func = custom_loss_1d(inputs, x)
+    else:
+        custom_loss_func = custom_loss_2d(inputs, x, y)
     
-    def loss(y_true, y_pred):
-        loss_custom = custom_loss_func(y_true, y_pred)
-        loss_mse = mse_loss(y_true, y_pred)
-        
-        # 组合损失，alpha 和 beta 是权重参数，可以根据需要调整
-        return alpha * loss_custom + beta * loss_mse
+    loss_custom = custom_loss_func(y_true, y_pred)
+    loss_mse = tf.keras.losses.mean_squared_error(y_true, y_pred)
 
-    return loss
+    return alpha * loss_custom + beta * loss_mse
 
 def train_and_evaluate_model(model, model_name, train_data, test_data, epochs, x=None, y=None):
     # train model
-    train_model(model, train_data[0], train_data[1], epochs=epochs)
+    train_model(model, train_data[0], train_data[1], epochs=epochs, x=x, y=y)
     model.save(model_name + '.keras')
     # evaluate_model
     test_res = predictions_test(model_name + '.keras', test_data[0], test_data[1], x=x, y=y)
     return test_res
 
-def predictions_test(model_name,test_all_Inputs, test_all_Outputs, x=None, y=None):
+def predictions_test(model_name,test_all_Inputs, test_all_Outputs, x=None, y=None): 
     model = load_model(model_name)
     predicted_all_Outputs = model.predict(test_all_Inputs)
-    test_mse, test_mae = model.evaluate(test_all_Inputs, test_all_Outputs)
+    all_mse = tf.keras.losses.mean_squared_error(test_all_Outputs, predicted_all_Outputs).numpy()
+    all_mae = tf.keras.losses.mean_absolute_error(test_all_Outputs, predicted_all_Outputs).numpy()
+    mse = all_mse.mean()
+    mae = all_mae.mean()
+    # test_mse, test_mae = model.evaluate(test_all_Inputs, test_all_Outputs)
     length = test_all_Inputs.shape[0]
     pre_all_prob = np.zeros(length)
     pre_all_x_mass = np.zeros(length)
@@ -340,24 +383,20 @@ def predictions_test(model_name,test_all_Inputs, test_all_Outputs, x=None, y=Non
     for i in range(length):
         if y is None:
             pre_all_prob[i] = np.sum(predicted_all_Outputs[i,:])
-            pre_all_x_mass[i] = np.sum(predicted_all_Outputs[i,:] * x[:-1])
+            pre_all_x_mass[i] = np.sum(predicted_all_Outputs[i,:] * x)
             ## In the case of 1d, test_all_Inputs[i,1] represents the number of fragments
             true_all_x_mass[i] = 1.0 / test_all_Inputs[i,1]
-        elif x is None:
-            pre_all_prob[i] = np.sum(predicted_all_Outputs[i,:])
-            pre_all_y_mass[i] = np.sum(predicted_all_Outputs[i,:] * y[:-1])
-            true_all_y_mass[i] = 1.0 / test_all_Inputs[i,1]
         else:
             pre_all_prob[i] = np.sum(predicted_all_Outputs[i,:,:])
-            pre_all_x_mass[i] = np.sum(predicted_all_Outputs[i,:,:] * np.outer(x[:-1], np.ones(30)))
-            pre_all_y_mass[i] = np.sum(predicted_all_Outputs[i,:,:] * np.outer(np.ones(30), y[:-1]))
+            pre_all_x_mass[i] = np.sum(predicted_all_Outputs[i,:,:] * np.outer(x, np.ones(30)))
+            pre_all_y_mass[i] = np.sum(predicted_all_Outputs[i,:,:] * np.outer(np.ones(30), y))
             ## In the case of 1d, test_all_Inputs[i,1] represents the Volume fraction of X1,
             ## test_all_Inputs[i,2] represents the number of fragments
             true_all_x_mass[i] = 1.0 * test_all_Inputs[i,1]  / test_all_Inputs[i,2]
             true_all_y_mass[i] = 1.0 * (1 - test_all_Inputs[i,1])  / test_all_Inputs[i,2]
     mse_all_x_mass = mean_squared_error(true_all_x_mass, pre_all_x_mass)
     mse_all_y_mass = mean_squared_error(true_all_y_mass, pre_all_y_mass)
-    return test_mse, test_mae, pre_all_prob, pre_all_x_mass, pre_all_y_mass, mse_all_x_mass, mse_all_y_mass
+    return mse, mae, pre_all_prob, pre_all_x_mass, pre_all_y_mass, mse_all_x_mass, mse_all_y_mass
     
 # %% MAIN   
 if __name__ == '__main__':
@@ -365,35 +404,44 @@ if __name__ == '__main__':
     int_method = 'MC'
     directory = '../../tests/simulation_data'
     test_directory = '../../tests/test_data'
+    path_all_data = 'output_data.pkl'
+    path_all_test = 'test_data.pkl'
     NS = 30
     S = 2
     N_GRIDS, N_FRACS = 200, 100
     max_NO_FRAG = 8
     max_len = max_NO_FRAG * N_GRIDS * N_FRACS
     
-    all_Inputs, F_norm, data_num = load_all_data(directory)
-    ## Use data other than training data for testing
-    test_all_Inputs, test_F_norm, test_data_num = load_all_data(test_directory) 
-    if psd == 'direct':
-        B_c,v1,v2,M1_c,M2_c,e1,e2,x,y = generate_grid()
-        all_data, all_prob, all_x_mass, all_y_mass = Outputs_on_grid(all_Inputs, F_norm, data_num,
-                                                                        B_c,v1,v2,M1_c,M2_c,e1,e2,x,y)
-        test_all_data, _, _, _ = Outputs_on_grid(test_all_Inputs, test_F_norm, test_data_num,
-                                                                        B_c,v1,v2,M1_c,M2_c,e1,e2,x,y)
-    elif psd == 'KDE':
-        grid = generate_grid_kde()
-        all_Outputs, all_prob, all_x_mass, all_y_mass = Outputs_on_kde_grid(all_Inputs, F_norm, data_num, grid)
-    all_mass = all_x_mass + all_y_mass
+    # all_Inputs, F_norm, data_num = load_all_data(directory)
+    # ## Use data other than training data for testing
+    # test_all_Inputs, test_F_norm, test_data_num = load_all_data(test_directory) 
+    # if psd == 'direct':
+    #     B_c,v1,v2,M1_c,M2_c,e1,e2,x,y = generate_grid()
+    #     all_data, all_prob, all_x_mass, all_y_mass = Outputs_on_grid(path_all_data, all_Inputs, F_norm, data_num,
+    #                                                                     B_c,v1,v2,M1_c,M2_c,e1,e2,x,y)
+    #     test_all_data, _, _, _ = Outputs_on_grid(path_all_test, test_all_Inputs, test_F_norm, test_data_num,
+    #                                                                     B_c,v1,v2,M1_c,M2_c,e1,e2,x,y)
+    # elif psd == 'KDE':
+    #     grid = generate_grid_kde()
+    #     all_Outputs, all_prob, all_x_mass, all_y_mass = Outputs_on_kde_grid(all_Inputs, F_norm, data_num, grid)
     
+    
+    B_c,v1,v2,M1_c,M2_c,e1,e2,x,y = generate_grid()
+    with open(path_all_data, 'rb') as file:
+        all_data, all_prob, all_x_mass, all_y_mass = pickle.load(file)
+        
+    with open(path_all_test, 'rb') as file:
+        test_all_data, _, _, _ = pickle.load(file)
+    all_mass = all_x_mass + all_y_mass
+
     # 
     models = [
-        ("model_1dx1", create_model_1d(), all_data[0], test_all_data[0], {'x': x}),
-        ("model_1dx2", create_model_1d(), all_data[1], test_all_data[1], {'y': y}),
-        ("model_2d", create_model_2d(), all_data[2], test_all_data[2], {'x': x, 'y': y})
+        ("model_1d", create_model_1d(), all_data[0], test_all_data[0], {'x': x[:-1]}),
+        ("model_2d", create_model_2d(), all_data[1], test_all_data[1], {'x': x[:-1], 'y': y[:-1]})
     ]
     
-    epochs = 2
-    num_training = 25
+    epochs = 20
+    num_training = 5
     results = {name: {"mse": [], "mae": [], "mse_x_mass": [], "mse_y_mass": []} for name, _, _, _, _ in models}
     
     for training in range(num_training):
@@ -409,37 +457,3 @@ if __name__ == '__main__':
         
     with open(f'epochs_{epochs}_num_{num_training}.json', 'r') as f:
         loaded_res = json.load(f)
-    # model_1dx1 = create_model_1d()
-    # model_1dx2 = create_model_1d()
-    # model_2d = create_model_2d()
-    # # model.summary()
-    # epochs_arr = np.arange(50,1001,50)
-    # test_mse_arr = np.zeros((3,len(epochs_arr)))
-    # test_mae_arr = np.zeros((3,len(epochs_arr)))
-    # mse_all_x_mass_arr = np.zeros((3,len(epochs_arr)))
-    # mse_all_y_mass_arr = np.zeros((3,len(epochs_arr)))
-    # for i, epochs in enumerate(epochs_arr):
-    #     history = train_model(model_1dx1, all_data[0][0], all_data[0][1], epochs=epochs)
-    #     history = train_model(model_1dx2, all_data[1][0], all_data[1][1], epochs=epochs)
-    #     history = train_model(model_2d, all_data[2][0], all_data[2][1], epochs=epochs)
-    #     model_1dx1.save('model_1dx1.keras')
-    #     model_1dx2.save('model_1dx2.keras')
-    #     model_2d.save('model_2d.keras')
-        
-    #     test_res_1dx1 = predictions_test('model_1dx1.keras', test_all_data[0][0], test_all_data[0][0], x=x)
-    #     test_res_1dx2 = predictions_test('model_1dx2.keras', test_all_data[1][0], test_all_data[1][0], y=y)
-    #     test_res_2d = predictions_test('model_2d.keras', test_all_data[2][0], test_all_data[2][0], x, y)
-    #     test_mse_arr[0,i] = test_res_1dx1[0]
-    #     test_mse_arr[1,i] = test_res_1dx2[0]
-    #     test_mse_arr[2,i] = test_res_2d[0]
-    #     test_mae_arr[0,i] = test_res_1dx1[1]
-    #     test_mae_arr[1,i] = test_res_1dx2[1]
-    #     test_mae_arr[2,i] = test_res_2d[1]
-    #     mse_all_x_mass_arr[0,i] = test_res_1dx1[5]
-    #     mse_all_x_mass_arr[1,i] = test_res_1dx2[5]
-    #     mse_all_x_mass_arr[2,i] = test_res_2d[5]
-    #     mse_all_y_mass_arr[0,i] = test_res_1dx1[6]
-    #     mse_all_y_mass_arr[1,i] = test_res_1dx2[6]
-    #     mse_all_y_mass_arr[2,i] = test_res_2d[6]
-        
-    
