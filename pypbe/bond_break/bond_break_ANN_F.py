@@ -12,14 +12,14 @@ from pypbe.utils.func.jit_pop import lam, lam_2d, heaviside
 ## external package
 from scipy.integrate import dblquad
 from sklearn.neighbors import KernelDensity
-from sklearn.metrics import mean_squared_error
+# from sklearn.metrics import mean_squared_error
 from keras.models import Model, Sequential, load_model
 from keras.layers import Dense, InputLayer, Reshape, Layer
 from keras.optimizers import Adam
-from sklearn.model_selection import train_test_split
+# from sklearn.model_selection import train_test_split
 import tensorflow as tf
-from tensorflow.keras.losses import MeanSquaredError
-import json
+# from tensorflow.keras.losses import MeanSquaredError
+# import json
 import pickle
 
 def load_all_data(directory):
@@ -56,10 +56,10 @@ def generate_grid():
     e2 = np.zeros(NS+1)
     ## Because of the subsequent CAT processing, x and y need to be expanded 
     ## outward by one unit with value 0
-    x = np.zeros(NS+1)
-    y = np.zeros(NS+1)
-    e1[0] = -S
-    e2[0] = -S
+    x = np.zeros(NS+1)-1
+    y = np.zeros(NS+1)-1
+    e1[0] = -1
+    e2[0] = -1
     for i in range(NS):
         e1[i+1] = S**(i)
         e2[i+1] = S**(i)
@@ -315,8 +315,8 @@ def train_model(model, all_Inputs, all_Outputs, x, y, epochs=100, batch_size=32,
 
 def custom_loss_2d(inputs, x, y):
     def loss(y_true, y_pred):
-        outer_x = tf.tensordot(x[:-1], tf.ones_like(y[:-1]), axes=0)
-        outer_y = tf.tensordot(tf.ones_like(x[:-1]), y[:-1], axes=0)
+        outer_x = tf.tensordot(x, tf.ones_like(y), axes=0)
+        outer_y = tf.tensordot(tf.ones_like(x), y, axes=0)
         
         pre_all_x_mass = tf.reduce_sum(y_pred * outer_x, axis=[1, 2])
         pre_all_y_mass = tf.reduce_sum(y_pred * outer_y, axis=[1, 2])
@@ -340,7 +340,6 @@ def custom_loss_1d(inputs, x):
         true_all_mass = 1.0 / inputs[:, 1]
 
         relative_error_mass = (pre_all_mass - true_all_mass) / true_all_mass
-
 
         mse_all_mass = tf.reduce_mean(tf.square(relative_error_mass))
 
@@ -394,10 +393,15 @@ def predictions_test(model_name,test_all_Inputs, test_all_Outputs, x=None, y=Non
             ## test_all_Inputs[i,2] represents the number of fragments
             true_all_x_mass[i] = 1.0 * test_all_Inputs[i,1]  / test_all_Inputs[i,2]
             true_all_y_mass[i] = 1.0 * (1 - test_all_Inputs[i,1])  / test_all_Inputs[i,2]
-    mse_all_x_mass = mean_squared_error(true_all_x_mass, pre_all_x_mass)
-    mse_all_y_mass = mean_squared_error(true_all_y_mass, pre_all_y_mass)
-    return mse, mae, pre_all_prob, pre_all_x_mass, pre_all_y_mass, mse_all_x_mass, mse_all_y_mass
-    
+    mean_all_x_mass = (abs(true_all_x_mass - pre_all_x_mass) / true_all_x_mass).mean()
+    if y is not None:
+        mean_all_y_mass = (abs(true_all_y_mass - pre_all_y_mass) / true_all_y_mass).mean()
+    else:
+        mean_all_y_mass = 0.0
+    return mse, mae, pre_all_prob, pre_all_x_mass, pre_all_y_mass, mean_all_x_mass, mean_all_y_mass
+
+# %% POST PROCESSING  
+
 # %% MAIN   
 if __name__ == '__main__':
     psd = 'direct'
@@ -434,26 +438,26 @@ if __name__ == '__main__':
         test_all_data, _, _, _ = pickle.load(file)
     all_mass = all_x_mass + all_y_mass
 
-    # 
+    
     models = [
         ("model_1d", create_model_1d(), all_data[0], test_all_data[0], {'x': x[:-1]}),
         ("model_2d", create_model_2d(), all_data[1], test_all_data[1], {'x': x[:-1], 'y': y[:-1]})
     ]
     
-    epochs = 20
-    num_training = 5
-    results = {name: {"mse": [], "mae": [], "mse_x_mass": [], "mse_y_mass": []} for name, _, _, _, _ in models}
+    epochs = 2
+    num_training = 25
+    results = {name: {"mse": [], "mae": [], "mean_x_mass": [], "mean_y_mass": []} for name, _, _, _, _ in models}
     
     for training in range(num_training):
         for name, model, train_data, test_data, params in models:
             test_res = train_and_evaluate_model(model, name, train_data, test_data, epochs, **params)
             results[name]["mse"].append(test_res[0])
             results[name]["mae"].append(test_res[1])
-            results[name]["mse_x_mass"].append(test_res[5])
-            results[name]["mse_y_mass"].append(test_res[6])
+            results[name]["mean_x_mass"].append(test_res[5])
+            results[name]["mean_y_mass"].append(test_res[6])
     ## write and read results, if needed
-    with open(f'epochs_{epochs}_num_{num_training}.json', 'w') as f:
-        json.dump(results, f)
+    with open(f'epochs_{epochs}_num_{num_training}.pkl', 'wb') as f:
+        pickle.dump(results, f)
         
-    with open(f'epochs_{epochs}_num_{num_training}.json', 'r') as f:
-        loaded_res = json.load(f)
+    with open(f'epochs_{epochs}_num_{num_training}.pkl', 'rb') as f:
+        loaded_res = pickle.load(f)

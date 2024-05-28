@@ -31,7 +31,7 @@ config = {
         ## method = BO: use Bayesian Optimization
         'method': 'BO',
 
-        'n_iter': 1,
+        'n_iter': 100,
         'calc_init_N': True,
         ## delta_flag = q3: use q3
         ## delta_flag = Q3: use Q3
@@ -43,9 +43,9 @@ config = {
         ## 'MAE': Mean Absolute Error
         ## 'KL': Kullback–Leibler divergence(Only q3 and Q3 are compatible with KL) 
 
-        'delta_flag': [('q3','KL'), 
-                       # ('Q3','MSE'), 
-                       # ('x_50','MSE')
+        'delta_flag': [#('q3','KL'), 
+                       #('Q3','MSE'), 
+                       ('x_50','MSE')
                        ],
         },
     
@@ -57,7 +57,7 @@ config = {
         'BREAKFVAL' : 5,
         ## aggl_crit: The sequence number of the particle that allows further agglomeration
         'aggl_crit' : 100,
-        'process_type' : "agglomeration",
+        'process_type' : "breakage",
         'pl_v' : 1,
         'pl_P1' : 5e-4,
         'pl_P2' : 0.6,

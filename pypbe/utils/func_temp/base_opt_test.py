@@ -245,7 +245,7 @@ if __name__ == '__main__':
                             dist_path_NM=dist_path_NM, dist_path_M=dist_path_M)
     find.algo.weight_2d = conf.config['weight_2d']
 
-    data_name = "Sim_Mul_0.1_para_100.0_0.5_0.5_0.5_1_0.0005_0.6_0.002_0.4.xlsx"  
+    data_name = "Sim_Mul_0.1_para_100.0_1_1_1_1_0.0005_0.6_0.002_0.4.xlsx"  
     
     exp_data_path = os.path.join(base_path, data_name)
     exp_data_paths = [

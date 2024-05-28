@@ -395,7 +395,7 @@ def break_one_bond(G, STR, ibl=1, idx=None, init_break_random=False):
     else:
         fracture_flag = True
         
-    return G_new, idx_new, fracture_flag, str_array[b_idx]    
+    return G_new, idx_new, fracture_flag, str_array[b_idx]
 
 @jit(nopython=True)
 def calculate_probabilities(G, init_array, STR):
