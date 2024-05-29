@@ -55,7 +55,7 @@ if __name__ == '__main__':
     var_corr_beta = np.array([1e2])
     # var_corr_beta = np.array([1e-2])
     ## define the range of alpha_prim 27x3
-    values = np.array([0.5, 1])
+    values = np.array([1])
     a1, a2, a3 = np.meshgrid(values, values, values, indexing='ij')
     var_alpha_prim = np.column_stack((a1.flatten(), a2.flatten(), a3.flatten()))
     ## The case of all zero α is meaningless, that means no Agglomeration occurs

@@ -31,7 +31,7 @@ config = {
         ## method = BO: use Bayesian Optimization
         'method': 'BO',
 
-        'n_iter': 100,
+        'n_iter': 800,
         'calc_init_N': True,
         ## delta_flag = q3: use q3
         ## delta_flag = Q3: use Q3
@@ -43,8 +43,8 @@ config = {
         ## 'MAE': Mean Absolute Error
         ## 'KL': Kullback–Leibler divergence(Only q3 and Q3 are compatible with KL) 
 
-        'delta_flag': [#('q3','KL'), 
-                       #('Q3','MSE'), 
+        'delta_flag': [('q3','KL'), 
+                       ('Q3','KL'), 
                        ('x_50','MSE')
                        ],
         },
@@ -80,9 +80,9 @@ config = {
     
     ## Parameters which should be optimized
     'opt_params' : {
-        'corr_agg_0': {'bounds': (-3.0, 3.0), 'log_scale': True},
-        'corr_agg_1': {'bounds': (-3.0, 3.0), 'log_scale': True},
-        'corr_agg_2': {'bounds': (-3.0, 3.0), 'log_scale': True},
+        # 'corr_agg_0': {'bounds': (-3.0, 3.0), 'log_scale': True},
+        # 'corr_agg_1': {'bounds': (-3.0, 3.0), 'log_scale': True},
+        # 'corr_agg_2': {'bounds': (-3.0, 3.0), 'log_scale': True},
         'pl_v': {'bounds': (0.1, 2), 'log_scale': False},
         'pl_P1': {'bounds': (-6, -2), 'log_scale': True},
         'pl_P2': {'bounds': (0.1, 0.6), 'log_scale': False},
