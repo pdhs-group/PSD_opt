@@ -110,7 +110,7 @@ if __name__ == "__main__":
     p.aggl_crit= 100
     p.process_type= "breakage"
     p.pl_v= 0.1
-    p.pl_P1= 1e-3
+    p.pl_P1= 1e-2
     p.pl_P2= 0.6
     p.pl_P3= 1e-2
     p.pl_P4= 0.6

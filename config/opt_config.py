@@ -31,7 +31,7 @@ config = {
         ## method = BO: use Bayesian Optimization
         'method': 'BO',
 
-        'n_iter': 800,
+        'n_iter': 400,
         'calc_init_N': True,
         ## delta_flag = q3: use q3
         ## delta_flag = Q3: use Q3
@@ -43,9 +43,9 @@ config = {
         ## 'MAE': Mean Absolute Error
         ## 'KL': Kullback–Leibler divergence(Only q3 and Q3 are compatible with KL) 
 
-        'delta_flag': [('q3','KL'), 
-                       ('Q3','KL'), 
-                       ('x_50','MSE')
+        'delta_flag': [('q3','MSE'), 
+                       #('Q3','KL'), 
+                       #('x_50','MSE')
                        ],
         },
     
