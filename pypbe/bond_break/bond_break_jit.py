@@ -308,12 +308,9 @@ def break_one_bond(G, STR, ibl=1, idx=None, init_break_random=False):
             # init_array[:,:,4][init_array[:,:,1]==22] = 1/STR[2]
             # zero_prob_indices = np.where(init_array[0, :, 4] == 0)[0]
             # init_array[:, zero_prob_indices, 4] = 0
-            init_array = calculate_probabilities(G_new, init_array, STR)
-            init_array[:,:,4] /= np.sum(init_array[:,:,4])
-            init_array_tem = init_array[:,:,4].sum(axis=0)
-            
+            str_sum, init_array_prob = calculate_probabilities(G_new, init_array, STR)
             # b_idx = int(np.random.choice(init_array[:,0], p=init_array[:,4]))
-            b_idx = int(rand_choice_nb(init_array[0,:,0], init_array_tem))
+            b_idx = int(rand_choice_nb(init_array[0,:,0], init_array_prob))
             
             idx = np.array([init_array[0, b_idx,2],init_array[0, b_idx,3]]).astype(np.int64)   
             #print('initial bond is type: ', init_array[b_idx,1])             
@@ -336,7 +333,10 @@ def break_one_bond(G, STR, ibl=1, idx=None, init_break_random=False):
     p[b==11] = 1/STR[0]
     p[b==12] = 1/STR[1]
     p[b==22] = 1/STR[2]
-    str_array[p!=0] = 1/p[p!=0]
+    if l != 1:
+        str_array[p!=0] = str_sum[b_idx]
+    else:
+        str_array[p!=0] = 1/p[p!=0]
         
     # Normalize probabilites
     p /= np.sum(p)
@@ -417,13 +417,17 @@ def calculate_probabilities(G, init_array, STR):
                     if G[i, j-1] == -1 and G[i, j+1] == -1:
                         init_array[l:, cnt, 4] = 0
                         break
+            ## Since the calculation should be based on the sum of the strengths, 
+            ## their strengths are saved here first.
+            ## Afterwards, the inverse of the sum of the intensities is calculated 
+            ## as the fracture probability. 
             if init_array[l, cnt, 1] == 11:
-                init_array[l, cnt, 4] = 1 / STR[0]
+                init_array[l, cnt, 4] = STR[0]
             elif init_array[l, cnt, 1] == 12:
-                init_array[l, cnt, 4] = 1 / STR[1]
+                init_array[l, cnt, 4] = STR[1]
             elif init_array[l, cnt, 1] == 22:
-                init_array[l, cnt, 4] = 1 / STR[2]
-                
+                init_array[l, cnt, 4] = STR[2]
+    ## Rejecting the starting position where the fracture should not occur            
     zero_prob_indices = []
     for cnt in range(init_array.shape[1]):
         if init_array[0, cnt, 4] == 0:
@@ -432,8 +436,13 @@ def calculate_probabilities(G, init_array, STR):
     for l in range(init_array.shape[0]):
         for idx in zero_prob_indices:
             init_array[l, idx, 4] = 0
-
-    return init_array
+    
+    str_sum = init_array[:,:,4].sum(axis=0)
+    init_array_prob = np.zeros_like(str_sum)
+    init_array_prob[np.where(str_sum != 0)] = 1 / str_sum[np.where(str_sum != 0)] 
+    init_array_prob /= np.sum(init_array_prob)
+    
+    return str_sum, init_array_prob
 
 @jit(nopython=True)
 def recursive_fun(G, i, j, cnt_1, cnt_2, new_value=0):
@@ -711,12 +720,12 @@ if __name__ == '__main__':
     
     N_GRIDS, N_FRACS = 200, 100
     ## relative depth relative to the grid size, ranging from [0,1]
-    int_bre = 0
+    int_bre = 1
     
     # Perform stochastic simulation
     # Fragment array [total area, X1, X2, fracture energy]
-    F = MC_breakage(A, X1, X2, STR, NO_FRAG, int_bre, N_GRIDS=N_GRIDS, N_FRACS=N_FRACS, 
-                    A0=A0, init_break_random=INIT_BREAK_RANDOM) 
+    # F = MC_breakage(A, X1, X2, STR, NO_FRAG, int_bre, N_GRIDS=N_GRIDS, N_FRACS=N_FRACS, 
+    #                 A0=A0, init_break_random=INIT_BREAK_RANDOM) 
     
     ########### -----------
     # profiler.disable()
@@ -740,9 +749,9 @@ if __name__ == '__main__':
         pt.plot_init(mrksze=12,lnewdth=1)
             
         # Visualize distributions
-        ax1, ax2, ax3 = plot_F(F)
+        # ax1, ax2, ax3 = plot_F(F)
         
         # Perform a single simulation (1 grid, 1 fracture) for visualization
         # G, G_new, R, cnt_1_arr, cnt_2_arr, val_arr, fracture_energy, F_test = \
         #     single_sim(A, X1, X2, STR, NO_FRAG, int_bre, plot=True, A0=A0,
-        #                close=False, init_break_random=INIT_BREAK_RANDOM)
+        #                 close=False, init_break_random=INIT_BREAK_RANDOM)
