@@ -879,13 +879,13 @@ class population():
                 if self.process_type == 'agglomeration':
                     return
                 
-                if self.USE_MC_BOND:
+                if self.B_F_type == 'MC_bond':
                     mc_bond = np.load(self.PTH_MC_BOND, allow_pickle=True)
                     self.int_B_F = mc_bond['int_B_F'][:,0,:,0]
                     self.intx_B_F = mc_bond['intx_B_F'][:,0,:,0] * self.V_e[1]
                     # for i in range(2, self.NS):
                     #     self.intx_B_F[:,i] = mc_bond['intx_B_F'][:,0,i,0] * self.V[i]
-                else:
+                elif self.B_F_type == 'int_func':
                     ## Let the integration range associated with the breakage function start from zero 
                     ## to ensure mass conservation  
                     V_e_tem = np.copy(self.V_e)
@@ -909,7 +909,7 @@ class population():
             if self.process_type == 'agglomeration':
                 return
             
-            if self.USE_MC_BOND:
+            if self.B_F_type == 'MC_bond':
                 mc_bond = np.load(self.PTH_MC_BOND, allow_pickle=True)
                 self.int_B_F = mc_bond['int_B_F']
                 # for i in range (0, self.NS):
@@ -926,15 +926,18 @@ class population():
                 self.intx_B_F = mc_bond['intx_B_F'] * self.V_e1[1]
                 self.inty_B_F = mc_bond['inty_B_F'] * self.V_e3[1]
 
-            elif self.JIT_BF:
-                self.int_B_F, self.intx_B_F, self.inty_B_F = jit.calc_int_B_F_2D_GL(
-                    self.NS,self.V1,self.V3,self.V_e1,self.V_e3,self.BREAKFVAL,self.pl_v,self.pl_q)
-                # self.int_B_F, self.intx_B_F, self.inty_B_F = jit.calc_int_B_F_2D(
-                #     self.NS,self.V1,self.V3,self.V_e1,self.V_e3,self.BREAKFVAL,self.pl_v,self.pl_q)
-            else:
-                self.int_B_F, self.intx_B_F,self.inty_B_F = jit.calc_int_B_F_2D_quad(
-                    self.NS, self.V1, self.V3, self.V_e1, self.V_e3, self.BREAKFVAL, self.pl_v, self.pl_q)
+            elif self.B_F_type == 'int_func':
+                if self.JIT_BF:
+                    self.int_B_F, self.intx_B_F, self.inty_B_F = jit.calc_int_B_F_2D_GL(
+                        self.NS,self.V1,self.V3,self.V_e1,self.V_e3,self.BREAKFVAL,self.pl_v,self.pl_q)
+                    # self.int_B_F, self.intx_B_F, self.inty_B_F = jit.calc_int_B_F_2D(
+                    #     self.NS,self.V1,self.V3,self.V_e1,self.V_e3,self.BREAKFVAL,self.pl_v,self.pl_q)
+                else:
+                    self.int_B_F, self.intx_B_F,self.inty_B_F = jit.calc_int_B_F_2D_quad(
+                        self.NS, self.V1, self.V3, self.V_e1, self.V_e3, self.BREAKFVAL, self.pl_v, self.pl_q)
+            elif self.B_F_type == 'ANN_MC':
                 
+                return
             
     ## Visualize / plot population:
     def visualize_distN_t(self,t_plot=None,t_pause=0.5,close_all=False,scl_a4=1,figsze=[12.8,6.4*1.5]):
@@ -1567,7 +1570,9 @@ class population():
         # self.pl_P5 = 1e-6                     # 5. parameter in power law for breakage rate  2d
         # self.pl_P6 = 0.5                      # 6. parameter in power law for breakage rate  2d
         
-        self.USE_MC_BOND = False
+        self.B_F_type = 'int_func'            # 'int_func': calculate B_F with breakage function
+                                              # 'MC_bond': Obtain B_F directly from the result of MC_bond
+                                              # 'ANN_MC': Calculate MC results using ANN model and convert to B_F
         self.PTH_MC_BOND = os.path.join(self.pth,'bond_break','int_B_F.npz')
                        
         self.SIZEEVAL = 2                     # Case for implementation of size dependency. 1 = No size dependency, 2 = Model from Soos2007 

@@ -82,8 +82,12 @@ def visualize_convergence():
 def visualize_N():
     fig=plt.figure()    
     N_t=fig.add_subplot(1,1,1)   
-    N[0,0,:] = 0
-    N_sum = N.sum(axis=0).sum(axis=0)
+    if dim == 1:
+        N[0,:] = 0
+        N_sum = N.sum(axis=0)
+    elif dim == 2:
+        N[0,0,:] = 0
+        N_sum = N.sum(axis=0).sum(axis=0)
     N_t, fig = pt.plot_data(t_vec, N_sum, fig=fig, ax=N_t,
                             xlbl='time  / $s$',
                             ylbl='total particle nummer',
@@ -95,7 +99,7 @@ def visualize_N():
 
 #%% MAIN   
 if __name__ == "__main__":
-    dim=2
+    dim=1
     p = pop(dim=dim)
     smoothing = True
     
@@ -108,22 +112,22 @@ if __name__ == "__main__":
     p.BREAKRVAL= 4
     p.BREAKFVAL= 5
     p.aggl_crit= 100
-    p.process_type= "breakage"
-    p.pl_v= 0.1
-    p.pl_P1= 1e-2
-    p.pl_P2= 0.6
-    p.pl_P3= 1e-2
-    p.pl_P4= 0.6
+    p.process_type= "mix"
+    p.pl_v= 2
+    p.pl_P1= 1.7615439775810864e-05
+    p.pl_P2= 0.1
+    p.pl_P3= 0.003004154541646803
+    p.pl_P4= 0.1
     # p.pl_P5= 1e-2
     # p.pl_P6= 1
     p.COLEVAL= 2
     p.EFFEVAL= 1
     p.SIZEEVAL= 1
     if dim == 2:
-        p.alpha_prim = np.array([1,1,1,1])
+        p.alpha_prim = np.array([0.51454132, 0.01498605, 0.01498605,0.85706175])
     elif dim == 1:
-        p.alpha_prim = 0.5
-    p.CORR_BETA= 100
+        p.alpha_prim = 0.51454132
+    p.CORR_BETA= 0.01
     ## The original value is the particle size at 1% of the PSD distribution. 
     ## The position of this value in the coordinate system can be adjusted by multiplying by size_scale.
     size_scale = 1e-1
@@ -131,7 +135,7 @@ if __name__ == "__main__":
     p.R03 = 8.677468940430804e-07*size_scale
     
     ## If you need to read PSD data as initial conditions, set the PSD data path
-    p.USE_PSD = False
+    p.USE_PSD = True
     p.DIST1 = os.path.join(p.pth,'data','PSD_data','PSD_x50_2.0E-6_RelSigmaV_1.5E-1.npy')
     p.DIST3 = os.path.join(p.pth,'data','PSD_data','PSD_x50_2.0E-6_RelSigmaV_1.5E-1.npy')
     

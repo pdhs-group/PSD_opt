@@ -558,6 +558,8 @@ class opt_algo():
                 if pop is self.p_M:
                     pop.pl_P1 = params['pl_P3']
                     pop.pl_P2 = params['pl_P4']
+        if 'CORR_BETA' in params:
+            pop.CORR_BETA = params['CORR_BETA']
 
     def set_pop_attributes(self, pop, params):
         for key, value in params.items():

@@ -333,7 +333,7 @@ def break_one_bond(G, STR, ibl=1, idx=None, init_break_random=False):
     p[b==11] = 1/STR[0]
     p[b==12] = 1/STR[1]
     p[b==22] = 1/STR[2]
-    if l != 1:
+    if ibl != 1:
         str_array[p!=0] = str_sum[b_idx]
     else:
         str_array[p!=0] = 1/p[p!=0]
@@ -437,6 +437,7 @@ def calculate_probabilities(G, init_array, STR):
         for idx in zero_prob_indices:
             init_array[l, idx, 4] = 0
     
+    ## Calculate the sum of the strengths of all bonds along possible breaking directions
     str_sum = init_array[:,:,4].sum(axis=0)
     init_array_prob = np.zeros_like(str_sum)
     init_array_prob[np.where(str_sum != 0)] = 1 / str_sum[np.where(str_sum != 0)] 
@@ -720,7 +721,7 @@ if __name__ == '__main__':
     
     N_GRIDS, N_FRACS = 200, 100
     ## relative depth relative to the grid size, ranging from [0,1]
-    int_bre = 1
+    int_bre = 0.5
     
     # Perform stochastic simulation
     # Fragment array [total area, X1, X2, fracture energy]
@@ -752,6 +753,6 @@ if __name__ == '__main__':
         # ax1, ax2, ax3 = plot_F(F)
         
         # Perform a single simulation (1 grid, 1 fracture) for visualization
-        # G, G_new, R, cnt_1_arr, cnt_2_arr, val_arr, fracture_energy, F_test = \
-        #     single_sim(A, X1, X2, STR, NO_FRAG, int_bre, plot=True, A0=A0,
-        #                 close=False, init_break_random=INIT_BREAK_RANDOM)
+        G, G_new, R, cnt_1_arr, cnt_2_arr, val_arr, fracture_energy, F_test = \
+            single_sim(A, X1, X2, STR, NO_FRAG, int_bre, plot=True, A0=A0,
+                        close=False, init_break_random=INIT_BREAK_RANDOM)

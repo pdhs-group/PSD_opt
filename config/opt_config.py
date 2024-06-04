@@ -68,7 +68,7 @@ config = {
         'COLEVAL' : 2,
         'EFFEVAL' : 1,
         'SIZEEVAL' : 1,
-        'alpha_prim': np.array([0.5, 0.5, 0.5]),
+        'alpha_prim': np.array([1, 1, 1]),
         # 'alpha_prim': 0.5,
         'CORR_BETA' : 100,
         ## Reduce particle number desity concentration to improve calculation stability
