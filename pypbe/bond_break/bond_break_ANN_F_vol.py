@@ -426,6 +426,7 @@ def predictions_test(model_name,test_all_Inputs, test_all_Outputs, V, X1, mask):
     else:
         mean_all_y_mass = (abs(true_all_y_mass - pre_all_y_mass) / true_all_y_mass).mean()
         mean_all_mass = np.sum(abs(1.0-(pre_all_x_mass+pre_all_y_mass)))
+
     return mse, mae, mean_all_prob, mean_all_x_mass, mean_all_y_mass, mean_all_mass
 
 # %% POST PROCESSING  
@@ -652,6 +653,7 @@ if __name__ == '__main__':
     epochs = 2
     num_training = 50
     results = {name: {"mse": [], "mae": [], "mean_frag_erro": [], "mean_x_mass_erro": [], "mean_y_mass_erro": [], "mean_all_mass_erro": []} for name, _, _, _, _ in models}
+
     
     for training in range(num_training):
         for name, model, train_data, test_data, params in models:
@@ -662,6 +664,7 @@ if __name__ == '__main__':
             results[name]["mean_x_mass_erro"].append(test_res[3])
             results[name]["mean_y_mass_erro"].append(test_res[4])
             results[name]["mean_all_mass_erro"].append(test_res[5])
+
     ## write and read results, if needed
     with open(f'epochs_{epochs}_num_{num_training}_vol.pkl', 'wb') as f:
         pickle.dump(results, f)
@@ -670,4 +673,5 @@ if __name__ == '__main__':
         loaded_res = pickle.load(f)
         
     plot_error(results, epochs, num_training)    
+
     # int_B_F, intx_B_F, inty_B_F, V = test_ANN_to_B_F(NS,S)
