@@ -266,22 +266,55 @@ def return_pop_distribution(find, pop, axq3=None,fig=None, clr='b', q3lbl='q3'):
     axq3.set_xscale('log')
     
 if __name__ == '__main__': 
-    use_rel_diff = True
+    use_rel_diff = False
     results_pth = 'Parameter_study'
     pbe_type = 'mix'
     # pbe_type = 'breakage'
     # pbe_type = 'mix'
+    # file_names = [
+    #     'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_400.npz',
+    #     'multi_[(\'q3\', \'MSE\')]_BO_wight_1_iter_400.npz',
+    #     'multi_[(\'q3\', \'MAE\')]_BO_wight_1_iter_400.npz',
+    #     'multi_[(\'q3\', \'RMSE\')]_BO_wight_1_iter_400.npz',
+    #     'multi_[(\'QQ3\', \'KL\')]_BO_wight_1_iter_400.npz',
+    #     # 'multi_[(\'QQ3\', \'MSE\')]_BO_wight_1_iter_400.npz',
+    #     'multi_[(\'x_50\', \'MSE\')]_BO_wight_1_iter_400.npz',
+    #     # 'multi_[(\'q3\', \'KL\'), (\'Q3\', \'KL\'), (\'x_50\', \'MSE\')]_BO_wight_1_iter_400.npz',
+    #     ]
+    # labels = [
+    #     'q3_KL',
+    #     'q3_MSE',
+    #     'q3_MAE',
+    #     'q3_RMSE',
+    #     'Q3_KL',
+    #     # 'Q3_MSE',
+    #     'x_50_MSE',
+    #     # 'q3_KL_Q3_KL_x_50_MSE',
+    #     ]
+    # file_names = [
+    #     'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_400.npz',
+    #     # 'multi_[(\'q3\', \'KL\')]_BO_wight_5_iter_400.npz',
+    #     'multi_[(\'q3\', \'KL\')]_BO_wight_10_iter_400.npz',
+    #     ]
+    # labels = [
+    #     'wight_1',
+    #     # 'wight_5',
+    #     'wight_10',
+    #     ]
+    
     file_names = [
         'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_50.npz',
         'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_100.npz',
         'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_200.npz',
         'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_400.npz',
+        'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_800.npz',
         ]
     labels = [
         'iter_50',
         'iter_100',
         'iter_200',
         'iter_400',
+        'iter_800',
         ]
     
     data_paths = [os.path.join(results_pth, pbe_type, file_name) for file_name in file_names]
@@ -293,13 +326,13 @@ if __name__ == '__main__':
     
     visualize_diff_mean(results, labels)
     ## kernel: corr_agg_0, corr_agg_1, corr_agg_2, pl_v, pl_P1, pl_P2, pl_P3, pl_P4
-    result_to_analyse = results[3]
+    result_to_analyse = results[-1]
     visualize_diff_kernel_value(result_to_analyse, eval_kernels=['corr_agg_0','corr_agg_1','corr_agg_2'])
     visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_v'])
     visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P1','pl_P3'])
     visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P2','pl_P4'])
     
-    variable_to_analyse = result_to_analyse[6]
+    variable_to_analyse = result_to_analyse[-1]
     one_frame = False
     t_return = -1
     fps = 5
