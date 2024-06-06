@@ -419,8 +419,10 @@ def predictions_test(model_name,test_all_Inputs, test_all_Outputs, V, X1, mask):
     mean_all_x_mass = (abs(true_all_x_mass - pre_all_x_mass) / true_all_x_mass).mean()
     if V.ndim == 1:
         mean_all_y_mass = 0.0
+        mean_all_mass = mean_all_x_mass
     else:
         mean_all_y_mass = (abs(true_all_y_mass - pre_all_y_mass) / true_all_y_mass).mean()
+        mean_all_mass = np.sum(abs(1.0-(pre_all_x_mass+pre_all_y_mass)))
     return mse, mae, mean_all_prob, mean_all_x_mass, mean_all_y_mass
 
 # %% POST PROCESSING  
@@ -600,36 +602,36 @@ if __name__ == '__main__':
     
     
     B_c,v1,v2,M1_c,M2_c,e1,e2,x,y = generate_grid()
-    # with open(path_all_data, 'rb') as file:
-    #     all_data, all_prob, all_x_mass, all_y_mass = pickle.load(file)
+    with open(path_all_data, 'rb') as file:
+        all_data, all_prob, all_x_mass, all_y_mass = pickle.load(file)
         
-    # with open(path_all_test, 'rb') as file:
-    #     test_all_data, _, _, _ = pickle.load(file)
-    # all_mass = all_x_mass + all_y_mass
+    with open(path_all_test, 'rb') as file:
+        test_all_data, _, _, _ = pickle.load(file)
+    all_mass = all_x_mass + all_y_mass
 
     
-    # models = [
-    #     ("model_1d", create_model_1d(), all_data[0], test_all_data[0], {'x': x[:-1]}),
-    #     ("model_2d", create_model_2d(), all_data[1], test_all_data[1], {'x': x[:-1], 'y': y[:-1]})
-    # ]
+    models = [
+        ("model_1d", create_model_1d(), all_data[0], test_all_data[0], {'x': x[:-1]}),
+        ("model_2d", create_model_2d(), all_data[1], test_all_data[1], {'x': x[:-1], 'y': y[:-1]})
+    ]
     
-    # epochs = 2
-    # num_training = 25
-    # results = {name: {"mse": [], "mae": [], "mean_prob": [], "mean_x_mass": [], "mean_y_mass": []} for name, _, _, _, _ in models}
+    epochs = 2
+    num_training = 25
+    results = {name: {"mse": [], "mae": [], "mean_prob": [], "mean_x_mass": [], "mean_y_mass": []} for name, _, _, _, _ in models}
     
-    # for training in range(num_training):
-    #     for name, model, train_data, test_data, params in models:
-    #         test_res = train_and_evaluate_model(model, name, train_data, test_data, epochs, **params)
-    #         results[name]["mse"].append(test_res[0])
-    #         results[name]["mae"].append(test_res[1])
-    #         results[name]["mean_prob"].append(test_res[2])
-    #         results[name]["mean_x_mass"].append(test_res[3])
-    #         results[name]["mean_y_mass"].append(test_res[4])
-    # ## write and read results, if needed
-    # with open(f'epochs_{epochs}_num_{num_training}_vol.pkl', 'wb') as f:
-    #     pickle.dump(results, f)
+    for training in range(num_training):
+        for name, model, train_data, test_data, params in models:
+            test_res = train_and_evaluate_model(model, name, train_data, test_data, epochs, **params)
+            results[name]["mse"].append(test_res[0])
+            results[name]["mae"].append(test_res[1])
+            results[name]["mean_prob"].append(test_res[2])
+            results[name]["mean_x_mass"].append(test_res[3])
+            results[name]["mean_y_mass"].append(test_res[4])
+    ## write and read results, if needed
+    with open(f'epochs_{epochs}_num_{num_training}_vol.pkl', 'wb') as f:
+        pickle.dump(results, f)
         
-    # with open(f'epochs_{epochs}_num_{num_training}_vol.pkl', 'rb') as f:
-    #     loaded_res = pickle.load(f)
+    with open(f'epochs_{epochs}_num_{num_training}_vol.pkl', 'rb') as f:
+        loaded_res = pickle.load(f)
         
-    int_B_F, intx_B_F, inty_B_F, V = test_ANN_to_B_F(NS,S)
+    # int_B_F, intx_B_F, inty_B_F, V = test_ANN_to_B_F(NS,S)

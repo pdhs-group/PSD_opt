@@ -84,7 +84,7 @@ def visualize_diff_mean(results, labels):
     fig, ax = plt.subplots()
     ax.bar(x_pos, diff_mean, yerr=diff_std, align='center', alpha=0.7, ecolor='black', capsize=10)
     
-    ax.set_ylabel('diff_mean')
+    ax.set_ylabel('Kernels Error')
     ax.set_xticks(x_pos)
     ax.set_xticklabels(labels)
     
@@ -115,12 +115,13 @@ def visualize_diff_kernel_value(result, eval_kernels):
         
         ax, fig = pt.plot_data(ori_values,predicted_error, fig=fig, ax=ax,
                                xlbl='Original Kernel Values',
-                               ylbl='Optimization Error',
+                               ylbl='Kernels Error',
                                lbl=f'{kernel} (fit)',clr=color,mrk=marker)
 
-    plt.title('Optimization Error vs. Original kerneleter Values')
+    plt.title('Kernels Error vs. Original kerneleter Values')
     ax.grid('minor')
     plt.tight_layout() 
+    return diff_kernels
 
 def visualize_PSD(variable, pbe_type, one_frame):
     find, exp_data_paths= initial_pop(variable, pbe_type)
@@ -265,11 +266,31 @@ def return_pop_distribution(find, pop, axq3=None,fig=None, clr='b', q3lbl='q3'):
     axq3.grid('minor')
     axq3.set_xscale('log')
     
+def do_remove_small_results(results):
+    indices_to_remove = set()
+    if pbe_type == 'agglomeration':
+        for i in range(len(results[0])):
+            corr_agg = results[0][i, 2]['corr_agg']
+            if corr_agg[0] * corr_agg[1] * corr_agg[2] < 1:
+                indices_to_remove.add(i)
+    elif pbe_type == 'breakage':
+        for i in range(len(results[0])):
+            pl_P1 = results[0][i, 2]['pl_P1']
+            pl_P3 = results[0][i, 2]['pl_P3']
+            if pl_P1 * pl_P3 < 1e-9:
+                indices_to_remove.add(i)
+          
+    for idx in sorted(indices_to_remove, reverse=True):
+        for j in range(len(results)):
+            results[j] = np.delete(results[j], idx, axis=0)
+                
+    return results
 if __name__ == '__main__': 
-    use_rel_diff = False
+    use_rel_diff = True
+    remove_small_results = True
     results_pth = 'Parameter_study'
-    pbe_type = 'mix'
-    # pbe_type = 'breakage'
+    # pbe_type = 'agglomeration'
+    pbe_type = 'breakage'
     # pbe_type = 'mix'
     # file_names = [
     #     'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_400.npz',
@@ -324,17 +345,21 @@ if __name__ == '__main__':
     # The third column is the kernel value (target value) of the original pbe.
     results = read_results(data_paths)
     
+    if remove_small_results:
+        results = do_remove_small_results(results)
     visualize_diff_mean(results, labels)
     ## kernel: corr_agg_0, corr_agg_1, corr_agg_2, pl_v, pl_P1, pl_P2, pl_P3, pl_P4
     result_to_analyse = results[-1]
-    visualize_diff_kernel_value(result_to_analyse, eval_kernels=['corr_agg_0','corr_agg_1','corr_agg_2'])
-    visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_v'])
-    visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P1','pl_P3'])
-    visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P2','pl_P4'])
+    if pbe_type == 'agglomeration' or pbe_type == 'mix':
+        corr_agg_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['corr_agg_0','corr_agg_1','corr_agg_2'])
+    if pbe_type == 'breakage' or pbe_type == 'mix':
+        pl_v_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_v'])
+        pl_P13_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P1','pl_P3'])
+        pl_P24_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P2','pl_P4'])
     
-    variable_to_analyse = result_to_analyse[-1]
-    one_frame = False
-    t_return = -1
-    fps = 5
-    variable_to_analyse = visualize_PSD(variable_to_analyse, pbe_type, one_frame)
+    # variable_to_analyse = result_to_analyse[51]
+    # one_frame = False
+    # t_return = -1
+    # fps = 5
+    # variable_to_analyse = visualize_PSD(variable_to_analyse, pbe_type, one_frame)
     
