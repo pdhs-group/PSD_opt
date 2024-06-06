@@ -700,7 +700,10 @@ def plot_F(F):
                                                    ylbl='Fracture Energy / a.u.', grd=True,
                                                    scale_hist='log', hist_thr=1e-4)
     
-    return ax1, ax2, ax3
+    # 1D Histogram of fracture energy   
+    ax4, fig4, H4, xe4 = pt.plot_1d_hist(x=F[:,0],bins=100,scale='lin',xlbl='Fragment Size $V$ / $\mathrm{m^3}$',
+                                         ylbl='Counts / $-$',clr=c_KIT_green,norm=False, alpha=0.7)
+    return ax1, ax2, ax3, ax4
 
 # %% MAIN    
 if __name__ == '__main__':
@@ -715,18 +718,18 @@ if __name__ == '__main__':
     A = 100*A0
     X1 = 0.33
     X2 = 1-X1
-    STR = np.array([1,0.5,0.2])
+    STR = np.array([0.01,0.5,1])
     NO_FRAG = 4
     INIT_BREAK_RANDOM = False
     
     N_GRIDS, N_FRACS = 200, 100
     ## relative depth relative to the grid size, ranging from [0,1]
-    int_bre = 0.5
+    int_bre = 0
     
     # Perform stochastic simulation
     # Fragment array [total area, X1, X2, fracture energy]
-    # F = MC_breakage(A, X1, X2, STR, NO_FRAG, int_bre, N_GRIDS=N_GRIDS, N_FRACS=N_FRACS, 
-    #                 A0=A0, init_break_random=INIT_BREAK_RANDOM) 
+    F = MC_breakage(A, X1, X2, STR, NO_FRAG, int_bre, N_GRIDS=N_GRIDS, N_FRACS=N_FRACS, 
+                    A0=A0, init_break_random=INIT_BREAK_RANDOM) 
     
     ########### -----------
     # profiler.disable()
@@ -750,9 +753,9 @@ if __name__ == '__main__':
         pt.plot_init(mrksze=12,lnewdth=1)
             
         # Visualize distributions
-        # ax1, ax2, ax3 = plot_F(F)
+        ax1, ax2, ax3, ax4 = plot_F(F)
         
         # Perform a single simulation (1 grid, 1 fracture) for visualization
-        G, G_new, R, cnt_1_arr, cnt_2_arr, val_arr, fracture_energy, F_test = \
-            single_sim(A, X1, X2, STR, NO_FRAG, int_bre, plot=True, A0=A0,
-                        close=False, init_break_random=INIT_BREAK_RANDOM)
+        # G, G_new, R, cnt_1_arr, cnt_2_arr, val_arr, fracture_energy, F_test = \
+        #     single_sim(A, X1, X2, STR, NO_FRAG, int_bre, plot=True, A0=A0,
+        #                 close=False, init_break_random=INIT_BREAK_RANDOM)

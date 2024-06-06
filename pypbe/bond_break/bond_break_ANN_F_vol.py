@@ -22,6 +22,9 @@ import tensorflow as tf
 # from tensorflow.keras.losses import MeanSquaredError
 # import json
 import pickle
+## for plotter
+import matplotlib.pyplot as plt
+import pypbe.utils.plotter.plotter as pt
 
 def load_all_data(directory):
     files = [os.path.join(directory, f) for f in os.listdir(directory) if f.endswith('.npy')]
@@ -419,9 +422,11 @@ def predictions_test(model_name,test_all_Inputs, test_all_Outputs, V, X1, mask):
     mean_all_x_mass = (abs(true_all_x_mass - pre_all_x_mass) / true_all_x_mass).mean()
     if V.ndim == 1:
         mean_all_y_mass = 0.0
+        mean_all_mass = mean_all_x_mass
     else:
         mean_all_y_mass = (abs(true_all_y_mass - pre_all_y_mass) / true_all_y_mass).mean()
-    return mse, mae, mean_all_prob, mean_all_x_mass, mean_all_y_mass
+        mean_all_mass = np.sum(abs(1.0-(pre_all_x_mass+pre_all_y_mass)))
+    return mse, mae, mean_all_prob, mean_all_x_mass, mean_all_y_mass, mean_all_mass
 
 # %% POST PROCESSING  
 def precalc_matrix_ANN_to_B_F(NS, NSS, V1, V3, V_e1, V_e3,x,y):
@@ -567,7 +572,38 @@ def test_ANN_to_B_F(NS,S):
     precalc_matrix = precalc_matrix_ANN_to_B_F(NS,NSS,V1,V3,V_e1,V_e3,x,y)
     int_B_F, intx_B_F, inty_B_F = calc_B_F(FRAG,precalc_matrix,NSS)
     return int_B_F, intx_B_F, inty_B_F, V
-    
+
+def plot_error(results,epochs,num_training):
+    epochs_array = np.arange(epochs, epochs*num_training+1, epochs)
+    pt.close()
+    pt.plot_init(scl_a4=1,figsze=[12.8,6.4*1.5],lnewdth=0.8,mrksze=5,use_locale=True,scl=1.2)
+    ax1, fig1 = pt.plot_data(epochs_array, results['model_2d']['mse'],
+                           xlbl='Epochs of Model Training / $-$',
+                           ylbl='Results of Validation / $-$',
+                           lbl='mse',clr='b',mrk='o')
+    ax2, fig2 = pt.plot_data(epochs_array, results['model_2d']['mae'],
+                           xlbl='Epochs of Model Training / $-$',
+                           ylbl='Results of Validation / $-$',
+                           lbl='mae',clr='b',mrk='o')
+    ax3, fig3 = pt.plot_data(epochs_array, results['model_2d']['mean_frag_erro'],
+                           xlbl='Epochs of Model Training / $-$',
+                           ylbl='Results of Validation / $-$',
+                           lbl='mean_frag_erro',clr='b',mrk='o')
+    fig4=plt.figure()
+    ax4=fig4.add_subplot(1,1,1)
+    ax4, fig4 = pt.plot_data(epochs_array, results['model_2d']['mean_x_mass_erro'],fig=fig4,ax=ax4,
+                           xlbl='Epochs of Model Training / $-$',
+                           ylbl='Results of Validation / $-$',
+                           lbl='mean_x_mass_erro',clr='b',mrk='o')
+    ax4, fig4 = pt.plot_data(epochs_array, results['model_2d']['mean_y_mass_erro'],fig=fig4,ax=ax4,
+                           xlbl='Epochs of Model Training / $-$',
+                           ylbl='Results of Validation / $-$',
+                           lbl='mean_y_mass_erro',clr='r',mrk='^')
+    ax5, fig5 = pt.plot_data(epochs_array, results['model_2d']['mean_all_mass_erro'],
+                           xlbl='Epochs of Model Training / $-$',
+                           ylbl='Results of Validation / $-$',
+                           lbl='mean_all_mass_erro',clr='b',mrk='o')
+    return    
 # %% MAIN
 if __name__ == '__main__':
     ## 1d model has three input parameters: Volume, NO_FRAG, int_bre
@@ -600,36 +636,38 @@ if __name__ == '__main__':
     
     
     B_c,v1,v2,M1_c,M2_c,e1,e2,x,y = generate_grid()
-    # with open(path_all_data, 'rb') as file:
-    #     all_data, all_prob, all_x_mass, all_y_mass = pickle.load(file)
+    with open(path_all_data, 'rb') as file:
+        all_data, all_prob, all_x_mass, all_y_mass = pickle.load(file)
         
-    # with open(path_all_test, 'rb') as file:
-    #     test_all_data, _, _, _ = pickle.load(file)
-    # all_mass = all_x_mass + all_y_mass
+    with open(path_all_test, 'rb') as file:
+        test_all_data, _, _, _ = pickle.load(file)
+    all_mass = all_x_mass + all_y_mass
 
     
-    # models = [
-    #     ("model_1d", create_model_1d(), all_data[0], test_all_data[0], {'x': x[:-1]}),
-    #     ("model_2d", create_model_2d(), all_data[1], test_all_data[1], {'x': x[:-1], 'y': y[:-1]})
-    # ]
+    models = [
+        ("model_1d", create_model_1d(), all_data[0], test_all_data[0], {'x': x[:-1]}),
+        ("model_2d", create_model_2d(), all_data[1], test_all_data[1], {'x': x[:-1], 'y': y[:-1]})
+    ]
     
-    # epochs = 2
-    # num_training = 25
-    # results = {name: {"mse": [], "mae": [], "mean_prob": [], "mean_x_mass": [], "mean_y_mass": []} for name, _, _, _, _ in models}
+    epochs = 2
+    num_training = 50
+    results = {name: {"mse": [], "mae": [], "mean_frag_erro": [], "mean_x_mass_erro": [], "mean_y_mass_erro": [], "mean_all_mass_erro": []} for name, _, _, _, _ in models}
     
-    # for training in range(num_training):
-    #     for name, model, train_data, test_data, params in models:
-    #         test_res = train_and_evaluate_model(model, name, train_data, test_data, epochs, **params)
-    #         results[name]["mse"].append(test_res[0])
-    #         results[name]["mae"].append(test_res[1])
-    #         results[name]["mean_prob"].append(test_res[2])
-    #         results[name]["mean_x_mass"].append(test_res[3])
-    #         results[name]["mean_y_mass"].append(test_res[4])
-    # ## write and read results, if needed
-    # with open(f'epochs_{epochs}_num_{num_training}_vol.pkl', 'wb') as f:
-    #     pickle.dump(results, f)
+    for training in range(num_training):
+        for name, model, train_data, test_data, params in models:
+            test_res = train_and_evaluate_model(model, name, train_data, test_data, epochs, **params)
+            results[name]["mse"].append(test_res[0])
+            results[name]["mae"].append(test_res[1])
+            results[name]["mean_frag_erro"].append(test_res[2])
+            results[name]["mean_x_mass_erro"].append(test_res[3])
+            results[name]["mean_y_mass_erro"].append(test_res[4])
+            results[name]["mean_all_mass_erro"].append(test_res[5])
+    ## write and read results, if needed
+    with open(f'epochs_{epochs}_num_{num_training}_vol.pkl', 'wb') as f:
+        pickle.dump(results, f)
         
-    # with open(f'epochs_{epochs}_num_{num_training}_vol.pkl', 'rb') as f:
-    #     loaded_res = pickle.load(f)
+    with open(f'epochs_{epochs}_num_{num_training}_vol.pkl', 'rb') as f:
+        loaded_res = pickle.load(f)
         
-    int_B_F, intx_B_F, inty_B_F, V = test_ANN_to_B_F(NS,S)
+    plot_error(results, epochs, num_training)    
+    # int_B_F, intx_B_F, inty_B_F, V = test_ANN_to_B_F(NS,S)

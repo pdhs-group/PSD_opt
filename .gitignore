@@ -7,6 +7,9 @@
 *.npy
 *.pdf
 *.tar.gz
+*.pkl
+*.keras
+*.zip
 
 # ignore ordner
 __pycache__

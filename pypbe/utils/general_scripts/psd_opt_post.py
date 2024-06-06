@@ -268,7 +268,7 @@ def return_pop_distribution(find, pop, axq3=None,fig=None, clr='b', q3lbl='q3'):
 if __name__ == '__main__': 
     use_rel_diff = False
     results_pth = 'Parameter_study'
-    pbe_type = 'mix'
+    pbe_type = 'agglomeration'
     # pbe_type = 'breakage'
     # pbe_type = 'mix'
     # file_names = [
@@ -328,11 +328,11 @@ if __name__ == '__main__':
     ## kernel: corr_agg_0, corr_agg_1, corr_agg_2, pl_v, pl_P1, pl_P2, pl_P3, pl_P4
     result_to_analyse = results[-1]
     visualize_diff_kernel_value(result_to_analyse, eval_kernels=['corr_agg_0','corr_agg_1','corr_agg_2'])
-    visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_v'])
-    visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P1','pl_P3'])
-    visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P2','pl_P4'])
+    # visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_v'])
+    # visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P1','pl_P3'])
+    # visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P2','pl_P4'])
     
-    variable_to_analyse = result_to_analyse[-1]
+    variable_to_analyse = result_to_analyse[51]
     one_frame = False
     t_return = -1
     fps = 5
