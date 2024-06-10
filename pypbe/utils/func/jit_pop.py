@@ -1016,7 +1016,7 @@ def calc_2d_breakage(N,V_p,V_e1,V_e2,B_R,bf_int,xbf_int,ybf_int,B_c,M1_c,M2_c,D)
     # D_M = np.zeros(N.shape)
     for e1 in range(len(V_p[:,0])):
         for e2 in range(len(V_p[0,:])):
-            # calculate death rate    
+            # calculate death rate    * ``pop.int_B_F``: (2D)The integral of the breakage function from class ab to class ij. Result is stored in ``int_B_F[a,b,i,j]`` 
             S = B_R[e1,e2]
             D[e1,e2] -= S*N[e1,e2]
             # D_M[e1,e2] = D[e1,e2]*V_p[e1,e2]

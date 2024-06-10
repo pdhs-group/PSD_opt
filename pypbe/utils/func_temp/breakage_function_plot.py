@@ -35,46 +35,46 @@ def b_2d(x3,x1,y1,y3,v):
     return theta / (y1*y3)
 
 # 设定 y 的值
-y1 = 10
-y3 = 10
+y1 = 1
+y3 = 1
 
 # x 的取值范围
-x1_var = np.linspace(0, y1, 20)
-x3_var = np.linspace(0, y3, 20)
+x1_var = np.linspace(0, y1, 40)
+x3_var = np.linspace(0, y3, 40)
 
 # v 的不同值
-v_values = np.linspace(1, 2, 5)
+v_values = np.linspace(0.1, 2.0, 20)
 
 # 创建图像
 plt.figure(figsize=(10, 6))
 
 # 对每个 v 值绘制图像
-# for v in v_values:
-#     plt.plot(x, b(x, y, v), label=f'v = {v}')
-b = np.zeros((20,20))
-v=2
-for i,x1 in enumerate(x1_var):
-    for j,x3 in enumerate(x3_var):
-        b[i,j] = b_2d(x3,x1,y1,y3,v)
+for v in v_values:
+    plt.plot(x1_var, b_1d(x1_var, y1, v), label=f'v = {v:.1f}')
+# b = np.zeros((20,20))
+# v=2
+# for i,x1 in enumerate(x1_var):
+#     for j,x3 in enumerate(x3_var):
+#         b[i,j] = b_2d(x3,x1,y1,y3,v)
 
-X, Y = np.meshgrid(x1_var, x3_var)
-x_flat = X.flatten()
-y_flat = Y.flatten()
-b_flat = b.flatten()
+# X, Y = np.meshgrid(x1_var, x3_var)
+# x_flat = X.flatten()
+# y_flat = Y.flatten()
+# b_flat = b.flatten()
 
-# # 设置图例
-# plt.legend()
+# 设置图例
+plt.legend()
 
-# # 设置图像标题和坐标轴标签
-# plt.title('Function Graphs for Different v Values')
-# plt.xlabel('x')
-# plt.ylabel('b(x, 10, v)')
+# 设置图像标题和坐标轴标签
+plt.title('Function Graphs for Different v Values')
+plt.xlabel('relative particle size')
+plt.ylabel('value of breakage function')
 
-# # 显示图像
-# plt.show()
+# 显示图像
+plt.show()
 
-ax1, fig1, cb1, H1, xe1, ye1 = pt.plot_2d_hist(x=x_flat,y=y_flat,bins=(20,20),w=b_flat,
-                                               scale=('lin','lin'), clr=KIT_black_green_white.reversed(), 
-                                               xlbl='Partial Volume 1 $V_1$ / $\mathrm{m^3}$', norm=False,
-                                               ylbl='Partial Volume 2 $V_2$ / $\mathrm{m^3}$', grd=True,
-                                               scale_hist='lin', hist_thr=1e-4)
+# ax1, fig1, cb1, H1, xe1, ye1 = pt.plot_2d_hist(x=x_flat,y=y_flat,bins=(20,20),w=b_flat,
+#                                                scale=('lin','lin'), clr=KIT_black_green_white.reversed(), 
+#                                                xlbl='Partial Volume 1 $V_1$ / $\mathrm{m^3}$', norm=False,
+#                                                ylbl='Partial Volume 2 $V_2$ / $\mathrm{m^3}$', grd=True,
+#                                                scale_hist='lin', hist_thr=1e-4)

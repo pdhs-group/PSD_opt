@@ -366,7 +366,7 @@ class population():
         if self.dim == 1:
             self.N = np.zeros((self.NS,self.NUM_T+1))
             if self.USE_PSD:
-                self.N[1:,0] = self.new_initialize_psd(2*self.R[1:],self.DIST1,self.V01)
+                self.N[1:,0] = self.initialize_psd(2*self.R[1:],self.DIST1,self.V01)
             else:
                 if self.process_type == "agglomeration":
                     self.N[1,0] = self.N01
@@ -382,8 +382,8 @@ class population():
         elif self.dim == 2:
             self.N = np.zeros((self.NS,self.NS,self.NUM_T+1))
             if self.USE_PSD:
-                self.N[1:,0,0] = self.new_initialize_psd(2*self.R[1:,0],self.DIST1,self.V01)
-                self.N[0,1:,0] = self.new_initialize_psd(2*self.R[0,1:],self.DIST3,self.V03)
+                self.N[1:,0,0] = self.initialize_psd(2*self.R[1:,0],self.DIST1,self.V01)
+                self.N[0,1:,0] = self.initialize_psd(2*self.R[0,1:],self.DIST3,self.V03)
             else:
                 if self.process_type == "agglomeration":
                     self.N[1,0,0] = self.N01
@@ -400,9 +400,9 @@ class population():
         elif self.dim == 3:
             self.N = np.zeros((self.NS+3,self.NS+3,self.NS+3,self.NUM_T+1))
             if self.USE_PSD:
-                self.N[2:-1,1,1,0] = self.new_initialize_psd(2*self.R[2:-1,1,1],self.DIST1,self.V01)
-                self.N[1,2:-1,1,0] = self.new_initialize_psd(2*self.R[1,2:-1,1],self.DIST2,self.V02)
-                self.N[1,1,2:-1,0] = self.new_initialize_psd(2*self.R[1,1,2:-1],self.DIST3,self.V03)
+                self.N[2:-1,1,1,0] = self.initialize_psd(2*self.R[2:-1,1,1],self.DIST1,self.V01)
+                self.N[1,2:-1,1,0] = self.initialize_psd(2*self.R[1,2:-1,1],self.DIST2,self.V02)
+                self.N[1,1,2:-1,0] = self.initialize_psd(2*self.R[1,1,2:-1],self.DIST3,self.V03)
             else:
                 self.N[2,1,1,0] = self.N01
                 self.N[1,2,1,0] = self.N02
@@ -414,7 +414,7 @@ class population():
         """Initialize agglomeration frequency array. 
         
         Creates the following class attributes: 
-            * ``pop.F_M``: Agglomeration frequency between two classes ij and ab is stored in ``F_M[i,j,a,b]`` 
+            * ``pop.F_M``: (2D)Agglomeration frequency between two classes ij and ab is stored in ``F_M[i,j,a,b]`` 
         """
         # 1-D case
         if self.dim == 1:
@@ -764,6 +764,11 @@ class population():
     
     ## Calculate breakage rate matrix. 
     def calc_B_R(self):
+        """Initialize breakage rate array. 
+        
+        Creates the following class attributes: 
+            * ``pop.B_R``: (2D)Breakage rate for class ab. The result is stored in ``B_R[a,b]`` 
+        """
         ## In breakage is not allowed to define parameter of particle without volume
         ## So B_R is (NS-1) instead (NS)
         # 1-D case
@@ -853,6 +858,13 @@ class population():
                                          self.pl_P3 * self.G * (self.V3[b]/self.V3[1])**self.pl_P4
     ## Calculate integrated breakage function matrix.         
     def calc_int_B_F(self):
+        """Initialize integrated breakage function array. 
+        
+        Creates the following class attributes: 
+            * ``pop.int_B_F``: (2D)The integral of the breakage function from class ab to class ij. Result is stored in ``int_B_F[a,b,i,j]`` 
+            * ``pop.intx_B_F``: (2D)The integral of the (breakage function*x) from class ab to class ij. Result is stored in ``intx_B_F[a,b,i,j]`` 
+            * ``pop.inty_B_F``: (2D)The integral of the (breakage function*y) from class ab to class ij. Result is stored in ``inty_B_F[a,b,i,j]`` 
+        """
         if self.BREAKFVAL == 4:
             if self.pl_v <= 0 or self.pl_v > 1:
                 raise Exception("Value of pl_v is out of range (0,1] for simple Power law.")
@@ -1203,6 +1215,30 @@ class population():
     
     ## Return particle size distribution on fixed grid 
     def return_distribution(self, comp='all', t=0, N=None, flag='all'):
+        """
+        Returns the results of Volume-based PSD(Particle density distribution) of a time step.
+        
+        Parameters
+        ----------
+        comp : `str`, optional
+            Which particles are counted. The case for a specific component has not yet been coded.
+        t : `int`, optional
+            Time step to return.
+        N : `array_like`, optional
+            Array holding the calculated particle number distribution. 
+            If is not provided, use the one from the class instance * ``pop.N( )``.
+        flag: `str`, optional
+            Which data form the PSD is returned. Default is 'all'. Options include:
+            - 'x_uni': Unique particle diameters(unique particle size class)
+            - 'q3': Volumen density distribution
+            - 'Q3': Cumulative distribution
+            - 'x_10': Particle size corresponding to 10% cumulative distribution
+            - 'x_50': Particle size corresponding to 50% cumulative distribution
+            - 'x_90': Particle size corresponding to 90% cumulative distribution
+            - 'sumvol_uni': Cumulative particle volumen on each particle size class
+            - 'all': Returns all the above data
+        
+        """
         def unique_with_tolerance(V, tol=1e-3):
             V_sorted = np.sort(V)
             V_unique = [V_sorted[0]]
@@ -1215,7 +1251,7 @@ class population():
         if N is None:
             N = self.N
         
-        # Extract unique values that are NOT -1 or 0 (border)
+        # Extract unique values that are NOT -1 (border)
         v_uni = np.setdiff1d(self.V,[-1])
         # v_uni = unique_with_tolerance(v_uni)
         q3 = np.zeros(len(v_uni))
@@ -1278,20 +1314,44 @@ class population():
             return tuple(outputs[f.strip()] for f in flags if f.strip() in outputs)
     
     def return_num_distribution(self, comp='all', t=0, N=None, flag='all'):
+        """
+        Returns the results of Number-based PSD(Particle density distribution) of a time step.
+        
+        Parameters
+        ----------
+        comp : `str`, optional
+            Which particles are counted. The case for a specific component has not yet been coded.
+        t : `int`, optional
+            Time step to return.
+        N : `array_like`, optional
+            Array holding the calculated particle number distribution. 
+            If is not provided, use the one from the class instance * ``pop.N( )``.
+        flag: `str`, optional
+            Which data form the PSD is returned. Default is 'all'. Options include:
+            - 'x_uni': Unique particle diameters(unique particle size class)
+            - 'q0': Number density distribution
+            - 'Q0': Cumulative distribution
+            - 'x_10': Particle size corresponding to 10% cumulative distribution
+            - 'x_50': Particle size corresponding to 50% cumulative distribution
+            - 'x_90': Particle size corresponding to 90% cumulative distribution
+            - 'sumN_uni': Cumulative particle concentration on each particle size class
+            - 'all': Returns all the above data
+        
+        """
         # If no N is provided use the one from the class instance
         if N is None:
             N = self.N
         
-        # Extract unique values that are NOT -1 or 0 (border)
+        # Extract unique values that are NOT -1(border)
         # At the same time, v_uni will be rearranged according to size.
         v_uni = np.setdiff1d(self.V,[-1])
 
-        q3 = np.zeros(len(v_uni))
+        q0 = np.zeros(len(v_uni))
         x_uni = np.zeros(len(v_uni))
         sumN_uni = np.zeros(len(v_uni))
         
         if comp == 'all':
-            # Loop through all entries in V and add volume concentration to specific entry in sumN_uni
+            # Loop through all entries in V and add number concentration to specific entry in sumN_uni
             if self.dim == 1:
                 for i in range(self.NS):
                     if float_in_list(self.V[i], v_uni) and (not N[i,t] < 0):
@@ -1315,13 +1375,13 @@ class population():
             x_uni[1:]=(6*v_uni[1:]/np.pi)**(1/3)*1e6
             
             # Calculate sum and density distribution
-            Q3 = np.cumsum(sumN_uni)/sumN
-            q3[1:] = np.diff(Q3) / np.diff(x_uni)
+            Q0 = np.cumsum(sumN_uni)/sumN
+            q0[1:] = np.diff(Q0) / np.diff(x_uni)
             
             # Retrieve x10, x50 and x90 through interpolation
-            x_10=np.interp(0.1, Q3, x_uni)
-            x_50=np.interp(0.5, Q3, x_uni)
-            x_90=np.interp(0.9, Q3, x_uni)
+            x_10=np.interp(0.1, Q0, x_uni)
+            x_50=np.interp(0.5, Q0, x_uni)
+            x_90=np.interp(0.9, Q0, x_uni)
             
         else:
             print('Case for comp not coded yet. Exiting')
@@ -1329,8 +1389,8 @@ class population():
     
         outputs = {
         'x_uni': x_uni,
-        'q3': q3,
-        'Q3': Q3,
+        'q0': q0,
+        'Q0': Q0,
         'x_10': x_10,
         'x_50': x_50,
         'x_90': x_90,
@@ -1704,97 +1764,29 @@ class population():
     
     ## Initialize PSD
     @staticmethod
-    def initialize_psd(r,psd_data,v0,x_init=None,Q_init=None):
+    def initialize_psd(d,psd_data,v0,x_init=None,Q_init=None):
+        """
+        Obtain initial conditions from a PSD data file.
         
-        from scipy.interpolate import interp1d
-        import sys
+        Parameters
+        ----------
+        d : `array_like`
+            Particle size grid on which the PSD should be initialized. NOTE: This
+            vector contains diameters
+        psd_data : `str`
+            Complete path (including filename) to datafile in which the PSD is saved. 
+        v0: `float`
+            Total VOLUME the distribution should be scaled to
+        x_init : `array_like`, optional
+            Particle size grid in the PSD can be manually specified.  
+        Q_init : `array_like`, optional
+            Manually specify the PSD instead of reading it from the file.
+        Output
+        ----------
+        n : `array_like`
+            NUMBER concentration vector corresponding to d
+        """
         
-        ## OUTPUT-parameters:
-        # n: NUMBER concentration vector corresponding to r (for direct usage in N
-        # vector of population balance calculation
-        
-        ## INPUT-parameters:
-        # r: Particle size grid on which the PSD should be initialized. NOTE: This
-        #    vector contains RADII (and NOT diameters)
-        # PSD_data: Complete path (including filename) to datafile in which the PSD is saved. 
-        #           This file should only contain 2 variables: Q_PSD and x_PSD.
-        #           Here, x_PSD contains diameters (standard format of PSD)
-        # v0: Total VOLUME the distribution should be scaled to
-                
-        
-        # If x and Q are not directly given import from file
-        if x_init is None and Q_init is None:
-            # Import x values from dictionary save in psd_data
-            psd_dict = np.load(psd_data,allow_pickle=True).item()
-            x = psd_dict['x_PSD']
-            
-            ## Initializing the variables
-            n = np.zeros(len(r)) 
-            q = np.zeros(len(x)) 
-            
-            if 'Q_PSD' not in psd_dict and 'q_PSD' not in psd_dict:
-                sys.exit("ERROR: Neither Q_PSD nor q_PSD given in distribution file. Exiting..")
-            
-            if 'Q_PSD' in psd_dict:
-                # Load Q if given
-                Q = psd_dict['Q_PSD']
-            if 'q_PSD' in psd_dict:
-                # Load q if given
-                q = psd_dict['q_PSD']
-            else:
-                # If q is not given: Calculate from Q. Note that q[0] will always be zero
-                for i in range(1,len(x)):
-                    q[i] = (Q[i]-Q[i-1])/(x[i]-x[i-1]) 
-                    
-        else:
-            ## Initializing the variables
-            n = np.zeros(len(r)) 
-            q = np.zeros(len(x_init)) 
-            
-            x = x_init
-            
-            for i in range(1,len(x)):
-                q[i] = (Q_init[i]-Q_init[i-1])/(x[i]-x[i-1])
-            
-        # Transform x from diameter to radius information. Also transform q
-        x = x/2
-        #q = q/2
-        
-        # Interpolate q on r grid and normalize it to 1 (account for numerical error)
-        # If the ranges don't match well, insert 0. This is legit since it is the density
-        # distribution
-        f_q = interp1d(x,q,bounds_error=False,fill_value=0)
-        q_r = f_q(r)
-                
-        #q_r(math.isnan(q_r)) = 0
-        q_r = q_r/np.trapz(q_r,r)
-        
-        # Temporary r vector. Add lower and upper boarder (given by x_PSD) 
-        # This allows calculation of the first and last entry of q / r.
-        rt = np.zeros(len(r)+2) 
-        qt = np.zeros(len(r)+2)  
-        rt[0] = min(min(x),min(r))
-        rt[-1] = max(max(x),max(r))
-        rt[1:-1] = r 
-        qt[1:-1] = q_r;
-        
-        # Calculate concentration vector
-        for i in range(1,len(rt)-1):
-            v_total_tmp = v0*qt[i]*((rt[i+1]-rt[i])/2+(rt[i]-rt[i-1])/2) # Calculated with DIFFERENCE (i+1), (i-1)
-            #v_one_tmp = (4/3)*pi*((rt[i+1]+rt[i-1])*1e-6/2)^3; # Calculated with MEAN (i+1), (i-1) 
-            v_one_tmp = (4/3)*np.pi*r[i-1]**3; # Calculated with MEAN (i+1), (i-1) 
-            n[i-1] = v_total_tmp/v_one_tmp;
-        
-        # Eliminate sub and near zero values (sub-thrshold)
-        thr = 1e-5
-        n[n<thr*np.mean(n)] = 0
-        
-        return n   
-
-    ## Initialize PSD
-    @staticmethod
-    def new_initialize_psd(d,psd_data,v0,x_init=None,Q_init=None):
-            
         from scipy.interpolate import interp1d
         import sys
         

@@ -91,7 +91,7 @@ def visualize_diff_mean(results, labels):
     plt.tight_layout()
     plt.show()
     
-def visualize_diff_kernel_value(result, eval_kernels):
+def visualize_diff_kernel_value(result, eval_kernels, log_axis=False):
     diff_kernels, opt_kernels, ori_kernels = calc_diff(result)
 
     pt.plot_init(scl_a4=1,figsze=[12.8,6.4*1.5],lnewdth=0.8,mrksze=5,use_locale=True,scl=1.2)
@@ -117,7 +117,9 @@ def visualize_diff_kernel_value(result, eval_kernels):
                                xlbl='Original Kernel Values',
                                ylbl='Kernels Error',
                                lbl=f'{kernel} (fit)',clr=color,mrk=marker)
-
+    if log_axis:
+        ax.set_xscale('log')
+        ax.set_yscale('log')
     plt.title('Kernels Error vs. Original kerneleter Values')
     ax.grid('minor')
     plt.tight_layout() 
@@ -286,58 +288,58 @@ def do_remove_small_results(results):
                 
     return results
 if __name__ == '__main__': 
-    use_rel_diff = True
-    remove_small_results = True
+    use_rel_diff = False
+    remove_small_results = False
     results_pth = 'Parameter_study'
 
-    pbe_type = 'agglomeration'
+    # pbe_type = 'agglomeration'
     # pbe_type = 'breakage'
-    # pbe_type = 'mix'
+    pbe_type = 'mix'
+    file_names = [
+        'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_400.npz',
+        'multi_[(\'q3\', \'MSE\')]_BO_wight_1_iter_400.npz',
+        'multi_[(\'q3\', \'MAE\')]_BO_wight_1_iter_400.npz',
+        'multi_[(\'q3\', \'RMSE\')]_BO_wight_1_iter_400.npz',
+        'multi_[(\'QQ3\', \'KL\')]_BO_wight_1_iter_400.npz',
+        'multi_[(\'QQ3\', \'MSE\')]_BO_wight_1_iter_400.npz',
+        'multi_[(\'x_50\', \'MSE\')]_BO_wight_1_iter_400.npz',
+        'multi_[(\'q3\', \'KL\'), (\'Q3\', \'KL\'), (\'x_50\', \'MSE\')]_BO_wight_1_iter_400.npz',
+        ]
+    labels = [
+        'q3_KL',
+        'q3_MSE',
+        'q3_MAE',
+        'q3_RMSE',
+        'Q3_KL',
+        'Q3_MSE',
+        'x_50_MSE',
+        'q3_KL_Q3_KL_x_50_MSE',
+        ]
     # file_names = [
     #     'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_400.npz',
-    #     'multi_[(\'q3\', \'MSE\')]_BO_wight_1_iter_400.npz',
-    #     'multi_[(\'q3\', \'MAE\')]_BO_wight_1_iter_400.npz',
-    #     'multi_[(\'q3\', \'RMSE\')]_BO_wight_1_iter_400.npz',
-    #     'multi_[(\'QQ3\', \'KL\')]_BO_wight_1_iter_400.npz',
-    #     # 'multi_[(\'QQ3\', \'MSE\')]_BO_wight_1_iter_400.npz',
-    #     'multi_[(\'x_50\', \'MSE\')]_BO_wight_1_iter_400.npz',
-    #     # 'multi_[(\'q3\', \'KL\'), (\'Q3\', \'KL\'), (\'x_50\', \'MSE\')]_BO_wight_1_iter_400.npz',
-    #     ]
-    # labels = [
-    #     'q3_KL',
-    #     'q3_MSE',
-    #     'q3_MAE',
-    #     'q3_RMSE',
-    #     'Q3_KL',
-    #     # 'Q3_MSE',
-    #     'x_50_MSE',
-    #     # 'q3_KL_Q3_KL_x_50_MSE',
-    #     ]
-    # file_names = [
     #     'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_400.npz',
-    #     # 'multi_[(\'q3\', \'KL\')]_BO_wight_5_iter_400.npz',
     #     'multi_[(\'q3\', \'KL\')]_BO_wight_10_iter_400.npz',
     #     ]
     # labels = [
     #     'wight_1',
-    #     # 'wight_5',
+    #     'wight_5',
     #     'wight_10',
     #     ]
     
-    file_names = [
-        'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_50.npz',
-        'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_100.npz',
-        'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_200.npz',
-        'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_400.npz',
-        'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_800.npz',
-        ]
-    labels = [
-        'iter_50',
-        'iter_100',
-        'iter_200',
-        'iter_400',
-        'iter_800',
-        ]
+    # file_names = [
+    #     'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_50.npz',
+    #     'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_100.npz',
+    #     'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_200.npz',
+    #     'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_400.npz',
+    #     'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_800.npz',
+    #     ]
+    # labels = [
+    #     'iter_50',
+    #     'iter_100',
+    #     'iter_200',
+    #     'iter_400',
+    #     'iter_800',
+    #     ]
     
     data_paths = [os.path.join(results_pth, pbe_type, file_name) for file_name in file_names]
     # 'results' saves the results of all reading files. 
@@ -355,10 +357,10 @@ if __name__ == '__main__':
         corr_agg_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['corr_agg_0','corr_agg_1','corr_agg_2'])
     if pbe_type == 'breakage' or pbe_type == 'mix':
         pl_v_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_v'])
-        pl_P13_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P1','pl_P3'])
+        pl_P13_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P1','pl_P3'], log_axis=True)
         pl_P24_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P2','pl_P4'])
     
-    # variable_to_analyse = result_to_analyse[51]
+    # variable_to_analyse = result_to_analyse[501]
     # one_frame = False
     # t_return = -1
     # fps = 5

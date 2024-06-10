@@ -32,6 +32,8 @@ config = {
         'method': 'BO',
 
         'n_iter': 400,
+        ## Initialize PBE using psd data(False) or 
+        ## with the help of first few time points of experimental data(True)
         'calc_init_N': True,
         ## delta_flag = q3: use q3
         ## delta_flag = Q3: use Q3
@@ -102,6 +104,7 @@ config = {
     ## The error of 2d pop may be more important, so weight needs to be added
     'weight_2d': 1,
     
+    ## PSD data to initialize the PBE, when needed.
     'dist_scale_1': "PSD_x50_2.0E-6_RelSigmaV_1.5E-1.npy",
     'dist_scale_5': "PSD_x50_1.0E-5_RelSigmaV_1.5E-1.npy",
     'dist_scale_10': "PSD_x50_2.0E-5_RelSigmaV_1.5E-1.npy",
