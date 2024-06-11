@@ -92,13 +92,13 @@ if __name__ == '__main__':
     var_alpha_prim = np.array(unique_alpha_prim)
 
     ## define the range of v(breakage function)
-    var_v = np.array([1])
+    var_v = np.array([2])
     # var_v = np.array([0.01])
     ## define the range of P1, P2 for power law breakage rate
-    var_P1 = np.array([5e-4])
-    var_P2 = np.array([0.6])
-    var_P3 = np.array([2e-3])
-    var_P4 = np.array([0.4])
+    var_P1 = np.array([1e-3])
+    var_P2 = np.array([0.3])
+    var_P3 = np.array([1e-3])
+    var_P4 = np.array([0.3])
     # var_P5 = np.array([1e-4,1e-2])
     # var_P6 = np.array([0.1,1])
 

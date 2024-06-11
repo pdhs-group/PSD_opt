@@ -720,11 +720,11 @@ if __name__ == '__main__':
     X2 = 1-X1
     STR = np.array([0.01,0.5,1])
     NO_FRAG = 4
-    INIT_BREAK_RANDOM = False
+    int_bre = 0
     
+    INIT_BREAK_RANDOM = False
     N_GRIDS, N_FRACS = 200, 100
     ## relative depth relative to the grid size, ranging from [0,1]
-    int_bre = 0
     
     # Perform stochastic simulation
     # Fragment array [total area, X1, X2, fracture energy]

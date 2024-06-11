@@ -59,7 +59,7 @@ class opt_algo():
         self.set_init_pop_para_flag = False
         self.set_comp_para_flag = False
     #%%  Optimierer    
-    def calc_delta_agg(self, params, scale=1, sample_num=1, exp_data_path=None):
+    def calc_delta_agg(self, params_in, scale=1, sample_num=1, exp_data_path=None):
         """
         Calculate the difference (delta) of PSD.
         
@@ -78,6 +78,7 @@ class opt_algo():
         exp_data_path : `str`
             path for experimental data.
         """
+        params = params_in.copy()
         if "corr_agg" in params:
             corr_agg = params["corr_agg"]
             CORR_BETA = self.return_syth_beta(corr_agg)
@@ -520,7 +521,8 @@ class opt_algo():
         
         self.set_init_pop_para_flag = True
 
-    def set_pop_para(self, pop, params):
+    def set_pop_para(self, pop, params_in):
+        params = params_in.copy()
         if params is None:
             return
         self.set_pop_attributes(pop, params)
@@ -531,10 +533,8 @@ class opt_algo():
                 params['alpha_prim'] = params['corr_agg'] / params['CORR_BETA']
                 del params["corr_agg"]
             if 'alpha_prim' in params:
-                if params['alpha_prim'].ndim != 0 and pop is self.p_NM:
+                if params['alpha_prim'].ndim != 0:
                     pop.alpha_prim = params['alpha_prim'][0]
-                elif params['alpha_prim'].ndim != 0 and pop is self.p_M:
-                    pop.alpha_prim = params['alpha_prim'][2]
                 else:
                     pop.alpha_prim = params['alpha_prim']
         elif self.dim == 2:

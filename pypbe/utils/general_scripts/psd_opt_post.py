@@ -105,7 +105,7 @@ def visualize_diff_kernel_value(result, eval_kernels, log_axis=False):
         marker = next(markers)
         
         ori_values = np.array(ori_kernels[kernel]).reshape(-1, 1)
-        error_values = np.array(diff_kernels[kernel])
+        error_values = np.array(opt_kernels[kernel])
         
         plt.scatter(ori_values, error_values, label=kernel, color=color, marker=marker)
         
@@ -146,8 +146,9 @@ def return_animation(variable, find, exp_data_paths,fig,axq3,fig_NM,axq3_NM,fig_
     t_vec = find.algo.t_vec
     smoothing = find.algo.smoothing
     
-    find_opt.algo.calc_init_N = True
-    find_opt.algo.set_init_N(find.algo.sample_num, exp_data_paths, 'mean')
+    find_opt.algo.calc_init_N = calc_init
+    if calc_init:
+        find_opt.algo.set_init_N(find.algo.sample_num, exp_data_paths, 'mean')
     find_opt.algo.calc_all_pop(variable[1])
     ani=return_animation_distribution(t_vec,smoothing,find.algo.p,find_opt.algo.p,fig,axq3,fps)
     ani_NM=return_animation_distribution(t_vec,smoothing,find.algo.p_NM,find_opt.algo.p_NM,fig_NM,axq3_NM,fps)
@@ -165,8 +166,9 @@ def return_one_frame(variable, find, exp_data_paths,fig,axq3,fig_NM,axq3_NM,fig_
     return_pop_distribution(find, find.algo.p_M, axq3_M, fig_M, clr='b', q3lbl='q3_psd')
     
     ## Calculate PSD using opt_value
-    find.algo.calc_init_N = True
-    find.algo.set_init_N(find.algo.sample_num, exp_data_paths, 'mean')
+    find.algo.calc_init_N = calc_init
+    if calc_init:
+        find.algo.set_init_N(find.algo.sample_num, exp_data_paths, 'mean')
     find.algo.calc_all_pop(variable[1])
     return_pop_distribution(find, find.algo.p, axq3, fig, clr='r', q3lbl='q3_opt')
     return_pop_distribution(find, find.algo.p_NM, axq3_NM, fig_NM, clr='r', q3lbl='q3_opt')
@@ -287,34 +289,47 @@ def do_remove_small_results(results):
             results[j] = np.delete(results[j], idx, axis=0)
                 
     return results
+
+def calc_save_PSD_delta(results, data_paths):
+    for i, result in enumerate(results):
+        opt_kernels = result[:,1]
+        delta = np.zeros(len(result))
+        for j, variable in enumerate(result):
+            find, exp_data_paths = initial_pop(variable, pbe_type)
+            delta[j] = find.algo.calc_delta_agg(opt_kernels[j], sample_num=find.algo.sample_num, exp_data_path=exp_data_paths)
+        new_result = np.column_stack((result, delta))
+        results[i] = new_result    
+        np.savez(data_paths[i], results=new_result)
+        
 if __name__ == '__main__': 
     use_rel_diff = False
     remove_small_results = False
     results_pth = 'Parameter_study'
+    calc_criteria = True
 
     # pbe_type = 'agglomeration'
     # pbe_type = 'breakage'
     pbe_type = 'mix'
-    file_names = [
-        'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_400.npz',
-        'multi_[(\'q3\', \'MSE\')]_BO_wight_1_iter_400.npz',
-        'multi_[(\'q3\', \'MAE\')]_BO_wight_1_iter_400.npz',
-        'multi_[(\'q3\', \'RMSE\')]_BO_wight_1_iter_400.npz',
-        'multi_[(\'QQ3\', \'KL\')]_BO_wight_1_iter_400.npz',
-        'multi_[(\'QQ3\', \'MSE\')]_BO_wight_1_iter_400.npz',
-        'multi_[(\'x_50\', \'MSE\')]_BO_wight_1_iter_400.npz',
-        'multi_[(\'q3\', \'KL\'), (\'Q3\', \'KL\'), (\'x_50\', \'MSE\')]_BO_wight_1_iter_400.npz',
-        ]
-    labels = [
-        'q3_KL',
-        'q3_MSE',
-        'q3_MAE',
-        'q3_RMSE',
-        'Q3_KL',
-        'Q3_MSE',
-        'x_50_MSE',
-        'q3_KL_Q3_KL_x_50_MSE',
-        ]
+    # file_names = [
+    #     'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_400.npz',
+    #     'multi_[(\'q3\', \'MSE\')]_BO_wight_1_iter_400.npz',
+    #     'multi_[(\'q3\', \'MAE\')]_BO_wight_1_iter_400.npz',
+    #     'multi_[(\'q3\', \'RMSE\')]_BO_wight_1_iter_400.npz',
+    #     'multi_[(\'QQ3\', \'KL\')]_BO_wight_1_iter_400.npz',
+    #     'multi_[(\'QQ3\', \'MSE\')]_BO_wight_1_iter_400.npz',
+    #     'multi_[(\'x_50\', \'MSE\')]_BO_wight_1_iter_400.npz',
+    #     'multi_[(\'q3\', \'KL\'), (\'Q3\', \'KL\'), (\'x_50\', \'MSE\')]_BO_wight_1_iter_400.npz',
+    #     ]
+    # labels = [
+    #     'q3_KL',
+    #     'q3_MSE',
+    #     'q3_MAE',
+    #     'q3_RMSE',
+    #     'Q3_KL',
+    #     'Q3_MSE',
+    #     'x_50_MSE',
+    #     'q3_KL_Q3_KL_x_50_MSE',
+    #     ]
     # file_names = [
     #     'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_400.npz',
     #     'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_400.npz',
@@ -326,20 +341,20 @@ if __name__ == '__main__':
     #     'wight_10',
     #     ]
     
-    # file_names = [
-    #     'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_50.npz',
-    #     'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_100.npz',
-    #     'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_200.npz',
-    #     'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_400.npz',
-    #     'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_800.npz',
-    #     ]
-    # labels = [
-    #     'iter_50',
-    #     'iter_100',
-    #     'iter_200',
-    #     'iter_400',
-    #     'iter_800',
-    #     ]
+    file_names = [
+        'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_50.npz',
+        'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_100.npz',
+        'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_200.npz',
+        'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_400.npz',
+        'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_800.npz',
+        ]
+    labels = [
+        'iter_50',
+        'iter_100',
+        'iter_200',
+        'iter_400',
+        'iter_800',
+        ]
     
     data_paths = [os.path.join(results_pth, pbe_type, file_name) for file_name in file_names]
     # 'results' saves the results of all reading files. 
@@ -348,11 +363,13 @@ if __name__ == '__main__':
     # The third column is the kernel value (target value) of the original pbe.
     results = read_results(data_paths)
     
+    if calc_criteria:
+        calc_save_PSD_delta(results, data_paths)
     if remove_small_results:
         results = do_remove_small_results(results)
     visualize_diff_mean(results, labels)
-    ## kernel: corr_agg_0, corr_agg_1, corr_agg_2, pl_v, pl_P1, pl_P2, pl_P3, pl_P4
-    result_to_analyse = results[-1]
+    # kernel: corr_agg_0, corr_agg_1, corr_agg_2, pl_v, pl_P1, pl_P2, pl_P3, pl_P4
+    result_to_analyse = results[-2]
     if pbe_type == 'agglomeration' or pbe_type == 'mix':
         corr_agg_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['corr_agg_0','corr_agg_1','corr_agg_2'])
     if pbe_type == 'breakage' or pbe_type == 'mix':
@@ -360,8 +377,9 @@ if __name__ == '__main__':
         pl_P13_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P1','pl_P3'], log_axis=True)
         pl_P24_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P2','pl_P4'])
     
-    # variable_to_analyse = result_to_analyse[501]
+    # variable_to_analyse = result_to_analyse[20]
     # one_frame = False
+    # calc_init = False
     # t_return = -1
     # fps = 5
     # variable_to_analyse = visualize_PSD(variable_to_analyse, pbe_type, one_frame)
