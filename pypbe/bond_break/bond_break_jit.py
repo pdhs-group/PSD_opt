@@ -8,10 +8,11 @@ import numpy as np
 from copy import deepcopy
 from numba import jit
 from numba.typed import List as nb_List
+import time
 
 # Simulate N_GRIDS grids that each fracture N_FRACS times
 # For debugging/testing use single_sim, as this function is "optimized" by not plotting and printing stuff
-@jit(nopython=True)
+# @jit(nopython=True)
 def MC_breakage(A, X1, X2, STR, NO_FRAG, int_bre=0, N_GRIDS=100, N_FRACS=100, A0=0, init_break_random=False):
     """Perform a 2D, 2 material Monte Carlo breakage simulation.
     
@@ -57,15 +58,18 @@ def MC_breakage(A, X1, X2, STR, NO_FRAG, int_bre=0, N_GRIDS=100, N_FRACS=100, A0
     for g in range(N_GRIDS):
         # print(f'Calculating grid no. {g+1}/{N_GRIDS}')
         # Generate grid and copy it (identical initial conditions for other fractures)
+        start_time_grid = time.time()
+        
         G, N, B, A0, R, ibl = generate_grid_2D(A, X1, X2, int_bre, A0=A0)
         G0 = np.copy(G)
         
         for f in range(N_FRACS):
+            start_time_frac = time.time()
             # Tracking number of fragments and index history of all fragments
             no_frag = 1
             G = np.copy(G0)
             fracture_energy = 0
-            
+            G_old = np.copy(G)
             while no_frag < NO_FRAG:                
                 # Initialize a new fracture. idx=None indicates that this is the first event
                 G, idx, ff, str_bond = break_one_bond(G, STR, ibl, idx=None, init_break_random=init_break_random)
@@ -94,13 +98,14 @@ def MC_breakage(A, X1, X2, STR, NO_FRAG, int_bre=0, N_GRIDS=100, N_FRACS=100, A0
                         fracture_energy += str_bond
                     cnt += 1
                 
-                # Caught in an endless loop. Report and restart the fragmentation (reset no_frag and idx_hist_frag)
+                # Caught in an endless loop. Report and restart the fragmentation (reset no_frag)
                 if cnt >= 2*G.shape[0]: 
-                    no_frag = 1
-                    G = np.copy(G0)            
+                    # no_frag = 1
+                    G = np.copy(G_old)            
                 else:
                     # Increase number of fragments and append to overall history
                     no_frag += 1
+                    G_old = np.copy(G)
             
             # Analyze framents 
             G, cnt_1_tmp, cnt_2_tmp, val_arr = analyze_fragments(G)
@@ -118,6 +123,10 @@ def MC_breakage(A, X1, X2, STR, NO_FRAG, int_bre=0, N_GRIDS=100, N_FRACS=100, A0
             # Scale fracture energy depending on individual bond length
             # TO-DO: Physical thoughts required here
             F[idx_F:idx_F+NO_FRAG, 3] = np.ones(NO_FRAG)*fracture_energy*np.sqrt(A0)
+            elapsed_time_frac = time.time() - start_time_frac
+            print(f"A frac takes：{elapsed_time_frac} seconds")
+        elapsed_time_grid = time.time() - start_time_grid
+        print(f"A grid takes：{elapsed_time_grid} seconds")
                 
     return F
 
@@ -547,14 +556,18 @@ def check_deadend(idx, idx_hist, G):
 # -------------- BELOW: Functions (not JIT-compiled) for test / debugging use onle 
 # Perfrom a single MC breakage simulation (for debugging/visualization only)
 def single_sim(A, X1, X2, STR, NO_FRAG, int_bre, A0=None, init_break_random=False, plot=True, 
-               close=False, verbose=True):
+               close=False, verbose=False):
 
     if close: plt.close('all')
     
     # Generate and plot grid
+    start_time = time.time()
+    print("start generating grid")
     G, N, B, A0, R, ibl = generate_grid_2D(A, X1, X2, int_bre, A0=A0)
     G0 = np.copy(G)
-    
+    elapsed_time = time.time() - start_time
+    start_time = time.time()
+    print(f"The generation of grids takes：{elapsed_time} seconds")
     # print(A0, A*X1/A0, A*X2/A0)
     if plot: ax0, fig0 = plot_G(G0, title='Initial grid')
     
@@ -569,7 +582,9 @@ def single_sim(A, X1, X2, STR, NO_FRAG, int_bre, A0=None, init_break_random=Fals
         if verbose: print(f'Starting fracture. Currently at {no_frag} fragments')
         # Initialize a new fracture. idx=None indicates that this is the first event
         G, idx, ff, str_bond = break_one_bond(G, STR, ibl, idx=None, init_break_random=init_break_random)
-
+        elapsed_time = time.time() - start_time
+        start_time = time.time()
+        print(f"The first breaking takes：{elapsed_time} seconds")
 
         # For each fracture keep a separate history (otherwise fragments cannot break "inside" themselves)
         idx_hist = nb_List([np.copy(idx)])
@@ -608,14 +623,17 @@ def single_sim(A, X1, X2, STR, NO_FRAG, int_bre, A0=None, init_break_random=Fals
             # Increase number of fragments and append to overall history
             no_frag += 1
             idx_hist_frag += idx_hist
-            
+            elapsed_time = time.time() - start_time
+            start_time = time.time()
+            print(f"A fracture process takes：{elapsed_time} seconds")
             # Plot current fracture
             if plot: _, _ = plot_G(G, title=f'Currently {no_frag} fragments')  
     
     # Analyze framents (use copy to retain original G)
     G_new = np.copy(G)
     G_new, cnt_1_arr, cnt_2_arr, val_arr = analyze_fragments(G_new)
-    
+    elapsed_time = time.time() - start_time
+    print(f"The analyze of framents takes：{elapsed_time} seconds")
     if plot: 
         # Generate random colors for filling
         colormap = plt.get_cmap('nipy_spectral')
@@ -715,11 +733,11 @@ if __name__ == '__main__':
     ########### -----------
     
     A0 = 0.025
-    A = 100*A0
+    A = 30000*A0
     X1 = 0.33
     X2 = 1-X1
-    STR = np.array([0.01,0.5,1])
-    NO_FRAG = 4
+    STR = np.array([1,1,1])
+    NO_FRAG = 6
     int_bre = 0
     
     INIT_BREAK_RANDOM = False
@@ -728,9 +746,12 @@ if __name__ == '__main__':
     
     # Perform stochastic simulation
     # Fragment array [total area, X1, X2, fracture energy]
+    # start_time = time.time()
     F = MC_breakage(A, X1, X2, STR, NO_FRAG, int_bre, N_GRIDS=N_GRIDS, N_FRACS=N_FRACS, 
                     A0=A0, init_break_random=INIT_BREAK_RANDOM) 
-    
+    # end_time = time.time()
+    # elapsed_time = end_time - start_time
+    # print(f"The MC-Simulation takes：{elapsed_time} seconds")
     ########### -----------
     # profiler.disable()
     # stats = pstats.Stats(profiler)
@@ -753,9 +774,9 @@ if __name__ == '__main__':
         pt.plot_init(mrksze=12,lnewdth=1)
             
         # Visualize distributions
-        ax1, ax2, ax3, ax4 = plot_F(F)
+        # ax1, ax2, ax3, ax4 = plot_F(F)
         
         # Perform a single simulation (1 grid, 1 fracture) for visualization
         # G, G_new, R, cnt_1_arr, cnt_2_arr, val_arr, fracture_energy, F_test = \
         #     single_sim(A, X1, X2, STR, NO_FRAG, int_bre, plot=True, A0=A0,
-        #                 close=False, init_break_random=INIT_BREAK_RANDOM)
+        #                 close=True, init_break_random=INIT_BREAK_RANDOM)

@@ -18,7 +18,7 @@ if __name__ == '__main__':
     V01 = 1
     V03 = 1
     N_GRIDS, N_FRACS = 200, 100
-    data_path = 'test_data'
+    data_path = 'simulation_data'
     
     ## generate dataset with variable parameters
     mc_gen.generate_dataset()
