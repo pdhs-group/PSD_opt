@@ -52,7 +52,7 @@ if __name__ == '__main__':
     
     #%% Prepare test data set
     ## define the range of corr_beta
-    var_corr_beta = np.array([1e0])
+    var_corr_beta = np.array([1e2])
     # var_corr_beta = np.array([1e-2])
     ## define the range of alpha_prim 27x3
     values = np.array([1])
@@ -69,16 +69,15 @@ if __name__ == '__main__':
             unique_alpha_prim.append(comp)
             
     var_alpha_prim = np.array(unique_alpha_prim)
-    var_alpha_prim = np.array([[1.0,1e-3,1.0]])
 
     ## define the range of v(breakage function)
-    var_v = np.array([2])
+    var_v = np.array([0.1,1,2])
     # var_v = np.array([0.01])
     ## define the range of P1, P2 for power law breakage rate
-    var_P1 = np.array([1e-3])
-    var_P2 = np.array([0.6])
-    var_P3 = np.array([1e-3])
-    var_P4 = np.array([0.6])
+    var_P1 = np.array([1e-6,5e-4,1e-3])
+    var_P2 = np.array([0.1,0.3,0.5])
+    var_P3 = np.array([1e-6,5e-4,1e-3])
+    var_P4 = np.array([0.1,0.3,0.5])
     # var_P5 = np.array([1e-4,1e-2])
     # var_P6 = np.array([0.1,1])
 
@@ -91,7 +90,7 @@ if __name__ == '__main__':
     # R01_0 = 'r0_001'
     # R03_0 = 'r0_001'
     
-    pool = multiprocessing.Pool(processes=2)
+    pool = multiprocessing.Pool(processes=24)
     tasks = []
     for j,corr_beta in enumerate(var_corr_beta):
         for k,alpha_prim in enumerate(var_alpha_prim):

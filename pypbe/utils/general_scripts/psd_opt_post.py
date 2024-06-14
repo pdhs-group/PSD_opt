@@ -79,7 +79,8 @@ def visualize_diff_mean(results, labels):
             all_elements = np.concatenate(list(diff_kernels.values()))
             ylabel = 'Kernels Error'
         elif vis_criteria == 'mse':
-            all_elements = result[:,3]
+            # all_elements = result[:,3]
+            all_elements = result[:,0]
             ylabel = 'MSE of PSD'
         diff_mean[i] = np.mean(all_elements)
         diff_std[i] = np.std(all_elements)
@@ -303,10 +304,12 @@ def calc_save_PSD_delta(results, data_paths):
     for i, result in enumerate(results):
         opt_kernels = result[:,1]
         delta = np.zeros(len(result))
-        for j, variable in enumerate(result):
-            find, exp_data_paths = initial_pop(variable, pbe_type)
-            find.algo.set_init_N(find.algo.sample_num, exp_data_paths, 'mean')
-            delta[j] = find.algo.calc_delta_agg(opt_kernels[j], sample_num=find.algo.sample_num, exp_data_path=exp_data_paths)
+        # for j, variable in enumerate(result):
+        j = 351
+        variable = result[j]
+        find, exp_data_paths = initial_pop(variable, pbe_type)
+        find.algo.set_init_N(find.algo.sample_num, exp_data_paths, 'mean')
+        delta[j] = find.algo.calc_delta_agg(opt_kernels[j], sample_num=find.algo.sample_num, exp_data_path=exp_data_paths)
         new_result = np.column_stack((result, delta))
         results[i] = new_result    
         np.savez(data_paths[i], results=new_result)
@@ -320,27 +323,34 @@ if __name__ == '__main__':
     vis_criteria = 'mse'
 
     # pbe_type = 'agglomeration'
-    # pbe_type = 'breakage'
-    pbe_type = 'mix'
+    pbe_type = 'breakage'
+    # pbe_type = 'mix'
     file_names = [
-        # 'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_400.npz',
+    #     'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_400.npz',
         'multi_[(\'q3\', \'MSE\')]_BO_wight_1_iter_400.npz',
-        # 'multi_[(\'q3\', \'MAE\')]_BO_wight_1_iter_400.npz',
-        # 'multi_[(\'q3\', \'RMSE\')]_BO_wight_1_iter_400.npz',
-        # 'multi_[(\'QQ3\', \'KL\')]_BO_wight_1_iter_400.npz',
-        # 'multi_[(\'QQ3\', \'MSE\')]_BO_wight_1_iter_400.npz',
-        # 'multi_[(\'x_50\', \'MSE\')]_BO_wight_1_iter_400.npz',
-        # 'multi_[(\'q3\', \'KL\'), (\'Q3\', \'KL\'), (\'x_50\', \'MSE\')]_BO_wight_1_iter_400.npz',
+        'multi_[(\'q3\', \'MSE\')]_BO_wight_1_iter_400_uc.npz',
+        # 'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_400_nolog_old.npz',
+        # 'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_400_old.npz',
+    #     'multi_[(\'q3\', \'MAE\')]_BO_wight_1_iter_400.npz',
+    #     'multi_[(\'q3\', \'RMSE\')]_BO_wight_1_iter_400.npz',
+    #     'multi_[(\'QQ3\', \'KL\')]_BO_wight_1_iter_400.npz',
+    #     'multi_[(\'QQ3\', \'MSE\')]_BO_wight_1_iter_400.npz',
+    #     'multi_[(\'x_50\', \'MSE\')]_BO_wight_1_iter_400.npz',
+    #     # 'multi_[(\'q3\', \'KL\'), (\'Q3\', \'KL\'), (\'x_50\', \'MSE\')]_BO_wight_1_iter_400.npz',
         ]
     labels = [
-        # 'q3_KL',
+    #     'q3_KL',
+        # 'q3_MSE',
         'q3_MSE',
-        # 'q3_MAE',
-        # 'q3_RMSE',
-        # 'Q3_KL',
-        # 'Q3_MSE',
-        # 'x_50_MSE',
-        # 'q3_KL_Q3_KL_x_50_MSE',
+        'q3_MSE_uc',
+        # 'q3_MSE',
+        # 'q3_MSE',
+    #     'q3_MAE',
+    #     'q3_RMSE',
+    #     'Q3_KL',
+    #     'Q3_MSE',
+    #     'x_50_MSE',
+    #     # 'q3_KL_Q3_KL_x_50_MSE',
         ]
     # file_names = [
     #     'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_400.npz',
@@ -383,7 +393,7 @@ if __name__ == '__main__':
     visualize_diff_mean(results, labels)
     
     # kernel: corr_agg_0, corr_agg_1, corr_agg_2, pl_v, pl_P1, pl_P2, pl_P3, pl_P4
-    result_to_analyse = results[0]
+    result_to_analyse = results[1]
     if pbe_type == 'agglomeration' or pbe_type == 'mix':
         corr_agg_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['corr_agg_0','corr_agg_1','corr_agg_2'])
     if pbe_type == 'breakage' or pbe_type == 'mix':
@@ -391,11 +401,10 @@ if __name__ == '__main__':
         pl_P13_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P1','pl_P3'], log_axis=True)
         pl_P24_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P2','pl_P4'])
     
-    # variable_to_analyse = result_to_analyse[351]
-    # one_frame = False
-    # calc_init = False
-    # t_return = -1
-    # fps = 5
-    # visualize_PSD(variable_to_analyse, pbe_type, one_frame)
+    variable_to_analyse = result_to_analyse[159]
+    one_frame = False
+    calc_init = False
+    t_return = -1
+    fps = 5
+    visualize_PSD(variable_to_analyse, pbe_type, one_frame)
 
-    

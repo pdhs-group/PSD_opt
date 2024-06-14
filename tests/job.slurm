@@ -1,12 +1,14 @@
 #!/bin/bash
 
-#SBATCH --job-name=Opt
+#SBATCH --job-name=Opt_mix
 #SBATCH --output=res.txt
-#SBATCH --nodes=8
-#SBATCH --time=48:00:00
-#SBATCH --mem=2000
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=2
+#SBATCH --time=72:00:00
+#SBATCH --mem=4000mb
 
 module purge
-module load devel/python/3.10.5_gnu_12.1
+module load devel/python/3.12.3_intel_2023.1.0
 
-python opt_main.py
+python opt_para_study.py
+

@@ -92,13 +92,13 @@ if __name__ == '__main__':
     var_alpha_prim = np.array(unique_alpha_prim)
 
     ## define the range of v(breakage function)
-    var_v = np.array([2])
+    var_v = np.array([0.1,1,2])
     # var_v = np.array([0.01])
     ## define the range of P1, P2 for power law breakage rate
-    var_P1 = np.array([1e-3])
-    var_P2 = np.array([0.3])
-    var_P3 = np.array([1e-3])
-    var_P4 = np.array([0.3])
+    var_P1 = np.array([1e-6,5e-4,1e-3])
+    var_P2 = np.array([0.1,0.3,0.5])
+    var_P3 = np.array([1e-6,5e-4,1e-3])
+    var_P4 = np.array([0.1,0.3,0.5])
     # var_P5 = np.array([1e-4,1e-2])
     # var_P6 = np.array([0.1,1])
 
@@ -139,7 +139,7 @@ if __name__ == '__main__':
                                                 }
                                             var_pop_params = conf_params['pop_params']
                                             func_list.append((R01_0, R03_0, dist_path_NM, dist_path_M, var_pop_params))
-    pool = multiprocessing.Pool(processes=12)
+    pool = multiprocessing.Pool(processes=24)
     pool.starmap(calc_function, func_list)                        
     pool.close()
     pool.join()                        

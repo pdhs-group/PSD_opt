@@ -99,12 +99,12 @@ def visualize_N():
 
 #%% MAIN   
 if __name__ == "__main__":
-    dim=2
+    dim=1
     p = pop(dim=dim)
     smoothing = True
     
     ## Set the PBE parameters
-    t_vec = np.arange(0, 15000, 1500, dtype=float)
+    t_vec = np.arange(0, 601, 15, dtype=float)
     # Note that it must correspond to the settings of MC-Bond-Break.
     p.NS = 15
     p.S = 4
@@ -112,12 +112,12 @@ if __name__ == "__main__":
     p.BREAKRVAL= 4
     p.BREAKFVAL= 5
     p.aggl_crit= 100
-    p.process_type= "mix"
-    p.pl_v= 1
-    p.pl_P1= 1e-3
-    p.pl_P2= 0.3
+    p.process_type= "breakage"
+    p.pl_v= 0.5
+    p.pl_P1= 1
+    p.pl_P2= 0.1
     p.pl_P3= 1e-3
-    p.pl_P4= 0.3
+    p.pl_P4= 1
     # p.pl_P5= 1e-2
     # p.pl_P6= 1
     p.COLEVAL= 2
@@ -141,6 +141,7 @@ if __name__ == "__main__":
     
     ## Use the breakage function calculated by the MC-Bond-Break method
     p.USE_MC_BOND = False
+    p.solver = "radau"
     
     ## Additional modifications for testing
     ## Total volume concentration of component, original value = 0.0001
@@ -154,10 +155,11 @@ if __name__ == "__main__":
     p.solve_PBE(t_vec=t_vec)
     ## View number concentration of partikel
     N = p.N
-    N_res_tem = p.N_res_tem
-    t_res_tem = p.t_res_tem
-    rate_res_tem = p.rate_res_tem
-    error_res_tem = p.error_res_tem
+    if p.solver == "radau":
+        N_res_tem = p.N_res_tem
+        t_res_tem = p.t_res_tem
+        rate_res_tem = p.rate_res_tem
+        error_res_tem = p.error_res_tem
     V_p = p.V
     
     if dim == 2:
@@ -173,6 +175,7 @@ if __name__ == "__main__":
     ## Visualize the convergence rate and error_norm
     pt.plot_init(scl_a4=1,figsze=[12.8,6.4*1.5],lnewdth=0.8,mrksze=5,use_locale=True,scl=1.2)
     visualize_distribution(t_frame=-1)
-    visualize_convergence()
     visualize_N()
     animation_distribution(t_vec,fps=5)
+    if p.solver == "radau":
+        visualize_convergence()

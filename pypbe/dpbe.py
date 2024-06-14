@@ -70,21 +70,23 @@ class population():
             elif self.disc == 'uni':
                 rhs = jit.get_dNdt_1d_uni                
                 args=(self.V,self.B_R,self.B_F,self.F_M,self.NS,self.aggl_crit_id,self.N_scale,self.process_type)
+            if self.solver == "ivp":    
+                self.RES = integrate.solve_ivp(rhs, 
+                                                [0, t_max], 
+                                                N[:,0], t_eval=t_vec,
+                                                args=args,
+                                                method='Radau',first_step=0.1,rtol=1e-1)
                 
-            # self.RES = integrate.solve_ivp(rhs, 
-            #                                 [0, t_max], 
-            #                                 self.N[:,0], t_eval=t_vec,
-            #                                 args=args,
-            #                                 method='Radau',first_step=0.1,rtol=1e-1)
-            
-            # # Reshape and save result to N and t_vec
-            # self.t_vec = self.RES.t
-            # self.N = self.RES.y
-            
-            ode_sys = RK.radau_ii_a(rhs, N[:,0], t_eval=t_vec,
-                                    args = args,
-                                    dt_first=0.1)
-            y_evaluated, y_res_tem, t_res_tem, rate_res_tem, error_res_tem = ode_sys.solve_ode()
+                # Reshape and save result to N and t_vec
+                t_vec = self.RES.t
+                y_evaluated = self.RES.y
+                status = True if self.RES.status == 0 else False
+            elif self.solver == "radau":
+                ode_sys = RK.radau_ii_a(rhs, N[:,0], t_eval=t_vec,
+                                        args = args,
+                                        dt_first=0.1)
+                y_evaluated, y_res_tem, t_res_tem, rate_res_tem, error_res_tem = ode_sys.solve_ode()
+                status = not ode_sys.dt_is_too_small  
             
         elif self.dim == 2:
             # Define right-hand-side function depending on discretization
@@ -95,21 +97,25 @@ class population():
             elif self.disc == 'uni':
                 rhs = jit.get_dNdt_2d_uni   
                 args=(self.V,self.V1,self.V3,self.F_M,self.NS,self.THR_DN)
-            # self.RES = integrate.solve_ivp(rhs, 
-            #                                 [0, t_max], 
-            #                                 np.reshape(self.N[:,:,0],-1), t_eval=t_vec,
-            #                                 args=args,
-            #                                 method='Radau',first_step=0.1,rtol=1e-1)
-            
-            # # Reshape and save result to N and t_vec
-            # self.t_vec = self.RES.t
-            # self.N = self.RES.y.reshape((self.NS,self.NS,len(self.RES.t)))
-            ode_sys = RK.radau_ii_a(rhs, np.reshape(N[:,:,0],-1), t_eval=t_vec,
-                                    args = args,
-                                    dt_first=0.1)
-            y_evaluated, y_res_tem, t_res_tem, rate_res_tem, error_res_tem = ode_sys.solve_ode()
-            y_evaluated = y_evaluated.reshape((self.NS,self.NS,len(t_vec)))
-            y_res_tem = y_res_tem.reshape((self.NS,self.NS,len(t_res_tem)))
+            if self.solver == "ivp":  
+                self.RES = integrate.solve_ivp(rhs, 
+                                                [0, t_max], 
+                                                np.reshape(N[:,:,0],-1), t_eval=t_vec,
+                                                args=args,
+                                                method='Radau',first_step=0.1,rtol=1e-1)
+                
+                # Reshape and save result to N and t_vec
+                t_vec = self.RES.t
+                y_evaluated = self.RES.y.reshape((self.NS,self.NS,len(t_vec)))
+                status = True if self.RES.status == 0 else False
+            elif self.solver == "radau":
+                ode_sys = RK.radau_ii_a(rhs, np.reshape(N[:,:,0],-1), t_eval=t_vec,
+                                        args = args,
+                                        dt_first=0.1)
+                y_evaluated, y_res_tem, t_res_tem, rate_res_tem, error_res_tem = ode_sys.solve_ode()
+                y_evaluated = y_evaluated.reshape((self.NS,self.NS,len(t_vec)))
+                y_res_tem = y_res_tem.reshape((self.NS,self.NS,len(t_res_tem)))
+                status = not ode_sys.dt_is_too_small
  
         elif self.dim == 3:
             # Define right-hand-side function depending on discretization
@@ -130,11 +136,12 @@ class population():
         # Monitor whether integration are completed  
         self.t_vec = t_vec 
         self.N = y_evaluated / self.N_scale
-        self.N_res_tem = y_res_tem / self.N_scale
-        self.t_res_tem = t_res_tem
-        self.rate_res_tem = rate_res_tem
-        self.error_res_tem = error_res_tem
-        self.calc_status = not ode_sys.dt_is_too_small   
+        self.calc_status = status   
+        if self.solver == "radau":
+            self.N_res_tem = y_res_tem / self.N_scale
+            self.t_res_tem = t_res_tem
+            self.rate_res_tem = rate_res_tem
+            self.error_res_tem = error_res_tem
     ## Solve ODE (forward Euler scheme):
     def solve_PBE_Euler(self):
         """ `(Legacy)` Simple solver with forward Euler. Use ``solve_PBE( )`` instead. """
@@ -1643,6 +1650,8 @@ class population():
         self.GC_EXPSTR = ''                   # Full exportstring of GC (only initialization, gets real value upon export)
         self.GV_EXPSTR = ''                   # Full exportstring of GV (only initialization, gets real value upon export)
         self.REPORT = True                    # When true, population informs about current calculation and reports results
+        self.solver = "radau"                   # "ivp": use integrate.solve_ivp
+                                              # "radau": use RK.radau_ii_a  
         
         
         # NOTE: The following two parameters define the magnetic separation step.

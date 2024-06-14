@@ -178,10 +178,12 @@ def solve_collocation_system(fun, t, y, h, Z0, scale, tol,
     
         if not np.all(np.isfinite(F)):
             break
-    
-        f_real = F.T.dot(TI_REAL) - M_real * W[0]
-        f_complex = F.T.dot(TI_COMPLEX) - M_complex * (W[1] + 1j * W[2])
-    
+        with np.errstate(divide='raise', over='raise', invalid='raise'):
+            try:
+                f_real = F.T.dot(TI_REAL) - M_real * W[0]
+                f_complex = F.T.dot(TI_COMPLEX) - M_complex * (W[1] + 1j * W[2])
+            except FloatingPointError:
+                break
         dW_real = lu_solve(LU_real, f_real, overwrite_b=True,)
         dW_complex = lu_solve(LU_complex, f_complex, overwrite_b=True)
     
