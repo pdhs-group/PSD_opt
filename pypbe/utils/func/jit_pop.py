@@ -11,7 +11,7 @@ from scipy.integrate import quad, dblquad
 # from numba.extending import overload, register_jitable
 
 @jit(nopython=True)
-def get_dNdt_1d_geo(t,N,NS,V_p,V_e,F_M,B_R,bf_int,xbf_int,type_flag,agg_crit,N_scale):
+def get_dNdt_1d_geo(t,N,NS,V_p,V_e,F_M,B_R,bf_int,xbf_int,type_flag,agg_crit):
     dNdt = np.zeros(N.shape)
     M_c = np.zeros(V_e.shape)
     D = np.zeros(N.shape)
@@ -20,22 +20,24 @@ def get_dNdt_1d_geo(t,N,NS,V_p,V_e,F_M,B_R,bf_int,xbf_int,type_flag,agg_crit,N_s
     v = np.zeros(NS+1)
     V_p_ex = np.zeros(NS+1)
     V_p_ex[:-1] = V_p
+    # N_scale_ex = np.ones(NS+1)
+    # N_scale_ex[:-1] = N_scale
     
     if type_flag == "agglomeration":
     ## Because each item contains N^2 when calculating agglomeration, 
     ## it is equivalent to multiplying each item by an additional N_scale 
     ## and needs to be manually removed(divide by N_scale) to correct it.    
         B_c, M_c, D = calc_1d_agglomeration(N,V_p,V_e,F_M,B_c,M_c,D,agg_crit)
-        B_c /= N_scale
-        M_c /= N_scale
-        D /= N_scale
+        # B_c /= N_scale_ex
+        # M_c /= N_scale_ex
+        # D /= N_scale
     elif type_flag == "breakage":
         B_c, M_c, D = calc_1d_breakage(N,V_p,V_e,B_R,bf_int,xbf_int,B_c,M_c,D)
     elif type_flag == "mix":
         B_c, M_c, D = calc_1d_agglomeration(N, V_p, V_e, F_M, B_c, M_c, D,agg_crit)
-        B_c /= N_scale
-        M_c /= N_scale
-        D /= N_scale
+        # B_c /= N_scale_ex
+        # M_c /= N_scale_ex
+        # D /= N_scale
         B_c, M_c, D = calc_1d_breakage(N, V_p, V_e, B_R, bf_int,xbf_int, B_c, M_c, D)
     else:
         raise Exception("Current type_flag is not supported")
@@ -60,8 +62,8 @@ def get_dNdt_1d_geo(t,N,NS,V_p,V_e,F_M,B_R,bf_int,xbf_int,type_flag,agg_crit,N_s
     
     return dNdt 
 
-@jit(nopython=True)
-def get_dNdt_2d_geo(t,NN,NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,type_flag,agg_crit,N_scale):       
+# @jit(nopython=True)
+def get_dNdt_2d_geo(t,NN,NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,type_flag,agg_crit):       
     N = np.copy(NN) 
     N = np.reshape(N,(NS,NS))
     dNdt = np.zeros(np.shape(N))
@@ -75,21 +77,23 @@ def get_dNdt_2d_geo(t,NN,NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,type_fl
     M2_c = np.zeros((NS+1,NS+1))
     V_p_ex = np.zeros((NS+1,NS+1))
     V_p_ex[:-1,:-1] = V_p
+    # N_scale_ex = np.ones((NS+1,NS+1))
+    # N_scale_ex[:-1,:-1] = N_scale
     
     if type_flag == "agglomeration":
         B_c, M1_c,M2_c, D = calc_2d_agglomeration(N,V_p,V_e1,V_e2,F_M,B_c,M1_c,M2_c,D,agg_crit)
-        B_c /= N_scale
-        M1_c /= N_scale
-        M2_c /= N_scale
-        D /= N_scale
+        # B_c /= N_scale_ex
+        # M1_c /= N_scale_ex
+        # M2_c /= N_scale_ex
+        # D /= N_scale
     elif type_flag == "breakage":
         B_c, M1_c,M2_c, D = calc_2d_breakage(N,V_p,V_e1,V_e2,B_R,bf_int,xbf_int,ybf_int,B_c,M1_c,M2_c,D)
     elif type_flag == "mix":
         B_c, M1_c,M2_c, D = calc_2d_agglomeration(N,V_p,V_e1,V_e2,F_M,B_c,M1_c,M2_c,D,agg_crit)
-        B_c /= N_scale
-        M1_c /= N_scale
-        M2_c /= N_scale
-        D /= N_scale
+        # B_c /= N_scale_ex
+        # M1_c /= N_scale_ex
+        # M2_c /= N_scale_ex
+        # D /= N_scale
         B_c, M1_c,M2_c, D = calc_2d_breakage(N,V_p,V_e1,V_e2,B_R,bf_int,xbf_int,ybf_int,B_c,M1_c,M2_c,D)
     else:
         raise Exception("Current type_flag is not supported")
@@ -280,7 +284,7 @@ def get_dNdt_3d_geo(t,NN,V,V1,V2,V3,F_M,NS,THR):
     return DN.reshape(-1) 
 
 # @jit(nopython=True)
-def get_dNdt_1d_uni(t,N,V,B_R,B_F,F_M,NS,agg_crit,N_scale,process_type):       
+def get_dNdt_1d_uni(t,N,V,B_R,B_F,F_M,NS,agg_crit,process_type):       
 
     # Initialize DN with zeros
     DN = np.zeros(np.shape(N))
@@ -308,10 +312,12 @@ def get_dNdt_1d_uni(t,N,V,B_R,B_F,F_M,NS,agg_crit,N_scale,process_type):
                         F = F_M[i,j]
                         # Calculate raw birth term as well as volumetric fluxes M.
                         # Division by 2 resulting from loop definition (don't count processes double)
-                        B[e] += F*N[i]*N[j]/2/N_scale                       
+                        # B[e] += F*N[i]*N[j]/2/N_scale[e] 
+                        B[e] += F*N[i]*N[j]/2
                         # Calculate death term of [a] and [b]. 
                         # D is defined positively (addition) and subtracted later
-                        D[j] -= F*N[i]*N[j]/N_scale     
+                        # D[j] -= F*N[i]*N[j]/N_scale[e]   
+                        D[j] -= F*N[i]*N[j]
     if process_type == 'breakage' or process_type == 'mix':
         for e in range(1,NS):
             S = B_R[e]
@@ -745,9 +751,9 @@ def breakage_func_1d_vol(x,y,v,q,BREAKFVAL):
 @jit(nopython=True)
 def breakage_func_2d(x3,x1,y1,y3,v,q,BREAKFVAL):
     if BREAKFVAL == 1:
-        theta = 4 / (y1*y3)
+        theta = 4.0 
     elif BREAKFVAL == 2:
-        theta = 2 / (y1*y3)
+        theta = 2.0 
     elif BREAKFVAL == 3:  
         # euler_beta = beta_func(q,q*(v-1))
         # z = (x1+x3)/(y1+y3)
