@@ -30,8 +30,7 @@ config = {
         ## method = basinhopping
         ## method = BO: use Bayesian Optimization
         'method': 'BO',
-
-        'n_iter': 100,
+        'n_iter': 400,
         ## Initialize PBE using psd data(False) or 
         ## with the help of first few time points of experimental data(True)
         'calc_init_N': False,
@@ -75,7 +74,7 @@ config = {
         'CORR_BETA' : 1,
         ## Reduce particle number desity concentration to improve calculation stability
         ## Default value = 1e14 
-        'N_scale': 1e-18,
+        'V_unit': 1e-15,
         ## When True, use distribution data simulated using MC-bond-break methods
         'USE_MC_BOND' : False,
         'solver' : "ivp",
@@ -87,10 +86,10 @@ config = {
         # 'corr_agg_1': {'bounds': (-5.0, 3.0), 'log_scale': True},
         # 'corr_agg_2': {'bounds': (-5.0, 3.0), 'log_scale': True},
         'pl_v': {'bounds': (0.1, 2), 'log_scale': False},
-        'pl_P1': {'bounds': (-6, -3), 'log_scale': True},
-        'pl_P2': {'bounds': (0.1, 0.5), 'log_scale': False},
-        'pl_P3': {'bounds': (-6, -3), 'log_scale': True},
-        'pl_P4': {'bounds': (0.1, 0.5), 'log_scale': False},
+        'pl_P1': {'bounds': (-2, 3), 'log_scale': True},
+        'pl_P2': {'bounds': (0.3, 2), 'log_scale': False},
+        'pl_P3': {'bounds': (-2, 3), 'log_scale': True},
+        'pl_P4': {'bounds': (0.3, 2), 'log_scale': False},
         # 'pl_P5': {'bounds': (-6, -1), 'log_scale': True},
         # 'pl_P6': {'bounds': (-3, 0), 'log_scale': True},
     },

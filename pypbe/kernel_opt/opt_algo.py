@@ -698,7 +698,8 @@ class opt_algo():
         ## Because sumN_uni_init[0] = 0
         pop.N[:, 0]= sumN_uni_init
         thr = 1e-5
-        pop.N[pop.N < (thr * pop.N[1:, 0].max())]=0     
+        pop.N[pop.N < (thr * pop.N[1:, 0].max())]=0   
+        pop.N[:, 0] *= pop.V_unit
         
     def calc_v_uni(self, pop):
         """

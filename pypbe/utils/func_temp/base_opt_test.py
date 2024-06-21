@@ -68,7 +68,6 @@ def normal_test():
     find.save_as_png(fig_NM, "PSD-NM")
     find.save_as_png(fig_M, "PSD-M")
     
-    
     return delta_opt, opt_values
     
 def calc_N_test():
@@ -245,7 +244,7 @@ if __name__ == '__main__':
                             dist_path_NM=dist_path_NM, dist_path_M=dist_path_M)
     find.algo.weight_2d = conf.config['weight_2d']
 
-    data_name = "Sim_Mul_0.1_para_100.0_1_1_1_2.0_0.001_0.5_1e-06_0.5.xlsx"  
+    data_name = "Sim_Mul_0.1_para_100.0_1_1_1_2.0_1000.0_2.0_1.0_0.3.xlsx"  
     
     exp_data_path = os.path.join(base_path, data_name)
     exp_data_paths = [

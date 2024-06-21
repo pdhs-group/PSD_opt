@@ -62,7 +62,7 @@ def get_dNdt_1d_geo(t,N,NS,V_p,V_e,F_M,B_R,bf_int,xbf_int,type_flag,agg_crit):
     
     return dNdt 
 
-# @jit(nopython=True)
+@jit(nopython=True)
 def get_dNdt_2d_geo(t,NN,NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,type_flag,agg_crit):       
     N = np.copy(NN) 
     N = np.reshape(N,(NS,NS))
@@ -283,7 +283,7 @@ def get_dNdt_3d_geo(t,NN,V,V1,V2,V3,F_M,NS,THR):
     
     return DN.reshape(-1) 
 
-# @jit(nopython=True)
+@jit(nopython=True)
 def get_dNdt_1d_uni(t,N,V,B_R,B_F,F_M,NS,agg_crit,process_type):       
 
     # Initialize DN with zeros
