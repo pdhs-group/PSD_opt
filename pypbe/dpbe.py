@@ -75,16 +75,22 @@ class population():
                 rhs = jit.get_dNdt_1d_uni                
                 args=(self.V,self.B_R,self.B_F,self.F_M,self.NS,self.aggl_crit_id,self.process_type)
             if self.solver == "ivp":    
-                self.RES = integrate.solve_ivp(rhs, 
-                                                [0, t_max], 
-                                                N[:,0], t_eval=t_vec,
-                                                args=args,
-                                                method='Radau',first_step=0.1,rtol=1e-1)
-                
-                # Reshape and save result to N and t_vec
-                t_vec = self.RES.t
-                y_evaluated = self.RES.y
-                status = True if self.RES.status == 0 else False
+                with np.errstate(over='raise', invalid='raise'):
+                    try:
+                        self.RES = integrate.solve_ivp(rhs, 
+                                                        [0, t_max], 
+                                                        N[:,0], t_eval=t_vec,
+                                                        args=args,
+                                                        method='Radau',first_step=0.1,rtol=1e-1)
+                        
+                        # Reshape and save result to N and t_vec
+                        t_vec = self.RES.t
+                        y_evaluated = self.RES.y
+                        status = True if self.RES.status == 0 else False
+                    except FloatingPointError:
+                        y_evaluated = -np.ones((self.NS,len(t_vec)))
+                        status = False
+                    
             elif self.solver == "radau":
                 ode_sys = RK.radau_ii_a(rhs, N[:,0], t_eval=t_vec,
                                         args = args,
@@ -111,16 +117,22 @@ class population():
                 rhs = jit.get_dNdt_2d_uni   
                 args=(self.V,self.V1,self.V3,self.F_M,self.NS,self.THR_DN)
             if self.solver == "ivp":  
-                self.RES = integrate.solve_ivp(rhs, 
-                                                [0, t_max], 
-                                                np.reshape(N[:,:,0],-1), t_eval=t_vec,
-                                                args=args,
-                                                method='Radau',first_step=0.1,rtol=1e-1)
+                with np.errstate(over='raise', invalid='raise'):
+                    try:
+                        self.RES = integrate.solve_ivp(rhs, 
+                                                        [0, t_max], 
+                                                        np.reshape(N[:,:,0],-1), t_eval=t_vec,
+                                                        args=args,
+                                                        method='Radau',first_step=0.1,rtol=1e-1)
+                        
+                        # Reshape and save result to N and t_vec
+                        t_vec = self.RES.t
+                        y_evaluated = self.RES.y.reshape((self.NS,self.NS,len(t_vec)))
+                        status = True if self.RES.status == 0 else False
+                    except FloatingPointError:
+                        y_evaluated = -np.ones((self.NS,self.NS,len(t_vec)))
+                        status = False
                 
-                # Reshape and save result to N and t_vec
-                t_vec = self.RES.t
-                y_evaluated = self.RES.y.reshape((self.NS,self.NS,len(t_vec)))
-                status = True if self.RES.status == 0 else False
             elif self.solver == "radau":
                 ode_sys = RK.radau_ii_a(rhs, np.reshape(N[:,:,0],-1), t_eval=t_vec,
                                         args = args,
