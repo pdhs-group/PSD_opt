@@ -75,7 +75,7 @@ class population():
                 rhs = jit.get_dNdt_1d_uni                
                 args=(self.V,self.B_R,self.B_F,self.F_M,self.NS,self.aggl_crit_id,self.process_type)
             if self.solver == "ivp":    
-                with np.errstate(over='raise', invalid='raise'):
+                with np.errstate(all='raise'):
                     try:
                         self.RES = integrate.solve_ivp(rhs, 
                                                         [0, t_max], 
@@ -117,7 +117,7 @@ class population():
                 rhs = jit.get_dNdt_2d_uni   
                 args=(self.V,self.V1,self.V3,self.F_M,self.NS,self.THR_DN)
             if self.solver == "ivp":  
-                with np.errstate(over='raise', invalid='raise'):
+                with np.errstate(all='raise'):
                     try:
                         self.RES = integrate.solve_ivp(rhs, 
                                                         [0, t_max], 

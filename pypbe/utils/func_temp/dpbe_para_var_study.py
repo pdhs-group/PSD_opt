@@ -75,7 +75,7 @@ if __name__ == '__main__':
     p.NS = 15
     p.S = 4
     
-    p.process_type= "breakage"
+    p.process_type= "mix"
     p.aggl_crit= 100
     p.COLEVAL= 2
     p.EFFEVAL= 1
@@ -105,7 +105,7 @@ if __name__ == '__main__':
     # p.full_init(calc_alpha=False)
 
     ## define the range of corr_beta
-    var_corr_beta = np.array([1e2])
+    var_corr_beta = np.array([1e-1,1,1e1,1e2])
     # var_corr_beta = np.array([1e-2])
     ## define the range of alpha_prim 27x3
     values = np.array([1])
