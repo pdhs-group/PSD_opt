@@ -107,17 +107,17 @@ if __name__ == "__main__":
     t_vec = np.arange(0, 151, 15, dtype=float)
     # Note that it must correspond to the settings of MC-Bond-Break.
     p.NS = 15
-    p.S = 2
+    p.S = 4
     
     p.BREAKRVAL= 4
     p.BREAKFVAL= 5
     p.aggl_crit= 100
-    p.process_type= "mix"
-    p.pl_v= 1
-    p.pl_P1= 1e1
-    p.pl_P2= 2
-    p.pl_P3= 1e1
-    p.pl_P4= 2
+    p.process_type= "breakage"
+    p.pl_v= 0.1
+    p.pl_P1= 1e3
+    p.pl_P2= 1
+    p.pl_P3= 1e3
+    p.pl_P4= 0.3
     # p.pl_P5= 1e-2
     # p.pl_P6= 1
     p.COLEVAL= 2

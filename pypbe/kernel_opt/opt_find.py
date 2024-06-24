@@ -108,12 +108,14 @@ class opt_find():
         
         if not self.multi_flag:
             self.algo.calc_pop(self.algo.p, pop_params, self.algo.t_all)
-            
-            for i in range(0, sample_num):
-                if sample_num != 1:
-                    exp_data_path=self.algo.traverse_path(i, exp_data_path)
-                # print(self.algo.exp_data_path)
-                self.write_new_data(self.algo.p, exp_data_path)
+            if self.algo.p.calc_status:
+                for i in range(0, sample_num):
+                    if sample_num != 1:
+                        exp_data_path=self.algo.traverse_path(i, exp_data_path)
+                    # print(self.algo.exp_data_path)
+                    self.write_new_data(self.algo.p, exp_data_path)
+            else:
+                return
         else:
             exp_data_paths = [
                 exp_data_path,
@@ -121,13 +123,15 @@ class opt_find():
                 exp_data_path.replace(".xlsx", "_M.xlsx")
             ]
             self.algo.calc_all_pop(pop_params, self.algo.t_all)
-            
-            for i in range(0, sample_num):
-                if sample_num != 1:
-                    exp_data_paths = self.algo.traverse_path(i, exp_data_paths)
-                    self.write_new_data(self.algo.p, exp_data_paths[0])
-                    self.write_new_data(self.algo.p_NM, exp_data_paths[1])
-                    self.write_new_data(self.algo.p_M, exp_data_paths[2])
+            if self.algo.p.calc_status and self.algo.p_NM.calc_status and self.algo.p_M.calc_status:
+                for i in range(0, sample_num):
+                    if sample_num != 1:
+                        exp_data_paths = self.algo.traverse_path(i, exp_data_paths)
+                        self.write_new_data(self.algo.p, exp_data_paths[0])
+                        self.write_new_data(self.algo.p_NM, exp_data_paths[1])
+                        self.write_new_data(self.algo.p_M, exp_data_paths[2])
+            else:
+                return
             
     def find_opt_kernels(self, sample_num, method='kernels', data_name=None):
         """

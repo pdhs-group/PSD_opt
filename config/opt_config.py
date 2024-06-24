@@ -53,7 +53,7 @@ config = {
     ## PBE parameters
     'pop_params': {
         'NS' : 15,
-        'S' : 2,
+        'S' : 4,
         'BREAKRVAL' : 4,
         'BREAKFVAL' : 5,
         ## aggl_crit: The sequence number of the particle that allows further agglomeration
