@@ -165,6 +165,8 @@ class population():
         # self.N = y_evaluated / eva_N_scale
         self.N = y_evaluated
         self.calc_status = status   
+        if not self.calc_status:
+            print('Warning: The integral failed to converge!')
         if self.solver == "radau":
             # self.N_res_tem = y_res_tem / res_N_scale
             self.N_res_tem = y_res_tem

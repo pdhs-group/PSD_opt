@@ -99,12 +99,12 @@ def visualize_N():
 
 #%% MAIN   
 if __name__ == "__main__":
-    dim=1
+    dim=2
     p = pop(dim=dim)
     smoothing = True
     
     ## Set the PBE parameters
-    t_vec = np.arange(0, 151, 15, dtype=float)
+    t_vec = np.arange(0, 151, 1, dtype=float)
     # Note that it must correspond to the settings of MC-Bond-Break.
     p.NS = 15
     p.S = 4
@@ -113,20 +113,20 @@ if __name__ == "__main__":
     p.BREAKFVAL= 5
     p.aggl_crit= 100
     p.process_type= "breakage"
-    p.pl_v= 0.1
-    p.pl_P1= 1e3
-    p.pl_P2= 1
-    p.pl_P3= 1e3
-    p.pl_P4= 0.3
+    p.pl_v= 1
+    p.pl_P1= 1e1
+    p.pl_P2= 0.3
+    p.pl_P3= 1e1
+    p.pl_P4= 1
     # p.pl_P5= 1e-2
     # p.pl_P6= 1
     p.COLEVAL= 2
     p.EFFEVAL= 1
     p.SIZEEVAL= 1
     if dim == 2:
-        p.alpha_prim = np.array([0.51454132, 0.01498605, 0.01498605,0.85706175])
+        p.alpha_prim = np.array([1, 1, 1, 1])
     elif dim == 1:
-        p.alpha_prim = 0.51454132
+        p.alpha_prim = 1
     p.CORR_BETA= 1e2
     ## The original value is the particle size at 1% of the PSD distribution. 
     ## The position of this value in the coordinate system can be adjusted by multiplying by size_scale.
@@ -143,7 +143,7 @@ if __name__ == "__main__":
         p.DIST3 = os.path.join(p.pth,'data','PSD_data','PSD_x50_2.0E-6_RelSigmaV_1.5E-1.npy')
     
     ## Use the breakage function calculated by the MC-Bond-Break method
-    p.USE_MC_BOND = True
+    p.USE_MC_BOND = False
     p.solver = "ivp"
     
     ## Initialize the PBE

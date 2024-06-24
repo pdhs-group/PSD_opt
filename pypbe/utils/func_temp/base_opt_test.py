@@ -244,7 +244,7 @@ if __name__ == '__main__':
                             dist_path_NM=dist_path_NM, dist_path_M=dist_path_M)
     find.algo.weight_2d = conf.config['weight_2d']
 
-    data_name = "Sim_Mul_0.1_para_100.0_1_1_1_0.1_1000.0_1.0_1000.0_0.3.xlsx"  
+    data_name = "Sim_para_100.0_1_1_1_2_1_1_1_1.xlsx"  
     
     exp_data_path = os.path.join(base_path, data_name)
     exp_data_paths = [
@@ -254,8 +254,8 @@ if __name__ == '__main__':
     ]
     
     # Run an optimization and generate graphs of the results
-    delta_opt, opt_values = normal_test()
+    # delta_opt, opt_values = normal_test()
     
     # N_exp, N_calc, N_exp_1D, N_calc_1D, q3_psd, q3_exp = calc_N_test()
     
-    # delta = calc_delta_test(var_delta=False)
+    delta = calc_delta_test(var_delta=False)
