@@ -75,7 +75,7 @@ class population():
                 rhs = jit.get_dNdt_1d_uni                
                 args=(self.V,self.B_R,self.B_F,self.F_M,self.NS,self.aggl_crit_id,self.process_type)
             if self.solver == "ivp":    
-                with np.errstate(all='raise'):
+                with np.errstate(divide='raise', over='raise',invalid='raise'):
                     try:
                         self.RES = integrate.solve_ivp(rhs, 
                                                         [0, t_max], 
@@ -87,7 +87,8 @@ class population():
                         t_vec = self.RES.t
                         y_evaluated = self.RES.y
                         status = True if self.RES.status == 0 else False
-                    except FloatingPointError:
+                    except (FloatingPointError, ValueError) as e:
+                        print(f"Exception encountered: {e}")
                         y_evaluated = -np.ones((self.NS,len(t_vec)))
                         status = False
                     
@@ -117,7 +118,7 @@ class population():
                 rhs = jit.get_dNdt_2d_uni   
                 args=(self.V,self.V1,self.V3,self.F_M,self.NS,self.THR_DN)
             if self.solver == "ivp":  
-                with np.errstate(all='raise'):
+                with np.errstate(divide='raise', over='raise',invalid='raise'):
                     try:
                         self.RES = integrate.solve_ivp(rhs, 
                                                         [0, t_max], 
@@ -129,7 +130,8 @@ class population():
                         t_vec = self.RES.t
                         y_evaluated = self.RES.y.reshape((self.NS,self.NS,len(t_vec)))
                         status = True if self.RES.status == 0 else False
-                    except FloatingPointError:
+                    except (FloatingPointError, ValueError) as e:
+                        print(f"Exception encountered: {e}")
                         y_evaluated = -np.ones((self.NS,self.NS,len(t_vec)))
                         status = False
                 
@@ -887,39 +889,39 @@ class population():
             # Power Law Pandy and Spielmann --> See Jeldres2018 (28)
             # Scale particle volume using the average volume of all possible fragments produced
             elif self.BREAKRVAL == 3:
-                V1_mean = self.V1[1:].mean()
-                V3_mean = self.V3[1:].mean()
+                # V1_mean = self.V1[1:].mean()
+                # V3_mean = self.V3[1:].mean()
                 V_mean = self.V[self.V!=0].mean()
                 for idx, tmp in np.ndenumerate(self.B_R):
                     a = idx[0]; b = idx[1]
                     if a == 0 and b == 0:
                         continue
                     elif a == 0:
-                        self.B_R[idx] = self.pl_P1 * self.G * (self.V3[b]/V3_mean)**self.pl_P2
+                        self.B_R[idx] = self.pl_P1 * self.G * (self.V3[b]/self.V3_mean)**self.pl_P2
                         # self.B_R[idx] = self.pl_P1 * self.G * self.V3[b]**self.pl_P2
                     elif b == 0:
-                        self.B_R[idx] = self.pl_P1 * self.G * (self.V1[a]/V1_mean)**self.pl_P2
+                        self.B_R[idx] = self.pl_P1 * self.G * (self.V1[a]/self.V1_mean)**self.pl_P2
                         # self.B_R[idx] = self.pl_P1 * self.G * self.V1[a]**self.pl_P2
                     else:
                         self.B_R[idx] = self.pl_P1 * self.G * (self.V[a+1,b+1]/V_mean)**self.pl_P2
                         # self.B_R[idx] = self.pl_P1 * self.G * self.V[a+1,b+1]**self.pl_P2
             # Hypothetical formula considering volume fraction
             elif self.BREAKRVAL == 4:
-                V1_mean = self.V1[1:].mean()
-                V3_mean = self.V3[1:].mean()
+                # V1_mean = self.V1[1:].mean()
+                # V3_mean = self.V3[1:].mean()
                 for idx, tmp in np.ndenumerate(self.B_R):
                     a = idx[0]; b = idx[1]
                     if a == 0 and b == 0:
                         continue
                     elif a == 0: 
-                        self.B_R[idx] = self.pl_P3 * self.G * (self.V3[b]/V3_mean)**self.pl_P4
+                        self.B_R[idx] = self.pl_P3 * self.G * (self.V3[b]/self.V3_mean)**self.pl_P4
                         # self.B_R[idx] = self.pl_P3 * self.G * (self.V3[b])**self.pl_P4
                     elif b == 0:
-                        self.B_R[idx] = self.pl_P1 * self.G * (self.V1[a]/V1_mean)**self.pl_P2
+                        self.B_R[idx] = self.pl_P1 * self.G * (self.V1[a]/self.V1_mean)**self.pl_P2
                         # self.B_R[idx] = self.pl_P1 * self.G * (self.V1[a])**self.pl_P2
                     else:
-                        self.B_R[idx] = self.pl_P1 * self.G * (self.V1[a]/V1_mean)**self.pl_P2 + \
-                                          self.pl_P3 * self.G * (self.V3[b]/V3_mean)**self.pl_P4
+                        self.B_R[idx] = self.pl_P1 * self.G * (self.V1[a]/self.V1_mean)**self.pl_P2 + \
+                                          self.pl_P3 * self.G * (self.V3[b]/self.V3_mean)**self.pl_P4
                         # self.B_R[idx] = self.pl_P1 * self.G * (self.V1[a])**self.pl_P2 + \
                                           # self.pl_P3 * self.G * (self.V3[b])**self.pl_P4
                         
@@ -1694,6 +1696,8 @@ class population():
         self.pl_P2 = 0.5                      # 2. parameter in power law for breakage rate  1d/2d
         self.pl_P3 = 1e-6                     # 3. parameter in power law for breakage rate  2d
         self.pl_P4 = 0.5                      # 4. parameter in power law for breakage rate  2d
+        self.V1_mean = 4.37*1e-14
+        self.V3_mean = 4.37*1e-14
         # self.pl_P5 = 1e-6                     # 5. parameter in power law for breakage rate  2d
         # self.pl_P6 = 0.5                      # 6. parameter in power law for breakage rate  2d
         

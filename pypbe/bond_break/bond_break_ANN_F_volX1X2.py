@@ -4,6 +4,7 @@ Created on Mon May  6 13:34:57 2024
 
 @author: px2030
 """
+import time
 import numpy as np
 import os,sys
 sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),"../.."))
@@ -11,15 +12,18 @@ from pypbe.bond_break.bond_break_post import calc_int_BF
 from pypbe.utils.func.jit_pop import lam, lam_2d, heaviside
 ## external package
 import math
+from keras import regularizers
 from keras.models import Sequential, load_model
-from keras.layers import Dense, InputLayer, Reshape, Lambda
+from keras.layers import Dense, InputLayer, Reshape, Lambda, BatchNormalization
 from keras.optimizers import Adam
 from keras.saving import register_keras_serializable
 import tensorflow as tf
 import pickle
+from sklearn.preprocessing import StandardScaler
 ## for plotter
 import matplotlib.pyplot as plt
 import pypbe.utils.plotter.plotter as pt
+from pypbe.utils.plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue, KIT_black_green_white
 
 def load_all_data(directory):
     files = [os.path.join(directory, f) for f in os.listdir(directory) if f.endswith('.npy')]
@@ -75,12 +79,15 @@ def generate_grid():
     M2_c = np.zeros((NS+1,NS+1))
     return B_c,v1,v2,M1_c,M2_c,e1,e2,x,y
 
-def Outputs_on_grid(path_all_data, all_Inputs, F_norm, data_num,B_c,v1,v2,M1_c,M2_c,e1,e2,x,y):
+def Outputs_on_grid(path_all_data,path_scaler, all_Inputs, F_norm, data_num,
+                    B_c,v1,v2,M1_c,M2_c,e1,e2,x,y,test_data):
     Inputs_1d = []
     Inputs_2d = []
     Outputs_1d = []
+    Outputs_1d_E = []
     Outputs_2dX1 = []
     Outputs_2dX2 = []
+    Outputs_2d_E = []
     all_prob = np.zeros(data_num)
     all_x_mass = np.zeros(data_num)
     all_y_mass = np.zeros(data_num)
@@ -93,14 +100,28 @@ def Outputs_on_grid(path_all_data, all_Inputs, F_norm, data_num,B_c,v1,v2,M1_c,M
             Outputs_1d.append(tem_Outputs)
             tem_Inputs = [all_Inputs[i,j] for j in range(7) if j == 0 or j == 2 or j == 6]
             Inputs_1d.append(tem_Inputs)
+            mean_energy = F_norm_tem[:,2].mean()
+            Outputs_1d_E.append(mean_energy)
         else:
             tem_OutputsX1,tem_OutputsX2, all_prob[i], all_x_mass[i], all_y_mass[i]= direct_psd_2d(F_norm_tem,NO_FRAG,X1,B_c,v1,v2,M1_c,M2_c,e1,e2,x,y)   
             Outputs_2dX1.append(tem_OutputsX1)
             Outputs_2dX2.append(tem_OutputsX2)
             Inputs_2d.append(all_Inputs[i,:])
-    all_data = [[np.array(Inputs_1d),np.array(Outputs_1d)],
-                [np.array(Inputs_2d),np.array(Outputs_2dX1),np.array(Outputs_2dX2)]]
-    
+            mean_energy = F_norm_tem[:,2].mean()
+            Outputs_2d_E.append(mean_energy)
+    if not test_data:
+        scaler_1d = StandardScaler()
+        scaler_2d = StandardScaler()
+        with open(path_scaler,'wb') as file:
+            pickle.dump((scaler_1d,scaler_2d), file)
+    else:
+        with open(path_scaler,'rb') as file:
+            scaler_1d, scaler_2d = pickle.load(file)
+    Inputs_1d_scaled = scaler_1d.fit_transform(Inputs_1d)
+    Inputs_2d_scaled = scaler_2d.fit_transform(Inputs_2d)
+    all_data = [[np.array(Inputs_1d),np.array(Outputs_1d),np.array(Inputs_1d_scaled),np.array(Outputs_1d_E)],
+                [np.array(Inputs_2d),np.array(Outputs_2dX1),np.array(Outputs_2dX2),np.array(Inputs_2d_scaled),np.array(Outputs_2d_E)]]
+
     with open(path_all_data, 'wb') as file:
         pickle.dump((all_data, all_prob, all_x_mass, all_y_mass), file)    
         
@@ -171,8 +192,8 @@ def direct_psd_2d(F_norm, NO_FRAG,X1,B_c,v1,v2,M1_c,M2_c,e1,e2,x,y):
                         *heaviside((-1)**(q+1)*(y[j+q]-v2[i+p,j+q]),0.5)
     ## Make the sum of the matrices B equal to 1, suitable for activation functions such as softmax
     # B /= NO_FRAG 
-    B_vol_X1 = B * np.outer(x[:-1], np.ones(30)) / X1
-    B_vol_X2 = B * np.outer(np.ones(30), y[:-1]) / (1-X1)
+    B_vol_X1 = B * np.outer(x[:-1], np.ones(NS)) / X1
+    B_vol_X2 = B * np.outer(np.ones(NS), y[:-1]) / (1-X1)
     ## Check whether the calculation results comply with mass conservation
     prob = B.sum()
     x_mass = np.sum(B_vol_X1)
@@ -200,8 +221,12 @@ def create_model_2dX1():
     # The output layer should now match the flattened shape of the new combined output array
     model = Sequential([
         InputLayer(shape=(7,)),  
-        Dense(128, activation='relu'),
-        Dense(64, activation='relu'),
+        Dense(256, activation='relu', kernel_regularizer=regularizers.l1(0.01)),
+        BatchNormalization(),
+        Dense(128, activation='relu', kernel_regularizer=regularizers.l1(0.01)),
+        BatchNormalization(),
+        Dense(64, activation='relu', kernel_regularizer=regularizers.l1(0.01)),
+        BatchNormalization(),
         Dense((NS-1)*NS, activation='softmax'),  # Adjusted for the new output shape
         Reshape((NS-1, NS)),  # Reshape the output to the desired shape
         Lambda(pad_Outputs_X1) # Add zero rows in front of first dimension
@@ -215,8 +240,12 @@ def create_model_2dX2():
     # The output layer should now match the flattened shape of the new combined output array
     model = Sequential([
         InputLayer(shape=(7,)),  
-        Dense(128, activation='relu'),
-        Dense(64, activation='relu'),
+        Dense(256, activation='relu', kernel_regularizer=regularizers.l1(0.01)),
+        BatchNormalization(),
+        Dense(128, activation='relu', kernel_regularizer=regularizers.l1(0.01)),
+        BatchNormalization(),
+        Dense(64, activation='relu', kernel_regularizer=regularizers.l1(0.01)),
+        BatchNormalization(),
         Dense(NS*(NS-1), activation='softmax'),  # Adjusted for the new output shape
         Reshape((NS, NS-1)),  # Reshape the output to the desired shape
         Lambda(pad_Outputs_X2) # Add zero column in front of second dimension
@@ -230,8 +259,10 @@ def create_model_1d():
     # The output layer should now match the flattened shape of the new combined output array
     model = Sequential([
         InputLayer(shape=(3,)),  
-        Dense(128, activation='relu'),
-        Dense(64, activation='relu'),
+        Dense(128, activation='relu', kernel_regularizer=regularizers.l1(0.001)),
+        BatchNormalization(),
+        Dense(64, activation='relu', kernel_regularizer=regularizers.l1(0.001)),
+        BatchNormalization(),
         Dense(NS, activation='softmax'),  # Adjusted for the new output shape
     ])
     if not use_custom_loss:
@@ -244,25 +275,30 @@ def train_model_2d(model, train_data, x, y, mask, epochs=100, batch_size=32):
     all_Inputs = train_data[0]
     all_Outputs_X1 = train_data[1]
     all_Outputs_X2 = train_data[2]
+    all_Inputs_scaled = train_data[3]
     # optimizer=Adam(learning_rate=0.0001)
     optimizer_X1=Adam()
     optimizer_X2=Adam()
-    train_dataset_X1 = tf.data.Dataset.from_tensor_slices((all_Inputs.astype(np.float32), all_Outputs_X1.astype(np.float32))).batch(batch_size)
-    train_dataset_X2 = tf.data.Dataset.from_tensor_slices((all_Inputs.astype(np.float32), all_Outputs_X2.astype(np.float32))).batch(batch_size)
+    train_dataset_X1 = tf.data.Dataset.from_tensor_slices((all_Inputs.astype(np.float32), all_Outputs_X1.astype(np.float32),
+                                                           all_Inputs_scaled.astype(np.float32))).batch(batch_size)
+    train_dataset_X2 = tf.data.Dataset.from_tensor_slices((all_Inputs.astype(np.float32), all_Outputs_X2.astype(np.float32),
+                                                           all_Inputs_scaled.astype(np.float32))).batch(batch_size)
     x_tf = tf.convert_to_tensor(x, dtype=tf.float32)
     y_tf = tf.convert_to_tensor(y, dtype=tf.float32)
     mask_tf = tf.convert_to_tensor(mask)
     for epoch in range(epochs):
         print(f'Starting epoch {epoch+1}')
         # Training
-        for step, ((batch_inputs_X1, batch_outputs_X1), (batch_inputs_X2, batch_outputs_X2)) in enumerate(zip(train_dataset_X1, train_dataset_X2)):
+        for step, ((batch_inputs_X1, batch_outputs_X1, batch_inputs_scaled_X1), 
+                   (batch_inputs_X2, batch_outputs_X2, batch_inputs_scaled_X2)
+                   ) in enumerate(zip(train_dataset_X1, train_dataset_X2)):
             X1 = batch_inputs_X1[:,1]
             X2 = 1 - X1
             FRAG_NUM = batch_inputs_X1[:,2]
-            V_tf = X1[:, tf.newaxis, tf.newaxis] * x_tf + X2[:, tf.newaxis, tf.newaxis] * y_tf
+            V_tf = x_tf / X1[:, tf.newaxis, tf.newaxis] + y_tf / X2[:, tf.newaxis, tf.newaxis]
             with tf.GradientTape(persistent=True) as tape:
-                prediction_X1  = model_X1(batch_inputs_X1, training=True)
-                prediction_X2  = model_X2(batch_inputs_X2, training=True)
+                prediction_X1  = model_X1(batch_inputs_scaled_X1, training=True)
+                prediction_X2  = model_X2(batch_inputs_scaled_X2, training=True)
                 loss_X1 = combined_custom_loss(batch_outputs_X1, prediction_X1, FRAG_NUM, V_tf, mask_tf, prediction_X2,
                                             alpha=weight_loss_FRAG_NUM, beta=1-weight_loss_FRAG_NUM)
                 loss_X2 = combined_custom_loss(batch_outputs_X2, prediction_X2, FRAG_NUM, V_tf, mask_tf, prediction_X1,
@@ -275,26 +311,28 @@ def train_model_2d(model, train_data, x, y, mask, epochs=100, batch_size=32):
             optimizer_X2.apply_gradients(zip(grads_X2, model_X2.trainable_weights))
             print(f'Training step {step+1}, Loss_X1: {loss_X1.numpy().mean()}, Loss_X2: {loss_X2.numpy().mean()}')
         
-        print(f"Training of Echos = {epochs} completed!")
+    print(f"Training of Echos = {epochs} completed!")
     del tape
     
 def train_model_1d(model, train_data, x, mask, epochs=100, batch_size=32):
     all_Inputs = train_data[0]
     all_Outputs = train_data[1]
+    all_Inputs_scaled = train_data[2]
     # optimizer=Adam(learning_rate=0.0001)
     optimizer=Adam()
-    train_dataset = tf.data.Dataset.from_tensor_slices((all_Inputs.astype(np.float32), all_Outputs.astype(np.float32))).batch(batch_size)
+    train_dataset = tf.data.Dataset.from_tensor_slices((all_Inputs.astype(np.float32), all_Outputs.astype(np.float32), 
+                                                        all_Inputs_scaled.astype(np.float32))).batch(batch_size)
     x_tf = tf.convert_to_tensor(x, dtype=tf.float32)
     mask_tf = tf.convert_to_tensor(mask)
     for epoch in range(epochs):
         print(f'Starting epoch {epoch+1}')
         # Training
-        for step, (batch_inputs, batch_outputs) in enumerate(train_dataset):
+        for step, (batch_inputs, batch_outputs, batch_inputs_scaled) in enumerate(train_dataset):
             FRAG_NUM = batch_inputs[:,1]
             with tf.GradientTape() as tape:
-                prediction  = model(batch_inputs, training=True)
+                prediction  = model(batch_inputs_scaled, training=True)
                 loss = combined_custom_loss(batch_outputs, prediction, FRAG_NUM, x_tf, mask_tf, 
-                                            alpha=0, beta=1)
+                                            alpha=weight_loss_FRAG_NUM, beta=1-weight_loss_FRAG_NUM)
             
             grads = tape.gradient(loss, model.trainable_weights)
             # grads = [tf.clip_by_value(g, -1.0, 1.0) for g in grads]
@@ -319,28 +357,31 @@ def custom_loss_all_prob(FRAG_NUM, V, mask, y_pred_other):
 def combined_custom_loss(y_true, y_pred, FRAG_NUM, V, mask, y_pred_other=None, alpha=0.5, beta=0.5):
     custom_loss_func_all_prob = custom_loss_all_prob(FRAG_NUM, V, mask, y_pred_other)
     loss_custom_all_prob = custom_loss_func_all_prob(y_true, y_pred)
-    loss_mse = tf.keras.losses.mean_squared_error(y_true, y_pred)
+    # loss_mse = tf.keras.losses.mean_squared_error(y_true, y_pred)
+    loss_kl = tf.keras.losses.kl_divergence(y_true, y_pred)
 
-    return alpha * loss_custom_all_prob + beta * loss_mse
+    return alpha * loss_custom_all_prob + beta * loss_kl
 
-def train_and_evaluate_model(model, model_name, train_data, test_data, epochs, x, y=None):
+def train_and_evaluate_model(model, model_name, train_data, test_data, epochs, training, x, y=None):
+    epochs_total = epochs * (training + 1)
     ## training and evaluation for 2d-model 
     if y is not None:
-        x_expand = np.outer(x, np.ones(30))
-        y_expand = np.outer(np.ones(30), y)
+        x_expand = np.outer(x, np.ones(NS))
+        y_expand = np.outer(np.ones(NS), y)
         mask = np.ones((len(x),len(y)), dtype=bool)
         mask[0, 0] = False
         # train model
         if use_custom_loss:
             train_model_2d(model, train_data, epochs=epochs, x=x_expand, y=y_expand, mask=mask)
         else:
-            model[0].fit(train_data[0], train_data[1], epochs=epochs, batch_size=32, validation_split=0.2)   
-            model[1].fit(train_data[0], train_data[2], epochs=epochs, batch_size=32, validation_split=0.2)
+            model[0].fit(train_data[3], train_data[1], epochs=epochs, batch_size=32, validation_split=0.2)   
+            model[1].fit(train_data[3], train_data[2], epochs=epochs, batch_size=32, validation_split=0.2)
       
-        model[0].save(model_name + 'X1.keras')
-        model[1].save(model_name + 'X2.keras')
+        model[0].save(model_name + f'X1_{epochs_total}.keras')
+        model[1].save(model_name + f'X2_{epochs_total}.keras')
         # evaluate_model
-        test_res = predictions_test_2d(model_name, test_data, x=x_expand, y=y_expand, mask=mask)
+        test_res = predictions_test_2d(model_name, test_data, epochs_total,x=x_expand, y=y_expand, mask=mask)
+        # test_res = []
     ## training and evaluation for 2d-model 
     else:
         mask = np.ones(x.shape, dtype=bool)
@@ -349,25 +390,26 @@ def train_and_evaluate_model(model, model_name, train_data, test_data, epochs, x
         if use_custom_loss:
             train_model_1d(model, train_data, epochs=epochs, x=x, mask=mask)
         else:
-            model.fit(train_data[0], train_data[1], epochs=epochs, batch_size=32, validation_split=0.2)   
+            model.fit(train_data[2], train_data[1], epochs=epochs, batch_size=32, validation_split=0.2)   
       
-        model.save(model_name + '.keras')
+        model.save(model_name + f'_{epochs_total}.keras')
         # evaluate_model
-        test_res = predictions_test_1d(model_name, test_data, x=x, mask=mask)
+        test_res = predictions_test_1d(model_name, test_data, epochs_total,x=x, mask=mask)
     return test_res
 
-def predictions_test_1d(model_name,test_data, x, mask): 
+def predictions_test_1d(model_name,test_data, epochs_total,x, mask): 
     test_Inputs = test_data[0]
     test_Outputs = test_data[1]
-    model = load_model(model_name + '.keras')
-    predicted_Outputs = model.predict(test_Inputs)
+    test_Inputs_scaled = test_data[2]
+    model = load_model(model_name + f'_{epochs_total}.keras')
+    predicted_Outputs = model.predict(test_Inputs_scaled)
     if use_custom_loss:
         all_mse = tf.keras.losses.mean_squared_error(test_Outputs, predicted_Outputs).numpy()
         all_mae = tf.keras.losses.mean_absolute_error(test_Outputs, predicted_Outputs).numpy()
         mse = all_mse.mean()
         mae = all_mae.mean()
     else:
-        mse, mae = model.evaluate(test_Inputs, test_Outputs)
+        mse, mae = model.evaluate(test_Inputs_scaled, test_Outputs)
     length = test_Inputs.shape[0]
     pre_all_prob = np.zeros(length)
     pre_all_x_mass = np.zeros(length)
@@ -387,22 +429,25 @@ def predictions_test_1d(model_name,test_data, x, mask):
 
     return mse, mae, mean_all_prob, mean_all_x_mass, mean_all_y_mass
 
-def predictions_test_2d(model_name,test_data,x,y,mask): 
+def predictions_test_2d(model_name,test_data,epochs_total,x,y,mask): 
     test_Inputs = test_data[0]
     test_Outputs_X1 = test_data[1]
     test_Outputs_X2 = test_data[2]
-    model_X1 = load_model(model_name+ 'X1.keras')
-    model_X2 = load_model(model_name+ 'X2.keras')
-    predicted_Outputs_X1 = model_X1.predict(test_Inputs)
-    predicted_Outputs_X2 = model_X2.predict(test_Inputs)
+    test_Inputs_scaled = test_data[3]
+    model_X1 = load_model(model_name+ f'X1_{epochs_total}.keras')
+    model_X2 = load_model(model_name+ f'X2_{epochs_total}.keras')
+    predicted_Outputs_X1 = model_X1.predict(test_Inputs_scaled)
+    predicted_Outputs_X2 = model_X2.predict(test_Inputs_scaled)
     if use_custom_loss:
-        all_mse = tf.keras.losses.mean_squared_error(test_Outputs_X1, predicted_Outputs_X1).numpy()
-        all_mae = tf.keras.losses.mean_absolute_error(test_Outputs_X1, predicted_Outputs_X1).numpy()
-        mse = all_mse.mean()
-        mae = all_mae.mean()
+        all_mse_X1 = tf.keras.losses.mean_squared_error(test_Outputs_X1, predicted_Outputs_X1).numpy()
+        all_mae_X1 = tf.keras.losses.mean_absolute_error(test_Outputs_X1, predicted_Outputs_X1).numpy()
+        all_mse_X2 = tf.keras.losses.mean_squared_error(test_Outputs_X2, predicted_Outputs_X2).numpy()
+        all_mae_X2 = tf.keras.losses.mean_absolute_error(test_Outputs_X2, predicted_Outputs_X2).numpy()
+        mse = (all_mse_X1+all_mse_X2).mean()
+        mae = (all_mae_X1+all_mae_X2).mean()
     else:
-        mse_X1, mae_X1 = model_X1.evaluate(test_Inputs, test_Outputs_X1)
-        mse_X2, mae_X2 = model_X2.evaluate(test_Inputs, test_Outputs_X2)
+        mse_X1, mae_X1 = model_X1.evaluate(test_Inputs_scaled, test_Outputs_X1)
+        mse_X2, mae_X2 = model_X2.evaluate(test_Inputs_scaled, test_Outputs_X2)
         mse = (mse_X1+mse_X2)/2
         mae = (mae_X1+mae_X2)/2
     length = test_Inputs.shape[0]
@@ -418,7 +463,7 @@ def predictions_test_2d(model_name,test_data,x,y,mask):
     true_all_x_mass = np.ones_like(true_all_prob)
     true_all_y_mass = np.ones_like(true_all_prob)
     for i in range(length):
-        V = X1[i] * x + X2[i] * y
+        V = x / X1[i] + y /X2[i]
         pre_all_prob[i] = np.sum((predicted_Outputs_X1[i,mask]+predicted_Outputs_X2[i,mask])/ V[mask])
         pre_all_x_mass[i] = np.sum(predicted_Outputs_X1[i,:])
         pre_all_y_mass[i] = np.sum(predicted_Outputs_X2[i,:])
@@ -467,22 +512,25 @@ def calc_B_F(FRAG, precalc_matrix, NSS):
                         inty_B_F[m, n, k, l] = np.sum(precalc_matrix[m, n, k, l] * FRAG[2,k,l])
         
     return int_B_F, intx_B_F, inty_B_F
-def calc_FRAG(V, V_rel, X1, STR1, STR2, STR3, NO_FRAG, int_bre, NS,NSS, x,y, mask):
+def calc_FRAG(epochs_total, V, V_rel, X1, STR1, STR2, STR3, NO_FRAG, int_bre, NS,NSS, x,y, mask):
     ## FRAG stores the information of NS*NS fragments broken into by NSS*NSS particles. 
     ## The first dimension stores the number of fragments. 
     ## The second dimension is the X1 volume of the fragment. 
     ## The third dimension is the volume of X2
     FRAG = np.zeros((3,NSS,NSS,NS,NS))
-    model_1d = load_model('model_1d.keras')
-    model_2dX1 = load_model('model_2dX1.keras')
-    model_2dX2 = load_model('model_2dX2.keras')
+    model_1d = load_model(f'model_1d_{epochs_total}.keras')
+    model_2dX1 = load_model(f'model_2dX1_{epochs_total}.keras')
+    model_2dX2 = load_model(f'model_2dX2_{epochs_total}.keras')
+    with open(path_scaler,'rb') as file:
+        scaler_1d, scaler_2d = pickle.load(file)
     ## calculate 1d FRAG
     V_rel_1d = V_rel[1:,0]
     num_elements = V_rel_1d.size
     NO_FRAG_array = np.full(num_elements, NO_FRAG)
     int_bre_array = np.full(num_elements, int_bre)
     inputs_1d = np.column_stack((V_rel_1d, NO_FRAG_array, int_bre_array))
-    FRAG_vol_1d = model_1d.predict(inputs_1d)
+    inputs_1d_scaled = scaler_1d.fit_transform(inputs_1d)
+    FRAG_vol_1d = model_1d.predict(inputs_1d_scaled)
     for i in range(1,NSS):
         FRAG[0, i,0,1:,0] = FRAG_vol_1d[i-1,mask[0]] / x[mask[0]]
         FRAG[1, i,0,1:,0] = FRAG_vol_1d[i-1,mask[0]] * V[i,0]
@@ -493,6 +541,7 @@ def calc_FRAG(V, V_rel, X1, STR1, STR2, STR3, NO_FRAG, int_bre, NS,NSS, x,y, mas
     NO_FRAG_array = np.full(num_elements, NO_FRAG)
     int_bre_array = np.full(num_elements, int_bre)
     inputs_1d = np.column_stack((V_rel_1d, NO_FRAG_array, int_bre_array))
+    inputs_1d_scaled = scaler_1d.fit_transform(inputs_1d)
     FRAG_vol_1d = model_1d.predict(inputs_1d)
     for i in range(1,NSS):
         FRAG[0, 0,i,0,1:] = FRAG_vol_1d[i-1,mask[0]] / y[mask[0]]
@@ -508,10 +557,11 @@ def calc_FRAG(V, V_rel, X1, STR1, STR2, STR3, NO_FRAG, int_bre, NS,NSS, x,y, mas
     NO_FRAG_array = np.full(num_elements, NO_FRAG)
     int_bre_array = np.full(num_elements, int_bre)
     inputs_2d = np.column_stack((V_rel_2d_flat, X1_2d_flat, STR1_array, STR2_array, STR3_array, NO_FRAG_array, int_bre_array))
-    FRAG_vol_2dX1 = model_2dX1.predict(inputs_2d).reshape(NSS-1, NSS-1, NS, NS)
-    FRAG_vol_2dX2 = model_2dX2.predict(inputs_2d).reshape(NSS-1, NSS-1, NS, NS)
-    x_expand = np.outer(x, np.ones(30))
-    y_expand = np.outer(np.ones(30), y)
+    inputs_2d_scaled = scaler_2d.fit_transform(inputs_2d)
+    FRAG_vol_2dX1 = model_2dX1.predict(inputs_2d_scaled).reshape(NSS-1, NSS-1, NS, NS)
+    FRAG_vol_2dX2 = model_2dX2.predict(inputs_2d_scaled).reshape(NSS-1, NSS-1, NS, NS)
+    x_expand = np.outer(x, np.ones(NS))
+    y_expand = np.outer(np.ones(NS), y)
     for i in range(1,NSS):
         for j in range(1,NSS):
             V_inv = x_expand*X1[i,j] + y_expand*(1-X1[i,j])
@@ -520,7 +570,7 @@ def calc_FRAG(V, V_rel, X1, STR1, STR2, STR3, NO_FRAG, int_bre, NS,NSS, x,y, mas
             FRAG[2, i,j,mask] = FRAG_vol_2dX2[i-1,j-1,mask] * (1-X1[i,j]) * V[i,j]
     return FRAG
     
-def test_ANN_to_B_F(NS,S):
+def test_ANN_to_B_F(NS,S,epochs_total):
     STR1 = 0.5
     STR2 = 0.5
     STR3 = 0.5
@@ -578,7 +628,7 @@ def test_ANN_to_B_F(NS,S):
     mask = np.ones(V_xy.shape, dtype=bool)
     mask[0, 0] = False
     
-    FRAG = calc_FRAG(V, V_rel, X1, STR1, STR2, STR3, NO_FRAG, int_bre, NS, NSS, x,y, mask)
+    FRAG = calc_FRAG(epochs_total, V, V_rel, X1, STR1, STR2, STR3, NO_FRAG, int_bre, NS, NSS, x,y, mask)
     precalc_matrix = precalc_matrix_ANN_to_B_F(NS,NSS,V1,V3,V_e1,V_e3,x,y)
     int_B_F, intx_B_F, inty_B_F = calc_B_F(FRAG,precalc_matrix,NSS)
     
@@ -593,87 +643,186 @@ def plot_error(results,epochs,num_training):
     epochs_array = np.arange(epochs, epochs*num_training+1, epochs)
     pt.close()
     pt.plot_init(scl_a4=1,figsze=[12.8,6.4*1.5],lnewdth=0.8,mrksze=5,use_locale=True,scl=1.2)
-    ax1, fig1 = pt.plot_data(epochs_array, results['model_2d']['mse'],
-                           xlbl='Epochs of Model Training / $-$',
-                           ylbl='Results of Validation / $-$',
-                           lbl='mse',clr='b',mrk='o')
-    ax2, fig2 = pt.plot_data(epochs_array, results['model_2d']['mae'],
-                           xlbl='Epochs of Model Training / $-$',
-                           ylbl='Results of Validation / $-$',
-                           lbl='mae',clr='b',mrk='o')
-    ax3, fig3 = pt.plot_data(epochs_array, results['model_2d']['mean_frag_erro'],
-                           xlbl='Epochs of Model Training / $-$',
-                           ylbl='Results of Validation / $-$',
-                           lbl='mean_frag_erro',clr='b',mrk='o')
+    fig1=plt.figure()
+    fig2=plt.figure()
+    fig3=plt.figure()
     fig4=plt.figure()
+    ax1=fig1.add_subplot(1,1,1)
+    ax2=fig2.add_subplot(1,1,1)
+    ax3=fig3.add_subplot(1,1,1) 
     ax4=fig4.add_subplot(1,1,1)
+    
+    ax1, fig1 = pt.plot_data(epochs_array, results['model_2d']['mse'],fig=fig1,ax=ax1,
+                           xlbl='Epochs of Model Training / $-$',
+                           ylbl='Results of Validation / $-$',
+                           lbl='mse_2d',clr='b',mrk='o')
+    # ax1, fig1 = pt.plot_data(epochs_array, results['model_1d']['mse'],fig=fig1,ax=ax1,
+    #                        lbl='mse_1d',clr='g',mrk='o')
+    
+    ax2, fig2 = pt.plot_data(epochs_array, results['model_2d']['mae'],fig=fig2,ax=ax2,
+                           xlbl='Epochs of Model Training / $-$',
+                           ylbl='Results of Validation / $-$',
+                           lbl='mae_2d',clr='b',mrk='o')
+    # ax2, fig2 = pt.plot_data(epochs_array, results['model_1d']['mae'],fig=fig2,ax=ax2,
+    #                        lbl='mae_1d',clr='g',mrk='o')
+    
+    ax3, fig3 = pt.plot_data(epochs_array, results['model_2d']['mean_frag_erro'],fig=fig3,ax=ax3,
+                           xlbl='Epochs of Model Training / $-$',
+                           ylbl='Results of Validation / $-$',
+                           lbl='mean_frag_erro_2d',clr='b',mrk='o')
+    ax3, fig3 = pt.plot_data(epochs_array, results['model_1d']['mean_frag_erro'],fig=fig3,ax=ax3,
+                           lbl='mean_frag_erro_1d',clr='g',mrk='o')
+
     ax4, fig4 = pt.plot_data(epochs_array, results['model_2d']['mean_x_mass_erro'],fig=fig4,ax=ax4,
                            xlbl='Epochs of Model Training / $-$',
                            ylbl='Results of Validation / $-$',
-                           lbl='mean_x_mass_erro',clr='b',mrk='o')
+                           lbl='mean_x_mass_erro_2d',clr='b',mrk='o')
     ax4, fig4 = pt.plot_data(epochs_array, results['model_2d']['mean_y_mass_erro'],fig=fig4,ax=ax4,
-                           xlbl='Epochs of Model Training / $-$',
-                           ylbl='Results of Validation / $-$',
-                           lbl='mean_y_mass_erro',clr='r',mrk='^')
-    return    
+                           lbl='mean_y_mass_erro_2d',clr='r',mrk='^')
+    ax4, fig4 = pt.plot_data(epochs_array, results['model_1d']['mean_x_mass_erro'],fig=fig4,ax=ax4,
+                           lbl='mean_x_mass_erro_1d',clr='g',mrk='o')
+    return   
+
+def plot_1d_F(x,NS,test_data,epochs_total,data_index=0,vol_dis=False):
+    model = load_model(f'model_1d_{epochs_total}.keras')
+    test_Input = test_data[2][data_index].reshape(1,3)
+    test_Output = test_data[1][data_index]
+    predicted_Output = model.predict(test_Input).reshape(NS)
+    ylbl = 'Total Relative Volume / $-$'
+    if not vol_dis:
+        mask = np.ones(x.shape, dtype=bool)
+        mask[0] = False
+        test_Output[mask] /= x[mask]
+        test_Output[0] = 0.0
+        predicted_Output[mask] /= x[mask]
+        test_Output[0] = 0.0
+        ylbl = 'Counts / $-$'
+    ## Convert to quantity distribution matrix counts
+    test_counts = (1e5 * test_Output).astype(int)
+    predicted_counts = (1e5 * predicted_Output).astype(int)
+    x_test_counts = []
+    x_predicted_counts = []
+    for i in range(test_counts.shape[0]):
+        x_test_counts.extend([x[i]] * test_counts[i])
+        x_predicted_counts.extend([x[i]] * predicted_counts[i])
+    x_test_counts = np.array(x_test_counts)
+    x_predicted_counts = np.array(x_predicted_counts)
+    
+    ax1, fig1, H1, xe1 = pt.plot_1d_hist(x=x_test_counts,bins=100,scale='line',xlbl='Relative Volume of Fragments / $-$',
+                                         ylbl=ylbl,tit='LMC',clr=c_KIT_green,norm=False, alpha=0.7)
+    ax2, fig2, H2, xe2 = pt.plot_1d_hist(x=x_predicted_counts,bins=100,scale='line',xlbl='Relative Volume of Fragments / $-$',
+                                         ylbl=ylbl,tit='ANN',clr=c_KIT_green,norm=False, alpha=0.7)
+    return ax1, ax2
+    
+def plot_2d_F(x,y,NS,test_data,epochs_total,data_index=0,vol_dis=False):
+    model_X1 = load_model(f'model_2dX1_{epochs_total}.keras')
+    model_X2 = load_model(f'model_2dX2_{epochs_total}.keras')
+    test_Input = test_data[3][data_index].reshape(1,7)
+    test_OutputX1 = test_data[1][data_index]
+    test_OutputX2 = test_data[2][data_index]
+    predicted_OutputX1 = model_X1.predict(test_Input).reshape(NS,NS)
+    predicted_OutputX2 = model_X2.predict(test_Input).reshape(NS,NS)
+    test_Output = test_OutputX1+test_OutputX2
+    predicted_Output = predicted_OutputX1+predicted_OutputX2
+    if not vol_dis:
+        mask = np.ones((len(x),len(y)), dtype=bool)
+        V = np.zeros((len(x),len(y)))
+        mask[0, 0] = False
+        X1 = test_Input[0,1]
+        X2 = 1 - X1
+        for i in range(len(x)):
+            for j in range(len(y)):
+                V[i,j] = x[i] / X1 + y[j] / X2
+        test_Output[mask] = (test_OutputX1[mask]+test_OutputX2[mask])/ V[mask]     
+        predicted_Output[mask] = (predicted_OutputX1[mask]+predicted_OutputX2[mask])/ V[mask]
+    test_counts = (1e5 * test_Output).astype(int)
+    predicted_counts = (1e5 * predicted_Output).astype(int)
+    x_test_counts = []
+    x_predicted_counts = []
+    y_test_counts = []
+    y_predicted_counts = []
+    for i in range(test_counts.shape[0]):
+        for j in range(test_counts.shape[1]):
+            x_test_counts.extend([x[i]] * test_counts[i,j])
+            x_predicted_counts.extend([x[i]] * predicted_counts[i,j])
+            y_test_counts.extend([y[j]] * test_counts[i,j])
+            y_predicted_counts.extend([y[j]] * predicted_counts[i,j])
+    x_test_counts = np.array(x_test_counts)
+    x_predicted_counts = np.array(x_predicted_counts)
+    y_test_counts = np.array(y_test_counts)
+    y_predicted_counts = np.array(y_predicted_counts)
+    ax1, fig1, cb1, H1, xe1, ye1 = pt.plot_2d_hist(x=x_test_counts,y=y_test_counts,bins=(50,50),w=None,
+                                                   scale=('line','line'), clr=KIT_black_green_white.reversed(), 
+                                                   xlbl='Relative Volume V1 of Fragments / $-$', norm=False,
+                                                   ylbl='Relative Volume V2 of Fragments / $-$', grd=True,
+                                                   scale_hist='log', hist_thr=1e-4,tit='LMC')
+    ax2, fig2, cb2, H2, xe2, ye2 = pt.plot_2d_hist(x=x_predicted_counts,y=y_predicted_counts,bins=(50,50),w=None,
+                                                   scale=('line','line'), clr=KIT_black_green_white.reversed(), 
+                                                   xlbl='Relative Volume V1 of Fragments / $-$', norm=False,
+                                                   ylbl='Relative Volume V2 of Fragments / $-$', grd=True,
+                                                   scale_hist='log', hist_thr=1e-4,tit='ANN')
+    return ax1, ax2
 # %% MAIN
 if __name__ == '__main__':
     ## 1d model has three input parameters: Volume, NO_FRAG, int_bre
     ## 2d model has seven input parameters: Volume, X1, STR1, STR2, STR,3, NO_FRAG, int_bre
-    int_method = 'MC'
     directory = '../../tests/simulation_data'
     test_directory = '../../tests/test_data'
+    path_scaler = 'Inputs_scaler.pkl'
     path_all_data = 'output_data_volX1.pkl'
     path_all_test = 'test_data_volX1.pkl'
-    NS = 30
-    S = 2
+    NS = 50
+    S = 1.3
     N_GRIDS, N_FRACS = 200, 100
-    max_NO_FRAG = 8
-    max_len = max_NO_FRAG * N_GRIDS * N_FRACS
     use_custom_loss = True
     ## value in [0,1)
-    weight_loss_FRAG_NUM = 0.01
+    weight_loss_FRAG_NUM = 0.001
     
     # all_Inputs, F_norm, data_num = load_all_data(directory)
     # ## Use data other than training data for testing
     # test_Inputs, test_F_norm, test_data_num = load_all_data(test_directory) 
     # B_c,v1,v2,M1_c,M2_c,e1,e2,x,y = generate_grid()
-    # all_data, all_prob, all_x_mass, all_y_mass = Outputs_on_grid(path_all_data, all_Inputs, F_norm, data_num,
-    #                                                                 B_c,v1,v2,M1_c,M2_c,e1,e2,x,y)
-    # test_all_data, _, _, _ = Outputs_on_grid(path_all_test, test_Inputs, test_F_norm, test_data_num,
-    #                                                                 B_c,v1,v2,M1_c,M2_c,e1,e2,x,y)
-    # B_c,v1,v2,M1_c,M2_c,e1,e2,x,y = generate_grid()
-    # with open(path_all_data, 'rb') as file:
-    #     all_data, all_prob, all_x_mass, all_y_mass = pickle.load(file)
-    # with open(path_all_test, 'rb') as file:
-    #     test_all_data, _, _, _ = pickle.load(file)
+    # all_data, all_prob, all_x_mass, all_y_mass = Outputs_on_grid(path_all_data,path_scaler, all_Inputs, F_norm, data_num,
+    #                                                                 B_c,v1,v2,M1_c,M2_c,e1,e2,x,y,test_data=False)
+    # test_all_data, _, _, _ = Outputs_on_grid(path_all_test,path_scaler, test_Inputs, test_F_norm, test_data_num,
+    #                                                                 B_c,v1,v2,M1_c,M2_c,e1,e2,x,y,test_data=True)
+    B_c,v1,v2,M1_c,M2_c,e1,e2,x,y = generate_grid()
+    with open(path_all_data, 'rb') as file:
+        all_data, all_prob, all_x_mass, all_y_mass = pickle.load(file)
+    with open(path_all_test, 'rb') as file:
+        test_all_data, _, _, _ = pickle.load(file)
     
-    # models = [
-    #     ("model_1d", create_model_1d(), all_data[0], test_all_data[0], {'x': x[:-1]}),
-    #     ("model_2d", create_model_2dX1X2(), all_data[1], test_all_data[1], {'x': x[:-1], 'y': y[:-1]})
-    # ]
+    models = [
+        ("model_1d", create_model_1d(), all_data[0], test_all_data[0], {'x': x[:-1]}),
+        ("model_2d", create_model_2dX1X2(), all_data[1], test_all_data[1], {'x': x[:-1], 'y': y[:-1]})
+    ]
     
-    # epochs = 1
-    # num_training = 30
-    # results = {name: {"mse": [], "mae": [], "mean_frag_erro": [], "mean_x_mass_erro": [], "mean_y_mass_erro": [], "mean_all_mass_erro": []} for name, _, _, _, _ in models}
-
-    
-    # for training in range(num_training):
-    #     for name, model, train_data, test_data, params in models:
-    #         test_res = train_and_evaluate_model(model, name, train_data, test_data, epochs, **params)
-    #         results[name]["mse"].append(test_res[0])
-    #         results[name]["mae"].append(test_res[1])
-    #         results[name]["mean_frag_erro"].append(test_res[2])
-    #         results[name]["mean_x_mass_erro"].append(test_res[3])
-    #         results[name]["mean_y_mass_erro"].append(test_res[4])
-
-    # ## write and read results, if needed
-    # with open(f'epochs_{epochs*num_training}_weight_{weight_loss_FRAG_NUM}.pkl', 'wb') as f:
-    #     pickle.dump(results, f)
+    epochs = 2
+    num_training = 10
+    results = {name: {"mse": [], "mae": [], "mean_frag_erro": [], "mean_x_mass_erro": [], "mean_y_mass_erro": [], "mean_all_mass_erro": []} for name, _, _, _, _ in models}
+    start_time = time.time()
+    for training in range(num_training):
+        for name, model, train_data, test_data, params in models:
+            test_res = train_and_evaluate_model(model, name, train_data, test_data, epochs, training, **params)
+            results[name]["mse"].append(test_res[0])
+            results[name]["mae"].append(test_res[1])
+            results[name]["mean_frag_erro"].append(test_res[2])
+            results[name]["mean_x_mass_erro"].append(test_res[3])
+            results[name]["mean_y_mass_erro"].append(test_res[4])
+        print(f"Training {training+1} completed!")
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    print(f"The Training of psd-data takes: {elapsed_time} seconds")
+    # write and read results, if needed
+    with open(f'epochs_{epochs*num_training}_weight_{weight_loss_FRAG_NUM}.pkl', 'wb') as f:
+        pickle.dump(results, f)
         
-    # with open(f'epochs_{epochs*num_training}_weight_{weight_loss_FRAG_NUM}.pkl', 'rb') as f:
-    #     loaded_res = pickle.load(f)
+    with open(f'epochs_{epochs*num_training}_weight_{weight_loss_FRAG_NUM}.pkl', 'rb') as f:
+        loaded_res = pickle.load(f)
         
-    # plot_error(results, epochs, num_training)    
+    # plot_error(loaded_res, epochs, num_training)    
 
-    int_B_F, intx_B_F, inty_B_F, V, FRAG = test_ANN_to_B_F(NS,S)
+    # int_B_F, intx_B_F, inty_B_F, V, FRAG = test_ANN_to_B_F(NS,S,epochs_total=10000)
+    
+    # plot_1d_F(x[:-1], NS, test_all_data[0],data_index=0,vol_dis=False,epochs_total=20)
+    # plot_2d_F(x[:-1], y[:-1], NS, test_all_data[1],data_index=0,vol_dis=False,epochs_total=20)

@@ -112,10 +112,10 @@ if __name__ == "__main__":
     p.BREAKRVAL= 4
     p.BREAKFVAL= 5
     p.aggl_crit= 100
-    p.process_type= "breakage"
-    p.pl_v= 1
+    p.process_type= "mix"
+    p.pl_v= 2
     p.pl_P1= 1e1
-    p.pl_P2= 0.3
+    p.pl_P2= 1
     p.pl_P3= 1e1
     p.pl_P4= 1
     # p.pl_P5= 1e-2
@@ -127,7 +127,7 @@ if __name__ == "__main__":
         p.alpha_prim = np.array([1, 1, 1, 1])
     elif dim == 1:
         p.alpha_prim = 1
-    p.CORR_BETA= 1e2
+    p.CORR_BETA= 1e1
     ## The original value is the particle size at 1% of the PSD distribution. 
     ## The position of this value in the coordinate system can be adjusted by multiplying by size_scale.
     size_scale = 1e-1

@@ -14,7 +14,7 @@ config = {
     
     'algo_params': {
         'dim': 2,
-        't_init' : np.array([0, 0.5, 1.5, 2.5]),
+        't_init' : np.array([0, 0.05, 0.1, 0.2, 0.3]),
         't_vec' : np.arange(0, 16, 1, dtype=float),
         ## Sometimes there is a gap between the initial conditions calculated based on experimental data 
         ## and the real values, resulting in unavoidable errors in the first few time steps. 
@@ -30,7 +30,7 @@ config = {
         ## method = basinhopping
         ## method = BO: use Bayesian Optimization
         'method': 'BO',
-        'n_iter': 400,
+        'n_iter': 800,
         ## Initialize PBE using psd data(False) or 
         ## with the help of first few time points of experimental data(True)
         'calc_init_N': False,
@@ -58,20 +58,20 @@ config = {
         'BREAKFVAL' : 5,
         ## aggl_crit: The sequence number of the particle that allows further agglomeration
         'aggl_crit' : 100,
-        'process_type' : "breakage",
+        'process_type' : "mix",
         'pl_v' : 2,
-        'pl_P1' : 1e-0,
-        'pl_P2' : 1,
-        'pl_P3' : 1e-0,
-        'pl_P4' : 1,
+        'pl_P1' : 1e1,
+        'pl_P2' : 2,
+        'pl_P3' : 1e1,
+        'pl_P4' : 2,
         # 'pl_P5' : 3e-4,
         # 'pl_P6' : 0.3,
         'COLEVAL' : 2,
         'EFFEVAL' : 1,
         'SIZEEVAL' : 1,
-        'alpha_prim': np.array([1, 0.001, 1]),
+        'alpha_prim': np.array([1, 1, 1]),
         # 'alpha_prim': 0.5,
-        'CORR_BETA' : 1,
+        'CORR_BETA' : 100,
         ## Reduce particle number desity concentration to improve calculation stability
         ## Default value = 1e14 
         'V_unit': 1e-15,
@@ -82,14 +82,14 @@ config = {
     
     ## Parameters which should be optimized
     'opt_params' : {
-        # 'corr_agg_0': {'bounds': (-5.0, 3.0), 'log_scale': True},
-        # 'corr_agg_1': {'bounds': (-5.0, 3.0), 'log_scale': True},
-        # 'corr_agg_2': {'bounds': (-5.0, 3.0), 'log_scale': True},
-        'pl_v': {'bounds': (0.1, 2), 'log_scale': False},
-        'pl_P1': {'bounds': (-1, 1), 'log_scale': True},
-        'pl_P2': {'bounds': (0.3, 2), 'log_scale': False},
-        'pl_P3': {'bounds': (-1, 1), 'log_scale': True},
-        'pl_P4': {'bounds': (0.3, 2), 'log_scale': False},
+        'corr_agg_0': {'bounds': (1.0, 3.0), 'log_scale': True},
+        'corr_agg_1': {'bounds': (1.0, 3.0), 'log_scale': True},
+        'corr_agg_2': {'bounds': (1.0, 3.0), 'log_scale': True},
+        'pl_v': {'bounds': (0.5, 2), 'log_scale': False},
+        'pl_P1': {'bounds': (0, 100), 'log_scale': False},
+        'pl_P2': {'bounds': (0.5, 2), 'log_scale': False},
+        'pl_P3': {'bounds': (0, 100), 'log_scale': False},
+        'pl_P4': {'bounds': (0.5, 2), 'log_scale': False},
         # 'pl_P5': {'bounds': (-6, -1), 'log_scale': True},
         # 'pl_P6': {'bounds': (-3, 0), 'log_scale': True},
     },

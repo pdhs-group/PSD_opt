@@ -28,45 +28,45 @@ def normal_test():
     elapsed_time = end_time - start_time
     print(f"The execution of optimierer takes：{elapsed_time} seconds")
     
-    fig=plt.figure()    
-    axq3=fig.add_subplot(1,1,1)
-    fig_NM=plt.figure()    
-    axq3_NM=fig_NM.add_subplot(1,1,1)
-    fig_M=plt.figure()    
-    axq3_M=fig_M.add_subplot(1,1,1)
+    # fig=plt.figure()    
+    # axq3=fig.add_subplot(1,1,1)
+    # fig_NM=plt.figure()    
+    # axq3_NM=fig_NM.add_subplot(1,1,1)
+    # fig_M=plt.figure()    
+    # axq3_M=fig_M.add_subplot(1,1,1)
     
-    ## Calculate PBE direkt with psd-data and original parameter
-    param_str = data_name.split('para_')[-1]
-    param_str = param_str.rsplit('.', 1)[0] 
-    params = param_str.split('_')
-    converted_params = [float(param) if '.' in param or 'e' in param.lower() else int(param) for param in params]
-    pop_params['CORR_BETA'] = converted_params[0]
-    pop_params['alpha_prim'] = np.array(converted_params[1:4])
-    pop_params['pl_v'] = converted_params[4]
-    pop_params['pl_P1'] = converted_params[5]
-    pop_params['pl_P2'] = converted_params[6]
-    pop_params['pl_P3'] = converted_params[7]
-    pop_params['pl_P4'] = converted_params[8]
-    # find.algo.set_init_pop_para(pop_params)
-    # find.algo.calc_init_N = False
-    # find.algo.set_comp_para('r0_001', 'r0_001',R01_0_scl=R01_0_scl,R03_0_scl=R03_0_scl,
-    #                         dist_path_NM=dist_path_1,dist_path_M=dist_path_2)
-    find.algo.calc_all_pop(pop_params)
-    return_pop_distribution(find.algo.p, axq3, fig, clr='b', q3lbl='q3_ori')
-    return_pop_distribution(find.algo.p_NM, axq3_NM, fig_NM, clr='b', q3lbl='q3_ori')
-    return_pop_distribution(find.algo.p_M, axq3_M, fig_M, clr='b', q3lbl='q3_ori')
-    ## Calculate PBE with exp-data and parameter from optimization
-    # find.algo.set_init_pop_para(opt_values)
-    # find.algo.calc_init_N = True
-    # find.algo.set_comp_para(R_NM=R_NM, R_M=R_M,R01_0_scl=R01_0_scl,R03_0_scl=R03_0_scl)
-    # find.algo.set_init_N(find.algo.sample_num, exp_data_paths, 'mean')
-    find.algo.calc_all_pop(opt_values)
-    return_pop_distribution(find.algo.p, axq3, fig, clr='r', q3lbl='q3_opt')
-    return_pop_distribution(find.algo.p_NM, axq3_NM, fig_NM, clr='r', q3lbl='q3_opt')
-    return_pop_distribution(find.algo.p_M, axq3_M, fig_M, clr='r', q3lbl='q3_opt')   
-    find.save_as_png(fig, "PSD")
-    find.save_as_png(fig_NM, "PSD-NM")
-    find.save_as_png(fig_M, "PSD-M")
+    # ## Calculate PBE direkt with psd-data and original parameter
+    # param_str = data_name.split('para_')[-1]
+    # param_str = param_str.rsplit('.', 1)[0] 
+    # params = param_str.split('_')
+    # converted_params = [float(param) if '.' in param or 'e' in param.lower() else int(param) for param in params]
+    # pop_params['CORR_BETA'] = converted_params[0]
+    # pop_params['alpha_prim'] = np.array(converted_params[1:4])
+    # pop_params['pl_v'] = converted_params[4]
+    # pop_params['pl_P1'] = converted_params[5]
+    # pop_params['pl_P2'] = converted_params[6]
+    # pop_params['pl_P3'] = converted_params[7]
+    # pop_params['pl_P4'] = converted_params[8]
+    # # find.algo.set_init_pop_para(pop_params)
+    # # find.algo.calc_init_N = False
+    # # find.algo.set_comp_para('r0_001', 'r0_001',R01_0_scl=R01_0_scl,R03_0_scl=R03_0_scl,
+    # #                         dist_path_NM=dist_path_1,dist_path_M=dist_path_2)
+    # find.algo.calc_all_pop(pop_params)
+    # return_pop_distribution(find.algo.p, axq3, fig, clr='b', q3lbl='q3_ori')
+    # return_pop_distribution(find.algo.p_NM, axq3_NM, fig_NM, clr='b', q3lbl='q3_ori')
+    # return_pop_distribution(find.algo.p_M, axq3_M, fig_M, clr='b', q3lbl='q3_ori')
+    # ## Calculate PBE with exp-data and parameter from optimization
+    # # find.algo.set_init_pop_para(opt_values)
+    # # find.algo.calc_init_N = True
+    # # find.algo.set_comp_para(R_NM=R_NM, R_M=R_M,R01_0_scl=R01_0_scl,R03_0_scl=R03_0_scl)
+    # # find.algo.set_init_N(find.algo.sample_num, exp_data_paths, 'mean')
+    # find.algo.calc_all_pop(opt_values)
+    # return_pop_distribution(find.algo.p, axq3, fig, clr='r', q3lbl='q3_opt')
+    # return_pop_distribution(find.algo.p_NM, axq3_NM, fig_NM, clr='r', q3lbl='q3_opt')
+    # return_pop_distribution(find.algo.p_M, axq3_M, fig_M, clr='r', q3lbl='q3_opt')   
+    # find.save_as_png(fig, "PSD")
+    # find.save_as_png(fig_NM, "PSD-NM")
+    # find.save_as_png(fig_M, "PSD-M")
     
     return delta_opt, opt_values
     
@@ -244,7 +244,7 @@ if __name__ == '__main__':
                             dist_path_NM=dist_path_NM, dist_path_M=dist_path_M)
     find.algo.weight_2d = conf.config['weight_2d']
 
-    data_name = "Sim_para_100.0_1_1_1_2_1_1_1_1.xlsx"  
+    data_name = "Sim_Mul_0.1_para_100.0_1_1_1_2_10.0_2_10.0_2.xlsx"  
     
     exp_data_path = os.path.join(base_path, data_name)
     exp_data_paths = [
@@ -254,8 +254,8 @@ if __name__ == '__main__':
     ]
     
     # Run an optimization and generate graphs of the results
-    # delta_opt, opt_values = normal_test()
+    delta_opt, opt_values = normal_test()
     
     # N_exp, N_calc, N_exp_1D, N_calc_1D, q3_psd, q3_exp = calc_N_test()
     
-    delta = calc_delta_test(var_delta=False)
+    # delta = calc_delta_test(var_delta=False)

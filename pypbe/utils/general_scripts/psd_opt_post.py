@@ -323,53 +323,53 @@ if __name__ == '__main__':
     # vis_criteria = 'mse'
 
     # pbe_type = 'agglomeration'
-    # pbe_type = 'breakage'
-    pbe_type = 'mix'
+    pbe_type = 'breakage'
+    # pbe_type = 'mix'
     file_names = [
         'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_400.npz',
         'multi_[(\'q3\', \'MSE\')]_BO_wight_1_iter_400.npz',
-    #     'multi_[(\'q3\', \'MAE\')]_BO_wight_1_iter_400.npz',
-    #     'multi_[(\'q3\', \'RMSE\')]_BO_wight_1_iter_400.npz',
-    #     'multi_[(\'QQ3\', \'KL\')]_BO_wight_1_iter_400.npz',
-    #     'multi_[(\'QQ3\', \'MSE\')]_BO_wight_1_iter_400.npz',
-    #     'multi_[(\'x_50\', \'MSE\')]_BO_wight_1_iter_400.npz',
-    #     # 'multi_[(\'q3\', \'KL\'), (\'Q3\', \'KL\'), (\'x_50\', \'MSE\')]_BO_wight_1_iter_400.npz',
+        # 'multi_[(\'q3\', \'MAE\')]_BO_wight_1_iter_400.npz',
+        # 'multi_[(\'q3\', \'RMSE\')]_BO_wight_1_iter_400.npz',
+        'multi_[(\'QQ3\', \'KL\')]_BO_wight_1_iter_400.npz',
+        'multi_[(\'QQ3\', \'MSE\')]_BO_wight_1_iter_400.npz',
+        'multi_[(\'x_50\', \'MSE\')]_BO_wight_1_iter_400.npz',
+        # 'multi_[(\'q3\', \'KL\'), (\'Q3\', \'KL\'), (\'x_50\', \'MSE\')]_BO_wight_1_iter_400.npz',
         ]
     labels = [
         'q3_KL',
         'q3_MSE',
-    #     'q3_MAE',
-    #     'q3_RMSE',
-    #     'Q3_KL',
-    #     'Q3_MSE',
-    #     'x_50_MSE',
-    #     # 'q3_KL_Q3_KL_x_50_MSE',
+        # 'q3_MAE',
+        # 'q3_RMSE',
+        'Q3_KL',
+        'Q3_MSE',
+        'x_50_MSE',
+        # 'q3_KL_Q3_KL_x_50_MSE',
         ]
     # file_names = [
-    #     'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_400.npz',
-    #     'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_400.npz',
-    #     'multi_[(\'q3\', \'KL\')]_BO_wight_10_iter_400.npz',
+    #     'multi_[(\'q3\', \'MSE\')]_BO_wight_1_iter_400.npz',
+    #     'multi_[(\'q3\', \'MSE\')]_BO_wight_2_iter_400.npz',
+    #     'multi_[(\'q3\', \'MSE\')]_BO_wight_5_iter_400.npz',
     #     ]
     # labels = [
     #     'wight_1',
+    #     'wight_2',
     #     'wight_5',
-    #     'wight_10',
     #     ]
     
     # file_names = [
-    #     'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_50.npz',
-    #     'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_100.npz',
-    #     'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_200.npz',
-    #     'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_400.npz',
-    #     'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_800.npz',
+        # 'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_50.npz',
+        # 'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_100.npz',
+        # 'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_200.npz',
+        # 'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_400.npz',
+        # 'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_800.npz',
     #     ]
     # labels = [
-    #     'iter_50',
-    #     'iter_100',
-    #     'iter_200',
-    #     'iter_400',
-    #     'iter_800',
-    #     ]
+        # 'iter_50',
+        # 'iter_100',
+        # 'iter_200',
+        # 'iter_400',
+        # 'iter_800',
+        # ]
     
     data_paths = [os.path.join(results_pth, pbe_type, file_name) for file_name in file_names]
     # 'results' saves the results of all reading files. 

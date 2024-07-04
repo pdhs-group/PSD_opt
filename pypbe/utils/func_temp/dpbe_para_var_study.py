@@ -23,23 +23,15 @@ def calc_pbe(p,t_vec,corr_beta,alpha_prim,v,P1,P2,P3,P4,flag):
     p_calc.alpha_prim = np.array([alpha_prim[0], alpha_prim[1], alpha_prim[1],alpha_prim[2]])
     p_calc.CORR_BETA= corr_beta
     p_calc.full_init(calc_alpha=False)
-    if flag == 'elapsed_time':
-        results = pbe_elapsed_time(p_calc, t_vec, corr_beta, alpha_prim, v, P1, P2, P3, P4)
-    elif flag == 'N_change_rate':
+    if flag == 'N_change_rate':
         results = pbe_N_change_rate(p_calc, t_vec, corr_beta, alpha_prim, v, P1, P2, P3, P4)
     return results
 
-def pbe_elapsed_time(p_calc, t_vec, corr_beta,alpha_prim,v,P1,P2,P3,P4):
+def pbe_N_change_rate(p_calc, t_vec, corr_beta,alpha_prim,v,P1,P2,P3,P4, threshold=0.05):
     start_time = time.time()
     p_calc.solve_PBE(t_vec=t_vec)
     end_time = time.time()
     elapsed_time = end_time - start_time
-    CORR_AGG = corr_beta*alpha_prim
-    results = np.array([CORR_AGG[0],CORR_AGG[1],CORR_AGG[2],v,P1,P2,P3,P4,elapsed_time])
-    return results
-
-def pbe_N_change_rate(p_calc, t_vec, corr_beta,alpha_prim,v,P1,P2,P3,P4, threshold=0.05):
-    p_calc.solve_PBE(t_vec=t_vec)
     N = p_calc.N
     if p_calc.dim == 1:
         N[0,:] = 0
@@ -52,13 +44,13 @@ def pbe_N_change_rate(p_calc, t_vec, corr_beta,alpha_prim,v,P1,P2,P3,P4, thresho
     valid_time_points = np.where(abs_rate_of_change < threshold)[0] + 1
     if p_calc.calc_status and valid_time_points.shape[0] != 0:
         time_point = valid_time_points[0]
-        time = t_vec[time_point]
+        calc_time = t_vec[time_point]
     elif p_calc.calc_status and valid_time_points.shape[0] == 0:
-        time = t_vec[-1]
+        calc_time = t_vec[-1]
     elif not p_calc.calc_status:
-        time = -1
+        calc_time = -1
     CORR_AGG = corr_beta*alpha_prim
-    results = np.array([CORR_AGG[0],CORR_AGG[1],CORR_AGG[2],v,P1,P2,P3,P4,time])
+    results = np.array([CORR_AGG[0],CORR_AGG[1],CORR_AGG[2],v,P1,P2,P3,P4,calc_time,elapsed_time])
     return results
 
 if __name__ == '__main__':
@@ -71,7 +63,7 @@ if __name__ == '__main__':
     
     ## Set the PBE parameters
     t_vec = np.arange(0, 151, 1, dtype=float)
-    # Note that it must correspond to the settings of MC-Bond-Break.
+    # Note that it m5ust correspond to the settings of MC-Bond-Break.3 üf
     p.NS = 15
     p.S = 4
     
@@ -105,7 +97,7 @@ if __name__ == '__main__':
     # p.full_init(calc_alpha=False)
 
     ## define the range of corr_beta
-    var_corr_beta = np.array([1e-1,1,1e1,1e2])
+    var_corr_beta = np.array([1e-1,1,1e1,1e2,1e3])
     # var_corr_beta = np.array([1e-2])
     ## define the range of alpha_prim 27x3
     values = np.array([1])
@@ -124,13 +116,13 @@ if __name__ == '__main__':
     var_alpha_prim = np.array(unique_alpha_prim)
 
     ## define the range of v(breakage function)
-    var_v = np.array([0.1,1,2])
+    var_v = np.array([0.5,1,2])
     # var_v = np.array([0.01])
     ## define the range of P1, P2 for power law breakage rate
     var_P1 = np.array([1e-1,1,1e1])
-    var_P2 = np.array([0.3,1,2])
+    var_P2 = np.array([1,2])
     var_P3 = np.array([1e-1,1,1e1])
-    var_P4 = np.array([0.3,1,2])
+    var_P4 = np.array([1,2])
 
     pbe_list = []
     for j,corr_beta in enumerate(var_corr_beta):
@@ -147,4 +139,4 @@ if __name__ == '__main__':
     results=pool.starmap(calc_pbe, pbe_list)                        
     pool.close()
     pool.join()                        
-                   
+    results_arr = np.array(results)             
