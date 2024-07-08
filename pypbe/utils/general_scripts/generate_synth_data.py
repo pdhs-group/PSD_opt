@@ -73,7 +73,7 @@ if __name__ == '__main__':
         dist_path_10 = os.path.join(pth, "..","..", "data", "PSD_data", conf.config['dist_scale_10'])
 
     ## define the range of corr_beta
-    var_corr_beta = np.array([1e2])
+    var_corr_beta = np.array([1e3])
     # var_corr_beta = np.array([1e-2])
     ## define the range of alpha_prim 27x3
     values = np.array([1])
@@ -92,7 +92,7 @@ if __name__ == '__main__':
     var_alpha_prim = np.array(unique_alpha_prim)
 
     ## define the range of v(breakage function)
-    var_v = np.array([2])
+    var_v = np.array([0.5,2])
     ## define the range of P1, P2 for power law breakage rate
     var_P1 = np.array([1e1])
     var_P2 = np.array([2])

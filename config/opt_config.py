@@ -14,7 +14,7 @@ config = {
     
     'algo_params': {
         'dim': 2,
-        't_init' : np.array([0, 0.05, 0.1, 0.2, 0.3]),
+        't_init' : np.array([0, 0.1, 0.3, 0.5]),
         't_vec' : np.arange(0, 16, 1, dtype=float),
         ## Sometimes there is a gap between the initial conditions calculated based on experimental data 
         ## and the real values, resulting in unavoidable errors in the first few time steps. 
@@ -30,7 +30,7 @@ config = {
         ## method = basinhopping
         ## method = BO: use Bayesian Optimization
         'method': 'BO',
-        'n_iter': 800,
+        'n_iter': 400,
         ## Initialize PBE using psd data(False) or 
         ## with the help of first few time points of experimental data(True)
         'calc_init_N': False,
@@ -82,14 +82,14 @@ config = {
     
     ## Parameters which should be optimized
     'opt_params' : {
-        'corr_agg_0': {'bounds': (1.0, 3.0), 'log_scale': True},
-        'corr_agg_1': {'bounds': (1.0, 3.0), 'log_scale': True},
-        'corr_agg_2': {'bounds': (1.0, 3.0), 'log_scale': True},
+        'corr_agg_0': {'bounds': (0.0, 3.0), 'log_scale': True},
+        'corr_agg_1': {'bounds': (0.0, 3.0), 'log_scale': True},
+        'corr_agg_2': {'bounds': (0.0, 3.0), 'log_scale': True},
         'pl_v': {'bounds': (0.5, 2), 'log_scale': False},
-        'pl_P1': {'bounds': (0, 100), 'log_scale': False},
-        'pl_P2': {'bounds': (0.5, 2), 'log_scale': False},
-        'pl_P3': {'bounds': (0, 100), 'log_scale': False},
-        'pl_P4': {'bounds': (0.5, 2), 'log_scale': False},
+        'pl_P1': {'bounds': (-1, 1), 'log_scale': True},
+        'pl_P2': {'bounds': (1, 2), 'log_scale': False},
+        'pl_P3': {'bounds': (-1, 1), 'log_scale': True},
+        'pl_P4': {'bounds': (1, 2), 'log_scale': False},
         # 'pl_P5': {'bounds': (-6, -1), 'log_scale': True},
         # 'pl_P6': {'bounds': (-3, 0), 'log_scale': True},
     },

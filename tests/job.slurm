@@ -8,7 +8,7 @@
 #SBATCH --mem=4000mb
 
 module purge
-module load devel/python/3.12.3_intel_2023.1.0
+module load devel/python/3.12.3_gnu_13.3
 
 python opt_para_study.py
 

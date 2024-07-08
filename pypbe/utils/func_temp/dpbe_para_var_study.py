@@ -33,24 +33,33 @@ def pbe_N_change_rate(p_calc, t_vec, corr_beta,alpha_prim,v,P1,P2,P3,P4, thresho
     end_time = time.time()
     elapsed_time = end_time - start_time
     N = p_calc.N
+    V_p = p_calc.V
     if p_calc.dim == 1:
         N[0,:] = 0
         N_sum = N.sum(axis=0)
+        N0 = N[:,0]
+        NE = N[:,-1]
     elif p_calc.dim == 2:
         N[0,0,:] = 0
         N_sum = N.sum(axis=0).sum(axis=0)
+        N0 = N[:,:,0]
+        NE = N[:,:,-1]
+        
     rate_of_change = np.diff(N_sum) / N_sum[:-1]
     abs_rate_of_change = np.abs(rate_of_change)
     valid_time_points = np.where(abs_rate_of_change < threshold)[0] + 1
+    
+    ## Total Volume before and after
+    rel_delta_V = abs(np.sum(NE*V_p) - np.sum(N0*V_p)) / np.sum(N0*V_p)
     if p_calc.calc_status and valid_time_points.shape[0] != 0:
         time_point = valid_time_points[0]
-        calc_time = t_vec[time_point]
+        calc_time_crit = t_vec[time_point]
     elif p_calc.calc_status and valid_time_points.shape[0] == 0:
-        calc_time = t_vec[-1]
+        calc_time_crit = t_vec[-1]
     elif not p_calc.calc_status:
-        calc_time = -1
+        calc_time_crit = -1
     CORR_AGG = corr_beta*alpha_prim
-    results = np.array([CORR_AGG[0],CORR_AGG[1],CORR_AGG[2],v,P1,P2,P3,P4,calc_time,elapsed_time])
+    results = np.array([CORR_AGG[0],CORR_AGG[1],CORR_AGG[2],v,P1,P2,P3,P4,calc_time_crit,elapsed_time,rel_delta_V])
     return results
 
 if __name__ == '__main__':
@@ -62,9 +71,9 @@ if __name__ == '__main__':
     smoothing = True
     
     ## Set the PBE parameters
-    t_vec = np.arange(0, 151, 1, dtype=float)
+    t_vec = np.arange(0, 3601, 100, dtype=float)
     # Note that it m5ust correspond to the settings of MC-Bond-Break.3 üf
-    p.NS = 15
+    p.NS = 8
     p.S = 4
     
     p.process_type= "mix"
@@ -97,10 +106,10 @@ if __name__ == '__main__':
     # p.full_init(calc_alpha=False)
 
     ## define the range of corr_beta
-    var_corr_beta = np.array([1e-1,1,1e1,1e2,1e3])
+    var_corr_beta = np.array([1e-3,1e-2])
     # var_corr_beta = np.array([1e-2])
     ## define the range of alpha_prim 27x3
-    values = np.array([1])
+    values = np.array([0.5,1])
     a1, a2, a3 = np.meshgrid(values, values, values, indexing='ij')
     var_alpha_prim = np.column_stack((a1.flatten(), a2.flatten(), a3.flatten()))
     ## The case of all zero α is meaningless, that means no Agglomeration occurs
@@ -116,13 +125,15 @@ if __name__ == '__main__':
     var_alpha_prim = np.array(unique_alpha_prim)
 
     ## define the range of v(breakage function)
-    var_v = np.array([0.5,1,2])
+    var_v = np.array([1,2])
     # var_v = np.array([0.01])
     ## define the range of P1, P2 for power law breakage rate
-    var_P1 = np.array([1e-1,1,1e1])
-    var_P2 = np.array([1,2])
-    var_P3 = np.array([1e-1,1,1e1])
-    var_P4 = np.array([1,2])
+    var_P1 = np.array([1e-3,1e-2,1e-1])
+    var_P2 = np.array([0.5,1,2])
+    var_P3 = np.array([1e-3,1e-2,1e-1])
+    var_P4 = np.array([0.5,1,2])
+    p.V1_mean = 1e-17
+    p.V3_mean = 1e-17
 
     pbe_list = []
     for j,corr_beta in enumerate(var_corr_beta):

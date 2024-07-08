@@ -269,6 +269,14 @@ def create_model_1d():
         model.compile(optimizer=Adam(), loss='mse', metrics=['mae'])
     return model
 
+@tf.function
+def compute_loss_and_grads(model, inputs, outputs, V_tf, other_pred, mask_tf, FRAG_NUM, weight_loss_FRAG_NUM):
+    with tf.GradientTape() as tape:
+        predictions = model(inputs, training=True)
+        loss = combined_custom_loss(outputs, predictions, FRAG_NUM, V_tf, mask_tf, other_pred, alpha=weight_loss_FRAG_NUM, beta=1-weight_loss_FRAG_NUM)
+    grads = tape.gradient(loss, model.trainable_weights)
+    return loss, grads
+
 def train_model_2d(model, train_data, x, y, mask, epochs=100, batch_size=32):
     model_X1 = model[0]
     model_X2 = model[1]
@@ -276,43 +284,45 @@ def train_model_2d(model, train_data, x, y, mask, epochs=100, batch_size=32):
     all_Outputs_X1 = train_data[1]
     all_Outputs_X2 = train_data[2]
     all_Inputs_scaled = train_data[3]
+    
+    X1 = all_Inputs[:,1]
+    X2 = 1 - X1
+    FRAG_NUM = all_Inputs[:, 2]
+    V = x / X1[:, np.newaxis, np.newaxis] + y / X2[:, np.newaxis, np.newaxis]
+    
     # optimizer=Adam(learning_rate=0.0001)
     optimizer_X1=Adam()
     optimizer_X2=Adam()
-    train_dataset_X1 = tf.data.Dataset.from_tensor_slices((all_Inputs.astype(np.float32), all_Outputs_X1.astype(np.float32),
-                                                           all_Inputs_scaled.astype(np.float32))).batch(batch_size)
-    train_dataset_X2 = tf.data.Dataset.from_tensor_slices((all_Inputs.astype(np.float32), all_Outputs_X2.astype(np.float32),
-                                                           all_Inputs_scaled.astype(np.float32))).batch(batch_size)
-    x_tf = tf.convert_to_tensor(x, dtype=tf.float32)
-    y_tf = tf.convert_to_tensor(y, dtype=tf.float32)
+    train_dataset = tf.data.Dataset.from_tensor_slices((
+        all_Inputs.astype(np.float32),
+        all_Outputs_X1.astype(np.float32),
+        all_Outputs_X2.astype(np.float32),
+        all_Inputs_scaled.astype(np.float32),
+        V.astype(np.float32),
+        FRAG_NUM.astype(np.float32)
+    )).batch(batch_size).prefetch(tf.data.experimental.AUTOTUNE)
+    
     mask_tf = tf.convert_to_tensor(mask)
     for epoch in range(epochs):
         print(f'Starting epoch {epoch+1}')
-        # Training
-        for step, ((batch_inputs_X1, batch_outputs_X1, batch_inputs_scaled_X1), 
-                   (batch_inputs_X2, batch_outputs_X2, batch_inputs_scaled_X2)
-                   ) in enumerate(zip(train_dataset_X1, train_dataset_X2)):
-            X1 = batch_inputs_X1[:,1]
-            X2 = 1 - X1
-            FRAG_NUM = batch_inputs_X1[:,2]
-            V_tf = x_tf / X1[:, tf.newaxis, tf.newaxis] + y_tf / X2[:, tf.newaxis, tf.newaxis]
-            with tf.GradientTape(persistent=True) as tape:
-                prediction_X1  = model_X1(batch_inputs_scaled_X1, training=True)
-                prediction_X2  = model_X2(batch_inputs_scaled_X2, training=True)
-                loss_X1 = combined_custom_loss(batch_outputs_X1, prediction_X1, FRAG_NUM, V_tf, mask_tf, prediction_X2,
-                                            alpha=weight_loss_FRAG_NUM, beta=1-weight_loss_FRAG_NUM)
-                loss_X2 = combined_custom_loss(batch_outputs_X2, prediction_X2, FRAG_NUM, V_tf, mask_tf, prediction_X1,
-                                            alpha=weight_loss_FRAG_NUM, beta=1-weight_loss_FRAG_NUM)
+
+        for step, (batch_inputs, batch_outputs_X1, batch_outputs_X2, 
+                   batch_inputs_scaled, batch_V_tf, batch_FRAG_NUM) in enumerate(train_dataset):
+
+            loss_X1, grads_X1 = compute_loss_and_grads(model_X1, batch_inputs_scaled, batch_outputs_X1, 
+                                                       batch_V_tf, model_X2(batch_inputs_scaled, training=False), 
+                                                       mask_tf, batch_FRAG_NUM, weight_loss_FRAG_NUM)
             
-            grads_X1 = tape.gradient(loss_X1, model_X1.trainable_weights)
-            grads_X2 = tape.gradient(loss_X2, model_X2.trainable_weights)
-            # grads = [tf.clip_by_value(g, -1.0, 1.0) for g in grads]
+            loss_X2, grads_X2 = compute_loss_and_grads(model_X2, batch_inputs_scaled, batch_outputs_X2, 
+                                                       batch_V_tf, model_X1(batch_inputs_scaled, training=False),
+                                                       mask_tf, batch_FRAG_NUM, weight_loss_FRAG_NUM)
+            
             optimizer_X1.apply_gradients(zip(grads_X1, model_X1.trainable_weights))
             optimizer_X2.apply_gradients(zip(grads_X2, model_X2.trainable_weights))
+            
             print(f'Training step {step+1}, Loss_X1: {loss_X1.numpy().mean()}, Loss_X2: {loss_X2.numpy().mean()}')
-        
+
     print(f"Training of Echos = {epochs} completed!")
-    del tape
     
 def train_model_1d(model, train_data, x, mask, epochs=100, batch_size=32):
     all_Inputs = train_data[0]
@@ -656,15 +666,15 @@ def plot_error(results,epochs,num_training):
                            xlbl='Epochs of Model Training / $-$',
                            ylbl='Results of Validation / $-$',
                            lbl='mse_2d',clr='b',mrk='o')
-    # ax1, fig1 = pt.plot_data(epochs_array, results['model_1d']['mse'],fig=fig1,ax=ax1,
-    #                        lbl='mse_1d',clr='g',mrk='o')
+    ax1, fig1 = pt.plot_data(epochs_array, results['model_1d']['mse'],fig=fig1,ax=ax1,
+                            lbl='mse_1d',clr='g',mrk='o')
     
     ax2, fig2 = pt.plot_data(epochs_array, results['model_2d']['mae'],fig=fig2,ax=ax2,
                            xlbl='Epochs of Model Training / $-$',
                            ylbl='Results of Validation / $-$',
                            lbl='mae_2d',clr='b',mrk='o')
-    # ax2, fig2 = pt.plot_data(epochs_array, results['model_1d']['mae'],fig=fig2,ax=ax2,
-    #                        lbl='mae_1d',clr='g',mrk='o')
+    ax2, fig2 = pt.plot_data(epochs_array, results['model_1d']['mae'],fig=fig2,ax=ax2,
+                            lbl='mae_1d',clr='g',mrk='o')
     
     ax3, fig3 = pt.plot_data(epochs_array, results['model_2d']['mean_frag_erro'],fig=fig3,ax=ax3,
                            xlbl='Epochs of Model Training / $-$',
@@ -764,13 +774,14 @@ def plot_2d_F(x,y,NS,test_data,epochs_total,data_index=0,vol_dis=False):
     return ax1, ax2
 # %% MAIN
 if __name__ == '__main__':
+    pth = os.path.dirname( __file__ )
     ## 1d model has three input parameters: Volume, NO_FRAG, int_bre
     ## 2d model has seven input parameters: Volume, X1, STR1, STR2, STR,3, NO_FRAG, int_bre
-    directory = '../../tests/simulation_data'
-    test_directory = '../../tests/test_data'
-    path_scaler = 'Inputs_scaler.pkl'
-    path_all_data = 'output_data_volX1.pkl'
-    path_all_test = 'test_data_volX1.pkl'
+    directory = os.path.join(pth,'../../tests/simulation_data')
+    test_directory = os.path.join(pth,'../../tests/test_data')
+    path_scaler = os.path.join(pth,'Inputs_scaler.pkl')
+    path_all_data = os.path.join(pth,'output_data_volX1.pkl')
+    path_all_test = os.path.join(pth,'test_data_volX1.pkl')
     NS = 50
     S = 1.3
     N_GRIDS, N_FRACS = 200, 100
@@ -792,35 +803,35 @@ if __name__ == '__main__':
     with open(path_all_test, 'rb') as file:
         test_all_data, _, _, _ = pickle.load(file)
     
-    models = [
-        ("model_1d", create_model_1d(), all_data[0], test_all_data[0], {'x': x[:-1]}),
-        ("model_2d", create_model_2dX1X2(), all_data[1], test_all_data[1], {'x': x[:-1], 'y': y[:-1]})
-    ]
+    # models = [
+    #     ("model_1d", create_model_1d(), all_data[0], test_all_data[0], {'x': x[:-1]}),
+    #     ("model_2d", create_model_2dX1X2(), all_data[1], test_all_data[1], {'x': x[:-1], 'y': y[:-1]})
+    # ]
     
-    epochs = 2
-    num_training = 10
-    results = {name: {"mse": [], "mae": [], "mean_frag_erro": [], "mean_x_mass_erro": [], "mean_y_mass_erro": [], "mean_all_mass_erro": []} for name, _, _, _, _ in models}
-    start_time = time.time()
-    for training in range(num_training):
-        for name, model, train_data, test_data, params in models:
-            test_res = train_and_evaluate_model(model, name, train_data, test_data, epochs, training, **params)
-            results[name]["mse"].append(test_res[0])
-            results[name]["mae"].append(test_res[1])
-            results[name]["mean_frag_erro"].append(test_res[2])
-            results[name]["mean_x_mass_erro"].append(test_res[3])
-            results[name]["mean_y_mass_erro"].append(test_res[4])
-        print(f"Training {training+1} completed!")
-    end_time = time.time()
-    elapsed_time = end_time - start_time
-    print(f"The Training of psd-data takes: {elapsed_time} seconds")
-    # write and read results, if needed
-    with open(f'epochs_{epochs*num_training}_weight_{weight_loss_FRAG_NUM}.pkl', 'wb') as f:
-        pickle.dump(results, f)
+    epochs = 1
+    num_training = 50
+    # results = {name: {"mse": [], "mae": [], "mean_frag_erro": [], "mean_x_mass_erro": [], "mean_y_mass_erro": [], "mean_all_mass_erro": []} for name, _, _, _, _ in models}
+    # start_time = time.time()
+    # for training in range(num_training):
+    #     for name, model, train_data, test_data, params in models:
+    #         test_res = train_and_evaluate_model(model, name, train_data, test_data, epochs, training, **params)
+    #         results[name]["mse"].append(test_res[0])
+    #         results[name]["mae"].append(test_res[1])
+    #         results[name]["mean_frag_erro"].append(test_res[2])
+    #         results[name]["mean_x_mass_erro"].append(test_res[3])
+    #         results[name]["mean_y_mass_erro"].append(test_res[4])
+    #     print(f"Training {training+1} completed!")
+    # end_time = time.time()
+    # elapsed_time = end_time - start_time
+    # print(f"The Training of psd-data takes: {elapsed_time} seconds")
+    # # write and read results, if needed
+    # with open(f'epochs_{epochs*num_training}_weight_{weight_loss_FRAG_NUM}.pkl', 'wb') as f:
+    #     pickle.dump(results, f)
         
     with open(f'epochs_{epochs*num_training}_weight_{weight_loss_FRAG_NUM}.pkl', 'rb') as f:
         loaded_res = pickle.load(f)
         
-    # plot_error(loaded_res, epochs, num_training)    
+    plot_error(loaded_res, epochs, num_training)    
 
     # int_B_F, intx_B_F, inty_B_F, V, FRAG = test_ANN_to_B_F(NS,S,epochs_total=10000)
     
