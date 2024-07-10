@@ -539,7 +539,7 @@ if __name__ == "__main__":
     t = np.arange(0, 21, 1, dtype=float)     # Time array [s]
     c = 1                # Volume concentration [-]
     # v0 = 1e-9
-    x = 1e-6                     # Particle diameter [m]
+    x = 1e-5                    # Particle diameter [m]
     # x = (v0*6/math.pi)**(1/3)
     beta0 = 1e-16                  # Collision frequency parameter [m^3/s]
     n0 = 3*c/(4*math.pi*(x/2)**3)   # Total number concentration of primary particles
@@ -548,7 +548,7 @@ if __name__ == "__main__":
     MULTI_INTERNAL = False
     
     ### PBE Parameters
-    grid = 'geo'
+    grid = 'uni'
     NS = 30
     # NS2 = 30
     #NS2 = 50

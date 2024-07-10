@@ -20,6 +20,7 @@ from keras.saving import register_keras_serializable
 import tensorflow as tf
 import pickle
 from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import KFold
 ## for plotter
 import matplotlib.pyplot as plt
 import pypbe.utils.plotter.plotter as pt
@@ -40,7 +41,7 @@ class ANN_bond_break():
         
         self.generate_grid()
         
-    def load_all_data(self.directory):
+    def load_all_data(self, directory):
         files = [os.path.join(directory, f) for f in os.listdir(directory) if f.endswith('.npy')]
         data_num = len(files)
         all_Inputs = np.zeros((data_num, 7))
@@ -70,30 +71,32 @@ class ANN_bond_break():
     
     # %% DATA PROCESSING
     def generate_grid(self):
-        self.e1 = np.zeros(self.NS+1)
-        self.e2 = np.zeros(self.NS+1)
+        e1 = np.zeros(self.NS+1)
+        e2 = np.zeros(self.NS+1)
         ## Because of the subsequent CAT processing, x and y need to be expanded 
         ## outward by one unit with value -1
         self.x = np.zeros(self.NS+1)-1
         self.y = np.zeros(self.NS+1)-1
-        self.e1[0] = -1
-        self.e2[0] = -1
+        e1[0] = -1
+        e2[0] = -1
         for i in range(self.NS):
-            self.e1[i+1] = self.S**(i)
-            self.e2[i+1] = self.S**(i)
-            self.x[i] = (self.e1[i] + self.e1[i+1]) / 2
-            self.y[i] = (self.e2[i] + self.e2[i+1]) / 2
-        self.e1[:] /= self.x[-2] 
-        self.e2[:] /= self.y[-2] 
+            e1[i+1] = self.S**(i)
+            e2[i+1] = self.S**(i)
+            self.x[i] = (e1[i] + e1[i+1]) / 2
+            self.y[i] = (e2[i] + e2[i+1]) / 2
+        e1[:] /= self.x[-2] 
+        e2[:] /= self.y[-2] 
         self.x[:] /= self.x[-2] 
         self.y[:] /= self.y[-2] 
-        self.B_c = np.zeros((self.NS+1,self.NS+1)) 
-        self.v1 = np.zeros((self.NS+1,self.NS+1))
-        self.v2 = np.zeros((self.NS+1,self.NS+1))
-        self.M1_c = np.zeros((self.NS+1,self.NS+1))
-        self.M2_c = np.zeros((self.NS+1,self.NS+1))
+        B_c = np.zeros((self.NS+1,self.NS+1)) 
+        v1 = np.zeros((self.NS+1,self.NS+1))
+        v2 = np.zeros((self.NS+1,self.NS+1))
+        M1_c = np.zeros((self.NS+1,self.NS+1))
+        M2_c = np.zeros((self.NS+1,self.NS+1))
+        return B_c,v1,v2,M1_c,M2_c,e1,e2
     
-    def Outputs_on_grid(self,all_Inputs, F_norm, data_num,test_data):
+    def Outputs_on_grid(self,all_Inputs, F_norm, data_num,
+                        B_c,v1,v2,M1_c,M2_c,e1,e2):
         Inputs_1d = []
         Inputs_2d = []
         Outputs_1d = []
@@ -110,7 +113,7 @@ class ANN_bond_break():
             F_norm_tem = F_norm[i]
             if X1 == 1:
                 tem_Outputs, all_prob[i], all_x_mass[i] = self.direct_psd_1d(
-                    F_norm_tem[:,0],NO_FRAG,self.B_c,self.v1,self.M1_c,self.e1,self.x)
+                    F_norm_tem[:,0],NO_FRAG,B_c,v1,M1_c,e1,self.x)
                 Outputs_1d.append(tem_Outputs)
                 tem_Inputs = [all_Inputs[i,j] for j in range(7) if j == 0 or j == 2 or j == 6]
                 Inputs_1d.append(tem_Inputs)
@@ -118,27 +121,27 @@ class ANN_bond_break():
                 Outputs_1d_E.append(mean_energy)
             else:
                 tem_OutputsX1,tem_OutputsX2, all_prob[i], all_x_mass[i], all_y_mass[i] = self.direct_psd_2d(
-                    F_norm_tem,NO_FRAG,self.X1,self.B_c,self.v1,self.v2,self.M1_c,self.M2_c,self.e1,self.e2,self.x,self.y)   
+                    F_norm_tem,NO_FRAG,X1,B_c,v1,v2,M1_c,M2_c,e1,e2,self.x,self.y)   
                 Outputs_2dX1.append(tem_OutputsX1)
                 Outputs_2dX2.append(tem_OutputsX2)
                 Inputs_2d.append(all_Inputs[i,:])
                 mean_energy = F_norm_tem[:,2].mean()
                 Outputs_2d_E.append(mean_energy)
-        if not test_data:
-            scaler_1d = StandardScaler()
-            scaler_2d = StandardScaler()
-            with open(self.path_scaler,'wb') as file:
-                pickle.dump((scaler_1d,scaler_2d), file)
-        else:
-            with open(self.path_scaler,'rb') as file:
-                scaler_1d, scaler_2d = pickle.load(file)
+
+        scaler_1d = StandardScaler()
+        scaler_2d = StandardScaler()
+        with open(self.path_scaler,'wb') as file:
+            pickle.dump((scaler_1d,scaler_2d), file)
+
         Inputs_1d_scaled = scaler_1d.fit_transform(Inputs_1d)
         Inputs_2d_scaled = scaler_2d.fit_transform(Inputs_2d)
         all_data = [[np.array(Inputs_1d),np.array(Outputs_1d),np.array(Inputs_1d_scaled),np.array(Outputs_1d_E)],
                     [np.array(Inputs_2d),np.array(Outputs_2dX1),np.array(Outputs_2dX2),np.array(Inputs_2d_scaled),np.array(Outputs_2d_E)]]
     
         with open(self.path_all_data, 'wb') as file:
-            pickle.dump((all_data, all_prob, all_x_mass, all_y_mass), file)    
+            pickle.dump((all_data, all_prob, all_x_mass, all_y_mass), file)  
+            
+        return all_data, all_prob, all_x_mass, all_y_mass
     
     def direct_psd_1d(self,F_norm,NO_FRAG,B_c_tem,v1_tem,M1_c,e1,x):
         B = np.zeros(NS)
@@ -212,24 +215,49 @@ class ANN_bond_break():
         x_mass = np.sum(B_vol_X1)
         y_mass = np.sum(B_vol_X2)
         return B_vol_X1, B_vol_X2, prob, x_mass, y_mass
+    
+    def processing_train_data(self):
+        all_Inputs, F_norm, data_num = self.load_all_data(directory)
+        B_c,v1,v2,M1_c,M2_c,e1,e2 = self.generate_grid()
+        all_data, all_prob, all_x_mass, all_y_mass = self.Outputs_on_grid(all_Inputs, F_norm, data_num,
+                                                                         B_c,v1,v2,M1_c,M2_c,e1,e2)
+        return all_data, all_prob, all_x_mass, all_y_mass
+        
     # %% MODEL TRAINING  
+    def create_models(self,n_splits=5,dim=1):
+        with open(self.path_all_data, 'rb') as file:
+            all_data, all_prob, all_x_mass, all_y_mass = pickle.load(file)
+        kf = KFold(n_splits=5)
+        self.train_index = []
+        self.test_index = []
+        for i, (train_index, test_index) in enumerate(kf.split(all_data[1][0])):
+            print(f"Fold {i}:")
+            train_index.append(train_index)
+            test_index.append(test_index)
+        if dim == 1:
+            self.model = self.create_model_1d()
+        
+        self.models = models = [
+            ("model_1d", self.create_model_1d(), all_data[0], test_all_data[0], {'x': self.x[:-1]}),
+            ("model_2d", self.create_model_2dX1X2(), all_data[1], test_all_data[1], {'x': self.x[:-1], 'y': self.y[:-1]})
+        ]
     @register_keras_serializable()
-    def pad_Outputs_X1(Outputs):
+    def pad_Outputs_X1(self, Outputs):
         batch_size = tf.shape(Outputs)[0]
         padding = tf.zeros((batch_size, 1, NS), dtype=Outputs.dtype)
         padde_Outputs = tf.concat([padding, Outputs], axis=1)
         return padde_Outputs
     @register_keras_serializable()
-    def pad_Outputs_X2(Outputs):
+    def pad_Outputs_X2(self, Outputs):
         batch_size = tf.shape(Outputs)[0]
         padding = tf.zeros((batch_size, NS, 1), dtype=Outputs.dtype)
         padde_Outputs = tf.concat([padding, Outputs], axis=2)
         return padde_Outputs
-    def create_model_2dX1X2():
+    def create_model_2dX1X2(self):
         model_X1 = create_model_2dX1()
         model_X2 = create_model_2dX2()
         return model_X1, model_X2
-    def create_model_2dX1():
+    def create_model_2dX1(self):
         # The input layer accepts an array of length 7 (combined STR and FRAG)
         # The output layer should now match the flattened shape of the new combined output array
         model = Sequential([
@@ -248,7 +276,7 @@ class ANN_bond_break():
             model.compile(optimizer=Adam(), loss='mse', metrics=['mae'])
         return model
     
-    def create_model_2dX2():
+    def create_model_2dX2(self):
         # The input layer accepts an array of length 7 (combined STR and FRAG)
         # The output layer should now match the flattened shape of the new combined output array
         model = Sequential([
@@ -267,7 +295,7 @@ class ANN_bond_break():
             model.compile(optimizer=Adam(), loss='mse', metrics=['mae'])
         return model
     
-    def create_model_1d():
+    def create_model_1d(self):
         # The input layer accepts an array of length 4 (combined STR and FRAG)
         # The output layer should now match the flattened shape of the new combined output array
         model = Sequential([
@@ -282,7 +310,7 @@ class ANN_bond_break():
             model.compile(optimizer=Adam(), loss='mse', metrics=['mae'])
         return model
     
-    def train_model_2d(model, train_data, x, y, mask, epochs=100, batch_size=32):
+    def train_model_2d(self, model, train_data, x, y, mask, epochs=100, batch_size=32):
         model_X1 = model[0]
         model_X2 = model[1]
         all_Inputs = train_data[0]
@@ -327,7 +355,7 @@ class ANN_bond_break():
         print(f"Training of Echos = {epochs} completed!")
         del tape
         
-    def train_model_1d(model, train_data, x, mask, epochs=100, batch_size=32):
+    def train_model_1d(self, model, train_data, x, mask, epochs=100, batch_size=32):
         all_Inputs = train_data[0]
         all_Outputs = train_data[1]
         all_Inputs_scaled = train_data[2]
@@ -353,7 +381,7 @@ class ANN_bond_break():
                 print(f'Training step {step+1}, Loss: {loss.numpy().mean()}')
             
         print(f"Training of Echos = {epochs} completed!")
-    def custom_loss_all_prob(FRAG_NUM, V, mask, y_pred_other):
+    def custom_loss_all_prob(self, FRAG_NUM, V, mask, y_pred_other):
         def loss(y_true, y_pred): 
             if y_pred_other is None:
                 pre_all_prob = tf.reduce_sum(tf.where(mask, y_pred / (V+1e-20), 0), axis=1)
@@ -367,7 +395,7 @@ class ANN_bond_break():
     
         return loss
     
-    def combined_custom_loss(y_true, y_pred, FRAG_NUM, V, mask, y_pred_other=None, alpha=0.5, beta=0.5):
+    def combined_custom_loss(self, y_true, y_pred, FRAG_NUM, V, mask, y_pred_other=None, alpha=0.5, beta=0.5):
         custom_loss_func_all_prob = custom_loss_all_prob(FRAG_NUM, V, mask, y_pred_other)
         loss_custom_all_prob = custom_loss_func_all_prob(y_true, y_pred)
         # loss_mse = tf.keras.losses.mean_squared_error(y_true, y_pred)
@@ -375,7 +403,7 @@ class ANN_bond_break():
     
         return alpha * loss_custom_all_prob + beta * loss_kl
     
-    def train_and_evaluate_model(model, model_name, train_data, test_data, epochs, training, x, y=None):
+    def train_and_evaluate_model(self, model, model_name, train_data, test_data, epochs, training, x, y=None):
         epochs_total = epochs * (training + 1)
         ## training and evaluation for 2d-model 
         if y is not None:
@@ -410,7 +438,7 @@ class ANN_bond_break():
             test_res = predictions_test_1d(model_name, test_data, epochs_total,x=x, mask=mask)
         return test_res
     
-    def predictions_test_1d(model_name,test_data, epochs_total,x, mask): 
+    def predictions_test_1d(self, model_name,test_data, epochs_total,x, mask): 
         test_Inputs = test_data[0]
         test_Outputs = test_data[1]
         test_Inputs_scaled = test_data[2]
@@ -442,7 +470,7 @@ class ANN_bond_break():
     
         return mse, mae, mean_all_prob, mean_all_x_mass, mean_all_y_mass
     
-    def predictions_test_2d(model_name,test_data,epochs_total,x,y,mask): 
+    def predictions_test_2d(self, model_name,test_data,epochs_total,x,y,mask): 
         test_Inputs = test_data[0]
         test_Outputs_X1 = test_data[1]
         test_Outputs_X2 = test_data[2]
@@ -488,7 +516,7 @@ class ANN_bond_break():
         return mse, mae, mean_all_prob, mean_all_x_mass, mean_all_y_mass
     
     # %% POST PROCESSING  
-    def precalc_matrix_ANN_to_B_F(NS, NSS, V1, V3, V_e1, V_e3,x,y):
+    def precalc_matrix_ANN_to_B_F(self, NS, NSS, V1, V3, V_e1, V_e3,x,y):
         precalc_matrix = np.zeros((NSS, NSS, NSS, NSS, NS, NS))
         
         for k in range(NSS):
@@ -511,7 +539,7 @@ class ANN_bond_break():
     
         return precalc_matrix
     
-    def calc_B_F(FRAG, precalc_matrix, NSS):
+    def calc_B_F(self, FRAG, precalc_matrix, NSS):
         # B_F = np.einsum('klmnij,ijkl->klmn', precalc_matrix, FRAG)
         int_B_F = np.zeros((NSS,NSS,NSS,NSS))
         intx_B_F = np.zeros((NSS,NSS,NSS,NSS))
@@ -525,7 +553,7 @@ class ANN_bond_break():
                             inty_B_F[m, n, k, l] = np.sum(precalc_matrix[m, n, k, l] * FRAG[2,k,l])
             
         return int_B_F, intx_B_F, inty_B_F
-    def calc_FRAG(epochs_total, V, V_rel, X1, STR1, STR2, STR3, NO_FRAG, int_bre, NS,NSS, x,y, mask):
+    def calc_FRAG(self, epochs_total, V, V_rel, X1, STR1, STR2, STR3, NO_FRAG, int_bre, NS,NSS, x,y, mask):
         ## FRAG stores the information of NS*NS fragments broken into by NSS*NSS particles. 
         ## The first dimension stores the number of fragments. 
         ## The second dimension is the X1 volume of the fragment. 
@@ -583,7 +611,7 @@ class ANN_bond_break():
                 FRAG[2, i,j,mask] = FRAG_vol_2dX2[i-1,j-1,mask] * (1-X1[i,j]) * V[i,j]
         return FRAG
         
-    def test_ANN_to_B_F(NS,S,epochs_total):
+    def test_ANN_to_B_F(self, NS,S,epochs_total):
         STR1 = 0.5
         STR2 = 0.5
         STR3 = 0.5
@@ -652,7 +680,7 @@ class ANN_bond_break():
         
         return int_B_F, intx_B_F, inty_B_F, V, FRAG
     
-    def plot_error(results,epochs,num_training):
+    def plot_error(self, results,epochs,num_training):
         epochs_array = np.arange(epochs, epochs*num_training+1, epochs)
         pt.close()
         pt.plot_init(scl_a4=1,figsze=[12.8,6.4*1.5],lnewdth=0.8,mrksze=5,use_locale=True,scl=1.2)
@@ -696,7 +724,7 @@ class ANN_bond_break():
                                lbl='mean_x_mass_erro_1d',clr='g',mrk='o')
         return   
     
-    def plot_1d_F(x,NS,test_data,epochs_total,data_index=0,vol_dis=False):
+    def plot_1d_F(self, x,NS,test_data,epochs_total,data_index=0,vol_dis=False):
         model = load_model(f'model_1d_{epochs_total}.keras')
         test_Input = test_data[2][data_index].reshape(1,3)
         test_Output = test_data[1][data_index]
@@ -727,7 +755,7 @@ class ANN_bond_break():
                                              ylbl=ylbl,tit='ANN',clr=c_KIT_green,norm=False, alpha=0.7)
         return ax1, ax2
         
-    def plot_2d_F(x,y,NS,test_data,epochs_total,data_index=0,vol_dis=False):
+    def plot_2d_F(self, x,y,NS,test_data,epochs_total,data_index=0,vol_dis=False):
         model_X1 = load_model(f'model_2dX1_{epochs_total}.keras')
         model_X2 = load_model(f'model_2dX2_{epochs_total}.keras')
         test_Input = test_data[3][data_index].reshape(1,7)

@@ -14,8 +14,8 @@ config = {
     
     'algo_params': {
         'dim': 2,
-        't_init' : np.array([0, 0.1, 0.3, 0.5]),
-        't_vec' : np.arange(0, 16, 1, dtype=float),
+        't_init' : np.array([0, 1, 3, 5]),
+        't_vec' : np.arange(0, 3601, 100, dtype=float),
         ## Sometimes there is a gap between the initial conditions calculated based on experimental data 
         ## and the real values, resulting in unavoidable errors in the first few time steps. 
         ## These errors will gradually disappear as the calculation time becomes longer. 
@@ -33,7 +33,7 @@ config = {
         'n_iter': 400,
         ## Initialize PBE using psd data(False) or 
         ## with the help of first few time points of experimental data(True)
-        'calc_init_N': False,
+        'calc_init_N': True,
         ## delta_flag = q3: use q3
         ## delta_flag = Q3: use Q3
         ## delta_flag = x_10: use x_10
@@ -44,7 +44,7 @@ config = {
         ## 'MAE': Mean Absolute Error
         ## 'KL': Kullback–Leibler divergence(Only q3 and Q3 are compatible with KL) 
 
-        'delta_flag': [('q3','MSE'), 
+        'delta_flag': [('q3','KL'), 
                        #('Q3','KL'), 
                        #('x_50','MSE')
                        ],
@@ -52,13 +52,13 @@ config = {
     
     ## PBE parameters
     'pop_params': {
-        'NS' : 15,
+        'NS' : 8,
         'S' : 4,
         'BREAKRVAL' : 4,
         'BREAKFVAL' : 5,
         ## aggl_crit: The sequence number of the particle that allows further agglomeration
         'aggl_crit' : 100,
-        'process_type' : "mix",
+        'process_type' : "breakage",
         'pl_v' : 2,
         'pl_P1' : 1e1,
         'pl_P2' : 2,
@@ -82,14 +82,14 @@ config = {
     
     ## Parameters which should be optimized
     'opt_params' : {
-        'corr_agg_0': {'bounds': (0.0, 3.0), 'log_scale': True},
-        'corr_agg_1': {'bounds': (0.0, 3.0), 'log_scale': True},
-        'corr_agg_2': {'bounds': (0.0, 3.0), 'log_scale': True},
+        # 'corr_agg_0': {'bounds': (0.0, 3.0), 'log_scale': True},
+        # 'corr_agg_1': {'bounds': (0.0, 3.0), 'log_scale': True},
+        # 'corr_agg_2': {'bounds': (0.0, 3.0), 'log_scale': True},
         'pl_v': {'bounds': (0.5, 2), 'log_scale': False},
-        'pl_P1': {'bounds': (-1, 1), 'log_scale': True},
-        'pl_P2': {'bounds': (1, 2), 'log_scale': False},
-        'pl_P3': {'bounds': (-1, 1), 'log_scale': True},
-        'pl_P4': {'bounds': (1, 2), 'log_scale': False},
+        'pl_P1': {'bounds': (-3, 0), 'log_scale': True},
+        'pl_P2': {'bounds': (0.3, 3), 'log_scale': False},
+        'pl_P3': {'bounds': (-3, 0), 'log_scale': True},
+        'pl_P4': {'bounds': (0.3, 3), 'log_scale': False},
         # 'pl_P5': {'bounds': (-6, -1), 'log_scale': True},
         # 'pl_P6': {'bounds': (-3, 0), 'log_scale': True},
     },
