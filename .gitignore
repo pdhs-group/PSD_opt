@@ -15,3 +15,4 @@
 __pycache__
 myenv
 docs/_build/
+pypbe/bond_break/best_results.json

@@ -328,21 +328,21 @@ if __name__ == '__main__':
     file_names = [
         'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_400.npz',
         'multi_[(\'q3\', \'MSE\')]_BO_wight_1_iter_400.npz',
-        # 'multi_[(\'q3\', \'MAE\')]_BO_wight_1_iter_400.npz',
-        # 'multi_[(\'q3\', \'RMSE\')]_BO_wight_1_iter_400.npz',
+        'multi_[(\'q3\', \'MAE\')]_BO_wight_1_iter_400.npz',
+        'multi_[(\'q3\', \'RMSE\')]_BO_wight_1_iter_400.npz',
         'multi_[(\'QQ3\', \'KL\')]_BO_wight_1_iter_400.npz',
         'multi_[(\'QQ3\', \'MSE\')]_BO_wight_1_iter_400.npz',
-        'multi_[(\'x_50\', \'MSE\')]_BO_wight_1_iter_400.npz',
+        # 'multi_[(\'x_50\', \'MSE\')]_BO_wight_1_iter_400.npz',
         # 'multi_[(\'q3\', \'KL\'), (\'Q3\', \'KL\'), (\'x_50\', \'MSE\')]_BO_wight_1_iter_400.npz',
         ]
     labels = [
         'q3_KL',
         'q3_MSE',
-        # 'q3_MAE',
-        # 'q3_RMSE',
+        'q3_MAE',
+        'q3_RMSE',
         'Q3_KL',
         'Q3_MSE',
-        'x_50_MSE',
+        # 'x_50_MSE',
         # 'q3_KL_Q3_KL_x_50_MSE',
         ]
     # file_names = [
@@ -386,7 +386,7 @@ if __name__ == '__main__':
     visualize_diff_mean(results, labels)
     
     # kernel: corr_agg_0, corr_agg_1, corr_agg_2, pl_v, pl_P1, pl_P2, pl_P3, pl_P4
-    result_to_analyse = results[0]
+    result_to_analyse = results[1]
     if pbe_type == 'agglomeration' or pbe_type == 'mix':
         corr_agg_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['corr_agg_0','corr_agg_1','corr_agg_2'])
     if pbe_type == 'breakage' or pbe_type == 'mix':

@@ -57,7 +57,7 @@ def calculate_case(CASE, PBE=True, MC=False):
             
               
             p.calc_R()
-            p.init_N()
+            p.init_N(reset_N=False)
             p.alpha_prim = 1
             p.calc_F_M()
             p.calc_B_R()
@@ -125,7 +125,7 @@ def calculate_case(CASE, PBE=True, MC=False):
             p.N01, p.N03 = n0, n0
     
             p.calc_R()
-            p.init_N()
+            p.init_N(reset_N=False)
             p.alpha_prim = np.ones(4)
             p.calc_F_M()
             p.calc_B_R()
@@ -200,7 +200,7 @@ def calculate_case(CASE, PBE=True, MC=False):
             p.N01 = n0
               
             p.calc_R()
-            p.init_N()
+            p.init_N(reset_N=False)
             p.alpha_prim = 1
             p.calc_F_M()
             p.calc_B_R()
@@ -285,7 +285,7 @@ def calculate_case(CASE, PBE=True, MC=False):
             p.N01, p.N03 = n0, n0
     
             p.calc_R()
-            p.init_N()
+            p.init_N(reset_N=False)
             p.alpha_prim = np.ones(4)
             p.calc_F_M()
             p.calc_B_R()
@@ -536,25 +536,26 @@ if __name__ == "__main__":
     CASE = '2D_sum_mono'
     
     ### General parameters
-    t = np.arange(0, 21, 1, dtype=float)     # Time array [s]
+    t = np.arange(0, 601, 30, dtype=float)     # Time array [s]
     c = 1                # Volume concentration [-]
     # v0 = 1e-9
-    x = 1e-5                    # Particle diameter [m]
+    x = 1e-4                    # Particle diameter [m]
     # x = (v0*6/math.pi)**(1/3)
     beta0 = 1e-16                  # Collision frequency parameter [m^3/s]
     n0 = 3*c/(4*math.pi*(x/2)**3)   # Total number concentration of primary particles
     # n0 = 1                        # validation for pure breakage
-    v0 = 4*math.pi*(x/2)**3/3       # Volume of a primary particle
+    # v0 = 4*math.pi*(x/2)**3/3       # Volume of a primary particle
     MULTI_INTERNAL = False
     
     ### PBE Parameters
-    grid = 'uni'
-    NS = 30
-    # NS2 = 30
+    grid = 'geo'
+    NS = 8
+    # NS2 = 15
     #NS2 = 50
-    process_type = "breakage"
+    process_type = "agglomeration"
     
     S = 4
+    v0 = 4*math.pi*(x/2)**3/3*(1+S)/2
     # alpha_pbe = np.array([1,0.2,0.2,0])
     alpha_pbe = np.array([1,1,1,1])
     # alpha_pbe = np.array([1,0,0,0])
