@@ -255,7 +255,7 @@ if __name__ == '__main__':
     ]
     
     # Run an optimization and generate graphs of the results
-    delta_opt, opt_values = normal_test()
+    result_dict = normal_test()
     
     # N_exp, N_calc, N_exp_1D, N_calc_1D, q3_psd, q3_exp = calc_N_test()
     

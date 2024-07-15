@@ -9,6 +9,7 @@ import numpy as np
 import os
 import warnings
 import pandas as pd
+import ray
 from ..dpbe import population
 from .opt_algo import opt_algo 
 from .opt_algo_multi import opt_algo_multi
@@ -180,6 +181,8 @@ class opt_find():
             if self.algo.calc_init_N:
                 self.algo.set_init_N(sample_num, exp_data_paths, init_flag='mean')
                 
+            ray.init(runtime_env={"env_vars": {"PYTHONPATH": os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))}})
+            
             if method == 'kernels':
                 delta_opt_sample = np.zeros(sample_num)
                 CORR_BETA_sample = np.zeros(sample_num)
@@ -215,7 +218,7 @@ class opt_find():
                     self.algo.alpha_prim_opt = alpha_prim
                 
             elif method == 'delta':
-                delta_opt, opt_values = self.algo.optimierer_agg(self.opt_params, sample_num=sample_num,
+                result_dict = self.algo.optimierer_agg(self.opt_params, sample_num=sample_num,
                                                      exp_data_path=exp_data_path)
                 # delta_opt = self.algo.optimierer(sample_num=sample_num, 
                 #                       exp_data_path=exp_data_path)
@@ -235,7 +238,8 @@ class opt_find():
             # corr_agg_opt = self.algo.CORR_BETA_opt * self.algo.alpha_prim_opt
             # corr_agg_diff = abs(corr_agg_opt - corr_agg) / np.where(corr_agg == 0, 1, corr_agg)
             # para_diff=para_diff_i.mean()
-            return delta_opt, opt_values
+            ray.shutdown()
+            return result_dict
                 
             # return self.algo.CORR_BETA_opt, self.algo.alpha_prim_opt, para_diff, delta_opt
         

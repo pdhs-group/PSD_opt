@@ -5,13 +5,17 @@ Minimize the difference by optimization algorithm to obtain the kernel of PBE.
 """
 import numpy as np
 import math
+import ray
+from ray import tune, train
+from ray.tune.search.optuna import OptunaSearch
+from optuna.samplers import GPSampler, TPESampler
 from bayes_opt import BayesianOptimization
 from scipy.optimize import basinhopping
 from scipy.stats import entropy
 from sklearn.neighbors import KernelDensity
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 from scipy.interpolate import interp1d
-## import in package
+## import internal package
 from ..dpbe import population
 from ..utils.func.func_read_exp import write_read_exp
 
@@ -59,7 +63,7 @@ class opt_algo():
         self.set_init_pop_para_flag = False
         self.set_comp_para_flag = False
     #%%  Optimierer    
-    def calc_delta_agg(self, params_in, scale=1, sample_num=1, exp_data_path=None):
+    def calc_delta_agg(self, params_in, sample_num=1, exp_data_path=None):
         """
         Calculate the difference (delta) of PSD.
         
@@ -91,11 +95,11 @@ class opt_algo():
 
         self.calc_pop(self.p, params, self.t_vec)
         if self.p.calc_status:
-            return self.calc_delta_tem(sample_num, exp_data_path, scale, self.p)
+            return self.calc_delta_tem(sample_num, exp_data_path, self.p)
         else:
-            return scale*10
+            return 10
 
-    def calc_delta_tem(self, sample_num, exp_data_path, scale, pop):
+    def calc_delta_tem(self, sample_num, exp_data_path, pop):
         """
         Loop through all the experimental data and calculate the average diffences.
         
@@ -153,7 +157,7 @@ class opt_algo():
             # Because the number of x_uni is different in different pop equations, 
             # the average value needs to be used instead of the sum.
             x_uni_num = len(x_uni_exp)
-            return (delta * scale) / x_uni_num
+            return delta / x_uni_num
         else:
             for i in range (0, sample_num):
                 exp_data_path = self.traverse_path(i, exp_data_path)
@@ -182,7 +186,7 @@ class opt_algo():
             # Because the number of x_uni is different in different pop equations, 
             # the average value needs to be used instead of the sum.
             x_uni_num = len(x_uni_exp)  
-            return (delta_sum * scale) / x_uni_num
+            return delta_sum / x_uni_num
     
     def optimierer_agg(self, opt_params, init_points=4, sample_num=1, hyperparameter=None, exp_data_path=None):
         """
@@ -205,54 +209,53 @@ class opt_algo():
         delta_opt : `float`
             Optimized value of the objective.
         """
-        pbounds = {}
-        transform = {}
-        # Prepare bounds and transformation based on parameters definition
+        RT_space = {}
+        
         for param, info in opt_params.items():
             bounds = info['bounds']
             log_scale = info.get('log_scale', False)
-            pbounds[param] = bounds
+            
             if log_scale:
-                transform[param] = lambda x: 10**x
+                RT_space[param] = tune.loguniform(10**bounds[0], 10**bounds[1])
             else:
-                transform[param] = lambda x: x
+                RT_space[param] = tune.uniform(bounds[0], bounds[1])
                 
         # Objective function considering the log scale transformation if necessary
-        def objective(scale, **kwargs):
-            transformed_params = {}
-            for param, func in transform.items():
-                transformed_params[param] = func(kwargs[param])
-            
+        def objective(config):
             # Special handling for corr_agg based on dimension
-            if 'corr_agg_0' in transformed_params:
-                transformed_params = self.array_dict_transform(transformed_params)
-            return self.calc_delta_agg(transformed_params, scale=scale, sample_num=sample_num, exp_data_path=exp_data_path)
+            if 'corr_agg_0' in config:
+                transformed_params = self.array_dict_transform(config)
+            return self.calc_delta_agg(transformed_params, sample_num=sample_num, exp_data_path=exp_data_path)
             
         if self.method == 'BO': 
-            scale = -1  ## BayesianOptimization find the maximum
-            bayesian_objective = lambda **kwargs: objective(scale, **kwargs)
-            opt = BayesianOptimization(f=bayesian_objective, pbounds=pbounds, random_state=1, allow_duplicate_points=True)
-            opt.maximize(init_points=init_points, n_iter=self.n_iter)
+            algo = OptunaSearch(metric="loss", mode="min", sampler=GPSampler())
             
-            # Extract optimized values and apply transformations
-            opt_values = {param: transform[param](opt.max['params'][param]) for param in opt_params}
-            delta_opt = -opt.max['target']
-            if 'corr_agg_0' in opt_values:
-                opt_values =self.array_dict_transform(opt_values)
-                
-        elif self.method == 'basinhopping':
-            scale = 1
-            minimizer_kwargs = {"method": "L-BFGS-B", "bounds": [(pbounds[param][0], pbounds[param][1]) for param in opt_params]}
-            basinhopping_objective = lambda x: objective(scale, **dict(zip(opt_params.keys(), x)))
-            # Initial guess (middle of bounds)
-            x0 = [(bound[0] + bound[1]) / 2 for bound in minimizer_kwargs['bounds']]
-
-            result = basinhopping(basinhopping_objective, x0, minimizer_kwargs=minimizer_kwargs, niter=self.n_iter)
-            
-            # Extract results and apply transformations
-            opt_values = {param: transform[param](val) for param, val in zip(opt_params.keys(), result.x)}
-            delta_opt = result.fun
-        return delta_opt, opt_values
+        # 运行Ray Tune进行超参数搜索
+        tuner = tune.Tuner(
+            objective,
+            param_space=RT_space,
+            tune_config=tune.TuneConfig(
+                num_samples=self.n_iter,
+                # scheduler=scheduler,
+                search_alg=algo
+            ),
+            run_config=train.RunConfig(
+            storage_path =r"C:\Users\px2030\Code\Ray_Tune"  
+            )
+        )
+        
+        results = tuner.fit()
+        # 获取最优结果
+        best_result = results.get_best_result(metric="loss", mode="min")
+        best_config = best_result.config
+        best_score = best_result.metrics["loss"]
+        
+        result_dict = {
+            "best_score": best_score,
+            "best_parameters": best_config,
+        }
+        
+        return result_dict
     def array_dict_transform(self, array_dict):
         # Special handling for array in dictionary like corr_agg based on dimension
             if self.p.dim == 1:
