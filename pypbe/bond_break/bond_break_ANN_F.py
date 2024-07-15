@@ -32,9 +32,8 @@ class ANN_bond_break():
     def __init__(self,dim,NS,S,global_seed):
         self.pth = os.path.dirname( __file__ )
         self.directory = os.path.join(self.pth,'../../tests/simulation_data')
-        self.test_directory = os.path.join(self.pth,'../../tests/test_data')
         self.path_scaler = os.path.join(self.pth,'Inputs_scaler.pkl')
-        self.path_all_data = os.path.join(self.pth,'output_data_volX1.pkl')
+        self.path_all_data = os.path.join(self.pth,'output_data_vol.pkl')
         
         self.global_seed = global_seed
         self.dim = dim
@@ -300,7 +299,7 @@ class ANN_bond_break():
         if len(self.y) != self.NS:
             self.y = self.y[:-1]
             
-    def train_and_evaluate_model(self, split, epochs, training):
+    def train_and_evaluate_model(self, split, epochs, training, model_path=None):
         self.check_x_y()
         train_index = self.train_indexs[split]
         test_index = self.test_indexs[split]
@@ -325,10 +324,13 @@ class ANN_bond_break():
                 self.model[0].fit(train_data[3], train_data[1], epochs=epochs, batch_size=32, validation_split=0.2)   
                 self.model[1].fit(train_data[3], train_data[2], epochs=epochs, batch_size=32, validation_split=0.2)
             if self.save_model:
-                self.model[0].save(self.model_name + f'X1_{epochs_total}.keras')
-                self.model[1].save(self.model_name + f'X2_{epochs_total}.keras')
+                if model_path is None:
+                    self.model[0].save(self.model_name + f'X1_{epochs_total}.keras')
+                    self.model[1].save(self.model_name + f'X2_{epochs_total}.keras')
+                else:
+                    self.model[0].save(os.path.join(model_path, 'model2d_X1.keras'))
+                    self.model[1].save(os.path.join(model_path, 'model2d_X2.keras'))
 
-            # test_res = []
         ## training and evaluation for 2d-model 
         if self.dim == 1:
             mask = np.ones(self.x.shape, dtype=bool)
@@ -340,17 +342,20 @@ class ANN_bond_break():
             else:
                 self.model.fit(train_data[2], train_data[1], epochs=epochs, batch_size=32, validation_split=0.2)   
             if self.save_model:
-                self.model.save(self.model_name + f'_{epochs_total}.keras')
+                if model_path is None:
+                    self.model.save(self.model_name + f'_{epochs_total}.keras')
+                else:
+                    self.model.save(os.path.join(model_path, 'model1d.keras'))
                 
         return results
     
-    def cross_validation(self, epochs, num_training):
+    def cross_validation(self, epochs, num_training, model_path=None):
         ## 2rd dimension of results is: mse, mae, number_error, x_mass_error, y_mass_error
         results = np.zeros((num_training,5))
         for split in range(self.n_splits):
             self.create_models(split)
             for training in range(num_training):
-                results[training] += self.train_and_evaluate_model(split, epochs, training)
+                results[training] += self.train_and_evaluate_model(split, epochs, training, model_path)
         results /= self.n_splits
         if self.save_validate_results:
             with open(f'epochs_{epochs*num_training}_weight_{self.weight_loss_FRAG_NUM}.pkl', 'wb') as f:

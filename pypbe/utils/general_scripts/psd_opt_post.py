@@ -326,23 +326,23 @@ if __name__ == '__main__':
     # pbe_type = 'breakage'
     pbe_type = 'mix'
     file_names = [
-        'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_400.npz',
+        # 'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_400.npz',
         'multi_[(\'q3\', \'MSE\')]_BO_wight_1_iter_400.npz',
-        'multi_[(\'q3\', \'MAE\')]_BO_wight_1_iter_400.npz',
-        'multi_[(\'q3\', \'RMSE\')]_BO_wight_1_iter_400.npz',
-        'multi_[(\'QQ3\', \'KL\')]_BO_wight_1_iter_400.npz',
-        'multi_[(\'QQ3\', \'MSE\')]_BO_wight_1_iter_400.npz',
+        # 'multi_[(\'q3\', \'MAE\')]_BO_wight_1_iter_400.npz',
+        # 'multi_[(\'q3\', \'RMSE\')]_BO_wight_1_iter_400.npz',
+        # 'multi_[(\'QQ3\', \'KL\')]_BO_wight_1_iter_400.npz',
+        # 'multi_[(\'QQ3\', \'MSE\')]_BO_wight_1_iter_400.npz',
         # 'multi_[(\'x_50\', \'MSE\')]_BO_wight_1_iter_400.npz',
         # 'multi_[(\'q3\', \'MSE\'), (\'Q3\', \'MSE\'), (\'x_50\', \'MSE\')]_BO_wight_1_iter_400.npz',
         ]
     labels = [
-        'q3_KL',
+        # 'q3_KL',
         'q3_MSE',
-        'q3_MAE',
-        'q3_RMSE',
-        'Q3_KL',
-        'Q3_MSE',
-        # 'x_50_MSE',
+        # 'q3_MAE',
+        # 'q3_RMSE',
+        # 'Q3_KL',
+        # 'Q3_MSE',
+        # # 'x_50_MSE',
         # 'q3_MSE_Q3_MSE_x_50_MSE',
         ]
     # file_names = [
@@ -386,7 +386,7 @@ if __name__ == '__main__':
     visualize_diff_mean(results, labels)
     
     # kernel: corr_agg_0, corr_agg_1, corr_agg_2, pl_v, pl_P1, pl_P2, pl_P3, pl_P4
-    result_to_analyse = results[1]
+    result_to_analyse = results[0]
     if pbe_type == 'agglomeration' or pbe_type == 'mix':
         corr_agg_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['corr_agg_0','corr_agg_1','corr_agg_2'])
     if pbe_type == 'breakage' or pbe_type == 'mix':
@@ -394,8 +394,8 @@ if __name__ == '__main__':
         pl_P13_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P1','pl_P3'], log_axis=False)
         pl_P24_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P2','pl_P4'])
     
-    variable_to_analyse = result_to_analyse[897]
-    one_frame = False
+    variable_to_analyse = result_to_analyse[0]
+    one_frame = True
     calc_init = False
     t_return = -1
     fps = 5

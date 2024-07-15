@@ -225,6 +225,7 @@ if __name__ == '__main__':
     find.algo.set_init_pop_para(pop_params)
     
     base_path = os.path.join(find.algo.p.pth, "data")
+    find.base_path = base_path
     if find.algo.p.process_type == 'breakage':
         USE_PSD = False
         dist_path_NM = None
@@ -244,7 +245,7 @@ if __name__ == '__main__':
                             dist_path_NM=dist_path_NM, dist_path_M=dist_path_M)
     find.algo.weight_2d = conf.config['weight_2d']
 
-    data_name = "Sim_Mul_0.1_para_0.01_1_1_1_2_0.001_0.5_0.1_0.5.xlsx"  
+    data_name = "Sim_Mul_0.1_para_0.01_1.0_1.0_1.0_2_0.01_1.0_0.001_0.5.xlsx"  
     
     exp_data_path = os.path.join(base_path, data_name)
     exp_data_paths = [

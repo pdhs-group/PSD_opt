@@ -89,7 +89,7 @@ RT_space = {
 
 def RT_train_model(config):
     ann = ANN_bond_break(m_dim, m_NS, m_S, m_global_seed)
-    ann.save_model = False
+    # ann.save_model = False
     ann.save_validate_results = False
     ann.print_status = False
 
@@ -102,8 +102,9 @@ def RT_train_model(config):
     ann.init_neurons = config['init_neurons']
 
     # ann.processing_train_data()
+    model_path = train.get_context().get_trial_dir()
     ann.split_data_set(n_splits=m_n_splits)
-    results = ann.cross_validation(config['epochs'], 1)
+    results = ann.cross_validation(config['epochs'], 1, model_path)
     loss=results[0,0] * m_mse_weight + results[0,2] * m_frag_num_weight
     train.report({"loss": loss})
     
@@ -133,6 +134,9 @@ def run_ray_tune(result_path, n_steps):
             # scheduler=scheduler,
             search_alg=algo
         ),
+        run_config=train.RunConfig(
+        storage_path =r"C:\Users\px2030\Code\Ray_Tune"  
+        )
     )
     
     results = tuner.fit()
@@ -140,10 +144,12 @@ def run_ray_tune(result_path, n_steps):
     best_result = results.get_best_result(metric="loss", mode="min")
     best_config = best_result.config
     best_score = best_result.metrics["loss"]
+    best_model_path = best_result.path
     
     result_dict = {
         "best_score": best_score,
-        "best_parameters": best_config
+        "best_parameters": best_config,
+        "best_model_path": best_model_path
     }
     
     with open(result_path, "wb") as f:
@@ -174,13 +180,13 @@ def read_best_params_and_train_model(result_path):
     # ann.processing_train_data()
     ann.split_data_set(n_splits=m_n_splits)
     results = ann.cross_validation(epochs, 1)
-    return results
+    return results, load_result
     
 if __name__ == '__main__':
     ## The value of random seed (int value) itself is not important.
     ## But fixing random seeds can ensure the consistency and comparability of the results.
     ## The reverse improves the robustness of the model (set m_global_seed=0)
-    m_global_seed = 0
+    m_global_seed = 42
     
     m_dim = 1
     m_NS = 50
@@ -190,7 +196,7 @@ if __name__ == '__main__':
     m_frag_num_weight = 1e-2
     
     result_path = "best_results.pkl"
-    n_steps = 400
+    n_steps = 12
     
     start_time = time.time()
     # best_result = run_BO(result_path, n_steps)

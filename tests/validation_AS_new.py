@@ -532,8 +532,8 @@ if __name__ == "__main__":
     # '2D_sum_mono_ccm': 2D, sum kernel, monodisperse initial conditions, aplha from CCM
     # CASE = '1D_const_mono'
     # CASE = '2D_const_mono'
-    # CASE = '1D_sum_mono'
-    CASE = '2D_sum_mono'
+    CASE = '1D_sum_mono'
+    # CASE = '2D_sum_mono'
     
     ### General parameters
     t = np.arange(0, 601, 30, dtype=float)     # Time array [s]

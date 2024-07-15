@@ -163,7 +163,7 @@ class opt_find():
             warnings.warn('Initial PBE parameters have not been set')
             
         if data_name == None:
-            warnings.warn("Please specify the name of the training data without labels!")
+            warnings.warn("Please specify the name of the experiment data without labels!")
         else:
             exp_data_path = os.path.join(self.base_path, data_name)
             exp_data_paths = [

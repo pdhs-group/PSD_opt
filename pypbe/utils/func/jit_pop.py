@@ -18,7 +18,7 @@ def get_dNdt_1d_geo(t,N,NS,V_p,V_e,F_M,B_R,bf_int,xbf_int,type_flag,agg_crit):
     B = np.zeros(N.shape)
     B_c = np.zeros(NS+1)
     v = np.zeros(NS+1)
-    V_p_ex = np.zeros(NS+1)
+    V_p_ex = np.zeros(NS+1)-1
     V_p_ex[:-1] = V_p
     # N_scale_ex = np.ones(NS+1)
     # N_scale_ex[:-1] = N_scale
@@ -47,13 +47,13 @@ def get_dNdt_1d_geo(t,N,NS,V_p,V_e,F_M,B_R,bf_int,xbf_int,type_flag,agg_crit):
     # Assign BIRTH on each pivot
     for i in range(len(V_p)):
         # Add contribution from LEFT cell (if existent)
-        B[i] += B_c[i]*lam(v[i], V_p, i, 'm')*heaviside(V_p[i]-v[i],0.5)
+        B[i] += B_c[i]*lam(v[i], V_p_ex, i, "+")*heaviside(V_p[i]-v[i],0.5)
         # Left Cell, right half
-        B[i] += B_c[i-1]*lam(v[i-1], V_p, i, 'm')*heaviside(v[i-1]-V_p[i-1],0.5)
+        B[i] += B_c[i-1]*lam(v[i-1], V_p_ex, i, "+")*heaviside(v[i-1]-V_p[i-1],0.5)
         # Same Cell, right half
-        B[i] += B_c[i]*lam(v[i], V_p_ex, i, 'p')*heaviside(v[i]-V_p[i],0.5)
+        B[i] += B_c[i]*lam(v[i], V_p_ex, i, "-")*heaviside(v[i]-V_p[i],0.5)
         # Right Cell, left half
-        B[i] += B_c[i+1]*lam(v[i+1], V_p_ex, i, 'p')*heaviside(V_p_ex[i+1]-v[i+1],0.5)
+        B[i] += B_c[i+1]*lam(v[i+1], V_p_ex, i, "-")*heaviside(V_p_ex[i+1]-v[i+1],0.5)
     ## Particles with a volume of zero will not have any impact on physical processes 
     ## and mass conservation, but may affect the convergence of differential equations, 
     ## so they are set to zero manually.
@@ -75,7 +75,7 @@ def get_dNdt_2d_geo(t,NN,NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,type_fl
     v2 = np.zeros((NS+1,NS+1))
     M1_c = np.zeros((NS+1,NS+1))
     M2_c = np.zeros((NS+1,NS+1))
-    V_p_ex = np.zeros((NS+1,NS+1))
+    V_p_ex = np.zeros((NS+1,NS+1))-1
     V_p_ex[:-1,:-1] = V_p
     # N_scale_ex = np.ones((NS+1,NS+1))
     # N_scale_ex[:-1,:-1] = N_scale
@@ -111,7 +111,7 @@ def get_dNdt_2d_geo(t,NN,NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,type_fl
                 for q in range(2):
                     # Actual modification calculation
                     B[i,j] += B_c[i-p,j-q] \
-                        *lam_2d(v1[i-p,j-q],v2[i-p,j-q],V_p[:,0],V_p[0,:],i,j,"-","-") \
+                        *lam_2d(v1[i-p,j-q],v2[i-p,j-q],V_p_ex[:,0],V_p_ex[0,:],i,j,"-","-") \
                         *heaviside((-1)**p*(V_p[i-p,0]-v1[i-p,j-q]),0.5) \
                         *heaviside((-1)**q*(V_p[0,j-q]-v2[i-p,j-q]),0.5) 
                     # B[i,j] += tem 
@@ -119,7 +119,7 @@ def get_dNdt_2d_geo(t,NN,NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,type_fl
                     # if i-p==0 and j-q==0:
                     #     print(f'mass flux in [{i},{j}] is', tem)
                     B[i,j] += B_c[i-p,j+q] \
-                        *lam_2d(v1[i-p,j+q],v2[i-p,j+q],V_p[:,0],V_p[0,:],i,j,"-","+") \
+                        *lam_2d(v1[i-p,j+q],v2[i-p,j+q],V_p_ex[:,0],V_p_ex[0,:],i,j,"-","+") \
                         *heaviside((-1)**p*(V_p[i-p,0]-v1[i-p,j+q]),0.5) \
                         *heaviside((-1)**(q+1)*(V_p_ex[0,j+q]-v2[i-p,j+q]),0.5) 
                     # B[i,j] += tem 
@@ -127,7 +127,7 @@ def get_dNdt_2d_geo(t,NN,NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,type_fl
                     # if i-p==0 and j+q==0:
                     #     print(f'mass flux in [{i},{j}] is', tem)
                     B[i,j] += B_c[i+p,j-q] \
-                        *lam_2d(v1[i+p,j-q],v2[i+p,j-q],V_p[:,0],V_p[0,:],i,j,"+","-") \
+                        *lam_2d(v1[i+p,j-q],v2[i+p,j-q],V_p_ex[:,0],V_p_ex[0,:],i,j,"+","-") \
                         *heaviside((-1)**(p+1)*(V_p_ex[i+p,0]-v1[i+p,j-q]),0.5) \
                         *heaviside((-1)**q*(V_p[0,j-q]-v2[i+p,j-q]),0.5)
                     # B[i,j] += tem
@@ -135,7 +135,7 @@ def get_dNdt_2d_geo(t,NN,NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,type_fl
                     # if i+p==0 and j-q==0:
                     #     print(f'mass flux in [{i},{j}] is', tem)
                     B[i,j] += B_c[i+p,j+q] \
-                        *lam_2d(v1[i+p,j+q],v2[i+p,j+q],V_p[:,0],V_p[0,:],i,j,"+","+") \
+                        *lam_2d(v1[i+p,j+q],v2[i+p,j+q],V_p_ex[:,0],V_p_ex[0,:],i,j,"+","+") \
                         *heaviside((-1)**(p+1)*(V_p_ex[i+p,0]-v1[i+p,j+q]),0.5) \
                         *heaviside((-1)**(q+1)*(V_p_ex[0,j+q]-v2[i+p,j+q]),0.5)
                     # B[i,j] += tem
@@ -443,13 +443,13 @@ def get_dNdt_3d_uni(t,NN,V,V1,V2,V3,F_M,NS,THR):
     return DN.reshape(-1) 
 
 @jit(nopython=True)
-def lam(v, V_p, i, case):
-    if case == 'm':
+def lam(v, V_p, i, m):
+    if m == "+":
         return (v-V_p[i-1])/(V_p[i]-V_p[i-1])
-    elif case == 'p':        
+    else:        
         return (v-V_p[i+1])/(V_p[i]-V_p[i+1])
-    else:
-        print('WRONG CASE FOR LAM')
+    # else:
+    #     print('WRONG CASE FOR LAM')
         
 @jit(nopython=True)
 def lam_2d(x,y,Vx,Vy,i,j,m1,m2):
