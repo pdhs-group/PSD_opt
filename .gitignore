@@ -12,3 +12,4 @@
 __pycache__
 myenv
 docs/_build/
+*.pkl
