@@ -33,7 +33,7 @@ class opt_find():
     def __init__(self):
         self.multi_flag=True
         
-    def init_opt_algo(self, multi_flag, algo_params, opt_params):
+    def init_opt_algo(self, multi_flag, algo_params, opt_params, data_path=None):
         """
         Initializes the optimization algorithm with specified parameters and configurations.
         
@@ -83,7 +83,10 @@ class opt_find():
         if dim >= 2:
             self.algo.create_1d_pop(disc='geo')
         # Set the base path for exp_data_path
-        self.base_path = os.path.join(self.algo.p.pth, "data")
+        if data_path is None:
+            self.base_path = os.path.join(self.algo.p.pth, "data")
+        else:
+            self.base_path = data_path
         
     def generate_data(self, pop_params=None, sample_num=1, add_info=""):
         """

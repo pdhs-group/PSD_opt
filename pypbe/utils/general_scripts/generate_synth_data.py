@@ -73,7 +73,7 @@ if __name__ == '__main__':
         dist_path_10 = os.path.join(pth, "..","..", "data", "PSD_data", conf.config['dist_scale_10'])
 
     ## define the range of corr_beta
-    var_corr_beta = np.array([1e3])
+    var_corr_beta = np.array([1e-2])
     # var_corr_beta = np.array([1e-2])
     ## define the range of alpha_prim 27x3
     values = np.array([1])
@@ -92,13 +92,13 @@ if __name__ == '__main__':
     var_alpha_prim = np.array(unique_alpha_prim)
 
     ## define the range of v(breakage function)
-    var_v = np.array([1])
-    ## define the range of P1, P2 for power law breakage rate
-    var_P1 = np.array([1e-3])
-    var_P2 = np.array([0.7])
-    var_P3 = np.array([1])
-    var_P4 = np.array([0.3,2])
-
+    var_v = np.array([1,2])
+    # var_v = np.array([0.01])    ## define the range of P1, P2 for power law breakage rate
+    var_P1 = np.array([1e-3,1e-2,1e-1])
+    var_P2 = np.array([0.5,1.0,2.0])
+    var_P3 = np.array([1e-3,1e-2,1e-1])
+    var_P4 = np.array([0.5,1.0,2.0])
+    
     ## define the range of particle size scale and minimal size
     dist_path = [dist_path_1] # [dist_path_1, dist_path_10]
     size_scale = np.array([1, 10])

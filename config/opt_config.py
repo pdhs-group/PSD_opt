@@ -33,7 +33,7 @@ config = {
         'n_iter': 400,
         ## Initialize PBE using psd data(False) or 
         ## with the help of first few time points of experimental data(True)
-        'calc_init_N': True,
+        'calc_init_N': False,
         ## delta_flag = q3: use q3
         ## delta_flag = Q3: use Q3
         ## delta_flag = x_10: use x_10
@@ -44,7 +44,7 @@ config = {
         ## 'MAE': Mean Absolute Error
         ## 'KL': Kullback–Leibler divergence(Only q3 and Q3 are compatible with KL) 
 
-        'delta_flag': [('q3','KL'), 
+        'delta_flag': [('q3','MSE'), 
                        #('Q3','KL'), 
                        #('x_50','MSE')
                        ],
@@ -58,7 +58,7 @@ config = {
         'BREAKFVAL' : 5,
         ## aggl_crit: The sequence number of the particle that allows further agglomeration
         'aggl_crit' : 100,
-        'process_type' : "breakage",
+        'process_type' : "mix",
         'pl_v' : 2,
         'pl_P1' : 1e1,
         'pl_P2' : 2,
@@ -72,6 +72,10 @@ config = {
         'alpha_prim': np.array([1, 1, 1]),
         # 'alpha_prim': 0.5,
         'CORR_BETA' : 100,
+        ## The "average volume" of the two elemental particles in the system.
+        ## Used to scale the particle volume in calculation of the breakage rate.
+        'V1_mean' : 1e-18,
+        'V3_mean' : 1e-18,
         ## Reduce particle number desity concentration to improve calculation stability
         ## Default value = 1e14 
         'V_unit': 1e-15,
@@ -82,16 +86,14 @@ config = {
     
     ## Parameters which should be optimized
     'opt_params' : {
-        # 'corr_agg_0': {'bounds': (0.0, 3.0), 'log_scale': True},
-        # 'corr_agg_1': {'bounds': (0.0, 3.0), 'log_scale': True},
-        # 'corr_agg_2': {'bounds': (0.0, 3.0), 'log_scale': True},
-        'pl_v': {'bounds': (0.5, 2), 'log_scale': False},
-        'pl_P1': {'bounds': (-3, 0), 'log_scale': True},
-        'pl_P2': {'bounds': (0.3, 3), 'log_scale': False},
-        'pl_P3': {'bounds': (-3, 0), 'log_scale': True},
-        'pl_P4': {'bounds': (0.3, 3), 'log_scale': False},
-        # 'pl_P5': {'bounds': (-6, -1), 'log_scale': True},
-        # 'pl_P6': {'bounds': (-3, 0), 'log_scale': True},
+        'corr_agg_0': {'bounds': (-4.0, -1.0), 'log_scale': True},
+        'corr_agg_1': {'bounds': (-4.0, -1.0), 'log_scale': True},
+        'corr_agg_2': {'bounds': (-4.0, -1.0), 'log_scale': True},
+        'pl_v': {'bounds': (0.5, 2.0), 'log_scale': False},
+        'pl_P1': {'bounds': (-4.0, 0.0), 'log_scale': True},
+        'pl_P2': {'bounds': (0.5, 3.0), 'log_scale': False},
+        'pl_P3': {'bounds': (-4.0, 0.0), 'log_scale': True},
+        'pl_P4': {'bounds': (0.5, 3.0), 'log_scale': False},
     },
     ## The diameter ratio of the primary particles can also be used as a variable
     'R_NM': 8.677468940430804e-07,

@@ -323,8 +323,8 @@ if __name__ == '__main__':
     # vis_criteria = 'mse'
 
     # pbe_type = 'agglomeration'
-    pbe_type = 'breakage'
-    # pbe_type = 'mix'
+    # pbe_type = 'breakage'
+    pbe_type = 'mix'
     file_names = [
         'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_400.npz',
         'multi_[(\'q3\', \'MSE\')]_BO_wight_1_iter_400.npz',
@@ -333,7 +333,7 @@ if __name__ == '__main__':
         'multi_[(\'QQ3\', \'KL\')]_BO_wight_1_iter_400.npz',
         'multi_[(\'QQ3\', \'MSE\')]_BO_wight_1_iter_400.npz',
         # 'multi_[(\'x_50\', \'MSE\')]_BO_wight_1_iter_400.npz',
-        # 'multi_[(\'q3\', \'KL\'), (\'Q3\', \'KL\'), (\'x_50\', \'MSE\')]_BO_wight_1_iter_400.npz',
+        # 'multi_[(\'q3\', \'MSE\'), (\'Q3\', \'MSE\'), (\'x_50\', \'MSE\')]_BO_wight_1_iter_400.npz',
         ]
     labels = [
         'q3_KL',
@@ -343,7 +343,7 @@ if __name__ == '__main__':
         'Q3_KL',
         'Q3_MSE',
         # 'x_50_MSE',
-        # 'q3_KL_Q3_KL_x_50_MSE',
+        # 'q3_MSE_Q3_MSE_x_50_MSE',
         ]
     # file_names = [
     #     'multi_[(\'q3\', \'MSE\')]_BO_wight_1_iter_400.npz',
@@ -357,12 +357,12 @@ if __name__ == '__main__':
     #     ]
     
     # file_names = [
-        # 'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_50.npz',
-        # 'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_100.npz',
-        # 'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_200.npz',
-        # 'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_400.npz',
+        # 'multi_[(\'q3\', \'MSE\')]_BO_wight_1_iter_50.npz',
+        # 'multi_[(\'q3\', \'MSE\')]_BO_wight_1_iter_100.npz',
+        # 'multi_[(\'q3\', \'MSE\')]_BO_wight_1_iter_200.npz',
+        # 'multi_[(\'q3\', \'MSE\')]_BO_wight_1_iter_400.npz',
         # 'multi_[(\'q3\', \'KL\')]_BO_wight_1_iter_800.npz',
-    #     ]
+        # ]
     # labels = [
         # 'iter_50',
         # 'iter_100',
@@ -394,10 +394,10 @@ if __name__ == '__main__':
         pl_P13_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P1','pl_P3'], log_axis=False)
         pl_P24_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P2','pl_P4'])
     
-    # variable_to_analyse = result_to_analyse[159]
-    # one_frame = False
-    # calc_init = False
-    # t_return = -1
-    # fps = 5
-    # visualize_PSD(variable_to_analyse, pbe_type, one_frame)
+    variable_to_analyse = result_to_analyse[897]
+    one_frame = False
+    calc_init = False
+    t_return = -1
+    fps = 5
+    visualize_PSD(variable_to_analyse, pbe_type, one_frame)
 

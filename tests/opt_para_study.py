@@ -15,14 +15,14 @@ from config import opt_config as conf
 logging.basicConfig(filename='parallel.log', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def optimization_process(algo_params,pop_params,multi_flag,opt_params,ori_params,file_name):
+def optimization_process(algo_params,pop_params,multi_flag,opt_params,ori_params,file_name, data_path):
     #%%  Input for Opt 
     find = opt.opt_find()
 
     ## Update the parameter for PBE
     pop_params.update(ori_params)
 
-    find.init_opt_algo(multi_flag, algo_params, opt_params)
+    find.init_opt_algo(multi_flag, algo_params, opt_params, data_path)
     
     find.algo.set_init_pop_para(pop_params)
     
@@ -71,19 +71,16 @@ if __name__ == '__main__':
     var_alpha_prim = np.array(unique_alpha_prim)
 
     ## define the range of v(breakage function)
-    var_v = np.array([0.1,1,2])
-    # var_v = np.array([0.01])
+    var_v = np.array([1,2])
     ## define the range of P1, P2 for power law breakage rate
-    var_P1 = np.array([1e-6,5e-4,1e-3])
-    var_P2 = np.array([0.1,0.3,0.5])
-    var_P3 = np.array([1e-6,5e-4,1e-3])
-    var_P4 = np.array([0.1,0.3,0.5])
-    # var_P5 = np.array([1e-4,1e-2])
-    # var_P6 = np.array([0.1,1])
+    var_P1 = np.array([1e-3,1e-2,1e-1])
+    var_P2 = np.array([0.5,1.0,2.0])
+    var_P3 = np.array([1e-3,1e-2,1e-1])
+    var_P4 = np.array([0.5,1.0,2.0])
 
     ## define the range of particle size scale and minimal size
-    pth = os.path.dirname( __file__ )
-    data_path = os.path.join(pth, "..", "pypbe", "data")
+    pth = '/pfs/work7/workspace/scratch/px2030-MC_train'
+    data_path = os.path.join(pth,"mix", "data")
     # dist_path_1 = os.path.join(data_path, "PSD_data", conf.config['dist_scale_1'])
     # dist_path = [dist_path_1] # [dist_path_1, dist_path_10]
     # size_scale = np.array([1, 10])
@@ -118,7 +115,7 @@ if __name__ == '__main__':
                                             continue
                                         var_pop_params = conf_params['pop_params']
                                         tasks.append((algo_params,pop_params,multi_flag,opt_params,
-                                                      var_pop_params,file_name))
+                                                      var_pop_params,file_name, data_path))
     
     results = pool.starmap(optimization_process, tasks)
 
