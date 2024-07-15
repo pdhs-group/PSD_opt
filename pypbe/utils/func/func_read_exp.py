@@ -39,7 +39,7 @@ class write_read_exp():
             except ValueError:
                 raise ValueError(f"Time string format not recognized: {time_str}")
                 
-        total_second = time_obj.hour * 3600 + time_obj.minute * 60 + time_obj.second  
+        total_second = time_obj.hour * 3600 + time_obj.minute * 60 + time_obj.second + time_obj.microsecond / 1e6 
         # print(f"Time string: {time_str}, Total second: {total_second}")
         
         return total_second

@@ -1,0 +1,17 @@
+2d_breakage
+calc_init_N = True
+N_scale = 1e-18
+Opt_Breich:	
+	'pl_v': {'bounds': (0.1, 2), 'log_scale': False},
+        'pl_P1': {'bounds': (1e-6, 1e-3), 'log_scale': False},
+        'pl_P2': {'bounds': (0.1, 0.5), 'log_scale': False},
+        'pl_P3': {'bounds': (1e-6, 1e-3), 'log_scale': False},
+        'pl_P4': {'bounds': (0.1, 0.5), 'log_scale': False},
+
+Test_Breich:
+    var_v = np.array([0.1,1,2])
+    var_P1 = np.array([1e-6,1e-3])
+    var_P2 = np.array([0.1,0.3,0.5])
+    var_P3 = np.array([1e-6,1e-3])
+    var_P4 = np.array([0.1,0.3,0.5])
+

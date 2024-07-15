@@ -58,58 +58,93 @@ class population():
         
         ## N_scale is used to increase/decrease the overall order of magnitude of a calculated value(N)
         ## Reducing the magnitude of N can improve the stability of calculation
-        N = self.N * self.N_scale
-        
+        # tem_N_scale = np.ones_like(self.N)
+        N = self.N
         # 1-D case
         if self.dim == 1:
+            # for i in range(1, self.NS):    
+            #     rel_V = self.V[i] / self.V[1] 
+            #     tem_N_scale[i,:] = 1 / (1 + self.N_scale * rel_V)
+            # N = self.N * tem_N_scale
             # Define right-hand-side function depending on discretization
             if self.disc == 'geo':
                 rhs = jit.get_dNdt_1d_geo
                 args=(self.NS,self.V,self.V_e,self.F_M,self.B_R,self.int_B_F,
-                      self.intx_B_F,self.process_type,self.aggl_crit_id,self.N_scale)
+                      self.intx_B_F,self.process_type,self.aggl_crit_id)
             elif self.disc == 'uni':
                 rhs = jit.get_dNdt_1d_uni                
-                args=(self.V,self.F_M,self.NS,self.THR_DN)
-                
-            # self.RES = integrate.solve_ivp(rhs, 
-            #                                 [0, t_max], 
-            #                                 self.N[:,0], t_eval=t_vec,
-            #                                 args=args,
-            #                                 method='Radau',first_step=0.1,rtol=1e-1)
-            
-            # # Reshape and save result to N and t_vec
-            # self.t_vec = self.RES.t
-            # self.N = self.RES.y
-            
-            ode_sys = RK.radau_ii_a(rhs, N[:,0], t_eval=t_vec,
-                                    args = args,
-                                    dt_first=0.1)
-            y_evaluated, y_res_tem, t_res_tem, rate_res_tem, error_res_tem = ode_sys.solve_ode()
-            
+                args=(self.V,self.B_R,self.B_F,self.F_M,self.NS,self.aggl_crit_id,self.process_type)
+            if self.solver == "ivp":    
+                with np.errstate(divide='raise', over='raise',invalid='raise'):
+                    try:
+                        self.RES = integrate.solve_ivp(rhs, 
+                                                        [0, t_max], 
+                                                        N[:,0], t_eval=t_vec,
+                                                        args=args,
+                                                        method='Radau',first_step=0.1,rtol=1e-1)
+                        
+                        # Reshape and save result to N and t_vec
+                        t_vec = self.RES.t
+                        y_evaluated = self.RES.y
+                        status = True if self.RES.status == 0 else False
+                    except (FloatingPointError, ValueError) as e:
+                        print(f"Exception encountered: {e}")
+                        y_evaluated = -np.ones((self.NS,len(t_vec)))
+                        status = False
+                    
+            elif self.solver == "radau":
+                ode_sys = RK.radau_ii_a(rhs, N[:,0], t_eval=t_vec,
+                                        args = args,
+                                        dt_first=0.1)
+                y_evaluated, y_res_tem, t_res_tem, rate_res_tem, error_res_tem = ode_sys.solve_ode()
+                # eva_N_scale = tem_N_scale[:,:len(t_res_tem)]
+                status = not ode_sys.dt_is_too_small  
+            # eva_N_scale = tem_N_scale[:,:len(t_vec)]
         elif self.dim == 2:
+            # V_min = min(self.V1[1],self.V3[1])
+            # for i in range(self.NS):    
+            #     for j in range(self.NS):
+            #         if i+j ==0:
+            #             continue
+            #         rel_V = self.V[i,j] / V_min
+            #         tem_N_scale[i,j,:] = 1 / (1 + self.N_scale * rel_V)
+            # N = self.N * tem_N_scale
             # Define right-hand-side function depending on discretization
             if self.disc == 'geo':
                 rhs = jit.get_dNdt_2d_geo
                 args=(self.NS,self.V,self.V_e1,self.V_e3,self.F_M,self.B_R,self.int_B_F,
-                      self.intx_B_F,self.inty_B_F,self.process_type,self.aggl_crit_id,self.N_scale)
+                      self.intx_B_F,self.inty_B_F,self.process_type,self.aggl_crit_id)
             elif self.disc == 'uni':
                 rhs = jit.get_dNdt_2d_uni   
                 args=(self.V,self.V1,self.V3,self.F_M,self.NS,self.THR_DN)
-            # self.RES = integrate.solve_ivp(rhs, 
-            #                                 [0, t_max], 
-            #                                 np.reshape(self.N[:,:,0],-1), t_eval=t_vec,
-            #                                 args=args,
-            #                                 method='Radau',first_step=0.1,rtol=1e-1)
-            
-            # # Reshape and save result to N and t_vec
-            # self.t_vec = self.RES.t
-            # self.N = self.RES.y.reshape((self.NS,self.NS,len(self.RES.t)))
-            ode_sys = RK.radau_ii_a(rhs, np.reshape(N[:,:,0],-1), t_eval=t_vec,
-                                    args = args,
-                                    dt_first=0.1)
-            y_evaluated, y_res_tem, t_res_tem, rate_res_tem, error_res_tem = ode_sys.solve_ode()
-            y_evaluated = y_evaluated.reshape((self.NS,self.NS,len(t_vec)))
-            y_res_tem = y_res_tem.reshape((self.NS,self.NS,len(t_res_tem)))
+            if self.solver == "ivp":  
+                with np.errstate(divide='raise', over='raise',invalid='raise'):
+                    try:
+                        self.RES = integrate.solve_ivp(rhs, 
+                                                        [0, t_max], 
+                                                        np.reshape(N[:,:,0],-1), t_eval=t_vec,
+                                                        args=args,
+                                                        method='Radau',first_step=0.1,rtol=1e-1)
+                        
+                        # Reshape and save result to N and t_vec
+                        t_vec = self.RES.t
+                        y_evaluated = self.RES.y.reshape((self.NS,self.NS,len(t_vec)))
+                        status = True if self.RES.status == 0 else False
+                    except (FloatingPointError, ValueError) as e:
+                        print(f"Exception encountered: {e}")
+                        y_evaluated = -np.ones((self.NS,self.NS,len(t_vec)))
+                        status = False
+                
+            elif self.solver == "radau":
+                ode_sys = RK.radau_ii_a(rhs, np.reshape(N[:,:,0],-1), t_eval=t_vec,
+                                        args = args,
+                                        dt_first=0.1)
+                y_evaluated, y_res_tem, t_res_tem, rate_res_tem, error_res_tem = ode_sys.solve_ode()
+                y_evaluated = y_evaluated.reshape((self.NS,self.NS,len(t_vec)))
+                y_res_tem = y_res_tem.reshape((self.NS,self.NS,len(t_res_tem)))
+                # res_N_scale = tem_N_scale[:,:,:len(t_res_tem)]
+                status = not ode_sys.dt_is_too_small
+            # eva_N_scale = tem_N_scale[:,:,:len(t_vec)]
  
         elif self.dim == 3:
             # Define right-hand-side function depending on discretization
@@ -129,12 +164,17 @@ class population():
             self.t_vec = self.RES.t
         # Monitor whether integration are completed  
         self.t_vec = t_vec 
-        self.N = y_evaluated / self.N_scale
-        self.N_res_tem = y_res_tem / self.N_scale
-        self.t_res_tem = t_res_tem
-        self.rate_res_tem = rate_res_tem
-        self.error_res_tem = error_res_tem
-        self.calc_status = not ode_sys.dt_is_too_small   
+        # self.N = y_evaluated / eva_N_scale
+        self.N = y_evaluated
+        self.calc_status = status   
+        if not self.calc_status:
+            print('Warning: The integral failed to converge!')
+        if self.solver == "radau":
+            # self.N_res_tem = y_res_tem / res_N_scale
+            self.N_res_tem = y_res_tem
+            self.t_res_tem = t_res_tem
+            self.rate_res_tem = rate_res_tem
+            self.error_res_tem = error_res_tem
     ## Solve ODE (forward Euler scheme):
     def solve_PBE_Euler(self):
         """ `(Legacy)` Simple solver with forward Euler. Use ``solve_PBE( )`` instead. """
@@ -355,18 +395,27 @@ class population():
                             self.X3_a[i,j,k] = A3[k]/(A1[i]+A2[j]+A3[k])
     
     ## Initialize concentration matrix N
-    def init_N(self): 
+    def init_N(self, reset_N=True): 
         """Initialize discrete number concentration array. 
         
         Creates the following class attributes: 
             * ``pop.N``: Number concentration of each class 
         """
-        
+        if reset_N:
+            ## Reset EXPERIMENTAL / PROCESS parameters
+            self.cv_1 = self.c_mag_exp*self.Psi_c1_exp   # Volume concentration of NM1 particles [Vol-%] 
+            self.cv_2 = self.c_mag_exp*self.Psi_c2_exp   # Volume concentration of NM2 particles [Vol-%] 
+            self.V01 = self.cv_1*self.V_unit             # Total volume concentration of component 1 [unit/unit] - NM1
+            self.N01 = 3*self.V01/(4*math.pi*self.R01**3)     # Total number concentration of primary particles component 1 [1/m³] - NM1 (if no PSD)
+            self.V02 = self.cv_2*self.V_unit         # Total volume concentration of component 2 [unit/unit] - NM2
+            self.N02 = 3*self.V02/(4*math.pi*self.R02**3)     # Total number concentration of primary particles component 2 [1/m³] - NM2 (if no PSD)
+            self.V03 = self.c_mag_exp*self.V_unit        # Total volume concentration of component 3 [unit/unit] - M
+            self.N03 = 3*self.V03/(4*math.pi*self.R03**3)     # Total number concentration of primary particles component 1 [1/m³] - M (if no PSD) 
         # 1-D case
         if self.dim == 1:
             self.N = np.zeros((self.NS,self.NUM_T+1))
             if self.USE_PSD:
-                self.N[1:,0] = self.new_initialize_psd(2*self.R[1:],self.DIST1,self.V01)
+                self.N[1:,0] = self.initialize_psd(2*self.R[1:],self.DIST1,self.V01)
             else:
                 if self.process_type == "agglomeration":
                     self.N[1,0] = self.N01
@@ -382,8 +431,8 @@ class population():
         elif self.dim == 2:
             self.N = np.zeros((self.NS,self.NS,self.NUM_T+1))
             if self.USE_PSD:
-                self.N[1:,0,0] = self.new_initialize_psd(2*self.R[1:,0],self.DIST1,self.V01)
-                self.N[0,1:,0] = self.new_initialize_psd(2*self.R[0,1:],self.DIST3,self.V03)
+                self.N[1:,0,0] = self.initialize_psd(2*self.R[1:,0],self.DIST1,self.V01)
+                self.N[0,1:,0] = self.initialize_psd(2*self.R[0,1:],self.DIST3,self.V03)
             else:
                 if self.process_type == "agglomeration":
                     self.N[1,0,0] = self.N01
@@ -400,9 +449,9 @@ class population():
         elif self.dim == 3:
             self.N = np.zeros((self.NS+3,self.NS+3,self.NS+3,self.NUM_T+1))
             if self.USE_PSD:
-                self.N[2:-1,1,1,0] = self.new_initialize_psd(2*self.R[2:-1,1,1],self.DIST1,self.V01)
-                self.N[1,2:-1,1,0] = self.new_initialize_psd(2*self.R[1,2:-1,1],self.DIST2,self.V02)
-                self.N[1,1,2:-1,0] = self.new_initialize_psd(2*self.R[1,1,2:-1],self.DIST3,self.V03)
+                self.N[2:-1,1,1,0] = self.initialize_psd(2*self.R[2:-1,1,1],self.DIST1,self.V01)
+                self.N[1,2:-1,1,0] = self.initialize_psd(2*self.R[1,2:-1,1],self.DIST2,self.V02)
+                self.N[1,1,2:-1,0] = self.initialize_psd(2*self.R[1,1,2:-1],self.DIST3,self.V03)
             else:
                 self.N[2,1,1,0] = self.N01
                 self.N[1,2,1,0] = self.N02
@@ -414,7 +463,7 @@ class population():
         """Initialize agglomeration frequency array. 
         
         Creates the following class attributes: 
-            * ``pop.F_M``: Agglomeration frequency between two classes ij and ab is stored in ``F_M[i,j,a,b]`` 
+            * ``pop.F_M``: (2D)Agglomeration frequency between two classes ij and ab is stored in ``F_M[i,j,a,b]`` 
         """
         # 1-D case
         if self.dim == 1:
@@ -481,7 +530,7 @@ class population():
                 # Store result
                 # self.alpha[idx] = alpha_ai
                 # self.beta[idx] = beta_ai
-                self.F_M[idx] = beta_ai*alpha_ai*corr_size
+                self.F_M[idx] = beta_ai*alpha_ai*corr_size/self.V_unit
                 
         # 2-D case.
         elif self.dim == 2:
@@ -494,7 +543,7 @@ class population():
                 self.F_M = jit.calc_F_M_2D(self.NS,self.disc,self.COLEVAL,self.CORR_BETA,
                                            self.G,self.R,self.X1_vol,self.X3_vol,
                                            self.EFFEVAL,self.alpha_prim,self.SIZEEVAL,
-                                           self.X_SEL,self.Y_SEL)
+                                           self.X_SEL,self.Y_SEL)/self.V_unit
             
             else:
                 # Go through all agglomeration partners 1 [a,b] and 2 [i,j]
@@ -570,7 +619,7 @@ class population():
                         corr_size = np.exp(-self.X_SEL*(1-lam)**2)/((self.R[a,b]*self.R[i,j]/(np.min(np.array([self.R01,self.R03]))**2))**self.Y_SEL)
                     
                     # Store result
-                    self.F_M[idx] = beta_ai*alpha_ai*corr_size
+                    self.F_M[idx] = beta_ai*alpha_ai*corr_size/self.V_unit
                 
         # 3-D case. 
         elif self.dim == 3:
@@ -580,7 +629,7 @@ class population():
                 self.F_M = jit.calc_F_M_3D(self.NS,self.disc,self.COLEVAL,self.CORR_BETA,
                                            self.G,self.R,self.X1_vol,self.X2_vol,self.X3_vol,
                                            self.EFFEVAL,self.alpha_prim,self.SIZEEVAL,
-                                           self.X_SEL,self.Y_SEL)
+                                           self.X_SEL,self.Y_SEL)/self.V_unit
             
             else:
                 # Initialize F_M Matrix. NOTE: F_M is defined without the border around the calculation grid
@@ -672,7 +721,7 @@ class population():
                         corr_size = np.exp(-self.X_SEL*(1-lam)**2)/((self.R[a,b,c]*self.R[i,j,k]/(np.min(np.array([self.R01,self.R02,self.R03]))**2))**self.Y_SEL)
                     
                     # Store result
-                    self.F_M[idx] = beta_ai*alpha_ai*corr_size
+                    self.F_M[idx] = beta_ai*alpha_ai*corr_size/self.V_unit
     
     ## Calculate alphas of primary particles
     def calc_alpha_prim(self):
@@ -764,6 +813,11 @@ class population():
     
     ## Calculate breakage rate matrix. 
     def calc_B_R(self):
+        """Initialize breakage rate array. 
+        
+        Creates the following class attributes: 
+            * ``pop.B_R``: (2D)Breakage rate for class ab. The result is stored in ``B_R[a,b]`` 
+        """
         ## In breakage is not allowed to define parameter of particle without volume
         ## So B_R is (NS-1) instead (NS)
         # 1-D case
@@ -788,17 +842,22 @@ class population():
                         self.B_R[a] = self.V[a]
                         
             # Power Law Pandy and Spielmann --> See Jeldres2018 (28)
+            # Scale particle volume using the average volume of all possible fragments produced
             elif self.BREAKRVAL == 3:
+                V_mean = self.V[1:].mean()
                 for idx, tmp in np.ndenumerate(self.B_R):
                     a = idx[0]
                     if a != 0:
-                        self.B_R[a] = self.pl_P1*self.G*(self.V[a]/self.V[1])**self.pl_P2     
+                        self.B_R[a] = self.pl_P1*self.G*(self.V[a]/V_mean)**self.pl_P2    
+                        # self.B_R[a] = self.pl_P1*self.G*self.V[a]**self.pl_P2  
             # Hypothetical formula considering volume fraction
             elif self.BREAKRVAL == 4:
+                V_mean = self.V[1:].mean()
                 for idx, tmp in np.ndenumerate(self.B_R):
                     a = idx[0]
                     if a != 0:
-                        self.B_R[a] = self.pl_P1*self.G*(self.V[a]/self.V[1])**self.pl_P2   
+                        self.B_R[a] = self.pl_P1*self.G*(self.V[a]/V_mean)**self.pl_P2   
+                        # self.B_R[a] = self.pl_P1*self.G*self.V[a]**self.pl_P2  
         # 2-D case            
         if self.dim == 2:
             self.B_R = np.zeros((self.NS, self.NS))
@@ -827,32 +886,55 @@ class population():
                             self.B_R[idx] = self.V1[a]*self.V3[b]
                         elif self.BREAKFVAL == 2:
                             self.B_R[idx] = self.V1[a] + self.V3[b]
+                            
+            # Power Law Pandy and Spielmann --> See Jeldres2018 (28)
+            # Scale particle volume using the average volume of all possible fragments produced
             elif self.BREAKRVAL == 3:
+                # V1_mean = self.V1[1:].mean()
+                # V3_mean = self.V3[1:].mean()
+                V_mean = self.V[self.V!=0].mean()
                 for idx, tmp in np.ndenumerate(self.B_R):
                     a = idx[0]; b = idx[1]
                     if a == 0 and b == 0:
                         continue
                     elif a == 0:
-                        self.B_R[idx] = self.pl_P1 * self.G * (self.V3[b]/self.V3[1])**self.pl_P2
+                        self.B_R[idx] = self.pl_P1 * self.G * (self.V3[b]/self.V3_mean)**self.pl_P2
+                        # self.B_R[idx] = self.pl_P1 * self.G * self.V3[b]**self.pl_P2
                     elif b == 0:
-                        self.B_R[idx] = self.pl_P1 * self.G * (self.V1[a]/self.V1[1])**self.pl_P2
+                        self.B_R[idx] = self.pl_P1 * self.G * (self.V1[a]/self.V1_mean)**self.pl_P2
+                        # self.B_R[idx] = self.pl_P1 * self.G * self.V1[a]**self.pl_P2
                     else:
-                        self.B_R[idx] = self.pl_P1 * self.G * (self.V[a+1,b+1]/self.V[1,1])**self.pl_P2
+                        self.B_R[idx] = self.pl_P1 * self.G * (self.V[a+1,b+1]/V_mean)**self.pl_P2
+                        # self.B_R[idx] = self.pl_P1 * self.G * self.V[a+1,b+1]**self.pl_P2
             # Hypothetical formula considering volume fraction
             elif self.BREAKRVAL == 4:
+                # V1_mean = self.V1[1:].mean()
+                # V3_mean = self.V3[1:].mean()
                 for idx, tmp in np.ndenumerate(self.B_R):
                     a = idx[0]; b = idx[1]
                     if a == 0 and b == 0:
                         continue
                     elif a == 0: 
-                        self.B_R[idx] = self.pl_P3 * self.G * (self.V3[b]/self.V3[1])**self.pl_P4
+                        self.B_R[idx] = self.pl_P3 * self.G * (self.V3[b]/self.V3_mean)**self.pl_P4
+                        # self.B_R[idx] = self.pl_P3 * self.G * (self.V3[b])**self.pl_P4
                     elif b == 0:
-                        self.B_R[idx] = self.pl_P1 * self.G * (self.V1[a]/self.V1[1])**self.pl_P2
+                        self.B_R[idx] = self.pl_P1 * self.G * (self.V1[a]/self.V1_mean)**self.pl_P2
+                        # self.B_R[idx] = self.pl_P1 * self.G * (self.V1[a])**self.pl_P2
                     else:
-                        self.B_R[idx] = self.pl_P1 * self.G * (self.V1[a]/self.V1[1])**self.pl_P2 + \
-                                         self.pl_P3 * self.G * (self.V3[b]/self.V3[1])**self.pl_P4
+                        self.B_R[idx] = self.pl_P1 * self.G * (self.V1[a]/self.V1_mean)**self.pl_P2 + \
+                                          self.pl_P3 * self.G * (self.V3[b]/self.V3_mean)**self.pl_P4
+                        # self.B_R[idx] = self.pl_P1 * self.G * (self.V1[a])**self.pl_P2 + \
+                                          # self.pl_P3 * self.G * (self.V3[b])**self.pl_P4
+                        
     ## Calculate integrated breakage function matrix.         
     def calc_int_B_F(self):
+        """Initialize integrated breakage function array. 
+        
+        Creates the following class attributes: 
+            * ``pop.int_B_F``: (2D)The integral of the breakage function from class ab to class ij. Result is stored in ``int_B_F[a,b,i,j]`` 
+            * ``pop.intx_B_F``: (2D)The integral of the (breakage function*x) from class ab to class ij. Result is stored in ``intx_B_F[a,b,i,j]`` 
+            * ``pop.inty_B_F``: (2D)The integral of the (breakage function*y) from class ab to class ij. Result is stored in ``inty_B_F[a,b,i,j]`` 
+        """
         if self.BREAKFVAL == 4:
             if self.pl_v <= 0 or self.pl_v > 1:
                 raise Exception("Value of pl_v is out of range (0,1] for simple Power law.")
@@ -860,36 +942,46 @@ class population():
         ## So int_B_F and intx_B_F is (NS-1)^2 instead (NS)^2
         # 1-D case
         if self.dim == 1:
-            ## Note: The breakage function of the smallest particle is 0. 
-            ##       And small particle can not break into large one. 
-            ## Note: Because particles with a volume of zero are skipped, 
-            ##       calculation with V requires (index+1)
-            self.int_B_F = np.zeros((self.NS, self.NS))
-            self.intx_B_F = np.zeros((self.NS, self.NS))
-            if self.process_type == 'agglomeration':
-                return
-            
-            if self.USE_MC_BOND:
-                mc_bond = np.load(self.PTH_MC_BOND, allow_pickle=True)
-                self.int_B_F = mc_bond['int_B_F'][:,0,:,0]
-                self.intx_B_F = mc_bond['intx_B_F'][:,0,:,0] * self.V_e[1]
-                # for i in range(2, self.NS):
-                #     self.intx_B_F[:,i] = mc_bond['intx_B_F'][:,0,i,0] * self.V[i]
-            else:
-                ## Let the integration range associated with the breakage function start from zero 
-                ## to ensure mass conservation  
-                V_e_tem = np.copy(self.V_e)
-                V_e_tem[0] = 0.0
-                for idx, tmp in np.ndenumerate(self.int_B_F):
+            if self.disc == 'uni':
+                self.B_F = np.zeros((self.NS,self.NS))
+                V = np.copy(self.V)
+                V[:-1] = self.V[1:]
+                V[-1] = self.V[-1] + self.V[1]
+                for idx, tep in np.ndenumerate(self.B_F):
                     a = idx[0]; i = idx[1]
                     if i != 0 and a <= i:
-                        args = (self.V[i],self.pl_v,self.pl_q,self.BREAKFVAL)
-                        if a == i:
-                            self.int_B_F[idx],err = integrate.quad(jit.breakage_func_1d,V_e_tem[a],self.V[a],args=args)
-                            self.intx_B_F[idx],err = integrate.quad(jit.breakage_func_1d_vol,V_e_tem[a],self.V[a],args=args)
-                        else:
-                            self.int_B_F[idx],err = integrate.quad(jit.breakage_func_1d,V_e_tem[a],V_e_tem[a+1],args=args)
-                            self.intx_B_F[idx],err = integrate.quad(jit.breakage_func_1d_vol,V_e_tem[a],V_e_tem[a+1],args=args)
+                        self.B_F[idx] = jit.breakage_func_1d(V[a],V[i],self.pl_v,self.pl_q,self.BREAKFVAL) * V[0]
+            else:
+                ## Note: The breakage function of the smallest particle is 0. 
+                ##       And small particle can not break into large one. 
+                ## Note: Because particles with a volume of zero are skipped, 
+                ##       calculation with V requires (index+1)
+                self.int_B_F = np.zeros((self.NS, self.NS))
+                self.intx_B_F = np.zeros((self.NS, self.NS))
+                if self.process_type == 'agglomeration':
+                    return
+                
+                if self.B_F_type == 'MC_bond':
+                    mc_bond = np.load(self.PTH_MC_BOND, allow_pickle=True)
+                    self.int_B_F = mc_bond['int_B_F'][:,0,:,0]
+                    self.intx_B_F = mc_bond['intx_B_F'][:,0,:,0] * self.V_e[1]
+                    # for i in range(2, self.NS):
+                    #     self.intx_B_F[:,i] = mc_bond['intx_B_F'][:,0,i,0] * self.V[i]
+                elif self.B_F_type == 'int_func':
+                    ## Let the integration range associated with the breakage function start from zero 
+                    ## to ensure mass conservation  
+                    V_e_tem = np.copy(self.V_e)
+                    V_e_tem[0] = 0.0
+                    for idx, tmp in np.ndenumerate(self.int_B_F):
+                        a = idx[0]; i = idx[1]
+                        if i != 0 and a <= i:
+                            args = (self.V[i],self.pl_v,self.pl_q,self.BREAKFVAL)
+                            if a == i:
+                                self.int_B_F[idx],err = integrate.quad(jit.breakage_func_1d,V_e_tem[a],self.V[a],args=args)
+                                self.intx_B_F[idx],err = integrate.quad(jit.breakage_func_1d_vol,V_e_tem[a],self.V[a],args=args)
+                            else:
+                                self.int_B_F[idx],err = integrate.quad(jit.breakage_func_1d,V_e_tem[a],V_e_tem[a+1],args=args)
+                                self.intx_B_F[idx],err = integrate.quad(jit.breakage_func_1d_vol,V_e_tem[a],V_e_tem[a+1],args=args)
                     
         # 2-D case
         elif self.dim == 2:
@@ -899,7 +991,7 @@ class population():
             if self.process_type == 'agglomeration':
                 return
             
-            if self.USE_MC_BOND:
+            if self.B_F_type == 'MC_bond':
                 mc_bond = np.load(self.PTH_MC_BOND, allow_pickle=True)
                 self.int_B_F = mc_bond['int_B_F']
                 # for i in range (0, self.NS):
@@ -916,15 +1008,18 @@ class population():
                 self.intx_B_F = mc_bond['intx_B_F'] * self.V_e1[1]
                 self.inty_B_F = mc_bond['inty_B_F'] * self.V_e3[1]
 
-            elif self.JIT_BF:
-                self.int_B_F, self.intx_B_F, self.inty_B_F = jit.calc_int_B_F_2D_GL(
-                    self.NS,self.V1,self.V3,self.V_e1,self.V_e3,self.BREAKFVAL,self.pl_v,self.pl_q)
-                # self.int_B_F, self.intx_B_F, self.inty_B_F = jit.calc_int_B_F_2D(
-                #     self.NS,self.V1,self.V3,self.V_e1,self.V_e3,self.BREAKFVAL,self.pl_v,self.pl_q)
-            else:
-                self.int_B_F, self.intx_B_F,self.inty_B_F = jit.calc_int_B_F_2D_quad(
-                    self.NS, self.V1, self.V3, self.V_e1, self.V_e3, self.BREAKFVAL, self.pl_v, self.pl_q)
+            elif self.B_F_type == 'int_func':
+                if self.JIT_BF:
+                    self.int_B_F, self.intx_B_F, self.inty_B_F = jit.calc_int_B_F_2D_GL(
+                        self.NS,self.V1,self.V3,self.V_e1,self.V_e3,self.BREAKFVAL,self.pl_v,self.pl_q)
+                    # self.int_B_F, self.intx_B_F, self.inty_B_F = jit.calc_int_B_F_2D(
+                    #     self.NS,self.V1,self.V3,self.V_e1,self.V_e3,self.BREAKFVAL,self.pl_v,self.pl_q)
+                else:
+                    self.int_B_F, self.intx_B_F,self.inty_B_F = jit.calc_int_B_F_2D_quad(
+                        self.NS, self.V1, self.V3, self.V_e1, self.V_e3, self.BREAKFVAL, self.pl_v, self.pl_q)
+            elif self.B_F_type == 'ANN_MC':
                 
+                return
             
     ## Visualize / plot population:
     def visualize_distN_t(self,t_plot=None,t_pause=0.5,close_all=False,scl_a4=1,figsze=[12.8,6.4*1.5]):
@@ -1190,6 +1285,30 @@ class population():
     
     ## Return particle size distribution on fixed grid 
     def return_distribution(self, comp='all', t=0, N=None, flag='all'):
+        """
+        Returns the results of Volume-based PSD(Particle density distribution) of a time step.
+        
+        Parameters
+        ----------
+        comp : `str`, optional
+            Which particles are counted. The case for a specific component has not yet been coded.
+        t : `int`, optional
+            Time step to return.
+        N : `array_like`, optional
+            Array holding the calculated particle number distribution. 
+            If is not provided, use the one from the class instance * ``pop.N( )``.
+        flag: `str`, optional
+            Which data form the PSD is returned. Default is 'all'. Options include:
+            - 'x_uni': Unique particle diameters(unique particle size class)
+            - 'q3': Volumen density distribution
+            - 'Q3': Cumulative distribution
+            - 'x_10': Particle size corresponding to 10% cumulative distribution
+            - 'x_50': Particle size corresponding to 50% cumulative distribution
+            - 'x_90': Particle size corresponding to 90% cumulative distribution
+            - 'sumvol_uni': Cumulative particle volumen on each particle size class
+            - 'all': Returns all the above data
+        
+        """
         def unique_with_tolerance(V, tol=1e-3):
             V_sorted = np.sort(V)
             V_unique = [V_sorted[0]]
@@ -1202,7 +1321,7 @@ class population():
         if N is None:
             N = self.N
         
-        # Extract unique values that are NOT -1 or 0 (border)
+        # Extract unique values that are NOT -1 (border)
         v_uni = np.setdiff1d(self.V,[-1])
         # v_uni = unique_with_tolerance(v_uni)
         q3 = np.zeros(len(v_uni))
@@ -1228,8 +1347,9 @@ class population():
                         for k in range(self.NS):
                             # if self.V[i,j,k] in v_uni:
                             sumvol_uni[v_uni == self.V[i,j,k]] += self.V[i,j,k]*N[i,j,k,t]
-            ## convert unit m into um
-            sumvol_uni[sumvol_uni<0] = 0
+            ## Preventing division by zero
+            sumvol_uni[sumvol_uni<0] = v_uni[1] * 1e-3
+            ## Convert unit m into um
             sumvol_uni *= 1e18
             sumV = np.sum(sumvol_uni)
             # Calculate diameter array
@@ -1264,20 +1384,44 @@ class population():
             return tuple(outputs[f.strip()] for f in flags if f.strip() in outputs)
     
     def return_num_distribution(self, comp='all', t=0, N=None, flag='all'):
+        """
+        Returns the results of Number-based PSD(Particle density distribution) of a time step.
+        
+        Parameters
+        ----------
+        comp : `str`, optional
+            Which particles are counted. The case for a specific component has not yet been coded.
+        t : `int`, optional
+            Time step to return.
+        N : `array_like`, optional
+            Array holding the calculated particle number distribution. 
+            If is not provided, use the one from the class instance * ``pop.N( )``.
+        flag: `str`, optional
+            Which data form the PSD is returned. Default is 'all'. Options include:
+            - 'x_uni': Unique particle diameters(unique particle size class)
+            - 'q0': Number density distribution
+            - 'Q0': Cumulative distribution
+            - 'x_10': Particle size corresponding to 10% cumulative distribution
+            - 'x_50': Particle size corresponding to 50% cumulative distribution
+            - 'x_90': Particle size corresponding to 90% cumulative distribution
+            - 'sumN_uni': Cumulative particle concentration on each particle size class
+            - 'all': Returns all the above data
+        
+        """
         # If no N is provided use the one from the class instance
         if N is None:
             N = self.N
         
-        # Extract unique values that are NOT -1 or 0 (border)
+        # Extract unique values that are NOT -1(border)
         # At the same time, v_uni will be rearranged according to size.
         v_uni = np.setdiff1d(self.V,[-1])
 
-        q3 = np.zeros(len(v_uni))
+        q0 = np.zeros(len(v_uni))
         x_uni = np.zeros(len(v_uni))
         sumN_uni = np.zeros(len(v_uni))
         
         if comp == 'all':
-            # Loop through all entries in V and add volume concentration to specific entry in sumN_uni
+            # Loop through all entries in V and add number concentration to specific entry in sumN_uni
             if self.dim == 1:
                 for i in range(self.NS):
                     if float_in_list(self.V[i], v_uni) and (not N[i,t] < 0):
@@ -1301,13 +1445,13 @@ class population():
             x_uni[1:]=(6*v_uni[1:]/np.pi)**(1/3)*1e6
             
             # Calculate sum and density distribution
-            Q3 = np.cumsum(sumN_uni)/sumN
-            q3[1:] = np.diff(Q3) / np.diff(x_uni)
+            Q0 = np.cumsum(sumN_uni)/sumN
+            q0[1:] = np.diff(Q0) / np.diff(x_uni)
             
             # Retrieve x10, x50 and x90 through interpolation
-            x_10=np.interp(0.1, Q3, x_uni)
-            x_50=np.interp(0.5, Q3, x_uni)
-            x_90=np.interp(0.9, Q3, x_uni)
+            x_10=np.interp(0.1, Q0, x_uni)
+            x_50=np.interp(0.5, Q0, x_uni)
+            x_90=np.interp(0.9, Q0, x_uni)
             
         else:
             print('Case for comp not coded yet. Exiting')
@@ -1315,8 +1459,8 @@ class population():
     
         outputs = {
         'x_uni': x_uni,
-        'q3': q3,
-        'Q3': Q3,
+        'q0': q0,
+        'Q0': Q0,
         'x_10': x_10,
         'x_50': x_50,
         'x_90': x_90,
@@ -1361,6 +1505,7 @@ class population():
         for t in range(len(self.t_vec)):
             for i in range(3):
                 if self.dim == 1:
+                    self.N[0,:] = 0.0
                     mu[i,0,t] = np.sum(self.V**i*self.N[:,t])
                     
                 # The following only applies for 2D and 3D case
@@ -1368,8 +1513,10 @@ class population():
                 else:
                     for j in range(3):
                         if self.dim == 2:
+                            self.N[0,0,:] = 0.0
                             mu[i,j,t] = np.sum((self.X1_vol*self.V)**i*(self.X3_vol*self.V)**j*self.N[:,:,t])
                         if self.dim == 3:
+                            self.N[0,0,0,:] = 0.0
                             mu[i,j,t] = np.sum((self.X1_vol*self.V)**i*(self.X3_vol*self.V)**j*self.N[:,:,:,t])
                         
         return mu
@@ -1550,10 +1697,14 @@ class population():
         self.pl_P2 = 0.5                      # 2. parameter in power law for breakage rate  1d/2d
         self.pl_P3 = 1e-6                     # 3. parameter in power law for breakage rate  2d
         self.pl_P4 = 0.5                      # 4. parameter in power law for breakage rate  2d
+        self.V1_mean = 4.37*1e-14
+        self.V3_mean = 4.37*1e-14
         # self.pl_P5 = 1e-6                     # 5. parameter in power law for breakage rate  2d
         # self.pl_P6 = 0.5                      # 6. parameter in power law for breakage rate  2d
         
-        self.USE_MC_BOND = False
+        self.B_F_type = 'int_func'            # 'int_func': calculate B_F with breakage function
+                                              # 'MC_bond': Obtain B_F directly from the result of MC_bond
+                                              # 'ANN_MC': Calculate MC results using ANN model and convert to B_F
         self.PTH_MC_BOND = os.path.join(self.pth,'bond_break','int_B_F.npz')
                        
         self.SIZEEVAL = 2                     # Case for implementation of size dependency. 1 = No size dependency, 2 = Model from Soos2007 
@@ -1564,6 +1715,8 @@ class population():
         self.GC_EXPSTR = ''                   # Full exportstring of GC (only initialization, gets real value upon export)
         self.GV_EXPSTR = ''                   # Full exportstring of GV (only initialization, gets real value upon export)
         self.REPORT = True                    # When true, population informs about current calculation and reports results
+        self.solver = "ivp"                   # "ivp": use integrate.solve_ivp
+                                              # "radau": use RK.radau_ii_a  
         
         
         # NOTE: The following two parameters define the magnetic separation step.
@@ -1655,14 +1808,15 @@ class population():
                                             # e.g. G=(1400-354)*(n_exp-100)/(250-100)+354
         self.CORR_BETA = 1e6*2.5e-5           # Correction Term for collision frequency [-]. Can be defined
                                             # dependent on rotary speed, e.g. ((corr_beta250-corr_beta100)*(n_exp-100)/(250-100)+corr_beta100)
-
-        self.V01 = self.cv_1*1e-2             # Total volume concentration of component 1 [m³/m³] - NM1
+        self.V_unit = 1                  # The unit volume used to calculate the total particle concentration. 
+                                            # It is essentially a parameter used to scale the variabel.
+        self.V01 = self.cv_1*self.V_unit             # Total volume concentration of component 1 [unit/unit] - NM1
         self.N01 = 3*self.V01/(4*math.pi*self.R01**3)     # Total number concentration of primary particles component 1 [1/m³] - NM1 (if no PSD)
-        self.V02 = self.cv_2*1e-2             # Total volume concentration of component 2 [m³/m³] - NM2
+        self.V02 = self.cv_2*self.V_unit         # Total volume concentration of component 2 [unit/unit] - NM2
         self.N02 = 3*self.V02/(4*math.pi*self.R02**3)     # Total number concentration of primary particles component 2 [1/m³] - NM2 (if no PSD)
-        self.V03 = self.c_mag_exp*1e-2        # Total volume concentration of component 3 [m³/m³] - M
+        self.V03 = self.c_mag_exp*self.V_unit        # Total volume concentration of component 3 [unit/unit] - M
         self.N03 = 3*self.V03/(4*math.pi*self.R03**3)     # Total number concentration of primary particles component 1 [1/m³] - M (if no PSD) 
-        self.N_scale = 1
+        self.N_scale = 0                      # There is a problem, set it to zero to not use scale
         self.N_INF = self.NA*self.I           # Total number concentration of ions [1/m³] 
         self.NUM_T = round(self.t_exp*60/self.DEL_T)      # Number of timesteps for calculation [-]
         self.t_vec = np.arange(self.NUM_T+1)*self.DEL_T        
@@ -1685,97 +1839,29 @@ class population():
     
     ## Initialize PSD
     @staticmethod
-    def initialize_psd(r,psd_data,v0,x_init=None,Q_init=None):
+    def initialize_psd(d,psd_data,v0,x_init=None,Q_init=None):
+        """
+        Obtain initial conditions from a PSD data file.
         
-        from scipy.interpolate import interp1d
-        import sys
+        Parameters
+        ----------
+        d : `array_like`
+            Particle size grid on which the PSD should be initialized. NOTE: This
+            vector contains diameters
+        psd_data : `str`
+            Complete path (including filename) to datafile in which the PSD is saved. 
+        v0: `float`
+            Total VOLUME the distribution should be scaled to
+        x_init : `array_like`, optional
+            Particle size grid in the PSD can be manually specified.  
+        Q_init : `array_like`, optional
+            Manually specify the PSD instead of reading it from the file.
+        Output
+        ----------
+        n : `array_like`
+            NUMBER concentration vector corresponding to d
+        """
         
-        ## OUTPUT-parameters:
-        # n: NUMBER concentration vector corresponding to r (for direct usage in N
-        # vector of population balance calculation
-        
-        ## INPUT-parameters:
-        # r: Particle size grid on which the PSD should be initialized. NOTE: This
-        #    vector contains RADII (and NOT diameters)
-        # PSD_data: Complete path (including filename) to datafile in which the PSD is saved. 
-        #           This file should only contain 2 variables: Q_PSD and x_PSD.
-        #           Here, x_PSD contains diameters (standard format of PSD)
-        # v0: Total VOLUME the distribution should be scaled to
-                
-        
-        # If x and Q are not directly given import from file
-        if x_init is None and Q_init is None:
-            # Import x values from dictionary save in psd_data
-            psd_dict = np.load(psd_data,allow_pickle=True).item()
-            x = psd_dict['x_PSD']
-            
-            ## Initializing the variables
-            n = np.zeros(len(r)) 
-            q = np.zeros(len(x)) 
-            
-            if 'Q_PSD' not in psd_dict and 'q_PSD' not in psd_dict:
-                sys.exit("ERROR: Neither Q_PSD nor q_PSD given in distribution file. Exiting..")
-            
-            if 'Q_PSD' in psd_dict:
-                # Load Q if given
-                Q = psd_dict['Q_PSD']
-            if 'q_PSD' in psd_dict:
-                # Load q if given
-                q = psd_dict['q_PSD']
-            else:
-                # If q is not given: Calculate from Q. Note that q[0] will always be zero
-                for i in range(1,len(x)):
-                    q[i] = (Q[i]-Q[i-1])/(x[i]-x[i-1]) 
-                    
-        else:
-            ## Initializing the variables
-            n = np.zeros(len(r)) 
-            q = np.zeros(len(x_init)) 
-            
-            x = x_init
-            
-            for i in range(1,len(x)):
-                q[i] = (Q_init[i]-Q_init[i-1])/(x[i]-x[i-1])
-            
-        # Transform x from diameter to radius information. Also transform q
-        x = x/2
-        #q = q/2
-        
-        # Interpolate q on r grid and normalize it to 1 (account for numerical error)
-        # If the ranges don't match well, insert 0. This is legit since it is the density
-        # distribution
-        f_q = interp1d(x,q,bounds_error=False,fill_value=0)
-        q_r = f_q(r)
-                
-        #q_r(math.isnan(q_r)) = 0
-        q_r = q_r/np.trapz(q_r,r)
-        
-        # Temporary r vector. Add lower and upper boarder (given by x_PSD) 
-        # This allows calculation of the first and last entry of q / r.
-        rt = np.zeros(len(r)+2) 
-        qt = np.zeros(len(r)+2)  
-        rt[0] = min(min(x),min(r))
-        rt[-1] = max(max(x),max(r))
-        rt[1:-1] = r 
-        qt[1:-1] = q_r;
-        
-        # Calculate concentration vector
-        for i in range(1,len(rt)-1):
-            v_total_tmp = v0*qt[i]*((rt[i+1]-rt[i])/2+(rt[i]-rt[i-1])/2) # Calculated with DIFFERENCE (i+1), (i-1)
-            #v_one_tmp = (4/3)*pi*((rt[i+1]+rt[i-1])*1e-6/2)^3; # Calculated with MEAN (i+1), (i-1) 
-            v_one_tmp = (4/3)*np.pi*r[i-1]**3; # Calculated with MEAN (i+1), (i-1) 
-            n[i-1] = v_total_tmp/v_one_tmp;
-        
-        # Eliminate sub and near zero values (sub-thrshold)
-        thr = 1e-5
-        n[n<thr*np.mean(n)] = 0
-        
-        return n   
-
-    ## Initialize PSD
-    @staticmethod
-    def new_initialize_psd(d,psd_data,v0,x_init=None,Q_init=None):
-            
         from scipy.interpolate import interp1d
         import sys
         

@@ -7,9 +7,15 @@
 *.npy
 *.pdf
 *.tar.gz
+*.pkl
+*.keras
+*.zip
+*.pkl
+*.json
 
 # ignore ordner
 __pycache__
 myenv
 docs/_build/
-*.pkl
+
+

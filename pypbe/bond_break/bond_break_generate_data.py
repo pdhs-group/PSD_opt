@@ -13,11 +13,12 @@ import multiprocessing
 
 def generate_dataset():
     # Define variable parameters
-    A0 = 0.025
-    A_values = [2*A0, 4*A0, 8*A0, 16*A0, 64*A0, 256*A0, 2048*A0, 32768*A0] # 这里A0是一个具体的值
-    NO_FRAG_values = [2, 4, 8]
-    X1_values = [0, 0.5, 1]
-    STR_elements = [1e-3, 0.5, 1]
+    A0 = 1.0
+    A_values = [32*A0] 
+    NO_FRAG_values = [2,4,6]
+    X1_values = [0.1, 0.5, 1]
+    STR_elements = [1e-3,0.5,1]
+    int_bre_values = [0,0.5,1]
     
     # Define other unchanged parameters
     N_GRIDS, N_FRACS = 200, 100
@@ -29,27 +30,34 @@ def generate_dataset():
     
     tasks = []
     # go through all the combination of parameters
-    for A, X1, NO_FRAG, STR1, STR2, STR3 in itertools.product(A_values, X1_values, NO_FRAG_values, STR_elements, STR_elements, STR_elements):
+    for A, X1, NO_FRAG, STR1, STR2, STR3,int_bre  in itertools.product(A_values, X1_values, NO_FRAG_values, STR_elements, STR_elements, STR_elements, int_bre_values):
         if A/A0 < NO_FRAG:
             continue
-        
-        args = (A, X1, output_dir, STR1, STR2,STR3,NO_FRAG, N_GRIDS, N_FRACS, A0, INIT_BREAK_RANDOM)
+        if (X1 == 0 ):
+            continue
+        if (X1 == 1) and not (STR1 == 1 and STR2 == 1 and STR3 == 1):
+            continue
+        if not (X1 == 1) and (STR1 == 1 and STR2 == 1 and STR3 == 1):
+            continue
+        if (STR1 == 1e-3 and STR2 == 1e-3 and STR3 == 1e-3) or (STR1 == 0.5 and STR2 == 0.5 and STR3 == 0.5):
+            continue
+        args = (A, X1, output_dir, int_bre, STR1, STR2,STR3,NO_FRAG, N_GRIDS, N_FRACS, A0, INIT_BREAK_RANDOM)
         tasks.append(args)
     # Use a pool of workers to execute simulations in parallel
     pool = multiprocessing.Pool(processes=12)
     pool.map(generate_one_data, tasks)    
         
 def generate_one_data(args):
-    A, X1, output_dir, STR1, STR2,STR3,NO_FRAG, N_GRIDS, N_FRACS, A0, INIT_BREAK_RANDOM = args
+    A, X1, output_dir, int_bre, STR1, STR2,STR3,NO_FRAG, N_GRIDS, N_FRACS, A0, INIT_BREAK_RANDOM = args
     X2 = 1 - X1
     STR = np.array([STR1, STR2, STR3])
     # Optimize MC-Bond-Break Simulation
-    F = MC_breakage(A, X1, X2, STR, NO_FRAG, N_GRIDS=N_GRIDS, N_FRACS=N_FRACS, 
+    F = MC_breakage(A, X1, X2, STR, NO_FRAG, int_bre, N_GRIDS=N_GRIDS, N_FRACS=N_FRACS, 
                     A0=A0, init_break_random=INIT_BREAK_RANDOM)
     # convert absolute volume to relative volume
     # F[:,0] /= A 
     # construkt the file name
-    file_name = f"{A}_{X1}_{NO_FRAG}_{STR1}_{STR2}_{STR3}.npy"
+    file_name = f"{A}_{X1}_{NO_FRAG}_{STR1}_{STR2}_{STR3}_{int_bre}.npy"
     file_path = os.path.join(output_dir, file_name)
     # save array
     np.save(file_path, F)

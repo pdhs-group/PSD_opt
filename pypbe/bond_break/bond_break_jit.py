@@ -8,11 +8,12 @@ import numpy as np
 from copy import deepcopy
 from numba import jit
 from numba.typed import List as nb_List
+import time
 
 # Simulate N_GRIDS grids that each fracture N_FRACS times
 # For debugging/testing use single_sim, as this function is "optimized" by not plotting and printing stuff
-@jit(nopython=True)
-def MC_breakage(A, X1, X2, STR, NO_FRAG, N_GRIDS=100, N_FRACS=100, A0=0, init_break_random=False):
+# @jit(nopython=True)
+def MC_breakage(A, X1, X2, STR, NO_FRAG, int_bre=0, N_GRIDS=100, N_FRACS=100, A0=0, init_break_random=False):
     """Perform a 2D, 2 material Monte Carlo breakage simulation.
     
     Parameters
@@ -50,22 +51,28 @@ def MC_breakage(A, X1, X2, STR, NO_FRAG, N_GRIDS=100, N_FRACS=100, A0=0, init_br
     # Initialize fracture array (return)
     F = np.zeros((N_GRIDS*N_FRACS*NO_FRAG,4))
     
+    if int_bre < 0 or int_bre > 1:
+        raise Exception("int_bre is the relative depth relative to the particle size, ranging from [0,1]")
+    
     # Loop through all grids based on A, X1 and X2
     for g in range(N_GRIDS):
         # print(f'Calculating grid no. {g+1}/{N_GRIDS}')
         # Generate grid and copy it (identical initial conditions for other fractures)
-        G, N, B, A0, R = generate_grid_2D(A, X1, X2, A0=A0)
+        start_time_grid = time.time()
+        
+        G, N, B, A0, R, ibl = generate_grid_2D(A, X1, X2, int_bre, A0=A0)
         G0 = np.copy(G)
         
         for f in range(N_FRACS):
+            start_time_frac = time.time()
             # Tracking number of fragments and index history of all fragments
             no_frag = 1
             G = np.copy(G0)
             fracture_energy = 0
-            
+            G_old = np.copy(G)
             while no_frag < NO_FRAG:                
                 # Initialize a new fracture. idx=None indicates that this is the first event
-                G, idx, ff, str_bond = break_one_bond(G, STR, idx=None, init_break_random=init_break_random)
+                G, idx, ff, str_bond = break_one_bond(G, STR, ibl, idx=None, init_break_random=init_break_random)
                 
                 # For each fracture keep a separate history (otherwise fragments cannot break "inside" themselves)
                 idx_hist = nb_List([np.copy(idx)])
@@ -91,13 +98,14 @@ def MC_breakage(A, X1, X2, STR, NO_FRAG, N_GRIDS=100, N_FRACS=100, A0=0, init_br
                         fracture_energy += str_bond
                     cnt += 1
                 
-                # Caught in an endless loop. Report and restart the fragmentation (reset no_frag and idx_hist_frag)
+                # Caught in an endless loop. Report and restart the fragmentation (reset no_frag)
                 if cnt >= 2*G.shape[0]: 
-                    no_frag = 1
-                    G = np.copy(G0)            
+                    # no_frag = 1
+                    G = np.copy(G_old)            
                 else:
                     # Increase number of fragments and append to overall history
                     no_frag += 1
+                    G_old = np.copy(G)
             
             # Analyze framents 
             G, cnt_1_tmp, cnt_2_tmp, val_arr = analyze_fragments(G)
@@ -115,6 +123,10 @@ def MC_breakage(A, X1, X2, STR, NO_FRAG, N_GRIDS=100, N_FRACS=100, A0=0, init_br
             # Scale fracture energy depending on individual bond length
             # TO-DO: Physical thoughts required here
             F[idx_F:idx_F+NO_FRAG, 3] = np.ones(NO_FRAG)*fracture_energy*np.sqrt(A0)
+            elapsed_time_frac = time.time() - start_time_frac
+            print(f"A frac takes：{elapsed_time_frac} seconds")
+        elapsed_time_grid = time.time() - start_time_grid
+        print(f"A grid takes：{elapsed_time_grid} seconds")
                 
     return F
 
@@ -136,7 +148,7 @@ def float_gcd(a, b, rtol = 1e-3, atol = 1e-8):
 
 # Generate 2D grid containing both pivots and edges
 @jit(nopython=True)
-def generate_grid_2D(A, X1, X2, A0=0):
+def generate_grid_2D(A, X1, X2, int_bre, A0=0):
     """
     Generate a two-dimensional grid to represent the distribution 
     of two materials and the contact (bond) between them. The distribution 
@@ -160,6 +172,10 @@ def generate_grid_2D(A, X1, X2, A0=0):
     #           -1 is an "outside" surface with no contact
     # edges: 0
     G = np.ones((2*DIM+1,2*DIM+1))*(-1)
+    if int_bre == 0:
+        int_bre_len = 1
+    else:
+        int_bre_len = int(np.ceil(DIM * int_bre))
     
     # Set edges (starting a [0,0] in steps of 2)
     for i in range(0,2*DIM+1,2):
@@ -218,10 +234,10 @@ def generate_grid_2D(A, X1, X2, A0=0):
                         G[i,j-1] = 22
                         B[2] += 1                  
             
-    return G, N, B, A0, R
+    return G, N, B, A0, R, int_bre_len
 
 @jit(nopython=True)
-def break_one_bond(G, STR, idx=None, init_break_random=False):
+def break_one_bond(G, STR, ibl=1, idx=None, init_break_random=False):
     """
     Simulates the process of breaking a bond in a given 2D mesh.
     
@@ -282,28 +298,30 @@ def break_one_bond(G, STR, idx=None, init_break_random=False):
         else:
             # List all breakable edges, their index and their corresponding bond strength
             # init_array[Number, TYPE, i, j, PROB]
-            init_array = np.zeros((int(4*(G.shape[0]-3)/2),5))
-            cnt = 0
-            # Bottom and top row
-            for i in range(2,G.shape[0]-1,2):
-                init_array[cnt, :-1] = np.array([cnt, G[i,1], i, 0])                    
-                init_array[cnt+1, :-1] = np.array([cnt+1, G[i,-2], i, G.shape[0]-1])
-                cnt += 2
-            # Left and right column
-            for j in range(2,G.shape[0]-1,2):
-                init_array[cnt, :-1] = np.array([cnt, G[1,j], 0, j])                    
-                init_array[cnt+1, :-1] = np.array([cnt+1, G[-2,j], G.shape[0]-1, j])
-                cnt += 2
+            init_array = np.zeros((ibl, int(4*(G.shape[0]-3)/2),5))
+            for l in range(ibl):
+                cnt = 0
+                # Bottom and top row
+                for i in range(2,G.shape[0]-1,2):
+                    init_array[l,cnt, :-1] = np.array([cnt, G[i,1+2*l], i, 0+2*l])                    
+                    init_array[l,cnt+1, :-1] = np.array([cnt+1, G[i,-(2+2*l)], i, G.shape[0]-1-2*l])
+                    cnt += 2
+                # Left and right column
+                for j in range(2,G.shape[0]-1,2):
+                    init_array[l,cnt, :-1] = np.array([cnt, G[1+2*l,j], 0+2*l, j])                    
+                    init_array[l,cnt+1, :-1] = np.array([cnt+1, G[-(2+2*l),j], G.shape[0]-1-2*l, j])
+                    cnt += 2
             # Set probability column
-            init_array[:,4][init_array[:,1]==11] = 1/STR[0]
-            init_array[:,4][init_array[:,1]==12] = 1/STR[1]
-            init_array[:,4][init_array[:,1]==22] = 1/STR[2]
-            init_array[:,4] /= np.sum(init_array[:,4])
-            
+            # init_array[:,:,4][init_array[:,:,1]==11] = 1/STR[0]
+            # init_array[:,:,4][init_array[:,:,1]==12] = 1/STR[1]
+            # init_array[:,:,4][init_array[:,:,1]==22] = 1/STR[2]
+            # zero_prob_indices = np.where(init_array[0, :, 4] == 0)[0]
+            # init_array[:, zero_prob_indices, 4] = 0
+            str_sum, init_array_prob = calculate_probabilities(G_new, init_array, STR)
             # b_idx = int(np.random.choice(init_array[:,0], p=init_array[:,4]))
-            b_idx = int(rand_choice_nb(init_array[:,0], init_array[:,4]))
+            b_idx = int(rand_choice_nb(init_array[0,:,0], init_array_prob))
             
-            idx = np.array([init_array[b_idx,2],init_array[b_idx,3]]).astype(np.int64)   
+            idx = np.array([init_array[0, b_idx,2],init_array[0, b_idx,3]]).astype(np.int64)   
             #print('initial bond is type: ', init_array[b_idx,1])             
             
     # Start at idx and list all surrounding bonds that are breakable (not -1)
@@ -324,7 +342,10 @@ def break_one_bond(G, STR, idx=None, init_break_random=False):
     p[b==11] = 1/STR[0]
     p[b==12] = 1/STR[1]
     p[b==22] = 1/STR[2]
-    str_array[p!=0] = 1/p[p!=0]
+    if ibl != 1:
+        str_array[p!=0] = str_sum[b_idx]
+    else:
+        str_array[p!=0] = 1/p[p!=0]
         
     # Normalize probabilites
     p /= np.sum(p)
@@ -334,22 +355,31 @@ def break_one_bond(G, STR, idx=None, init_break_random=False):
     b_idx = rand_choice_nb(np.arange(4), p)
     
     # Progress the fracture
-    if b_idx == 0:
-        G_new[idx[0]-1,idx[1]] = -1
-        idx_new = np.array([idx[0]-2,idx[1]]) 
-        # idx[0] -= 2
-    if b_idx == 1:
-        G_new[idx[0]+1,idx[1]] = -1
-        idx_new = np.array([idx[0]+2,idx[1]])
-        # idx[0] += 2
-    if b_idx == 2:
-        G_new[idx[0],idx[1]-1] = -1
-        idx_new = np.array([idx[0],idx[1]-2])
-        # idx[1] -= 2
-    if b_idx == 3:
-        G_new[idx[0],idx[1]+1] = -1
-        idx_new = np.array([idx[0],idx[1]+2])
-        # idx[1] += 2
+    for l in range(ibl):
+        if b_idx == 0:
+            G_new[idx[0]-(1+2*l),idx[1]] = -1
+            idx_new = np.array([idx[0]-(2+2*l),idx[1]]) 
+            if (G_new[idx_new[0], idx_new[1]+1] == -1 and G_new[idx_new[0], idx_new[1]-1] == -1) or G_new[idx_new[0]-1, idx_new[1]] == -1:
+                break
+            # idx[0] -= 2
+        if b_idx == 1:
+            G_new[idx[0]+1+2*l,idx[1]] = -1
+            idx_new = np.array([idx[0]+2+2*l,idx[1]])
+            if (G_new[idx_new[0], idx_new[1]+1] == -1 and G_new[idx_new[0], idx_new[1]-1] == -1) or G_new[idx_new[0]+1, idx_new[1]] == -1:
+                break
+            # idx[0] += 2
+        if b_idx == 2:
+            G_new[idx[0],idx[1]-(1+2*l)] = -1
+            idx_new = np.array([idx[0],idx[1]-(2+2*l)])
+            if (G_new[idx_new[0]+1, idx_new[1]] == -1 and G_new[idx_new[0]-1, idx_new[1]] == -1) or G_new[idx_new[0], idx_new[1]-1] == -1:
+                break
+            # idx[1] -= 2
+        if b_idx == 3:
+            G_new[idx[0],idx[1]+1+2*l] = -1
+            idx_new = np.array([idx[0],idx[1]+2+2*l])
+            if (G_new[idx_new[0]+1, idx_new[1]] == -1 and G_new[idx_new[0]-1, idx_new[1]] == -1) or G_new[idx_new[0], idx_new[1]+1] == -1:
+                break
+            # idx[1] += 2
         
     # Check if this leads to a complete fracture (new index has not more than 1 breakable bonds)
     # Counter for valid bonds
@@ -374,7 +404,55 @@ def break_one_bond(G, STR, idx=None, init_break_random=False):
     else:
         fracture_flag = True
         
-    return G_new, idx_new, fracture_flag, str_array[b_idx]    
+    return G_new, idx_new, fracture_flag, str_array[b_idx]
+
+@jit(nopython=True)
+def calculate_probabilities(G, init_array, STR):
+    lenth = int(init_array.shape[1]/2)
+    for cnt in range(init_array.shape[1]):
+        for l in range(init_array.shape[0]):
+            ## Check if the break has reached the boundary of the current fragment
+            if init_array[l, cnt, 1] == -1:
+                init_array[l:, cnt, 4] = 0
+                break
+            if l > 0:
+                if cnt < lenth: # Bottom and top row keys
+                    i, j = int(init_array[l, cnt, 2]), int(init_array[l, cnt, 3])
+                    if G[i-1, j] == -1 and G[i+1, j] == -1:
+                        init_array[l:, cnt, 4] = 0
+                        break
+                else:  # Left and right column keys
+                    i, j = int(init_array[l, cnt, 2]), int(init_array[l, cnt, 3])
+                    if G[i, j-1] == -1 and G[i, j+1] == -1:
+                        init_array[l:, cnt, 4] = 0
+                        break
+            ## Since the calculation should be based on the sum of the strengths, 
+            ## their strengths are saved here first.
+            ## Afterwards, the inverse of the sum of the intensities is calculated 
+            ## as the fracture probability. 
+            if init_array[l, cnt, 1] == 11:
+                init_array[l, cnt, 4] = STR[0]
+            elif init_array[l, cnt, 1] == 12:
+                init_array[l, cnt, 4] = STR[1]
+            elif init_array[l, cnt, 1] == 22:
+                init_array[l, cnt, 4] = STR[2]
+    ## Rejecting the starting position where the fracture should not occur            
+    zero_prob_indices = []
+    for cnt in range(init_array.shape[1]):
+        if init_array[0, cnt, 4] == 0:
+            zero_prob_indices.append(cnt)
+
+    for l in range(init_array.shape[0]):
+        for idx in zero_prob_indices:
+            init_array[l, idx, 4] = 0
+    
+    ## Calculate the sum of the strengths of all bonds along possible breaking directions
+    str_sum = init_array[:,:,4].sum(axis=0)
+    init_array_prob = np.zeros_like(str_sum)
+    init_array_prob[np.where(str_sum != 0)] = 1 / str_sum[np.where(str_sum != 0)] 
+    init_array_prob /= np.sum(init_array_prob)
+    
+    return str_sum, init_array_prob
 
 @jit(nopython=True)
 def recursive_fun(G, i, j, cnt_1, cnt_2, new_value=0):
@@ -477,15 +555,19 @@ def check_deadend(idx, idx_hist, G):
 # --------------
 # -------------- BELOW: Functions (not JIT-compiled) for test / debugging use onle 
 # Perfrom a single MC breakage simulation (for debugging/visualization only)
-def single_sim(A, X1, X2, STR, NO_FRAG, A0=None, init_break_random=False, plot=True, 
-               close=False, verbose=True):
+def single_sim(A, X1, X2, STR, NO_FRAG, int_bre, A0=None, init_break_random=False, plot=True, 
+               close=False, verbose=False):
 
     if close: plt.close('all')
     
     # Generate and plot grid
-    G, N, B, A0, R = generate_grid_2D(A, X1, X2, A0=A0)
+    start_time = time.time()
+    print("start generating grid")
+    G, N, B, A0, R, ibl = generate_grid_2D(A, X1, X2, int_bre, A0=A0)
     G0 = np.copy(G)
-    
+    elapsed_time = time.time() - start_time
+    start_time = time.time()
+    print(f"The generation of grids takes：{elapsed_time} seconds")
     # print(A0, A*X1/A0, A*X2/A0)
     if plot: ax0, fig0 = plot_G(G0, title='Initial grid')
     
@@ -499,8 +581,10 @@ def single_sim(A, X1, X2, STR, NO_FRAG, A0=None, init_break_random=False, plot=T
         
         if verbose: print(f'Starting fracture. Currently at {no_frag} fragments')
         # Initialize a new fracture. idx=None indicates that this is the first event
-        G, idx, ff, str_bond = break_one_bond(G, STR, idx=None, init_break_random=init_break_random)
-
+        G, idx, ff, str_bond = break_one_bond(G, STR, ibl, idx=None, init_break_random=init_break_random)
+        elapsed_time = time.time() - start_time
+        start_time = time.time()
+        print(f"The first breaking takes：{elapsed_time} seconds")
 
         # For each fracture keep a separate history (otherwise fragments cannot break "inside" themselves)
         idx_hist = nb_List([np.copy(idx)])
@@ -539,14 +623,17 @@ def single_sim(A, X1, X2, STR, NO_FRAG, A0=None, init_break_random=False, plot=T
             # Increase number of fragments and append to overall history
             no_frag += 1
             idx_hist_frag += idx_hist
-            
+            elapsed_time = time.time() - start_time
+            start_time = time.time()
+            print(f"A fracture process takes：{elapsed_time} seconds")
             # Plot current fracture
             if plot: _, _ = plot_G(G, title=f'Currently {no_frag} fragments')  
     
     # Analyze framents (use copy to retain original G)
     G_new = np.copy(G)
     G_new, cnt_1_arr, cnt_2_arr, val_arr = analyze_fragments(G_new)
-    
+    elapsed_time = time.time() - start_time
+    print(f"The analyze of framents takes：{elapsed_time} seconds")
     if plot: 
         # Generate random colors for filling
         colormap = plt.get_cmap('nipy_spectral')
@@ -631,7 +718,10 @@ def plot_F(F):
                                                    ylbl='Fracture Energy / a.u.', grd=True,
                                                    scale_hist='log', hist_thr=1e-4)
     
-    return ax1, ax2, ax3
+    # 1D Histogram of fracture energy   
+    ax4, fig4, H4, xe4 = pt.plot_1d_hist(x=F[:,0],bins=100,scale='lin',xlbl='Fragment Size $V$ / $\mathrm{m^3}$',
+                                         ylbl='Counts / $-$',clr=c_KIT_green,norm=False, alpha=0.7)
+    return ax1, ax2, ax3, ax4
 
 # %% MAIN    
 if __name__ == '__main__':
@@ -642,21 +732,26 @@ if __name__ == '__main__':
     # profiler.enable()
     ########### -----------
     
-    A = 10
     A0 = 0.025
-    X1 = 1
+    A = 30000*A0
+    X1 = 0.33
     X2 = 1-X1
     STR = np.array([1,1,1])
-    NO_FRAG = 4
-    INIT_BREAK_RANDOM = False
+    NO_FRAG = 6
+    int_bre = 0
     
-    N_GRIDS, N_FRACS = 500, 100
+    INIT_BREAK_RANDOM = False
+    N_GRIDS, N_FRACS = 200, 100
+    ## relative depth relative to the grid size, ranging from [0,1]
     
     # Perform stochastic simulation
     # Fragment array [total area, X1, X2, fracture energy]
-    F = MC_breakage(A, X1, X2, STR, NO_FRAG, N_GRIDS=N_GRIDS, N_FRACS=N_FRACS, 
+    # start_time = time.time()
+    F = MC_breakage(A, X1, X2, STR, NO_FRAG, int_bre, N_GRIDS=N_GRIDS, N_FRACS=N_FRACS, 
                     A0=A0, init_break_random=INIT_BREAK_RANDOM) 
-    
+    # end_time = time.time()
+    # elapsed_time = end_time - start_time
+    # print(f"The MC-Simulation takes：{elapsed_time} seconds")
     ########### -----------
     # profiler.disable()
     # stats = pstats.Stats(profiler)
@@ -667,21 +762,21 @@ if __name__ == '__main__':
     ########### -----------
     
     # %% TESTS DEBUG
-    TEST = False
+    TEST = True
     if TEST:
         import sys, os
         sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),".."))
         import matplotlib.pyplot as plt
         from matplotlib.colors import to_rgba
-        import plotter.plotter as pt          
-        from plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue, KIT_black_green_white
+        import utils.plotter.plotter as pt          
+        from utils.plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue, KIT_black_green_white
         pt.close()
         pt.plot_init(mrksze=12,lnewdth=1)
             
         # Visualize distributions
-        ax1, ax2, ax3 = plot_F(F)
+        # ax1, ax2, ax3, ax4 = plot_F(F)
         
         # Perform a single simulation (1 grid, 1 fracture) for visualization
-        G, G_new, R, cnt_1_arr, cnt_2_arr, val_arr, fracture_energy, F_test = \
-            single_sim(A, X1, X2, STR, NO_FRAG, plot=True, A0=A0,
-                       close=False, init_break_random=INIT_BREAK_RANDOM)
+        # G, G_new, R, cnt_1_arr, cnt_2_arr, val_arr, fracture_energy, F_test = \
+        #     single_sim(A, X1, X2, STR, NO_FRAG, int_bre, plot=True, A0=A0,
+        #                 close=True, init_break_random=INIT_BREAK_RANDOM)

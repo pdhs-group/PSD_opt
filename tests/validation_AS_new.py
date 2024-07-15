@@ -36,8 +36,8 @@ def calculate_case(CASE, PBE=True, MC=False):
             p = pop_disc(1, disc=grid)
             
             p.process_type = process_type
-            p.BREAKFVAL = BREAKFVAL
-            p.BREAKRVAL = BREAKRVAL
+            p.BREAKFVAL = 2
+            p.BREAKRVAL = 2
             p.pl_v = pl_v   ## number of fragments
             p.pl_q = pl_q   ## parameter describes the breakage type
             p.pl_P1 = pl_P1
@@ -57,7 +57,7 @@ def calculate_case(CASE, PBE=True, MC=False):
             
               
             p.calc_R()
-            p.init_N()
+            p.init_N(reset_N=False)
             p.alpha_prim = 1
             p.calc_F_M()
             p.calc_B_R()
@@ -95,29 +95,8 @@ def calculate_case(CASE, PBE=True, MC=False):
         if process_type == "agglomeration":
             mu_as[0,0,:] = 2*n0/(2+beta0*n0*t)
             mu_as[1,0,:] = np.ones(t.shape)*c 
-        elif process_type == "breakage":
-            if grid == 'uni':
-                V = p.V
-            else:
-                V = p.V_e
-            # see Kumar Dissertation A.1
-            N_as = np.zeros((NS,len(t)))
-            V_sum = np.zeros((NS,len(t)))
-            for i in range(NS):
-                for j in range(len(t)):
-                    if i != NS-1:
-                        N_as[i,j] = (-(t[j]*p.V[-1]+1)+t[j]*V[i+1])*np.exp(-V[i+1]*t[j])-\
-                            (-(t[j]*p.V[-1]+1)+t[j]*V[i])*np.exp(-V[i]*t[j])
-                    else:
-                        N_as[i,j] = (-(t[j]*p.V[-1]+1)+t[j]*p.V[i])*np.exp(-p.V[i]*t[j])-\
-                            (-(t[j]*p.V[-1]+1)+t[j]*V[i])*np.exp(-V[i]*t[j]) + \
-                            (np.exp(-t[j]*p.V[i]))
-                    V_sum[i,j] = N_as[i,j] * p.V[i]
-            mu_as[0,0,:] = N_as.sum(axis=0)
-            mu_as[1,0,:] = np.ones(t.shape)*c 
         else:
-            mu_as[0,0,:] = np.ones(t.shape)*c 
-            mu_as[1,0,:] = np.ones(t.shape)*c 
+            print("not yet coded")
     
     #%%% '2D_const_mono': 2D, constant kernel, monodisperse initial conditions
     elif CASE == '2D_const_mono':
@@ -126,8 +105,8 @@ def calculate_case(CASE, PBE=True, MC=False):
             p = pop_disc(2, disc=grid)
             
             p.process_type = process_type
-            p.BREAKFVAL = BREAKFVAL
-            p.BREAKRVAL = BREAKRVAL
+            p.BREAKFVAL = 2
+            p.BREAKRVAL = 1
             p.pl_v = pl_v   ## number of fragments
             p.pl_q = pl_q   ## parameter describes the breakage type
             p.pl_P1 = pl_P1
@@ -146,7 +125,7 @@ def calculate_case(CASE, PBE=True, MC=False):
             p.N01, p.N03 = n0, n0
     
             p.calc_R()
-            p.init_N()
+            p.init_N(reset_N=False)
             p.alpha_prim = np.ones(4)
             p.calc_F_M()
             p.calc_B_R()
@@ -154,9 +133,7 @@ def calculate_case(CASE, PBE=True, MC=False):
         
             p.solve_PBE(t_vec = t)
             mu_pbe = p.calc_mom_t()
-            print('### Initial dNdt..')
-            # dNdt0=dNdt_2d(0,p.N[:,:,0].reshape(-1),p.V,p.V1_e,p.V3_e,p.F_M,NS, 0).reshape(NS,NS)
-            # print(dNdt0)
+
         if MC:
             # Calculate multiple times (stochastic process)
             mu_tmp = []
@@ -191,71 +168,16 @@ def calculate_case(CASE, PBE=True, MC=False):
             mu_as[1,1,:] = c*c*beta0*n0_tot*t/n0_tot
             mu_as[2,0,:] = c*(v0+c*beta0*n0_tot*t/n0_tot) 
             mu_as[0,2,:] = c*(v0+c*beta0*n0_tot*t/n0_tot) 
+            
+        ### See Leong-Table 1.
         elif process_type == "breakage":
             for k in range(2):
                 for l in range(2):
-                    mu_as[k,l,:] = np.exp((2/((k+1)*(l+1))-1)*t)
+                    mu_as[k,l,:] = (p.V1[-1])**k*(p.V3[-1])**l*np.exp((2/((k+1)*(l+1))-1)*t)
         else:
             for k in range(2):
                 for l in range(2):
                     mu_as[k,l,:] = np.ones(t.shape)*c  
-        
-    #%%% '3D_const_mono': 3D, constant kernel, monodisperse initial conditions
-    elif CASE == '3D_const_mono':
-        ### POPULATION BALANCE
-        if PBE:
-            p = pop_disc(3, disc=grid)
-        
-            p.NS = NS  
-            p.process_type = process_type
-            p.S = S
-            p.COLEVAL = 3                           # Constant beta
-            p.EFFEVAL = 2                           # Case for calculation of alpha
-            p.CORR_BETA = beta0
-            p.SIZEEVAL = 1
-            p.R01, p.R02, p.R03 = x/2, x/2, x/2
-            p.USE_PSD = False                  
-            p.P1=0                                  # No breakage     
-            p.N01, p.N02, p.N03 = n0, n0, n0
-    
-            p.calc_R()
-            p.init_N()
-            p.alpha_prim = np.ones(9)
-            p.calc_F_M()
-        
-            p.solve_PBE(t_vec = t)
-            mu_pbe = p.calc_mom_t()
-        
-        if MC:
-            # Calculate multiple times (stochastic process)
-            mu_tmp = []
-            for l in range(N_MC):
-                m = pop_mc(3)
-                m.c = np.array([n0*v0,n0*v0,n0*v0])
-                m.x = np.array([x,x,x])
-                m.PGV = np.array(['mono','mono','mono'])
-                m.BETACALC = 1
-                m.beta0 = beta0
-                m.a0 = a0
-                m.VERBOSE = VERBOSE
-                m.savesteps = len(t)
-                m.tA = t[-1]
-                
-                m.init_calc()
-                
-                m.solve_MC()
-                mu_tmp.append(m.calc_mom_t())
-                m_save.append(m)
-            
-            # Mean and STD of moments for all N_MC loops
-            mu_mc = np.mean(mu_tmp,axis=0)
-            if N_MC > 1: std_mu_mc = np.std(mu_tmp,ddof=1,axis=0)
-        
-        ### ANALYTICAL SOLUTION ADAPTED FROM KUMAR 2008: Eq. (40), (A.11)-(A.12) 
-        n0_tot = 2*n0
-        mu_as[0,0,:] = 2*n0_tot/(2+beta0*n0_tot*t)
-        mu_as[1,0,:] = np.ones(t.shape)*c     
-        mu_as[0,1,:] = np.ones(t.shape)*c  
     
     #%%% '1D_sum_mono': 1D, sum kernel, monodisperse initial conditions
     elif CASE == '1D_sum_mono':
@@ -266,6 +188,8 @@ def calculate_case(CASE, PBE=True, MC=False):
             p.NS = NS  
             p.process_type = process_type
             p.S = S
+            p.BREAKFVAL = 2
+            p.BREAKRVAL = 2
             p.COLEVAL = 4                           # Sum kernel
             p.EFFEVAL = 2                           # Case for calculation of alpha
             p.CORR_BETA = beta0/v0
@@ -276,10 +200,11 @@ def calculate_case(CASE, PBE=True, MC=False):
             p.N01 = n0
               
             p.calc_R()
-            p.init_N()
+            p.init_N(reset_N=False)
             p.alpha_prim = 1
             p.calc_F_M()
-            p.calc_B_M()
+            p.calc_B_R()
+            p.calc_int_B_F()
         
             p.solve_PBE(t_vec = t)
             mu_pbe = p.calc_mom_t()
@@ -309,11 +234,35 @@ def calculate_case(CASE, PBE=True, MC=False):
             mu_mc = np.mean(mu_tmp,axis=0)
             if N_MC > 1: std_mu_mc = np.std(mu_tmp,ddof=1,axis=0)
         
-        ### ANALYTICAL SOLUTION FROM KUMAR DISSERTATION A.11
-        mu_as[0,0,:] = n0*np.exp(-beta0*n0*t) # without v0, therfore p.CORR_BETA also divided by v0
-        mu_as[1,0,:] = np.ones(t.shape)*c
-        phi = 1-np.exp(-beta0*n0*t)
-        mu_as[2,0,:] = c*(v0+c*(2-phi)*phi/(n0*(1-phi)**2)) 
+        if process_type == "agglomeration":
+            ### ANALYTICAL SOLUTION FROM KUMAR DISSERTATION A.11
+            mu_as[0,0,:] = n0*np.exp(-beta0*n0*t) # without v0, therfore p.CORR_BETA also divided by v0
+            mu_as[1,0,:] = np.ones(t.shape)*c
+            phi = 1-np.exp(-beta0*n0*t)
+            mu_as[2,0,:] = c*(v0+c*(2-phi)*phi/(n0*(1-phi)**2)) 
+        elif process_type == "breakage":
+            if grid == 'uni':
+                V = p.V
+            else:
+                V = p.V_e
+            # see Kumar Dissertation A.1
+            N_as = np.zeros((NS,len(t)))
+            V_sum = np.zeros((NS,len(t)))
+            for i in range(NS):
+                for j in range(len(t)):
+                    if i != NS-1:
+                        N_as[i,j] = (-(t[j]*p.V[-1]+1)+t[j]*V[i+1])*np.exp(-V[i+1]*t[j])-\
+                            (-(t[j]*p.V[-1]+1)+t[j]*V[i])*np.exp(-V[i]*t[j])
+                    else:
+                        N_as[i,j] = (-(t[j]*p.V[-1]+1)+t[j]*p.V[i])*np.exp(-p.V[i]*t[j])-\
+                            (-(t[j]*p.V[-1]+1)+t[j]*V[i])*np.exp(-V[i]*t[j]) + \
+                            (np.exp(-t[j]*p.V[i]))
+                    V_sum[i,j] = N_as[i,j] * p.V[i]
+            mu_as[0,0,:] = N_as.sum(axis=0)
+            mu_as[1,0,:] = np.ones(t.shape)*c 
+        else:
+            mu_as[0,0,:] = np.ones(t.shape)*c 
+            mu_as[1,0,:] = np.ones(t.shape)*c 
         
     #%%% '2D_sum_mono': 2D, sum kernel, monodisperse initial conditions
     elif CASE == '2D_sum_mono':
@@ -324,6 +273,8 @@ def calculate_case(CASE, PBE=True, MC=False):
             p.NS = NS  
             p.process_type = process_type
             p.S = S
+            p.BREAKFVAL = 2
+            p.BREAKRVAL = 2
             p.COLEVAL = 4                           # Sum kernel
             p.EFFEVAL = 2                           # Case for calculation of alpha
             p.CORR_BETA = beta0/v0
@@ -334,9 +285,11 @@ def calculate_case(CASE, PBE=True, MC=False):
             p.N01, p.N03 = n0, n0
     
             p.calc_R()
-            p.init_N()
+            p.init_N(reset_N=False)
             p.alpha_prim = np.ones(4)
             p.calc_F_M()
+            p.calc_B_R()
+            p.calc_int_B_F()
         
             p.solve_PBE(t_vec = t)
             mu_pbe = p.calc_mom_t()
@@ -366,90 +319,8 @@ def calculate_case(CASE, PBE=True, MC=False):
             mu_mc = np.mean(mu_tmp,axis=0)
             if N_MC > 1: std_mu_mc = np.std(mu_tmp,ddof=1,axis=0)
         
-        ### ANALYTICAL SOLUTION FROM KUMAR DISSERTATION A.11
-        n0_tot = 2*n0
-        mu_as[0,0,:] = n0_tot*np.exp(-beta0*n0_tot*t) # without v0, therfore p.CORR_BETA also divided by v0
-        mu_as[1,0,:] = np.ones(t.shape)*c
-        mu_as[0,1,:] = np.ones(t.shape)*c
-        phi = 1-np.exp(-beta0*n0_tot*t)        
-        mu_as[1,1,:] = c*c*(2-phi)*phi/(n0_tot*(1-phi)**2)
-        mu_as[2,0,:] = c*(v0+c*(2-phi)*phi/(n0_tot*(1-phi)**2)) 
-    
-    #%%% '2D_sum_mono_ccm': 2D, sum kernel, monodisperse initial conditions, aplha from CCM
-    elif CASE == '2D_sum_mono_ccm':
-        ### POPULATION BALANCE
-        if PBE:
-            p = pop_disc(2, disc=grid)
-        
-            p.NS = NS 
-            p.process_type = process_type
-            p.S = S
-            p.COLEVAL = 4                           # Sum kernel
-            p.EFFEVAL = 2                           # Case for calculation of alpha
-            p.CORR_BETA = beta0/v0
-            p.SIZEEVAL = 1
-            p.R01, p.R03 = x/2, x/2
-            p.USE_PSD = False                  
-            p.P1=0                                  # No breakage     
-            p.N01, p.N03 = n0, n0
-    
-            p.calc_R()
-            p.init_N()
-            p.alpha_prim = alpha_pbe
-            p.calc_F_M()
-        
-            p.solve_PBE(t_vec = t)
-            mu_pbe = p.calc_mom_t()
-        
-        if MC:          
-            if MULTI_INTERNAL:
-                m = pop_mc(2)
-                m.c = np.array([n0*v0,n0*v0])
-                m.x = np.array([x,x])
-                m.PGV = np.array(['mono','mono'])
-                m.BETACALC = 3
-                m.ALPHACALC = 2
-                m.beta0 = beta0/v0              
-                m.a0 = a0
-                m.VERBOSE = VERBOSE
-                m.alpha_prim = alpha_mc
-                m.savesteps = len(t)
-                m.tA = t[-1]
-                
-                m.init_calc()
-                
-                m.solve_MC_N(N_MC)
-                mu_mc = m.calc_mom_t()
-                m_save.append(m)
-            else:                
-                # Calculate multiple times (stochastic process)
-                mu_tmp = []
-                for l in range(N_MC):
-                    m = pop_mc(2)
-                    m.c = np.array([n0*v0,n0*v0])
-                    m.x = np.array([x,x])
-                    m.PGV = np.array(['mono','mono'])
-                    m.BETACALC = 3
-                    m.ALPHACALC = 2
-                    m.beta0 = beta0/v0              
-                    m.a0 = a0
-                    m.VERBOSE = VERBOSE
-                    m.alpha_prim = alpha_mc
-                    m.savesteps = len(t)
-                    m.tA = t[-1]
-                    
-                    m.init_calc()
-                    
-                    m.solve_MC()
-                    mu_tmp.append(m.calc_mom_t())
-                    m_save.append(m)
-                
-                # Mean and STD of moments for all N_MC loops
-                mu_mc = np.mean(mu_tmp,axis=0)
-                if N_MC > 1: std_mu_mc = np.std(mu_tmp,ddof=1,axis=0)
-        
-        ### ANALYTICAL SOLUTION FOR SPECIAL CASES OF ALPHA_PRIM KNOWN
-        if all(alpha_pbe == np.ones(4)):
+        if process_type == "agglomeration":
+            ### ANALYTICAL SOLUTION FROM KUMAR DISSERTATION A.11
             n0_tot = 2*n0
             mu_as[0,0,:] = n0_tot*np.exp(-beta0*n0_tot*t) # without v0, therfore p.CORR_BETA also divided by v0
             mu_as[1,0,:] = np.ones(t.shape)*c
@@ -457,130 +328,26 @@ def calculate_case(CASE, PBE=True, MC=False):
             phi = 1-np.exp(-beta0*n0_tot*t)        
             mu_as[1,1,:] = c*c*(2-phi)*phi/(n0_tot*(1-phi)**2)
             mu_as[2,0,:] = c*(v0+c*(2-phi)*phi/(n0_tot*(1-phi)**2)) 
-        elif all(alpha_pbe == np.array([1,0,0,0])):
-            # mu_as[0,0,:] = n0+2*n0/(2+beta0*n0*t)
-            mu_as[0,0,:] = 2*2*n0/(2+beta0*n0*t)
-            mu_as[1,0,:] = np.ones(t.shape)*c 
-        else:    
-            mu_as = None
-            
-    #%%% '2D_ortho_mono': 2D, ortho kernel, monodisperse initial conditions, alpha = 1
-    elif CASE == '2D_ortho_mono':
-        beta_fac = 0.5                              # Scale all betas in this case to make it slower
-        ### POPULATION BALANCE
-        if PBE:
-            p = pop_disc(2, disc=grid)
+        elif process_type == "breakage":
+            ### See Leong-Table 1.
+            mu_as[0,1,:] = p.V1[-1]
+            mu_as[1,0,:] = p.V3[-1]
+            mu_as[0,0,:] = 1 + p.V[-1,-1]*t
+            # for k in range(2):
+            #     for l in range(2):
+            #         mu_as[k,l,:] = np.exp((2/((k+1)*(l+1))-1)*t)
+        else:
+            for k in range(2):
+                for l in range(2):
+                    mu_as[k,l,:] = np.ones(t.shape)*c  
         
-            p.NS = NS  
-            p.process_type = process_type
-            p.S = S
-            p.COLEVAL = 1                           # Constant beta
-            p.EFFEVAL = 2                           # Case for calculation of alpha
-            p.CORR_BETA = beta_fac*beta0/v0             
-            p.SIZEEVAL = 1
-            p.R01, p.R03 = x/2, x/2
-            p.USE_PSD = False                  
-            p.P1=0                                  # No breakage     
-            p.N01, p.N03 = n0, n0
-    
-            p.calc_R()
-            p.init_N()
-            p.alpha_prim = np.ones(4)
-            p.calc_F_M()
         
-            p.solve_PBE(t_vec = t)
-            mu_pbe = p.calc_mom_t()
-        
-        if MC:
-            # Calculate multiple times (stochastic process)
-            mu_tmp = []
-            for l in range(N_MC):
-                m = pop_mc(2)
-                m.c = np.array([n0*v0,n0*v0])
-                m.x = np.array([x,x])
-                m.PGV = np.array(['mono','mono'])
-                m.BETACALC = 2
-                m.beta0 = beta_fac*beta0/v0              
-                m.a0 = a0
-                m.VERBOSE = VERBOSE
-                m.savesteps = len(t)
-                m.tA = t[-1]
-                
-                m.init_calc()
-                
-                m.solve_MC()
-                mu_tmp.append(m.calc_mom_t())
-                m_save.append(m)
-            
-            # Mean and STD of moments for all N_MC loops
-            mu_mc = np.mean(mu_tmp,axis=0)
-            if N_MC > 1: std_mu_mc = np.std(mu_tmp,ddof=1,axis=0)
-        
-        ### NO ANALYTICAL SOLUTION AVAILABLE
-        mu_as = None
-        
-    #%%% '2D_ortho_mono_ccm': 2D, ortho kernel, monodisperse initial conditions, alpha from CCM
-    elif CASE == '2D_ortho_mono_ccm':
-        beta_fac = 0.5                              # Scale all betas in this case to make it slower
-        ### POPULATION BALANCE
-        if PBE:
-            p = pop_disc(2, disc=grid)
-        
-            p.NS = NS  
-            p.S = S
-            p.COLEVAL = 1                           # Constant beta
-            p.EFFEVAL = 2                           # Case for calculation of alpha
-            p.CORR_BETA = beta_fac*beta0/v0             
-            p.SIZEEVAL = 1
-            p.R01, p.R03 = x/2, x/2
-            p.USE_PSD = False                  
-            p.P1=0                                  # No breakage     
-            p.N01, p.N03 = n0, n0
-    
-            p.calc_R()
-            p.init_N()
-            p.alpha_prim = alpha_pbe
-            p.calc_F_M()
-        
-            p.solve_PBE(t_vec = t)
-            mu_pbe = p.calc_mom_t()
-        
-        if MC:
-            # Calculate multiple times (stochastic process)
-            mu_tmp = []
-            for l in range(N_MC):
-                m = pop_mc(2)
-                m.c = np.array([n0*v0,n0*v0])
-                m.x = np.array([x,x])
-                m.PGV = np.array(['mono','mono'])
-                m.BETACALC = 2
-                m.ALPHACALC = 2
-                m.beta0 = beta_fac*beta0/v0              
-                m.a0 = a0
-                m.VERBOSE = VERBOSE
-                m.alpha_prim = alpha_mc
-                m.savesteps = len(t)
-                m.tA = t[-1]
-                
-                m.init_calc()
-                
-                m.solve_MC()
-                mu_tmp.append(m.calc_mom_t())
-                m_save.append(m)
-            
-            # Mean and STD of moments for all N_MC loops
-            mu_mc = np.mean(mu_tmp,axis=0)
-            if N_MC > 1: std_mu_mc = np.std(mu_tmp,ddof=1,axis=0)
-        
-        ### NO ANALYTICAL SOLUTION AVAILABLE
-        mu_as = None  
-        
+
     else:
         print('Provided Case not coded yet')
 
     return mu_as, mu_pbe, mu_mc, std_mu_mc, p, m, mu_tmp, m_save
-    
-
+            
 #%% FUNCTIONS
 def init_plot(default = False, size = 'half', extra = False, mrksize = 5):
     
@@ -760,41 +527,35 @@ if __name__ == "__main__":
     ### Define calculation case
     # '1D_const_mono': 1D, constant kernel, monodisperse initial conditions
     # '2D_const_mono': 2D, constant kernel, monodisperse initial conditions
-    # '3D_const_mono': 3D, constant kernel, monodisperse initial conditions
     # '1D_sum_mono': 1D, sum kernel, monodisperse initial conditions
     # '2D_sum_mono': 2D, sum kernel, monodisperse initial conditions
     # '2D_sum_mono_ccm': 2D, sum kernel, monodisperse initial conditions, aplha from CCM
-    # '2D_ortho_mono': 2D, ortho kernel, monodisperse initial conditions, alpha = 1
-    # '2D_ortho_mono': 2D, ortho kernel, monodisperse initial conditions, alpha from CCM
-    CASE = '1D_const_mono'
+    # CASE = '1D_const_mono'
     # CASE = '2D_const_mono'
-    #CASE = '3D_const_mono'
-    # CASE = '1D_sum_mono'
+    CASE = '1D_sum_mono'
     # CASE = '2D_sum_mono'
-    #CASE = '2D_sum_mono_ccm'
-    #CASE = '2D_ortho_mono'
-    #CASE = '2D_ortho_mono_ccm'
     
     ### General parameters
-    t = np.arange(0, 601, 100, dtype=float)     # Time array [s]
-    c = 0.1e-2*1e-2                 # Volume concentration [-]
+    t = np.arange(0, 601, 30, dtype=float)     # Time array [s]
+    c = 1                # Volume concentration [-]
     # v0 = 1e-9
-    x = 1e-3                      # Particle diameter [m]
+    x = 1e-4                    # Particle diameter [m]
     # x = (v0*6/math.pi)**(1/3)
     beta0 = 1e-16                  # Collision frequency parameter [m^3/s]
     n0 = 3*c/(4*math.pi*(x/2)**3)   # Total number concentration of primary particles
     # n0 = 1                        # validation for pure breakage
-    v0 = 4*math.pi*(x/2)**3/3       # Volume of a primary particle
+    # v0 = 4*math.pi*(x/2)**3/3       # Volume of a primary particle
     MULTI_INTERNAL = False
     
     ### PBE Parameters
-    grid = 'uni'
-    NS = 90
+    grid = 'geo'
+    NS = 8
     # NS2 = 15
     #NS2 = 50
-    process_type = "breakage"
+    process_type = "agglomeration"
     
     S = 4
+    v0 = 4*math.pi*(x/2)**3/3*(1+S)/2
     # alpha_pbe = np.array([1,0.2,0.2,0])
     alpha_pbe = np.array([1,1,1,1])
     # alpha_pbe = np.array([1,0,0,0])
@@ -811,8 +572,8 @@ if __name__ == "__main__":
     BREAKRVAL = 2
     pl_v = 0.5   ## number of fragments
     pl_q = 1   ## parameter describes the breakage type
-    pl_P1 = 1e-4 
-    pl_P2 = 0.5
+    pl_P1 = 1 
+    pl_P2 = 1
     G = 2.3
 
     mu_as, mu_pbe, mu_mc, std_mu_mc, p, m, mu_mc_reps, m_save  = calculate_case(CASE,MC=False)
@@ -831,18 +592,18 @@ if __name__ == "__main__":
         ax3, fig3 = plot_moment_t(mu_as[:,:,1:], mu_pbe[:,:,1:], mu_mc[:,:,1:], std_mu_mc = std_mu_mc[:,:,1:], 
                                   i=1, j=1, t_mod=t[1:], label='(c)',labelpos='se', rel=REL, alpha = ALPHA)
         
-    if NS2 is not None:
-        NS = NS2
-        _, mu_pbe2, _, _, p2, _, _, _  = calculate_case(CASE)
-        ax1, fig1 = add_moment_t(mu_pbe2, fig1, ax1, i=0, j=0, rel=REL, alpha = ALPHA)
-        ax2, fig2 = add_moment_t(mu_pbe2, fig2, ax2, i=1, j=0, rel=REL, alpha = ALPHA)
-        ax4, fig4 = add_moment_t(mu_pbe2, fig4, ax4, i=2, j=0, rel=REL, alpha = ALPHA)
-        if p.dim == 2:
-            ax3, fig3 = add_moment_t(mu_pbe2[:,:,1:], fig3, ax3, i=1, j=1, t_mod=t[1:], rel=REL, alpha = ALPHA)
+    # if NS2 is not None:
+    #     NS = NS2
+    #     _, mu_pbe2, _, _, p2, _, _, _  = calculate_case(CASE)
+    #     ax1, fig1 = add_moment_t(mu_pbe2, fig1, ax1, i=0, j=0, rel=REL, alpha = ALPHA)
+    #     ax2, fig2 = add_moment_t(mu_pbe2, fig2, ax2, i=1, j=0, rel=REL, alpha = ALPHA)
+    #     ax4, fig4 = add_moment_t(mu_pbe2, fig4, ax4, i=2, j=0, rel=REL, alpha = ALPHA)
+    #     if p.dim == 2:
+    #         ax3, fig3 = add_moment_t(mu_pbe2[:,:,1:], fig3, ax3, i=1, j=1, t_mod=t[1:], rel=REL, alpha = ALPHA)
             
-    ax2.legend().remove()
-    if p.dim == 2: ax3.legend().remove()
-    ax4.legend().remove()
+    # ax2.legend().remove()
+    # if p.dim == 2: ax3.legend().remove()
+    # ax4.legend().remove()
     
     # ax5, fig5, x_mc, x_mc_std, x_mc_full = plot_Q3(m_save, p, p2, alpha=ALPHA, label='(d)')
     # ax5.legend().remove()

@@ -11,31 +11,33 @@ from scipy.integrate import quad, dblquad
 # from numba.extending import overload, register_jitable
 
 @jit(nopython=True)
-def get_dNdt_1d_geo(t,N,NS,V_p,V_e,F_M,B_R,bf_int,xbf_int,type_flag,agg_crit,N_scale):
+def get_dNdt_1d_geo(t,N,NS,V_p,V_e,F_M,B_R,bf_int,xbf_int,type_flag,agg_crit):
     dNdt = np.zeros(N.shape)
     M_c = np.zeros(V_e.shape)
     D = np.zeros(N.shape)
     B = np.zeros(N.shape)
     B_c = np.zeros(NS+1)
     v = np.zeros(NS+1)
-    V_p_ex = np.zeros(NS+1)
+    V_p_ex = np.zeros(NS+1)-1
     V_p_ex[:-1] = V_p
+    # N_scale_ex = np.ones(NS+1)
+    # N_scale_ex[:-1] = N_scale
     
     if type_flag == "agglomeration":
     ## Because each item contains N^2 when calculating agglomeration, 
     ## it is equivalent to multiplying each item by an additional N_scale 
     ## and needs to be manually removed(divide by N_scale) to correct it.    
         B_c, M_c, D = calc_1d_agglomeration(N,V_p,V_e,F_M,B_c,M_c,D,agg_crit)
-        B_c /= N_scale
-        M_c /= N_scale
-        D /= N_scale
+        # B_c /= N_scale_ex
+        # M_c /= N_scale_ex
+        # D /= N_scale
     elif type_flag == "breakage":
         B_c, M_c, D = calc_1d_breakage(N,V_p,V_e,B_R,bf_int,xbf_int,B_c,M_c,D)
     elif type_flag == "mix":
         B_c, M_c, D = calc_1d_agglomeration(N, V_p, V_e, F_M, B_c, M_c, D,agg_crit)
-        B_c /= N_scale
-        M_c /= N_scale
-        D /= N_scale
+        # B_c /= N_scale_ex
+        # M_c /= N_scale_ex
+        # D /= N_scale
         B_c, M_c, D = calc_1d_breakage(N, V_p, V_e, B_R, bf_int,xbf_int, B_c, M_c, D)
     else:
         raise Exception("Current type_flag is not supported")
@@ -45,13 +47,13 @@ def get_dNdt_1d_geo(t,N,NS,V_p,V_e,F_M,B_R,bf_int,xbf_int,type_flag,agg_crit,N_s
     # Assign BIRTH on each pivot
     for i in range(len(V_p)):
         # Add contribution from LEFT cell (if existent)
-        B[i] += B_c[i]*lam(v[i], V_p, i, 'm')*heaviside(V_p[i]-v[i],0.5)
+        B[i] += B_c[i]*lam(v[i], V_p_ex, i, "+")*heaviside(V_p[i]-v[i],0.5)
         # Left Cell, right half
-        B[i] += B_c[i-1]*lam(v[i-1], V_p, i, 'm')*heaviside(v[i-1]-V_p[i-1],0.5)
+        B[i] += B_c[i-1]*lam(v[i-1], V_p_ex, i, "+")*heaviside(v[i-1]-V_p[i-1],0.5)
         # Same Cell, right half
-        B[i] += B_c[i]*lam(v[i], V_p_ex, i, 'p')*heaviside(v[i]-V_p[i],0.5)
+        B[i] += B_c[i]*lam(v[i], V_p_ex, i, "-")*heaviside(v[i]-V_p[i],0.5)
         # Right Cell, left half
-        B[i] += B_c[i+1]*lam(v[i+1], V_p_ex, i, 'p')*heaviside(V_p_ex[i+1]-v[i+1],0.5)
+        B[i] += B_c[i+1]*lam(v[i+1], V_p_ex, i, "-")*heaviside(V_p_ex[i+1]-v[i+1],0.5)
     ## Particles with a volume of zero will not have any impact on physical processes 
     ## and mass conservation, but may affect the convergence of differential equations, 
     ## so they are set to zero manually.
@@ -61,7 +63,7 @@ def get_dNdt_1d_geo(t,N,NS,V_p,V_e,F_M,B_R,bf_int,xbf_int,type_flag,agg_crit,N_s
     return dNdt 
 
 @jit(nopython=True)
-def get_dNdt_2d_geo(t,NN,NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,type_flag,agg_crit,N_scale):       
+def get_dNdt_2d_geo(t,NN,NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,type_flag,agg_crit):       
     N = np.copy(NN) 
     N = np.reshape(N,(NS,NS))
     dNdt = np.zeros(np.shape(N))
@@ -73,23 +75,25 @@ def get_dNdt_2d_geo(t,NN,NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,type_fl
     v2 = np.zeros((NS+1,NS+1))
     M1_c = np.zeros((NS+1,NS+1))
     M2_c = np.zeros((NS+1,NS+1))
-    V_p_ex = np.zeros((NS+1,NS+1))
+    V_p_ex = np.zeros((NS+1,NS+1))-1
     V_p_ex[:-1,:-1] = V_p
+    # N_scale_ex = np.ones((NS+1,NS+1))
+    # N_scale_ex[:-1,:-1] = N_scale
     
     if type_flag == "agglomeration":
         B_c, M1_c,M2_c, D = calc_2d_agglomeration(N,V_p,V_e1,V_e2,F_M,B_c,M1_c,M2_c,D,agg_crit)
-        B_c /= N_scale
-        M1_c /= N_scale
-        M2_c /= N_scale
-        D /= N_scale
+        # B_c /= N_scale_ex
+        # M1_c /= N_scale_ex
+        # M2_c /= N_scale_ex
+        # D /= N_scale
     elif type_flag == "breakage":
         B_c, M1_c,M2_c, D = calc_2d_breakage(N,V_p,V_e1,V_e2,B_R,bf_int,xbf_int,ybf_int,B_c,M1_c,M2_c,D)
     elif type_flag == "mix":
         B_c, M1_c,M2_c, D = calc_2d_agglomeration(N,V_p,V_e1,V_e2,F_M,B_c,M1_c,M2_c,D,agg_crit)
-        B_c /= N_scale
-        M1_c /= N_scale
-        M2_c /= N_scale
-        D /= N_scale
+        # B_c /= N_scale_ex
+        # M1_c /= N_scale_ex
+        # M2_c /= N_scale_ex
+        # D /= N_scale
         B_c, M1_c,M2_c, D = calc_2d_breakage(N,V_p,V_e1,V_e2,B_R,bf_int,xbf_int,ybf_int,B_c,M1_c,M2_c,D)
     else:
         raise Exception("Current type_flag is not supported")
@@ -107,7 +111,7 @@ def get_dNdt_2d_geo(t,NN,NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,type_fl
                 for q in range(2):
                     # Actual modification calculation
                     B[i,j] += B_c[i-p,j-q] \
-                        *lam_2d(v1[i-p,j-q],v2[i-p,j-q],V_p[:,0],V_p[0,:],i,j,"-","-") \
+                        *lam_2d(v1[i-p,j-q],v2[i-p,j-q],V_p_ex[:,0],V_p_ex[0,:],i,j,"-","-") \
                         *heaviside((-1)**p*(V_p[i-p,0]-v1[i-p,j-q]),0.5) \
                         *heaviside((-1)**q*(V_p[0,j-q]-v2[i-p,j-q]),0.5) 
                     # B[i,j] += tem 
@@ -115,7 +119,7 @@ def get_dNdt_2d_geo(t,NN,NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,type_fl
                     # if i-p==0 and j-q==0:
                     #     print(f'mass flux in [{i},{j}] is', tem)
                     B[i,j] += B_c[i-p,j+q] \
-                        *lam_2d(v1[i-p,j+q],v2[i-p,j+q],V_p[:,0],V_p[0,:],i,j,"-","+") \
+                        *lam_2d(v1[i-p,j+q],v2[i-p,j+q],V_p_ex[:,0],V_p_ex[0,:],i,j,"-","+") \
                         *heaviside((-1)**p*(V_p[i-p,0]-v1[i-p,j+q]),0.5) \
                         *heaviside((-1)**(q+1)*(V_p_ex[0,j+q]-v2[i-p,j+q]),0.5) 
                     # B[i,j] += tem 
@@ -123,7 +127,7 @@ def get_dNdt_2d_geo(t,NN,NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,type_fl
                     # if i-p==0 and j+q==0:
                     #     print(f'mass flux in [{i},{j}] is', tem)
                     B[i,j] += B_c[i+p,j-q] \
-                        *lam_2d(v1[i+p,j-q],v2[i+p,j-q],V_p[:,0],V_p[0,:],i,j,"+","-") \
+                        *lam_2d(v1[i+p,j-q],v2[i+p,j-q],V_p_ex[:,0],V_p_ex[0,:],i,j,"+","-") \
                         *heaviside((-1)**(p+1)*(V_p_ex[i+p,0]-v1[i+p,j-q]),0.5) \
                         *heaviside((-1)**q*(V_p[0,j-q]-v2[i+p,j-q]),0.5)
                     # B[i,j] += tem
@@ -131,7 +135,7 @@ def get_dNdt_2d_geo(t,NN,NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,type_fl
                     # if i+p==0 and j-q==0:
                     #     print(f'mass flux in [{i},{j}] is', tem)
                     B[i,j] += B_c[i+p,j+q] \
-                        *lam_2d(v1[i+p,j+q],v2[i+p,j+q],V_p[:,0],V_p[0,:],i,j,"+","+") \
+                        *lam_2d(v1[i+p,j+q],v2[i+p,j+q],V_p_ex[:,0],V_p_ex[0,:],i,j,"+","+") \
                         *heaviside((-1)**(p+1)*(V_p_ex[i+p,0]-v1[i+p,j+q]),0.5) \
                         *heaviside((-1)**(q+1)*(V_p_ex[0,j+q]-v2[i+p,j+q]),0.5)
                     # B[i,j] += tem
@@ -280,7 +284,7 @@ def get_dNdt_3d_geo(t,NN,V,V1,V2,V3,F_M,NS,THR):
     return DN.reshape(-1) 
 
 @jit(nopython=True)
-def get_dNdt_1d_uni(t,N,V,F_M,NS,THR):       
+def get_dNdt_1d_uni(t,N,V,B_R,B_F,F_M,NS,agg_crit,process_type):       
 
     # Initialize DN with zeros
     DN = np.zeros(np.shape(N))
@@ -290,45 +294,44 @@ def get_dNdt_1d_uni(t,N,V,F_M,NS,THR):
     
     # Go through all possible combinations to calculate B and D matrix
     # First loop: All indices of DN 
-    for i in range(0,NS):
-            
+    if process_type == 'agglomeration' or process_type == 'mix':
+        for e in range(1,agg_crit):
             # Second loop: All agglomeration partners that are smaller or equally sized
-            for a in range(0,i+1):
+            for i in range(1,agg_crit):
                 # Corresponding partner that i is produced (b = i-a + 1, because border) 
-                for b in range(0,i+1):              
-                                        
+                for j in range(1,agg_crit):              
+                    if V[i]+V[j] >= V[agg_crit]:
+                        continue                    
                     # Only calculate if result of (a)+(b) yields agglomerate in 
                     # class i with respect to total volume
                     # if V[a]+V[b] == V[i]:
-                    if abs(V[a]+V[b]-V[i]) < 1e-5*V[2]:
-                        
+                    if abs(V[i]+V[j]-V[e]) < 1e-5*V[1]:
                         # Get corresponding F from F_M. Attention: F_M is defined without -1 borders
                         # and is a (NS+1)^2 matrix. a and b represent "real" indices of the N or V
                         # matrix --> It is necessary to subtract 1 in order to get the right entry
-                        F = F_M[a,b]
-                        
+                        F = F_M[i,j]
                         # Calculate raw birth term as well as volumetric fluxes M.
                         # Division by 2 resulting from loop definition (don't count processes double)
-                        B[i] = B[i]+F*N[a]*N[b]/2                       
-                           
+                        # B[e] += F*N[i]*N[j]/2/N_scale[e] 
+                        B[e] += F*N[i]*N[j]/2
                         # Calculate death term of [a] and [b]. 
                         # D is defined positively (addition) and subtracted later
-                        D[a] = D[a]+F*N[a]*N[b]/2
-                        D[b] = D[b]+F*N[a]*N[b]/2
-                        
-            # Calculate breakage if current index is larger than 2 (primary particles cannot break)
-            # ATTENTION: This is only valid for binary breakage and s=2! (Test purposes)
-            # if i > 2:
-            #     BR[i] = BD_br_1D[i] - B_M[i]*N[i]
-            #     BR[i-1] = BD_br_1D[i-1] + 2*B_M[i]*N[i]  
-            
+                        # D[j] -= F*N[i]*N[j]/N_scale[e]   
+                        D[j] -= F*N[i]*N[j]
+    if process_type == 'breakage' or process_type == 'mix':
+        for e in range(1,NS):
+            S = B_R[e]
+            D[e] -= S*N[e]
+            for i in range(e, NS):
+                # Calculate breakage if current index is larger than 2 (primary particles cannot break)
+                # ATTENTION: This is only valid for binary breakage and s=2! (Test purposes)
+                    S = B_R[i]
+                    B[e] += S * B_F[e,i] * N[i]
     # Calculate final result and return 
-    DN = B-D+BR
-        
+    DN = B+D+BR
     # Due to numerical issues it is necessary to define a threshold for DN
-    for i in range(NS+3): 
-        if abs(DN[i])<THR: DN[i] = 0
-    
+    # for i in range(NS+3): 
+    #     if abs(DN[i])<THR: DN[i] = 0
     return DN
 
 @jit(nopython=True)
@@ -440,13 +443,13 @@ def get_dNdt_3d_uni(t,NN,V,V1,V2,V3,F_M,NS,THR):
     return DN.reshape(-1) 
 
 @jit(nopython=True)
-def lam(v, V_p, i, case):
-    if case == 'm':
+def lam(v, V_p, i, m):
+    if m == "+":
         return (v-V_p[i-1])/(V_p[i]-V_p[i-1])
-    elif case == 'p':        
+    else:        
         return (v-V_p[i+1])/(V_p[i]-V_p[i+1])
-    else:
-        print('WRONG CASE FOR LAM')
+    # else:
+    #     print('WRONG CASE FOR LAM')
         
 @jit(nopython=True)
 def lam_2d(x,y,Vx,Vy,i,j,m1,m2):
@@ -748,9 +751,9 @@ def breakage_func_1d_vol(x,y,v,q,BREAKFVAL):
 @jit(nopython=True)
 def breakage_func_2d(x3,x1,y1,y3,v,q,BREAKFVAL):
     if BREAKFVAL == 1:
-        theta = 4 / (y1*y3)
+        theta = 4.0 
     elif BREAKFVAL == 2:
-        theta = 2 / (y1*y3)
+        theta = 2.0 
     elif BREAKFVAL == 3:  
         # euler_beta = beta_func(q,q*(v-1))
         # z = (x1+x3)/(y1+y3)
@@ -860,11 +863,12 @@ def calc_int_B_F_2D_GL(NS,V1,V3,V_e1,V_e3,BREAKFVAL,v,q):
             continue
         elif a <= i and b <= j:
             args = (V1[i],V3[j],v,q,BREAKFVAL)
-            ## The contributions of fragments on the same vertical axis
+            ## The contribution of fragments in the same cell
             if a == i and b == j:
                 int_B_F[idx]  = dblgauss_legendre(breakage_func_2d,V_e1_tem[a],V1[a],V_e3_tem[b],V3[b],xs1,ws1,xs3,ws3,args=args)
                 intx_B_F[idx] = dblgauss_legendre(breakage_func_2d_x1vol,V_e1_tem[a],V1[a],V_e3_tem[b],V3[b],xs1,ws1,xs3,ws3,args=args)
                 inty_B_F[idx] = dblgauss_legendre(breakage_func_2d_x3vol,V_e1_tem[a],V1[a],V_e3_tem[b],V3[b],xs1,ws1,xs3,ws3,args=args)
+            ## The contributions of fragments on the same vertical axis
             elif a == i:
                 int_B_F[idx]  = dblgauss_legendre(breakage_func_2d,V_e1_tem[a],V1[a],V_e3_tem[b],V_e3_tem[b+1],xs1,ws1,xs3,ws3,args=args)
                 intx_B_F[idx] = dblgauss_legendre(breakage_func_2d_x1vol,V_e1_tem[a],V1[a],V_e3_tem[b],V_e3_tem[b+1],xs1,ws1,xs3,ws3,args=args)
@@ -1018,7 +1022,7 @@ def calc_2d_breakage(N,V_p,V_e1,V_e2,B_R,bf_int,xbf_int,ybf_int,B_c,M1_c,M2_c,D)
     # D_M = np.zeros(N.shape)
     for e1 in range(len(V_p[:,0])):
         for e2 in range(len(V_p[0,:])):
-            # calculate death rate    
+            # calculate death rate    * ``pop.int_B_F``: (2D)The integral of the breakage function from class ab to class ij. Result is stored in ``int_B_F[a,b,i,j]`` 
             S = B_R[e1,e2]
             D[e1,e2] -= S*N[e1,e2]
             # D_M[e1,e2] = D[e1,e2]*V_p[e1,e2]

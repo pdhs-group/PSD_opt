@@ -68,7 +68,6 @@ def normal_test():
     find.save_as_png(fig_NM, "PSD-NM")
     find.save_as_png(fig_M, "PSD-M")
     
-    
     return delta_opt, opt_values
     
 def calc_N_test():
@@ -95,8 +94,8 @@ def calc_N_test():
     pop_params['pl_P4'] = converted_params[8]
     find.algo.set_init_pop_para(pop_params)
     find.algo.calc_init_N = False
-    find.algo.set_comp_para('r0_001', 'r0_001',R01_0_scl=R01_0_scl,R03_0_scl=R03_0_scl,
-                            dist_path_NM=dist_path_NM,dist_path_M=dist_path_M)
+    find.algo.set_comp_para(USE_PSD, R01_0, R03_0, R_NM=R_NM, R_M=R_M,R01_0_scl=R01_0_scl,R03_0_scl=R03_0_scl,
+                            dist_path_NM=dist_path_NM, dist_path_M=dist_path_M)
     find.algo.calc_all_pop()
     # return_pop_num_distribution(find.algo.p, axq3, fig, clr='b', q3lbl='q3_psd')
     # q3_psd = return_pop_num_distribution(find.algo.p_NM, axq3_NM, fig_NM, clr='b', q3lbl='q3_psd')
@@ -107,8 +106,8 @@ def calc_N_test():
     N_exp = find.algo.p.N
     N_exp_1D = find.algo.p_NM.N
     ## Calculate PBE with exp-data
-    find.algo.calc_init_N = True
-    find.algo.set_init_N(find.algo.sample_num, exp_data_paths, 'mean')
+    # find.algo.calc_init_N = True
+    # find.algo.set_init_N(find.algo.sample_num, exp_data_paths, 'mean')
     find.algo.calc_all_pop()
     # return_pop_num_distribution(find.algo.p, axq3, fig, clr='r', q3lbl='q3_exp')
     # q3_exp = return_pop_num_distribution(find.algo.p_NM, axq3_NM, fig_NM, clr='r', q3lbl='q3_exp')
@@ -160,10 +159,10 @@ def return_pop_distribution(pop, axq3=None,fig=None, clr='b', q3lbl='q3'):
     q3_sm = find.algo.KDE_score(kde, x_uni[1:])
     q3_sm = np.insert(q3_sm, 0, 0.0)
     
-    axq3, fig = pt.plot_data(x_uni, q3, fig=fig, ax=axq3,
-                           xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
-                           ylbl='number distribution of agglomerates $q3$ / $-$',
-                           lbl=q3lbl,clr=clr,mrk='o')
+    # axq3, fig = pt.plot_data(x_uni, q3, fig=fig, ax=axq3,
+    #                        xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
+    #                        ylbl='number distribution of agglomerates $q3$ / $-$',
+    #                        lbl=q3lbl,clr=clr,mrk='o')
     
     axq3, fig = pt.plot_data(x_uni, q3_sm, fig=fig, ax=axq3,
                             lbl=q3lbl+'_sm',clr=clr,mrk='^')
@@ -226,6 +225,7 @@ if __name__ == '__main__':
     find.algo.set_init_pop_para(pop_params)
     
     base_path = os.path.join(find.algo.p.pth, "data")
+    find.base_path = base_path
     if find.algo.p.process_type == 'breakage':
         USE_PSD = False
         dist_path_NM = None
@@ -245,7 +245,7 @@ if __name__ == '__main__':
                             dist_path_NM=dist_path_NM, dist_path_M=dist_path_M)
     find.algo.weight_2d = conf.config['weight_2d']
 
-    data_name = "Sim_Mul_0.1_para_100.0_0.5_0.5_0.5_1_0.0005_0.6_0.002_0.4.xlsx"  
+    data_name = "Sim_Mul_0.1_para_0.01_1.0_1.0_1.0_2_0.01_1.0_0.001_0.5.xlsx"  
     
     exp_data_path = os.path.join(base_path, data_name)
     exp_data_paths = [

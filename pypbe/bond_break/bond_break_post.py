@@ -96,6 +96,7 @@ def direkt_psd(NS, S, STR, NO_FRAG, N_GRIDS, N_FRACS, V01, V03, data_path):
         
 def calc_int_BF(NO_TESTS,x1,e1,x3=None,e3=None,V3=None):
     if x3 is None and e3 is None:
+        V3 = 0 if V3 is None else V3
         counts, _ = np.histogram(x1, e1)
 
         # 初始化数组用于存储每个区间的x和y的总和

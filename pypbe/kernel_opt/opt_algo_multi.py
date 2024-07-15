@@ -33,7 +33,8 @@ class opt_algo_multi(opt_algo):
             
         return delta_sum
     
-    def calc_delta_agg(self, params, scale=1, sample_num=1, exp_data_path=None): 
+    def calc_delta_agg(self, params_in, scale=1, sample_num=1, exp_data_path=None): 
+        params = params_in.copy()
         if "corr_agg" in params:
             corr_agg = params["corr_agg"]
             CORR_BETA = self.return_syth_beta(corr_agg)
