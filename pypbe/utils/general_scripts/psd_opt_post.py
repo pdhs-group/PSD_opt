@@ -394,7 +394,7 @@ if __name__ == '__main__':
         pl_P13_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P1','pl_P3'], log_axis=False)
         pl_P24_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P2','pl_P4'])
     
-    variable_to_analyse = result_to_analyse[0]
+    variable_to_analyse = result_to_analyse[2]
     one_frame = True
     calc_init = False
     t_return = -1

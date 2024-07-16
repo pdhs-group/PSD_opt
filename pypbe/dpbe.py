@@ -224,7 +224,8 @@ class population():
         
         self.calc_R()
         # self.calc_R_new()
-        self.init_N()        
+        self.init_N() 
+        
         if calc_alpha: self.calc_alpha_prim()
         self.calc_F_M()
         self.calc_B_R()

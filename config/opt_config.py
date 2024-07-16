@@ -30,7 +30,7 @@ config = {
         ## method = basinhopping
         ## method = BO: use Bayesian Optimization
         'method': 'BO',
-        'n_iter': 400,
+        'n_iter': 10,
         ## Initialize PBE using psd data(False) or 
         ## with the help of first few time points of experimental data(True)
         'calc_init_N': False,

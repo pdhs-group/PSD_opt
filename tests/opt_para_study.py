@@ -26,15 +26,30 @@ def optimization_process(algo_params,pop_params,multi_flag,opt_params,ori_params
     
     find.algo.set_init_pop_para(pop_params)
     
-    find.algo.set_comp_para(USE_PSD=False, R_NM=conf.config['R_NM'], R_M=conf.config['R_M'],
-                            R01_0_scl=conf.config['R01_0_scl'],R03_0_scl=conf.config['R03_0_scl'])
+    if find.algo.p.process_type == 'breakage':
+        USE_PSD = False
+        dist_path_NM = None
+        dist_path_M = None
+    else:
+        USE_PSD = True
+        dist_path_NM = os.path.join(data_path, "PSD_data", conf.config['dist_scale_1'])
+        dist_path_M = os.path.join(data_path, "PSD_data", conf.config['dist_scale_1'])
+        
+    R_NM = conf.config['R_NM']
+    R_M=conf.config['R_M']
+    R01_0_scl=conf.config['R01_0_scl']
+    R03_0_scl=conf.config['R03_0_scl']
+    R01_0 = 'r0_001'
+    R03_0 = 'r0_001'
+    find.algo.set_comp_para(USE_PSD, R01_0, R03_0, R_NM=R_NM, R_M=R_M,R01_0_scl=R01_0_scl,R03_0_scl=R03_0_scl,
+                            dist_path_NM=dist_path_NM, dist_path_M=dist_path_M)
     
     find.algo.weight_2d = conf.config['weight_2d']
 
-    delta_opt, opt_values = \
+    result_dict = \
         find.find_opt_kernels(sample_num=find.algo.sample_num, method='delta', data_name=file_name)
 
-    return delta_opt, opt_values, ori_params
+    return result_dict, ori_params
 
 if __name__ == '__main__':
     #%%  Input for Opt
@@ -52,10 +67,10 @@ if __name__ == '__main__':
     
     #%% Prepare test data set
     ## define the range of corr_beta
-    var_corr_beta = np.array([1e2])
+    var_corr_beta = np.array([1e-3,1e-2,1e-1])
     # var_corr_beta = np.array([1e-2])
     ## define the range of alpha_prim 27x3
-    values = np.array([1])
+    values = np.array([0.5,1.0])
     a1, a2, a3 = np.meshgrid(values, values, values, indexing='ij')
     var_alpha_prim = np.column_stack((a1.flatten(), a2.flatten(), a3.flatten()))
     ## The case of all zero α is meaningless, that means no Agglomeration occurs
@@ -71,24 +86,24 @@ if __name__ == '__main__':
     var_alpha_prim = np.array(unique_alpha_prim)
 
     ## define the range of v(breakage function)
-    var_v = np.array([1,2])
-    ## define the range of P1, P2 for power law breakage rate
+    var_v = np.array([0.7,1,2])
+    # var_v = np.array([0.01])    ## define the range of P1, P2 for power law breakage rate
     var_P1 = np.array([1e-3,1e-2,1e-1])
     var_P2 = np.array([0.5,1.0,2.0])
     var_P3 = np.array([1e-3,1e-2,1e-1])
     var_P4 = np.array([0.5,1.0,2.0])
 
+
     ## define the range of particle size scale and minimal size
     pth = '/pfs/work7/workspace/scratch/px2030-MC_train'
     data_path = os.path.join(pth,"mix", "data")
+    # data_path = r"C:\Users\px2030\Code\PSD_opt\pypbe\data"
     # dist_path_1 = os.path.join(data_path, "PSD_data", conf.config['dist_scale_1'])
     # dist_path = [dist_path_1] # [dist_path_1, dist_path_10]
     # size_scale = np.array([1, 10])
     # R01_0 = 'r0_001'
     # R03_0 = 'r0_001'
-    
-    pool = multiprocessing.Pool(processes=24)
-    tasks = []
+    results = []
     for j,corr_beta in enumerate(var_corr_beta):
         for k,alpha_prim in enumerate(var_alpha_prim):
             for l,v in enumerate(var_v):
@@ -114,10 +129,9 @@ if __name__ == '__main__':
                                         if not os.path.exists(file_path):
                                             continue
                                         var_pop_params = conf_params['pop_params']
-                                        tasks.append((algo_params,pop_params,multi_flag,opt_params,
-                                                      var_pop_params,file_name, data_path))
-    
-    results = pool.starmap(optimization_process, tasks)
+                                        result = optimization_process(algo_params,pop_params,multi_flag,opt_params,
+                                                      var_pop_params,file_name, data_path)
+                                        results.append(result)
 
     ## save the results in npz
     if multi_flag:
