@@ -181,7 +181,7 @@ class opt_find():
             if self.algo.calc_init_N:
                 self.algo.set_init_N(sample_num, exp_data_paths, init_flag='mean')
                 
-            ray.init(runtime_env={"env_vars": {"PYTHONPATH": os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))}})
+            ray.init(runtime_env={"env_vars": {"PYTHONPATH": os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))}})
             
             if method == 'kernels':
                 delta_opt_sample = np.zeros(sample_num)

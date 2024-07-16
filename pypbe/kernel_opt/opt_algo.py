@@ -225,7 +225,9 @@ class opt_algo():
             # Special handling for corr_agg based on dimension
             if 'corr_agg_0' in config:
                 transformed_params = self.array_dict_transform(config)
-            return self.calc_delta_agg(transformed_params, sample_num=sample_num, exp_data_path=exp_data_path)
+                
+            loss = self.calc_delta_agg(transformed_params, sample_num=sample_num, exp_data_path=exp_data_path)
+            train.report({"loss": loss})
             
         if self.method == 'BO': 
             algo = OptunaSearch(metric="loss", mode="min", sampler=GPSampler())
@@ -246,13 +248,13 @@ class opt_algo():
         
         results = tuner.fit()
         # 获取最优结果
-        best_result = results.get_best_result(metric="loss", mode="min")
-        best_config = best_result.config
-        best_score = best_result.metrics["loss"]
+        opt_result = results.get_best_result(metric="loss", mode="min")
+        opt_params = opt_result.config
+        opt_score = opt_result.metrics["loss"]
         
         result_dict = {
-            "best_score": best_score,
-            "best_parameters": best_config,
+            "opt_score": opt_score,
+            "opt_parameters": opt_params,
         }
         
         return result_dict

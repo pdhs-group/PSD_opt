@@ -6,6 +6,7 @@ Created on Thu Jan  4 14:53:00 2024
 """
 import sys
 import os
+import ray
 sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),"../../.."))
 import pypbe.kernel_opt.opt_find as opt
 import config.opt_config as conf
@@ -21,7 +22,7 @@ def normal_test():
 
     # corr_beta_opt, alpha_prim_opt, para_diff, delta_opt= \
     #     find.find_opt_kernels(sample_num=sample_num, method='delta', data_name=data_name)
-    delta_opt, opt_values = \
+    result_dict = \
         find.find_opt_kernels(sample_num=find.algo.sample_num, method='delta', data_name=data_name)
     
     end_time = time.time()
@@ -60,7 +61,7 @@ def normal_test():
     # find.algo.calc_init_N = True
     # find.algo.set_comp_para(R_NM=R_NM, R_M=R_M,R01_0_scl=R01_0_scl,R03_0_scl=R03_0_scl)
     # find.algo.set_init_N(find.algo.sample_num, exp_data_paths, 'mean')
-    find.algo.calc_all_pop(opt_values)
+    find.algo.calc_all_pop(result_dict["opt_parameters"])
     return_pop_distribution(find.algo.p, axq3, fig, clr='r', q3lbl='q3_opt')
     return_pop_distribution(find.algo.p_NM, axq3_NM, fig_NM, clr='r', q3lbl='q3_opt')
     return_pop_distribution(find.algo.p_M, axq3_M, fig_M, clr='r', q3lbl='q3_opt')   
@@ -68,7 +69,7 @@ def normal_test():
     find.save_as_png(fig_NM, "PSD-NM")
     find.save_as_png(fig_M, "PSD-M")
     
-    return delta_opt, opt_values
+    return result_dict
     
 def calc_N_test():
     find.algo.calc_init_N = False

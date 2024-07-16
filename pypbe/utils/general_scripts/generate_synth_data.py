@@ -136,7 +136,7 @@ if __name__ == '__main__':
                                                 }
                                             var_pop_params = conf_params['pop_params']
                                             func_list.append((R01_0, R03_0, dist_path_NM, dist_path_M, var_pop_params))
-    pool = multiprocessing.Pool(processes=24)
+    pool = multiprocessing.Pool(processes=16)
     pool.starmap(calc_function, func_list)                        
     pool.close()
     pool.join()                        
