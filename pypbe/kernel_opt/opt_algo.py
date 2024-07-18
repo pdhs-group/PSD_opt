@@ -4,13 +4,12 @@ Calculate the difference between the PSD of the simulation results and the exper
 Minimize the difference by optimization algorithm to obtain the kernel of PBE.
 """
 import numpy as np
-import math
-import ray
+# import math
+# import ray
 from ray import tune, train
 from ray.tune.search.optuna import OptunaSearch
-from optuna.samplers import GPSampler, TPESampler
-from bayes_opt import BayesianOptimization
-from scipy.optimize import basinhopping
+from ray.tune.search.hebo import HEBOSearch
+from optuna.samplers import GPSampler,CmaEsSampler,TPESampler,NSGAIIISampler,QMCSampler
 from scipy.stats import entropy
 from sklearn.neighbors import KernelDensity
 from sklearn.metrics import mean_squared_error, mean_absolute_error
@@ -229,8 +228,18 @@ class opt_algo():
             loss = self.calc_delta_agg(transformed_params, sample_num=sample_num, exp_data_path=exp_data_path)
             train.report({"loss": loss})
             
-        if self.method == 'BO': 
+        if self.method == 'HEBO': 
+            algo = HEBOSearch(metric="loss", mode="min")
+        elif self.method == 'GP': 
             algo = OptunaSearch(metric="loss", mode="min", sampler=GPSampler())
+        elif self.method == 'TPS': 
+            algo = OptunaSearch(metric="loss", mode="min", sampler=TPESampler())
+        elif self.method == 'Cmaes':    
+            algo = OptunaSearch(metric="loss", mode="min", sampler=CmaEsSampler())
+        elif self.method == 'NSGA':    
+            algo = OptunaSearch(metric="loss", mode="min", sampler=NSGAIIISampler())
+        elif self.method == 'QMC':    
+            algo = OptunaSearch(metric="loss", mode="min", sampler=QMCSampler())
             
         # 运行Ray Tune进行超参数搜索
         tuner = tune.Tuner(
@@ -242,7 +251,7 @@ class opt_algo():
                 search_alg=algo
             ),
             run_config=train.RunConfig(
-            storage_path =r"C:\Users\px2030\Code\Ray_Tune"  
+            storage_path =self.tune_storage_path
             )
         )
         

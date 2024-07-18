@@ -77,7 +77,7 @@ def run_BO(result_path, n_steps):
     return result_dict
         
 RT_space = {
-    'epochs': tune.randint(10, 100),
+    'epochs': tune.randint(10, 1000),
     'batch_size': tune.randint(16, 128),
     'learning_rate': tune.loguniform(1e-6, 1e-2),
     'optimizer_type': tune.choice(['sgd', 'adam', 'rmsprop']),
@@ -196,7 +196,7 @@ if __name__ == '__main__':
     m_frag_num_weight = 1e-2
     
     result_path = "best_results.pkl"
-    n_steps = 12
+    n_steps = 400
     
     start_time = time.time()
     # best_result = run_BO(result_path, n_steps)

@@ -27,9 +27,13 @@ config = {
         'noise_type': 'Mul',
         'noise_strength': 0.1,
         'sample_num': 5,
-        ## method = basinhopping
-        ## method = BO: use Bayesian Optimization
-        'method': 'BO',
+        ## method = HEBO: Heteroscedastic Evolutionary Bayesian Optimization
+        ## method = GP: Sampler using Gaussian process-based Bayesian optimization.
+        ## method = TPS: Sampler using TPE (Tree-structured Parzen Estimator) algorithm.
+        ## method = Cmaes: A sampler using cmaes as the backend.
+        ## method = NSGA: Multi-objective sampler using the NSGA-III(Nondominated Sorting Genetic Algorithm III) algorithm.
+        ## method = QMC: A Quasi Monte Carlo Sampler that generates low-discrepancy sequences.    
+        'method': 'HEBO',
         'n_iter': 10,
         ## Initialize PBE using psd data(False) or 
         ## with the help of first few time points of experimental data(True)
@@ -48,6 +52,7 @@ config = {
                        #('Q3','KL'), 
                        #('x_50','MSE')
                        ],
+        'tune_storage_path': r'C:\Users\px2030\Code\Ray_Tune',
         },
     
     ## PBE parameters
