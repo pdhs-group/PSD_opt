@@ -8,7 +8,12 @@
 #SBATCH --mem=30000mb
 
 module purge
-module load devel/python/3.12.3_gnu_13.3
+module load jupyter/tensorflow/2023-10-10
+. /pfs/data5/home/kit/mvm/px2030/code/tensorflow/bin/activate
+ray start --head --port=6379
 
 python opt_para_study.py
+
+ray stop
+deactivate
 

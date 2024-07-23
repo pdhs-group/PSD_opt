@@ -33,8 +33,8 @@ config = {
         ## method = Cmaes: A sampler using cmaes as the backend.
         ## method = NSGA: Multi-objective sampler using the NSGA-III(Nondominated Sorting Genetic Algorithm III) algorithm.
         ## method = QMC: A Quasi Monte Carlo Sampler that generates low-discrepancy sequences.    
-        'method': 'HEBO',
-        'n_iter': 10,
+        'method': 'GP',
+        'n_iter': 5,
         ## Initialize PBE using psd data(False) or 
         ## with the help of first few time points of experimental data(True)
         'calc_init_N': False,
@@ -53,6 +53,8 @@ config = {
                        #('x_50','MSE')
                        ],
         'tune_storage_path': r'C:\Users\px2030\Code\Ray_Tune',
+        'num_bundles': 4,
+        # 'cpu_per_bundles': 3,
         },
     
     ## PBE parameters

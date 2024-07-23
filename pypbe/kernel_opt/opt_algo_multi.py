@@ -13,19 +13,19 @@ class opt_algo_multi(opt_algo):
         self.weight_2d = 1
         
         
-    def calc_delta(self, corr_beta=None, alpha_prim=None, sample_num=1, exp_data_path=None):  
+    def calc_delta(self, corr_beta=None, alpha_prim=None, exp_data_path=None):  
         self.calc_all_pop(corr_beta, alpha_prim, self.t_vec)
 
         if self.p.calc_status:
-            delta = self.calc_delta_tem(sample_num, exp_data_path[0], self.p)
+            delta = self.calc_delta_tem(exp_data_path[0], self.p)
         else:
             delta = 10
         if self.p_NM.calc_status:
-            delta_NM = self.calc_delta_tem(sample_num, exp_data_path[1], self.p_NM)
+            delta_NM = self.calc_delta_tem(exp_data_path[1], self.p_NM)
         else:
             delta_NM = 10
         if self.p_M.calc_status:
-            delta_M = self.calc_delta_tem(sample_num, exp_data_path[2], self.p_M)
+            delta_M = self.calc_delta_tem(exp_data_path[2], self.p_M)
         else:
             delta_M = 10
         # increase the weight of the 2D case
@@ -33,7 +33,7 @@ class opt_algo_multi(opt_algo):
             
         return delta_sum
     
-    def calc_delta_agg(self, params_in, sample_num=1, exp_data_path=None): 
+    def calc_delta_agg(self, params_in,exp_data_path=None): 
         params = params_in.copy()
         if "corr_agg" in params:
             corr_agg = params["corr_agg"]
@@ -47,17 +47,17 @@ class opt_algo_multi(opt_algo):
         
         self.calc_all_pop(params, self.t_vec)
         if self.p.calc_status:
-            delta = self.calc_delta_tem(sample_num, exp_data_path[0], self.p)
+            delta = self.calc_delta_tem(exp_data_path[0], self.p)
         else:
             print('p not converged')
             delta = 10
         if self.p_NM.calc_status:
-            delta_NM = self.calc_delta_tem(sample_num, exp_data_path[1], self.p_NM)
+            delta_NM = self.calc_delta_tem(exp_data_path[1], self.p_NM)
         else:
             print('p_NM not converged')
             delta_NM = 10
         if self.p_M.calc_status:    
-            delta_M = self.calc_delta_tem(sample_num, exp_data_path[2], self.p_M)
+            delta_M = self.calc_delta_tem(exp_data_path[2], self.p_M)
         else:
             print('p_M not converged')
             delta_M = 10

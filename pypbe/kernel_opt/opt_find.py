@@ -6,6 +6,7 @@ visualizing results.
 """
 
 import numpy as np
+import asyncio
 import os
 import warnings
 import pandas as pd
@@ -85,11 +86,12 @@ class opt_find():
             self.algo.create_1d_pop(disc='geo')
         # Set the base path for exp_data_path
         if data_path is None:
+            print('Data path is not found or is None, default path will be used.')
             self.base_path = os.path.join(self.algo.p.pth, "data")
         else:
             self.base_path = data_path
         
-    def generate_data(self, pop_params=None, sample_num=1, add_info=""):
+    def generate_data(self, pop_params=None, add_info=""):
         """
         Generates synthetic data based on simulation results, optionally adding noise.
         
@@ -113,8 +115,8 @@ class opt_find():
         if not self.multi_flag:
             self.algo.calc_pop(self.algo.p, pop_params, self.algo.t_all)
             if self.algo.p.calc_status:
-                for i in range(0, sample_num):
-                    if sample_num != 1:
+                for i in range(0, self.algo.sample_num):
+                    if self.algo.sample_num != 1:
                         exp_data_path=self.algo.traverse_path(i, exp_data_path)
                     # print(self.algo.exp_data_path)
                     self.write_new_data(self.algo.p, exp_data_path)
@@ -128,8 +130,8 @@ class opt_find():
             ]
             self.algo.calc_all_pop(pop_params, self.algo.t_all)
             if self.algo.p.calc_status and self.algo.p_NM.calc_status and self.algo.p_M.calc_status:
-                for i in range(0, sample_num):
-                    if sample_num != 1:
+                for i in range(0, self.algo.sample_num):
+                    if self.algo.sample_num != 1:
                         exp_data_paths = self.algo.traverse_path(i, exp_data_paths)
                         self.write_new_data(self.algo.p, exp_data_paths[0])
                         self.write_new_data(self.algo.p_NM, exp_data_paths[1])
@@ -137,7 +139,7 @@ class opt_find():
             else:
                 return
             
-    def find_opt_kernels(self, sample_num, method='kernels', data_name=None):
+    async def find_opt_kernels(self, method='kernels', data_names=None):
         """
         Finds optimal kernels for the PBE model by minimizing the difference between 
         simulation results and experimental data.
@@ -150,7 +152,7 @@ class opt_find():
             Optimization method to use.
                 - 'kernels': Optimizes kernel parameters for each data set individually and then computes the average of the resulting kernel parameters across all data sets.
                 - 'delta' : Averages the delta values across data sets before optimization, leading to a single kernel that optimizes the average delta.
-        data_name : `str`, optional
+        data_names : `str`, optional
             Name of the experimental data file (without labels).
         
         Returns
@@ -163,63 +165,57 @@ class opt_find():
         if self.algo.set_init_pop_para_flag is False:
             warnings.warn('Initial PBE parameters have not been set')
             
-        if data_name == None:
+        if data_names == None:
             warnings.warn("Please specify the name of the experiment data without labels!")
         else:
-            exp_data_path = os.path.join(self.base_path, data_name)
-            exp_data_paths = [
-                exp_data_path,
-                exp_data_path.replace(".xlsx", "_NM.xlsx"),
-                exp_data_path.replace(".xlsx", "_M.xlsx")
-            ]
-            
             if self.multi_flag:
-                # Because manual initialization N always requires 1D data(use exp_data_paths), 
-                # and only multi-optimization process requires 1D data.
-                exp_data_path = exp_data_paths
-            
-            if self.algo.calc_init_N:
-                self.algo.set_init_N(sample_num, exp_data_paths, init_flag='mean')
+                exp_data_paths = []
+                for data_names_ex in data_names:
+                    exp_data_paths_tem = [os.path.join(self.base_path, dataname) for dataname in data_names_ex]
+                    exp_data_paths.append(exp_data_paths_tem)
+            else:
+                exp_data_paths = [os.path.join(self.base_path, dataname) for dataname in data_names]
+            # if self.algo.calc_init_N:
+            #     self.algo.set_init_N(sample_num, exp_data_paths, init_flag='mean')
                 
+            # ray.init(address="auto", runtime_env={"env_vars": {"PYTHONPATH": os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))}})
             ray.init(runtime_env={"env_vars": {"PYTHONPATH": os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))}})
-            
             if method == 'kernels':
-                delta_opt_sample = np.zeros(sample_num)
-                CORR_BETA_sample = np.zeros(sample_num)
-                if self.algo.p.dim == 1:
-                    alpha_prim_sample = np.zeros(sample_num)
+                # delta_opt_sample = np.zeros(sample_num)
+                # CORR_BETA_sample = np.zeros(sample_num)
+                # if self.algo.p.dim == 1:
+                #     alpha_prim_sample = np.zeros(sample_num)
                     
-                elif self.algo.p.dim == 2:
-                    alpha_prim_sample = np.zeros((3, sample_num))
+                # elif self.algo.p.dim == 2:
+                #     alpha_prim_sample = np.zeros((3, sample_num))
                 
-                if sample_num == 1:
-                    delta_opt = self.algo.optimierer_agg(self.opt_params, exp_data_path=exp_data_path)
-                    CORR_BETA = self.algo.CORR_BETA_opt
-                    alpha_prim = self.algo.alpha_prim_opt
+                # if sample_num == 1:
+                #     delta_opt = self.algo.optimierer_agg(self.opt_params, exp_data_paths=exp_data_paths)
+                #     CORR_BETA = self.algo.CORR_BETA_opt
+                #     alpha_prim = self.algo.alpha_prim_opt
                     
-                else:
-                    for i in range(0, sample_num):
-                        exp_data_path=self.algo.traverse_path(i, exp_data_path)
-                        delta_opt_sample[i] = \
-                            self.algo.optimierer_agg(self.opt_params, exp_data_path=exp_data_path)
+                # else:
+                #     for i in range(0, sample_num):
+                #         exp_data_path=self.algo.traverse_path(i, exp_data_path)
+                #         delta_opt_sample[i] = \
+                #             self.algo.optimierer_agg(self.opt_params, exp_data_path=exp_data_path)
                             
-                        CORR_BETA_sample[i] = self.algo.CORR_BETA_opt
-                        if self.algo.p.dim == 1:
-                            alpha_prim_sample[i] = self.algo.alpha_prim_opt
+                #         CORR_BETA_sample[i] = self.algo.CORR_BETA_opt
+                #         if self.algo.p.dim == 1:
+                #             alpha_prim_sample[i] = self.algo.alpha_prim_opt
                             
-                        elif self.algo.p.dim == 2:
-                            alpha_prim_sample[:, i] = self.algo.alpha_prim_opt
+                #         elif self.algo.p.dim == 2:
+                #             alpha_prim_sample[:, i] = self.algo.alpha_prim_opt
 
-                if not sample_num == 1:
-                    delta_opt = np.mean(delta_opt_sample)
-                    CORR_BETA = np.mean(CORR_BETA_sample)
-                    alpha_prim = np.mean(alpha_prim_sample, axis=self.algo.p.dim-1)
-                    self.algo.CORR_BETA_opt = CORR_BETA
-                    self.algo.alpha_prim_opt = alpha_prim
-                
+                # if not sample_num == 1:
+                #     delta_opt = np.mean(delta_opt_sample)
+                #     CORR_BETA = np.mean(CORR_BETA_sample)
+                #     alpha_prim = np.mean(alpha_prim_sample, axis=self.algo.p.dim-1)
+                #     self.algo.CORR_BETA_opt = CORR_BETA
+                #     self.algo.alpha_prim_opt = alpha_prim
+                print("not coded yet")
             elif method == 'delta':
-                result_dict = self.algo.optimierer_agg(self.opt_params, sample_num=sample_num,
-                                                     exp_data_path=exp_data_path)
+                result_dict = await self.algo.optimierer_agg(self.opt_params,exp_data_paths=exp_data_paths)
                 # delta_opt = self.algo.optimierer(sample_num=sample_num, 
                 #                       exp_data_path=exp_data_path)
                 
