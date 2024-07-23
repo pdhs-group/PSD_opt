@@ -6,8 +6,6 @@ Minimize the difference by optimization algorithm to obtain the kernel of PBE.
 import os
 import numpy as np
 from queue import Queue
-import asyncio
-from ray.util import ActorPool
 # import math
 import ray
 from ray import tune, train
@@ -194,7 +192,7 @@ class opt_algo():
             x_uni_num = len(x_uni_exp)  
             return delta_sum / x_uni_num
     
-    async def optimierer_agg(self, opt_params, init_points=4, hyperparameter=None, exp_data_paths=None):
+    def optimierer_agg(self, opt_params, init_points=4, hyperparameter=None, exp_data_paths=None):
         """
         Optimize the corr_agg based on :meth:~.calc_delta_agg. 
         Results are saved in corr_agg_opt.
@@ -236,19 +234,51 @@ class opt_algo():
         if len(exp_data_paths) < num_bundles:
             num_bundles = len(exp_data_paths)
         cpus_per_bundle = int(max(1, total_cpus // num_bundles))
+        # cpus_per_bundle = 1
         pg = tune.PlacementGroupFactory([{"CPU": cpus_per_bundle} for _ in range(num_bundles)], strategy="PACK")
+        
+        @ray.remote(num_cpus=cpus_per_bundle)
+        def run_tune_task(exp_data_path):
+            algo = self.create_algo()
+            if isinstance(exp_data_path, list):
+                data_name = os.path.basename(exp_data_path[0])
+            else:
+                data_name = os.path.basename(exp_data_path)
+                
+            if data_name.startswith("Sim_"):
+                data_name = data_name[len("Sim_"):]
+            if data_name.endswith(".xlsx"):
+                data_name = data_name[:-len(".xlsx")]
 
+            tuner = tune.Tuner(
+                tune.with_resources(
+                    lambda config: self.objective(config, exp_data_path), 
+                    resources = pg
+                ),
+                param_space=RT_space,
+                tune_config=tune.TuneConfig(
+                    num_samples=self.n_iter,
+                    search_alg=algo,
+                ),
+                run_config=train.RunConfig(
+                    storage_path=self.tune_storage_path,
+                    name = data_name
+                ),
+            )
+            return tuner.fit(), exp_data_path
+        
         results = []
+        # 获取最优结果
         while not task_queue.empty():
             active_tasks = []
-            for _ in range(num_bundles):
+            for i in range(num_bundles):
                 if not task_queue.empty():
                     exp_data_path = task_queue.get()
-                    task = self.run_tune_task(exp_data_path, pg, RT_space)
+                    task = run_tune_task.remote(exp_data_path)
                     active_tasks.append(task)
 
-            # 等待当前活跃任务完成并立即处理结果
-            completed_tasks = await asyncio.gather(*active_tasks)
+            # 等待所有当前活跃的任务完成
+            completed_tasks = ray.get(active_tasks)
             for task_result, path in completed_tasks:
                 best_result = task_result.get_best_result(metric="loss", mode="min")
                 results.append({
@@ -256,38 +286,8 @@ class opt_algo():
                     "opt_score": best_result.metrics["loss"],
                     "file_path": path
                 })
-        
+                
         return results
-    
-    # @ray.remote
-    async def run_tune_task(self, exp_data_path, pg, RT_space):
-        algo = self.create_algo()
-        if isinstance(exp_data_path, list):
-            data_name = os.path.basename(exp_data_path[0])
-        else:
-            data_name = os.path.basename(exp_data_path)
-            
-        if data_name.startswith("Sim_"):
-            data_name = data_name[len("Sim_"):]
-        if data_name.endswith(".xlsx"):
-            data_name = data_name[:-len(".xlsx")]
-
-        tuner = tune.Tuner(
-            tune.with_resources(
-                lambda config: self.objective(config, exp_data_path), 
-                resources = pg
-            ),
-            param_space=RT_space,
-            tune_config=tune.TuneConfig(
-                num_samples=self.n_iter,
-                search_alg=algo,
-            ),
-            run_config=train.RunConfig(
-                storage_path=self.tune_storage_path,
-                name = data_name
-            ),
-        )
-        return await tuner.fit(), exp_data_path
     
     # Objective function considering the log scale transformation if necessary
     def objective(self, config, exp_data_path):

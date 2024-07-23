@@ -7,7 +7,6 @@ Created on Tue Dec  5 10:58:09 2023
 import sys, os
 import time
 import numpy as np
-import asyncio
 import logging
 sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),".."))
 from pypbe.kernel_opt import opt_find as opt
@@ -16,7 +15,7 @@ from config import opt_config as conf
 logging.basicConfig(filename='parallel.log', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-async def optimization_process(algo_params,pop_params,multi_flag,opt_params,data_names, data_path):
+def optimization_process(algo_params,pop_params,multi_flag,opt_params,data_names, data_path):
     #%%  Input for Opt 
     find = opt.opt_find()
 
@@ -45,26 +44,9 @@ async def optimization_process(algo_params,pop_params,multi_flag,opt_params,data
     find.algo.weight_2d = conf.config['weight_2d']
 
     result_dict = \
-        await find.find_opt_kernels(method='delta', data_names=data_names)
-    
-    while True:
-        print("Running optimization...")
-        await asyncio.sleep(2)
+        find.find_opt_kernels(method='delta', data_names=data_names)
 
     return result_dict
-
-def async_run_optimization_process(algo_params,pop_params,multi_flag,opt_params,
-              data_names, data_path):
-    loop = asyncio.get_event_loop()
-    if loop.is_running():
-        loop.create_task(optimization_process(algo_params,pop_params,multi_flag,opt_params,
-                      data_names, data_path))
-    else:
-        try:
-            asyncio.run(optimization_process(algo_params,pop_params,multi_flag,opt_params,
-                          data_names, data_path))
-        except KeyboardInterrupt:
-            print("Optimization process stopped by user.")
 
 if __name__ == '__main__':
     #%%  Input for Opt
@@ -104,9 +86,9 @@ if __name__ == '__main__':
     var_v = np.array([1.0,2.0])
     # var_v = np.array([0.01])    ## define the range of P1, P2 for power law breakage rate
     var_P1 = np.array([1e-2,1e-1])
-    var_P2 = np.array([0.5])
+    var_P2 = np.array([0.5,2.0])
     var_P3 = np.array([1e-3,1e-1])
-    var_P4 = np.array([0.5])
+    var_P4 = np.array([0.5,2.0])
 
 
     ## define the range of particle size scale and minimal size
@@ -143,7 +125,7 @@ if __name__ == '__main__':
             ]
             data_names_tem.append(data_name_ex)
         data_names = data_names_tem
-    result = async_run_optimization_process(algo_params,pop_params,multi_flag,opt_params,
+    result = optimization_process(algo_params,pop_params,multi_flag,opt_params,
                   data_names, data_path)       
     end_time = time.time()
     elapsed_time = end_time - start_time

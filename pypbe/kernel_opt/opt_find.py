@@ -6,7 +6,6 @@ visualizing results.
 """
 
 import numpy as np
-import asyncio
 import os
 import warnings
 import pandas as pd
@@ -139,7 +138,7 @@ class opt_find():
             else:
                 return
             
-    async def find_opt_kernels(self, method='kernels', data_names=None):
+    def find_opt_kernels(self, method='kernels', data_names=None):
         """
         Finds optimal kernels for the PBE model by minimizing the difference between 
         simulation results and experimental data.
@@ -215,7 +214,7 @@ class opt_find():
                 #     self.algo.alpha_prim_opt = alpha_prim
                 print("not coded yet")
             elif method == 'delta':
-                result_dict = await self.algo.optimierer_agg(self.opt_params,exp_data_paths=exp_data_paths)
+                result_dict = self.algo.optimierer_agg(self.opt_params,exp_data_paths=exp_data_paths)
                 # delta_opt = self.algo.optimierer(sample_num=sample_num, 
                 #                       exp_data_path=exp_data_path)
                 

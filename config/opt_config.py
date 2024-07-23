@@ -53,7 +53,7 @@ config = {
                        #('x_50','MSE')
                        ],
         'tune_storage_path': r'C:\Users\px2030\Code\Ray_Tune',
-        'num_bundles': 4,
+        'num_bundles': 6,
         # 'cpu_per_bundles': 3,
         },
     

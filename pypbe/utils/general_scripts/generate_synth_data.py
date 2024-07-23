@@ -52,7 +52,7 @@ def calc_function(R01_0, R03_0, dist_path_NM, dist_path_M, var_pop_params, data_
     # p6 = var_pop_params['pl_P6']
     add_info = f"_para_{b}_{a[0]}_{a[1]}_{a[2]}_{v}_{p1}_{p2}_{p3}_{p4}"
     # Generate synthetic Data
-    find.generate_data(var_pop_params, find.algo.sample_num, add_info=add_info)
+    find.generate_data(var_pop_params, add_info=add_info)
     
 if __name__ == '__main__':
     generate_new_psd = True
