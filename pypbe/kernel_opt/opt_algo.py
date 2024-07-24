@@ -15,7 +15,7 @@ from sklearn.neighbors import KernelDensity
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 from scipy.interpolate import interp1d
 ## import internal package
-from ..dpbe import population
+from ..pbe import DPBESolver
 from ..utils.func.func_read_exp import write_read_exp
 
 class opt_algo():
@@ -108,7 +108,7 @@ class opt_algo():
             Set how many sets of experimental data are used simultaneously for optimization.
         exp_data_path : `str`
             path for experimental data.
-        pop : :class:`pop.population`
+        pop : :class:`pop.DPBESolver`
             Instance of the PBE.
             
         Returns   
@@ -499,10 +499,10 @@ class opt_algo():
     #%% PBE    
     def create_1d_pop(self, disc='geo'):
         """
-        Instantiate one-dimensional populations for both non-magnetic (NM) and magnetic (M) particles.
+        Instantiate one-dimensional DPBESolvers for both non-magnetic (NM) and magnetic (M) particles.
         """
-        self.p_NM = population(dim=1,disc=disc)
-        self.p_M = population(dim=1,disc=disc)
+        self.p_NM = DPBESolver(dim=1,disc=disc)
+        self.p_M = DPBESolver(dim=1,disc=disc)
             
     def calc_pop(self, pop, params=None, t_vec=None):
         """
@@ -639,7 +639,7 @@ class opt_algo():
     ## only for 1D-pop, 
     def set_init_N(self, sample_num, exp_data_paths, init_flag):
         """
-        Initialize the number concentration N for 1D populations based on experimental data.
+        Initialize the number concentration N for 1D DPBESolvers based on experimental data.
         
         Parameters
         ----------
@@ -660,16 +660,16 @@ class opt_algo():
     
     def set_init_N_1D(self, pop, sample_num, exp_data_path, init_flag):
         """
-        Initialize the number concentration N for a single 1D population using experimental data.
+        Initialize the number concentration N for a single 1D DPBESolver using experimental data.
         
-        It processes the experimental data to align with the population's discrete size grid,
+        It processes the experimental data to align with the DPBESolver's discrete size grid,
         using either interpolation or averaging based on the `init_flag`. Supports processing
         multiple samples of experimental data for averaging purposes.
         
         Parameters
         ----------
-        pop : :class:`pop.population`
-            The population instance (either NM or M) to initialize.
+        pop : :class:`pop.DPBESolver`
+            The DPBESolver instance (either NM or M) to initialize.
         sample_num : `int`
             Number of experimental data sets used for initialization.
         exp_data_path : `str`
@@ -717,13 +717,13 @@ class opt_algo():
         
     def calc_v_uni(self, pop):
         """
-        Calculate unique volume values for a given population.
+        Calculate unique volume values for a given DPBESolver.
         """
         return np.setdiff1d(pop.V, [-1])*1e18
     
     def calc_x_uni(self, pop):
         """
-        Calculate unique particle diameters from volume values for a given population.
+        Calculate unique particle diameters from volume values for a given DPBESolver.
         """
         v_uni = self.calc_v_uni(pop)
         # Because the length unit in the experimental data is millimeters 
@@ -735,7 +735,7 @@ class opt_algo():
         
     def re_calc_distribution(self, x_uni, q3=None, sum_uni=None, flag='all'):
         """
-        Recalculate distribution metrics for a given population and distribution data.
+        Recalculate distribution metrics for a given DPBESolver and distribution data.
         
         Can operate on either q3 or sum_uni distribution data to calculate Q3, q3, and particle
         diameters corresponding to specific percentiles (x_10, x_50, x_90).
