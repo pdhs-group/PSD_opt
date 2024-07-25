@@ -17,13 +17,15 @@ import time
 import matplotlib.pyplot as plt
 import pypbe.utils.plotter.plotter as pt  
 
+os.environ["NUMEXPR_MAX_THREADS"] = "8"
+
 def normal_test():
     start_time = time.time()
 
     # corr_beta_opt, alpha_prim_opt, para_diff, delta_opt= \
     #     find.find_opt_kernels(sample_num=sample_num, method='delta', data_name=data_name)
     result_dict = \
-        find.find_opt_kernels(sample_num=find.algo.sample_num, method='delta', data_name=data_name)
+        find.find_opt_kernels(method='delta', data_names=exp_data_paths)
     
     end_time = time.time()
     elapsed_time = end_time - start_time

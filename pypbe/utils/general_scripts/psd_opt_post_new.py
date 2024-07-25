@@ -22,19 +22,44 @@ from matplotlib.animation import FuncAnimation
 epsilon = 1e-20
 
 def read_results(data_paths):
-    results = []
+    post_results = []
     for data_path in data_paths:
         data = np.load(data_path,allow_pickle=True)
-        result=data['results']
+        results=data['results']
+        results_tem = np.empty((len(results), 3), dtype=object)
+        for i in range(results.shape[0]):
+            # results_tem[i, 0] = results[i, 0]['opt_score']
+            # results_tem[i, 1] = results[i, 0]['opt_parameters']
+            # results_tem[i, 2] = results[i, 1]
+            results_tem[i, 0] = results[i]['opt_score']
+            results_tem[i, 1] = results[i]['opt_params']
+            data_name = results[i]['file_path'][0]
+            results_tem[i, 2] = get_kernels_form_data_name(data_name)
+            
         # For comparison, CORR_BETA and alpha_prim in the original parameters are merged into corr_agg
-        ori_kernels = result[:,2]
-        if 'CORR_BETA' in ori_kernels[0] and 'alpha_prim' in ori_kernels[0]:
-            for ori_kernel in ori_kernels:
-                ori_kernel['corr_agg'] = ori_kernel['CORR_BETA'] * ori_kernel['alpha_prim']
-        results.append(result)
+        # ori_kernels = results_tem[:,2]
+        # if 'CORR_BETA' in ori_kernels[0] and 'alpha_prim' in ori_kernels[0]:
+        #     for ori_kernel in ori_kernels:
+        #         ori_kernel['corr_agg'] = ori_kernel['CORR_BETA'] * ori_kernel['alpha_prim']
+        post_results.append(results_tem)
         data.close()
-    return results
+    return post_results
 
+def get_kernels_form_data_name(data_name):
+    kernels = {}
+    param_str = data_name.split('para_')[-1]
+    param_str = param_str.rsplit('.', 1)[0] 
+    params = param_str.split('_')
+    converted_params = [float(param) if '.' in param or 'e' in param.lower() else int(param) for param in params]
+    CORR_BETA = converted_params[0]
+    alpha_prim = np.array(converted_params[1:4])
+    kernels['corr_agg'] = CORR_BETA * alpha_prim
+    kernels['pl_v'] = converted_params[4]
+    kernels['pl_P1'] = converted_params[5]
+    kernels['pl_P2'] = converted_params[6]
+    kernels['pl_P3'] = converted_params[7]
+    kernels['pl_P4'] = converted_params[8]
+    return kernels
 def calc_diff(result):
     # delta_opt = result[:,0]
     opt_kernels_tem = result[:,1]
@@ -372,19 +397,18 @@ if __name__ == '__main__':
         # ]
         
     file_names = [
-        'multi_[(\'q3\', \'MSE\')]_GP_wight_1_iter_100.npz',
-        'multi_[(\'q3\', \'MSE\')]_NSGA_wight_1_iter_100.npz',
-        'multi_[(\'q3\', \'MSE\')]_QMC_wight_1_iter_100.npz',
-        'multi_[(\'q3\', \'MSE\')]_TPS_wight_1_iter_100.npz',
-        'multi_[(\'q3\', \'MSE\')]_NSGA_wight_1_iter_100_bundles.npz',
+        # 'multi_[(\'q3\', \'MSE\')]_GP_wight_1_iter_100.npz',
+        # 'multi_[(\'q3\', \'MSE\')]_NSGA_wight_1_iter_100.npz',
+        # 'multi_[(\'q3\', \'MSE\')]_QMC_wight_1_iter_100.npz',
+        # 'multi_[(\'q3\', \'MSE\')]_TPS_wight_1_iter_100.npz',
+        # 'multi_[(\'q3\', \'MSE\')]_NSGA_wight_1_iter_100_bundles.npz',
         ]
     labels = [
-        'GP',
-        'NSGA',
-        'QMC',
-        'TPS',
-        'NSGA_b',
-        
+        # 'GP',
+        # 'NSGA',
+        # 'QMC',
+        # 'TPS',
+        # 'NSGA_b',
         ]
     
     data_paths = [os.path.join(results_pth, pbe_type, file_name) for file_name in file_names]

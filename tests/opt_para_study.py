@@ -12,8 +12,10 @@ sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),".."))
 from pypbe.kernel_opt import opt_find as opt
 from config import opt_config as conf
 
+logging.getLogger("ray").setLevel(logging.ERROR)
 logging.basicConfig(filename='parallel.log', level=logging.INFO)
 logger = logging.getLogger(__name__)
+os.environ["NUMEXPR_MAX_THREADS"] = "8"
 
 def optimization_process(algo_params,pop_params,multi_flag,opt_params,data_names, data_path):
     #%%  Input for Opt 
@@ -65,7 +67,7 @@ if __name__ == '__main__':
     #%% Prepare test data set
     ## define the range of corr_beta
     # var_corr_beta = np.array([1e-3,1e-2,1e-1])
-    var_corr_beta = np.array([1e-2])
+    var_corr_beta = np.array([1e-3,1e-1])
     ## define the range of alpha_prim 27x3
     values = np.array([1.0])
     a1, a2, a3 = np.meshgrid(values, values, values, indexing='ij')
@@ -86,9 +88,9 @@ if __name__ == '__main__':
     var_v = np.array([1.0,2.0])
     # var_v = np.array([0.01])    ## define the range of P1, P2 for power law breakage rate
     var_P1 = np.array([1e-2,1e-1])
-    var_P2 = np.array([0.5,2.0])
+    var_P2 = np.array([0.5,1.0])
     var_P3 = np.array([1e-3,1e-1])
-    var_P4 = np.array([0.5,2.0])
+    var_P4 = np.array([0.5,1.0])
 
 
     ## define the range of particle size scale and minimal size

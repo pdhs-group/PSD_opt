@@ -167,13 +167,20 @@ class opt_find():
         if data_names == None:
             warnings.warn("Please specify the name of the experiment data without labels!")
         else:
+            def join_paths(names):
+                if isinstance(names, list):
+                    return [os.path.join(self.base_path, name) for name in names]
+                return os.path.join(self.base_path, names)
+            
+            exp_data_paths = []
             if self.multi_flag:
-                exp_data_paths = []
-                for data_names_ex in data_names:
-                    exp_data_paths_tem = [os.path.join(self.base_path, dataname) for dataname in data_names_ex]
-                    exp_data_paths.append(exp_data_paths_tem)
+                if isinstance(data_names[0], list):
+                    for data_names_ex in data_names:
+                        exp_data_paths.append(join_paths(data_names_ex))
+                else:
+                    exp_data_paths = join_paths(data_names)
             else:
-                exp_data_paths = [os.path.join(self.base_path, dataname) for dataname in data_names]
+                exp_data_paths = join_paths(data_names)
             # if self.algo.calc_init_N:
             #     self.algo.set_init_N(sample_num, exp_data_paths, init_flag='mean')
                 
@@ -214,7 +221,16 @@ class opt_find():
                 #     self.algo.alpha_prim_opt = alpha_prim
                 print("not coded yet")
             elif method == 'delta':
-                result_dict = self.algo.optimierer_agg(self.opt_params,exp_data_paths=exp_data_paths)
+                if self.algo.use_bundles:
+                    result_dict = self.algo.optimierer_agg_bundles(self.opt_params,exp_data_paths=exp_data_paths)
+                else:
+                    result_dict = []
+                    if isinstance(exp_data_paths[0], list):
+                        for exp_data_path in exp_data_paths:
+                            result_dict_tem = self.algo.optimierer_agg(self.opt_params,exp_data_path=exp_data_path)
+                            result_dict.append(result_dict_tem)
+                    else:
+                        result_dict = self.algo.optimierer_agg(self.opt_params,exp_data_path=exp_data_paths)
                 # delta_opt = self.algo.optimierer(sample_num=sample_num, 
                 #                       exp_data_path=exp_data_path)
                 

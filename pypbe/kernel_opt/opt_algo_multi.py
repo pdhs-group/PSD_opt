@@ -33,7 +33,7 @@ class opt_algo_multi(opt_algo):
             
         return delta_sum
     
-    def calc_delta_agg(self, params_in,exp_data_path=None): 
+    def calc_delta_agg(self, params_in,x_uni_exp, data_exp): 
         params = params_in.copy()
         if "corr_agg" in params:
             corr_agg = params["corr_agg"]
@@ -47,17 +47,17 @@ class opt_algo_multi(opt_algo):
         
         self.calc_all_pop(params, self.t_vec)
         if self.p.calc_status:
-            delta = self.calc_delta_tem(exp_data_path[0], self.p)
+            delta = self.calc_delta_tem(x_uni_exp[0], data_exp[0], self.p)
         else:
             print('p not converged')
             delta = 10
         if self.p_NM.calc_status:
-            delta_NM = self.calc_delta_tem(exp_data_path[1], self.p_NM)
+            delta_NM = self.calc_delta_tem(x_uni_exp[1], data_exp[1], self.p_NM)
         else:
             print('p_NM not converged')
             delta_NM = 10
         if self.p_M.calc_status:    
-            delta_M = self.calc_delta_tem(exp_data_path[2], self.p_M)
+            delta_M = self.calc_delta_tem(x_uni_exp[2], data_exp[2], self.p_M)
         else:
             print('p_M not converged')
             delta_M = 10
@@ -69,5 +69,5 @@ class opt_algo_multi(opt_algo):
     def calc_all_pop(self, params=None, t_vec=None):
         self.calc_pop(self.p_NM, params, t_vec)
         self.calc_pop(self.p_M, params, t_vec)
-        self.calc_pop(self.p, params, t_vec)       
+        self.calc_pop(self.p, params, t_vec)           
         
