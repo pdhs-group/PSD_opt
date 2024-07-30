@@ -29,12 +29,12 @@ config = {
         'sample_num': 5,
         ## method = HEBO: Heteroscedastic Evolutionary Bayesian Optimization
         ## method = GP: Sampler using Gaussian process-based Bayesian optimization.
-        ## method = TPS: Sampler using TPE (Tree-structured Parzen Estimator) algorithm.
+        ## method = TPE: Sampler using TPE (Tree-structured Parzen Estimator) algorithm.
         ## method = Cmaes: A sampler using cmaes as the backend.
         ## method = NSGA: Multi-objective sampler using the NSGA-III(Nondominated Sorting Genetic Algorithm III) algorithm.
         ## method = QMC: A Quasi Monte Carlo Sampler that generates low-discrepancy sequences.    
-        'method': 'HEBO',
-        'n_iter': 10,
+        'method': 'Cmaes',
+        'n_iter': 400,
         ## Initialize PBE using psd data(False) or 
         ## with the help of first few time points of experimental data(True)
         'calc_init_N': False,
@@ -53,8 +53,9 @@ config = {
                        #('x_50','MSE')
                        ],
         'tune_storage_path': r'C:\Users\px2030\Code\Ray_Tune',
-        'use_bundles': False,
-        'num_bundles': 4,
+        'use_bundles': True,
+        'num_bundles': 2,
+        'cpus_per_trail': 1,
         },
     
     ## PBE parameters

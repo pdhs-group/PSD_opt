@@ -96,3 +96,21 @@ Traceback (most recent call last):
     return await tuner.fit(), exp_data_path
            ^^^^^^^^^^^^^^^^^
 TypeError: object ResultGrid can't be used in 'await' expression
+WARNING:matplotlib.animation:MovieWriter imagemagick unavailable; using Pillow instead.
+INFO:matplotlib.animation:Animation.save using <class 'matplotlib.animation.PillowWriter'>
+WARNING:matplotlib.animation:MovieWriter imagemagick unavailable; using Pillow instead.
+INFO:matplotlib.animation:Animation.save using <class 'matplotlib.animation.PillowWriter'>
+WARNING:matplotlib.animation:MovieWriter imagemagick unavailable; using Pillow instead.
+INFO:matplotlib.animation:Animation.save using <class 'matplotlib.animation.PillowWriter'>
+WARNING:matplotlib.animation:MovieWriter imagemagick unavailable; using Pillow instead.
+INFO:matplotlib.animation:Animation.save using <class 'matplotlib.animation.PillowWriter'>
+WARNING:matplotlib.animation:MovieWriter imagemagick unavailable; using Pillow instead.
+INFO:matplotlib.animation:Animation.save using <class 'matplotlib.animation.PillowWriter'>
+WARNING:matplotlib.animation:MovieWriter imagemagick unavailable; using Pillow instead.
+INFO:matplotlib.animation:Animation.save using <class 'matplotlib.animation.PillowWriter'>
+WARNING:matplotlib.animation:MovieWriter imagemagick unavailable; using Pillow instead.
+INFO:matplotlib.animation:Animation.save using <class 'matplotlib.animation.PillowWriter'>
+WARNING:matplotlib.animation:MovieWriter imagemagick unavailable; using Pillow instead.
+INFO:matplotlib.animation:Animation.save using <class 'matplotlib.animation.PillowWriter'>
+WARNING:matplotlib.animation:MovieWriter imagemagick unavailable; using Pillow instead.
+INFO:matplotlib.animation:Animation.save using <class 'matplotlib.animation.PillowWriter'>

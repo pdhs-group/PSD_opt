@@ -63,12 +63,15 @@ def train_model_1d(model, train_data, test_data, x, mask, print_status, weight_l
         # Training
         for step, (batch_inputs, batch_outputs, batch_inputs_scaled) in enumerate(train_dataset):
             FRAG_NUM = batch_inputs[:,1]
-            with tf.GradientTape() as tape:
-                prediction  = model(batch_inputs_scaled, training=True)
-                loss = combined_custom_loss(batch_outputs, prediction, FRAG_NUM, x_tf, mask_tf, 
-                                            alpha=weight_loss_FRAG_NUM, beta=1-weight_loss_FRAG_NUM)
+            loss, grads = compute_loss_and_grads(model, batch_inputs_scaled, batch_outputs, 
+                                                       x_tf, model(batch_inputs_scaled, training=False), 
+                                                       mask_tf, FRAG_NUM, weight_loss_FRAG_NUM)
+            # with tf.GradientTape() as tape:
+            #     prediction  = model(batch_inputs_scaled, training=True)
+            #     loss = combined_custom_loss(batch_outputs, prediction, FRAG_NUM, x_tf, mask_tf, 
+            #                                 alpha=weight_loss_FRAG_NUM, beta=1-weight_loss_FRAG_NUM)
             
-            grads = tape.gradient(loss, model.trainable_weights)
+            # grads = tape.gradient(loss, model.trainable_weights)
             # grads = [tf.clip_by_value(g, -1.0, 1.0) for g in grads]
             optimizer.apply_gradients(zip(grads, model.trainable_weights))
             if print_status:

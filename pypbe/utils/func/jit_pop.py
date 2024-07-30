@@ -724,7 +724,7 @@ def breakage_func_1d(x,y,v,q,BREAKFVAL):
     if BREAKFVAL == 1:
         theta = 4.0
     # Conservation of First-Order Moments, random breakage into two fragments --> See Leong2023 (10)
-    # only for validation with analytical results    
+    # only for validation with analytical results
     elif BREAKFVAL == 2:
         theta = 2.0
     ## product function of power law. --> See Diemer_Olson (2002)

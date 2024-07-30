@@ -116,20 +116,20 @@ def generate_one_2d_data(args):
     idx, A, X1, V1, V3, output_dir, STR, NO_FRAG, N_GRIDS, N_FRACS, A0, INIT_BREAK_RANDOM = args
     X2 = 1 - X1
     
-    # 假设MC_breakage是一个已定义的函数，可以进行蒙特卡罗破碎模拟
     F = MC_breakage(A, X1, X2, STR, NO_FRAG, N_GRIDS=N_GRIDS, N_FRACS=N_FRACS, 
                     A0=A0, init_break_random=INIT_BREAK_RANDOM)
     
     # 构建文件名并保存结果
     file_name = f"{STR[0]}_{STR[1]}_{STR[2]}_{NO_FRAG}_i{idx[0]}_j{idx[1]}.npy"
+    os.makedirs(output_dir, exist_ok=True)
     file_path = os.path.join(output_dir, file_name)
     np.save(file_path, F) 
 
-def generate_complete_1d_data(NS,S,STR,NO_FRAG,N_GRIDS, N_FRACS,output_dir):
+def generate_complete_1d_data(NS,S,A_rel, STR,NO_FRAG,int_bre,N_GRIDS,N_FRACS,output_dir):
     V,_ = calc_1d_V(NS, S)
     # Define other unchanged parameters
-    INIT_BREAK_RANDOM = False
-    A0 = V[1]/ NO_FRAG
+    init_break_random = False
+    A0 = V[1]/ A_rel
     
     # Make sure there is a directory to save the data
     os.makedirs(output_dir, exist_ok=True)
@@ -139,32 +139,33 @@ def generate_complete_1d_data(NS,S,STR,NO_FRAG,N_GRIDS, N_FRACS,output_dir):
     for idx, A in enumerate(V):
         if idx == 0:
             continue
-        args = (idx, A, V, output_dir, STR, NO_FRAG, N_GRIDS, N_FRACS, A0, INIT_BREAK_RANDOM)
+        args = (idx, A, V, output_dir, STR, NO_FRAG, int_bre, N_GRIDS, N_FRACS, A0, init_break_random)
         tasks.append(args)
     
     # Use a pool of workers to execute simulations in parallel
     pool = multiprocessing.Pool(processes=12)
     pool.map(generate_one_1d_data, tasks)
 
-def calc_1d_V(NS,S):
+def calc_1d_V(NS,S,V01):
     V_e = np.zeros(NS+1)
     V = np.zeros(NS)
-    V_e[0] = -1
+    V_e[0] = -V01
     for i in range(NS):
-        V_e[i+1] = S**(i)
+        V_e[i+1] = S**(i)*V01
         V[i] = (V_e[i] + V_e[i+1]) / 2
     
     return V,V_e
     
 def generate_one_1d_data(args):
-    idx, A, V, output_dir, STR, NO_FRAG, N_GRIDS, N_FRACS, A0, INIT_BREAK_RANDOM = args
+    idx, A, V, output_dir, STR, NO_FRAG,int_bre, N_GRIDS, N_FRACS, A0, init_break_random = args
     X1 = 1
     X2 = 1 - X1
     
-    F = MC_breakage(A, X1, X2, STR, NO_FRAG, N_GRIDS=N_GRIDS, N_FRACS=N_FRACS, 
-                    A0=A0, init_break_random=INIT_BREAK_RANDOM)
+    F = MC_breakage(A, X1, X2, STR, NO_FRAG, int_bre, N_GRIDS, N_FRACS, 
+                    A0, init_break_random)
 
-    file_name = f"{STR[0]}_{STR[1]}_{STR[2]}_{NO_FRAG}_i{idx}.npy"
+    file_name = f"{STR[0]}_{NO_FRAG}_{int_bre}_i{idx}.npy"
+    os.makedirs(output_dir, exist_ok=True)
     file_path = os.path.join(output_dir, file_name)
     np.save(file_path, F) 
     

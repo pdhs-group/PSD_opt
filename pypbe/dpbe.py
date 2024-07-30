@@ -964,8 +964,8 @@ class population():
                 
                 if self.B_F_type == 'MC_bond':
                     mc_bond = np.load(self.PTH_MC_BOND, allow_pickle=True)
-                    self.int_B_F = mc_bond['int_B_F'][:,0,:,0]
-                    self.intx_B_F = mc_bond['intx_B_F'][:,0,:,0] * self.V_e[1]
+                    self.int_B_F = mc_bond['int_B_F']
+                    self.intx_B_F = mc_bond['intx_B_F']
                     # for i in range(2, self.NS):
                     #     self.intx_B_F[:,i] = mc_bond['intx_B_F'][:,0,i,0] * self.V[i]
                 elif self.B_F_type == 'int_func':
@@ -1006,8 +1006,8 @@ class population():
                 #         else:
                 #             self.intx_B_F[:,:,i,j] = mc_bond['intx_B_F'][:,:,i,j] * self.V[i,j]
                 #             self.inty_B_F[:,:,i,j] = mc_bond['inty_B_F'][:,:,i,j] * self.V[i,j]
-                self.intx_B_F = mc_bond['intx_B_F'] * self.V_e1[1]
-                self.inty_B_F = mc_bond['inty_B_F'] * self.V_e3[1]
+                self.intx_B_F = mc_bond['intx_B_F']
+                self.inty_B_F = mc_bond['inty_B_F']
 
             elif self.B_F_type == 'int_func':
                 if self.JIT_BF:

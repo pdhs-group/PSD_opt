@@ -22,7 +22,7 @@ def calc_function(R01_0, R03_0, dist_path_NM, dist_path_M, var_pop_params, data_
     multi_flag = conf.config['multi_flag']
     opt_params = conf.config['opt_params']
     
-    find.init_opt_algo(multi_flag, algo_params, opt_params)
+    find.init_opt_algo(multi_flag, algo_params, opt_params,data_path)
     
     find.algo.set_init_pop_para(pop_params)
     
@@ -71,9 +71,9 @@ if __name__ == '__main__':
         dist_path_10 = full_psd(x50*10, resigma, minscale=minscale, maxscale=maxscale, plot_psd=False)
     else:
         pth = os.path.dirname( __file__ )
-        dist_path_1 = os.path.join(pth, "..", "..", "data", "PSD_data", conf.config['dist_scale_1'])
-        dist_path_5 = os.path.join(pth, "..", "..", "data", "PSD_data", conf.config['dist_scale_5'])
-        dist_path_10 = os.path.join(pth, "..","..", "data", "PSD_data", conf.config['dist_scale_10'])
+        dist_path_1 = os.path.join(data_path, "PSD_data", conf.config['dist_scale_1'])
+        dist_path_5 = os.path.join(data_path, "PSD_data", conf.config['dist_scale_5'])
+        dist_path_10 = os.path.join(data_path, "PSD_data", conf.config['dist_scale_10'])
 
     ## define the range of corr_beta
     var_corr_beta = np.array([1e-3,1e-2,1e-1])

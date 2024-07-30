@@ -89,7 +89,7 @@ class opt_find():
             self.base_path = os.path.join(self.algo.p.pth, "data")
         else:
             self.base_path = data_path
-        
+        os.makedirs(self.base_path, exist_ok=True)
     def generate_data(self, pop_params=None, add_info=""):
         """
         Generates synthetic data based on simulation results, optionally adding noise.
