@@ -23,9 +23,11 @@ epsilon = 1e-20
 
 def read_results(data_paths):
     post_results = []
+    elapsed_time = []
     for data_path in data_paths:
         data = np.load(data_path,allow_pickle=True)
         results=data['results']
+        tem_time = data['time']
         results_tem = np.empty((len(results), 3), dtype=object)
         for i in range(results.shape[0]):
             # results_tem[i, 0] = results[i, 0]['opt_score']
@@ -42,8 +44,9 @@ def read_results(data_paths):
         #     for ori_kernel in ori_kernels:
         #         ori_kernel['corr_agg'] = ori_kernel['CORR_BETA'] * ori_kernel['alpha_prim']
         post_results.append(results_tem)
+        elapsed_time.append(tem_time)
         data.close()
-    return post_results
+    return post_results, elapsed_time
 
 def get_kernels_form_data_name(data_name):
     kernels = {}
@@ -381,42 +384,44 @@ if __name__ == '__main__':
     #     'wight_5',
     #     ]
     
-    file_names = [
-        'multi_[(\'q3\', \'MSE\')]_TPS_wight_1_iter_100.npz',
-        'multi_[(\'q3\', \'MSE\')]_TPS_wight_1_iter_400.npz',
-        'multi_[(\'q3\', \'MSE\')]_TPS_wight_1_iter_800.npz',
-        # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_1600.npz',
-        ]
-    labels = [
-        'iter_100',
-        'iter_400',
-        'iter_800',
-        # 'iter_1600',
-        ]
-        
     # file_names = [
+    #     'multi_[(\'q3\', \'MSE\')]_GP_wight_1_iter_100.npz',
     #     'multi_[(\'q3\', \'MSE\')]_GP_wight_1_iter_400.npz',
-    #     'multi_[(\'q3\', \'MSE\')]_NSGA_wight_1_iter_400.npz',
-    #     'multi_[(\'q3\', \'MSE\')]_QMC_wight_1_iter_400.npz',
-    #     'multi_[(\'q3\', \'MSE\')]_TPS_wight_1_iter_400.npz',
-    #     'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400.npz',
-    #     'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_400.npz',
+    #     'multi_[(\'q3\', \'MSE\')]_GP_wight_1_iter_800.npz',
+    #     'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_1600.npz',
     #     ]
     # labels = [
-    #     'GP',
-    #     'NSGA',
-    #     'QMC',
-    #     'TPS',
-    #     'Cmaes',
-    #     'HEBO',
+    #     'iter_100',
+    #     'iter_400',
+    #     'iter_800',
+    #     'iter_1600',
     #     ]
+        
+    file_names = [
+        'multi_[(\'q3\', \'MSE\')]_GP_wight_1_iter_400.npz',
+        'multi_[(\'q3\', \'MSE\')]_NSGA_wight_1_iter_400.npz',
+        'multi_[(\'q3\', \'MSE\')]_QMC_wight_1_iter_400.npz',
+        'multi_[(\'q3\', \'MSE\')]_TPS_wight_1_iter_400.npz',
+        'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400.npz',
+        'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_400.npz',
+        'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_800.npz',
+        ]
+    labels = [
+        'GP',
+        'NSGA',
+        'QMC',
+        'TPS',
+        'Cmaes',
+        'HEBO',
+        'Cmaes800',
+        ]
     
     data_paths = [os.path.join(results_pth, pbe_type, file_name) for file_name in file_names]
     # 'results' saves the results of all reading files. 
     # The first column in each result is the value of the optimized criteria. 
     # The second column is the value of the optimization kernels. 
     # The third column is the kernel value (target value) of the original pbe.
-    results = read_results(data_paths)
+    results, elapsed_time = read_results(data_paths)
     
     if calc_criteria:
         calc_save_PSD_delta(results, data_paths)
@@ -426,7 +431,7 @@ if __name__ == '__main__':
     visualize_diff_mean(results, labels)
     
     # kernel: corr_agg_0, corr_agg_1, corr_agg_2, pl_v, pl_P1, pl_P2, pl_P3, pl_P4
-    result_to_analyse = results[2]
+    result_to_analyse = results[6]
     if pbe_type == 'agglomeration' or pbe_type == 'mix':
         corr_agg_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['corr_agg_0','corr_agg_1','corr_agg_2'])
     if pbe_type == 'breakage' or pbe_type == 'mix':
@@ -434,10 +439,10 @@ if __name__ == '__main__':
         pl_P13_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P1','pl_P3'], log_axis=False)
         pl_P24_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P2','pl_P4'])
     
-    variable_to_analyse = result_to_analyse[24]
-    one_frame = False
-    calc_init = False
-    t_return = -1
-    fps = 5
-    visualize_PSD(variable_to_analyse, pbe_type, one_frame)
+    # variable_to_analyse = result_to_analyse[2]
+    # one_frame = False
+    # calc_init = False
+    # t_return = -1
+    # fps = 5
+    # visualize_PSD(variable_to_analyse, pbe_type, one_frame)
 

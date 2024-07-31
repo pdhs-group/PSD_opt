@@ -181,8 +181,9 @@ def return_pop_distribution(pop, axq3=None,fig=None, clr='b', q3lbl='q3'):
     return df
 
 def calc_delta_test(var_delta=False):
-    find.algo.set_init_N(find.algo.sample_num, exp_data_paths, 'mean')
-    
+    if find.algo.calc_init_N:
+        find.algo.set_init_N(exp_data_paths, 'mean')
+    x_uni_exp, data_exp = find.algo.get_all_exp_data(exp_data_paths)
     # corr_agg = pop_params['CORR_BETA'] * pop_params['alpha_prim']
     # pop_params_test = {}
     # pop_params_test['corr_agg'] = corr_agg
@@ -190,10 +191,10 @@ def calc_delta_test(var_delta=False):
         delta_arr = np.zeros(len(find.algo.t_vec))
         for start_step in range(1,len(find.algo.t_vec)):
             find.algo.delta_t_start_step = start_step
-            delta_arr[start_step] = find.algo.calc_delta_agg(pop_params, sample_num=find.algo.sample_num, exp_data_path=exp_data_paths)
+            delta_arr[start_step] = find.algo.calc_delta_agg(pop_params, x_uni_exp, data_exp)
         return delta_arr
     else:
-        delta = find.algo.calc_delta_agg(pop_params, sample_num=find.algo.sample_num, exp_data_path=exp_data_paths)
+        delta = find.algo.calc_delta_agg(pop_params, x_uni_exp, data_exp)
         return delta
 
 if __name__ == '__main__':
@@ -248,14 +249,14 @@ if __name__ == '__main__':
                             dist_path_NM=dist_path_NM, dist_path_M=dist_path_M)
     find.algo.weight_2d = conf.config['weight_2d']
 
-    data_name = "Sim_Mul_0.1_para_0.001_1.0_1.0_1.0_0.7_0.001_0.5_0.001_0.5.xlsx"  
+    data_name = "Batchversuch_600rpm_1200rpm.xlsx"  
     
-    exp_data_path = os.path.join(base_path, data_name)
-    exp_data_paths = [
-        exp_data_path,
-        exp_data_path.replace(".xlsx", "_NM.xlsx"),
-        exp_data_path.replace(".xlsx", "_M.xlsx")
-    ]
+    exp_data_paths = os.path.join(base_path, data_name)
+    # exp_data_paths = [
+    #     exp_data_path,
+    #     exp_data_path.replace(".xlsx", "_NM.xlsx"),
+    #     exp_data_path.replace(".xlsx", "_M.xlsx")
+    # ]
     
     # Run an optimization and generate graphs of the results
     result_dict = normal_test()

@@ -3,6 +3,7 @@
 Calculate the difference between the PSD of the simulation results and the experimental data.
 Minimize the difference by optimization algorithm to obtain the kernel of PBE.
 """
+import uuid
 import os
 import numpy as np
 # import math
@@ -176,7 +177,7 @@ class opt_algo():
             x_uni_num = len(x_uni_exp[i])  
             return delta_sum / x_uni_num
         
-    def get_all_exp_data(self, exp_data_path):
+    def get_all_synth_data(self, exp_data_path):
         if self.sample_num == 1:
             x_uni_exp, sumN_uni_exp = self.read_exp(exp_data_path, self.t_vec[self.delta_t_start_step:]) 
             x_uni_exp = np.insert(x_uni_exp, 0, 0.0)
@@ -202,6 +203,19 @@ class opt_algo():
                     data_exp_tem = self.re_calc_distribution(x_uni_exp_tem, sum_uni=sumvol_uni_exp, flag=flag)[0] 
                 x_uni_exp.append(x_uni_exp_tem)
                 data_exp.append(data_exp_tem)
+        return x_uni_exp, data_exp
+    
+    def get_all_exp_data(self, exp_data_path):
+        if self.sample_num == 1:
+            x_uni_exp, q3_exp = self.read_exp(exp_data_path, self.t_vec[self.delta_t_start_step:]) 
+        else:
+            x_uni_exp = []
+            data_exp = []
+            for i in range (0, self.sample_num):
+                exp_data_path = self.traverse_path(i, exp_data_path)
+                x_uni_exp_tem, q3_exp = self.read_exp(exp_data_path, self.t_vec[self.delta_t_start_step:])
+                x_uni_exp.append(x_uni_exp_tem)
+                data_exp.append(q3_exp)
         return x_uni_exp, data_exp
     
     def optimierer_agg_bundles(self, opt_params, init_points=4, hyperparameter=None, exp_data_paths=None):
@@ -277,7 +291,7 @@ class opt_algo():
             self.num_bundles = queue_length
         self.cpus_per_bundle = int(max(1, total_cpus//self.num_bundles))
         
-    def create_remote_worker(self, ):
+    def create_remote_worker(self):
         @ray.remote(num_cpus=self.cpus_per_bundle)
         def run_tune_task(exp_data_path):
             algo = self.create_algo()
@@ -285,22 +299,33 @@ class opt_algo():
                 x_uni_exp = []
                 data_exp = []
                 for exp_data_path_tem in exp_data_path:
-                    x_uni_exp_tem, data_exp_tem = self.get_all_exp_data(exp_data_path_tem)
+                    if self.exp_data:
+                        x_uni_exp_tem, data_exp_tem = self.get_all_exp_data(exp_data_path_tem)
+                    else:
+                        x_uni_exp_tem, data_exp_tem = self.get_all_synth_data(exp_data_path_tem)
                     x_uni_exp.append(x_uni_exp_tem)
                     data_exp.append(data_exp_tem)
                 data_name = os.path.basename(exp_data_path[0])
             else:
-                x_uni_exp, data_exp = self.get_all_exp_data(exp_data_path)
+                if self.exp_data:
+                    x_uni_exp, data_exp = self.get_all_exp_data(exp_data_path)
+                else:
+                    x_uni_exp, data_exp = self.get_all_synth_data(exp_data_path)
                 data_name = os.path.basename(exp_data_path)
                 
             if data_name.startswith("Sim_"):
                 data_name = data_name[len("Sim_"):]
             if data_name.endswith(".xlsx"):
                 data_name = data_name[:-len(".xlsx")]
-
+                
+            def objective_func(config):
+                # message = f"The value is: {data_exp[0][0][10,10]}"
+                # print_notice(message)
+                return self.objective(config, x_uni_exp, data_exp)
+            objective_func.__name__ = "objective_func" + uuid.uuid4().hex[:8]
             tuner = tune.Tuner(
                 tune.with_resources(
-                    lambda config: self.objective(config, x_uni_exp, data_exp), 
+                    objective_func,
                     {"cpu": self.cpus_per_trail}
                 ),
                 param_space=self.RT_space,
@@ -312,7 +337,7 @@ class opt_algo():
                 run_config=train.RunConfig(
                     storage_path=self.tune_storage_path,
                     name = data_name, 
-                    verbose = 1,
+                    verbose = 0,
                     log_to_file=True,
                 ),
             )
@@ -343,11 +368,17 @@ class opt_algo():
             x_uni_exp = []
             data_exp = []
             for exp_data_path_tem in exp_data_path:
-                x_uni_exp_tem, data_exp_tem = self.get_all_exp_data(exp_data_path_tem)
+                if self.exp_data:
+                    x_uni_exp_tem, data_exp_tem = self.get_all_exp_data(exp_data_path_tem)
+                else:
+                    x_uni_exp_tem, data_exp_tem = self.get_all_synth_data(exp_data_path_tem)
                 x_uni_exp.append(x_uni_exp_tem)
                 data_exp.append(data_exp_tem)
         else:
-            x_uni_exp, data_exp = self.get_all_exp_data(exp_data_path)
+            if self.exp_data:
+                x_uni_exp, data_exp = self.get_all_exp_data(exp_data_path)
+            else:
+                x_uni_exp, data_exp = self.get_all_synth_data(exp_data_path)
             
         RT_space = {}
         
@@ -490,8 +521,8 @@ class opt_algo():
             The calculated cost based on the specified cost function type.
         """
         if cost_func_type == 'MSE':
-            # return mean_squared_error(data_mod, data_exp)
-            return self.squared_errors(data_mod, data_exp)
+            return mean_squared_error(data_mod, data_exp)
+            # return self.squared_errors(data_mod, data_exp)
         elif cost_func_type == 'RMSE':
             mse = mean_squared_error(data_mod, data_exp)
             return np.sqrt(mse)
@@ -998,50 +1029,16 @@ class opt_algo():
         q3[1:] = np.diff(Q3) / np.diff(x_uni)
         return q3
     
-# @ray.remote
-# class TuneWorker:
-#     def __init__(self, sample_num, pg, RT_space, algo, tune_storage_path, n_iter, opt_algo_instance):
-#         self.sample_num = sample_num
-#         self.pg = pg
-#         self.RT_space = RT_space
-#         self.algo = algo
-#         self.tune_storage_path = tune_storage_path
-#         self.n_iter = n_iter
-#         self.opt_algo_instance = opt_algo_instance
-
-#     def run_tune_task(self, exp_data_path):
-#         def objective(config, exp_data_path):
-#             # Special handling for corr_agg based on dimension
-#             if 'corr_agg_0' in config:
-#                 transformed_params = self.opt_algo_instance.array_dict_transform(config)
-            
-#             checkpoint_config = None
-#             loss = self.opt_algo_instance.calc_delta_agg(transformed_params, sample_num=self.sample_num, exp_data_path=exp_data_path)
-#             train.report({"loss": loss}, checkpoint=checkpoint_config)
-        
-#         if isinstance(exp_data_path, list):
-#             data_name = os.path.basename(exp_data_path[0])
-#         else:
-#             data_name = os.path.basename(exp_data_path)
-            
-#         if data_name.startswith("Sim_"):
-#             data_name = data_name[len("Sim_"):]
-#         if data_name.endswith(".xlsx"):
-#             data_name = data_name[:-len(".xlsx")]
-
-#         tuner = tune.Tuner(
-#             tune.with_resources(
-#                 lambda config: objective(config, exp_data_path), 
-#                 resources = self.pg
-#             ),
-#             param_space=self.RT_space,
-#             tune_config=tune.TuneConfig(
-#                 num_samples=self.n_iter,
-#                 search_alg=self.algo,
-#             ),
-#             run_config=train.RunConfig(
-#                 storage_path=self.tune_storage_path,
-#                 name = data_name
-#             ),
-#         )
-#         return tuner.fit(), exp_data_path
+def print_notice(message):
+    # 上下空很多行
+    empty_lines = "\n" * 5
+    
+    # 定义符号和边框
+    border = "*" * 80
+    padding = "\n" + " " * 10  # 左右留白
+    
+    # 构建完整的提示消息
+    notice = f"{empty_lines}{border}{padding}{message}{padding}{border}{empty_lines}"
+    
+    # 打印消息
+    print(notice)

@@ -57,13 +57,14 @@ class opt_find():
             Flag to determine whether to apply smoothing(KDE) to the data. Default is False.
         """
         dim = algo_params.get('dim', None)
+        if dim == 1:
+            print("The multi algorithm does not support 1-D pop!")
+            multi_flag = False
         self.opt_params = opt_params
         self.multi_flag = multi_flag
         if not self.multi_flag:
             self.algo = opt_algo()
         else:
-            if dim == 1:
-                warnings.warn("The multi algorithm does not support 1-D pop!")
             self.algo = opt_algo_multi()  
         for key, value in algo_params.items():
             setattr(self.algo, key, value)

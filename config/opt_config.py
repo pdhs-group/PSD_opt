@@ -13,9 +13,10 @@ config = {
     'multi_flag': True,
     
     'algo_params': {
-        'dim': 2,
+        'dim': 1,
         't_init' : np.array([0, 1, 3, 5]),
-        't_vec' : np.arange(0, 3601, 100, dtype=float),
+        #'t_vec' : np.arange(0, 3601, 100, dtype=float),
+        't_vec' : np.array([900, 1200, 1500, 1800, 2100, 2400, 3000, 3600]),
         ## Sometimes there is a gap between the initial conditions calculated based on experimental data 
         ## and the real values, resulting in unavoidable errors in the first few time steps. 
         ## These errors will gradually disappear as the calculation time becomes longer. 
@@ -26,7 +27,8 @@ config = {
         'smoothing': True,
         'noise_type': 'Mul',
         'noise_strength': 0.1,
-        'sample_num': 5,
+        'sample_num': 3,
+        'exp_data' : True, 
         ## method = HEBO: Heteroscedastic Evolutionary Bayesian Optimization
         ## method = GP: Sampler using Gaussian process-based Bayesian optimization.
         ## method = TPE: Sampler using TPE (Tree-structured Parzen Estimator) algorithm.
@@ -53,14 +55,14 @@ config = {
                        #('x_50','MSE')
                        ],
         'tune_storage_path': r'C:\Users\px2030\Code\Ray_Tune',
-        'use_bundles': True,
+        'use_bundles': False,
         'num_bundles': 2,
-        'cpus_per_trail': 1,
+        'cpus_per_trail': 2,
         },
     
     ## PBE parameters
     'pop_params': {
-        'NS' : 8,
+        'NS' : 15,
         'S' : 4,
         'BREAKRVAL' : 4,
         'BREAKFVAL' : 5,
@@ -95,13 +97,13 @@ config = {
     ## Parameters which should be optimized
     'opt_params' : {
         'corr_agg_0': {'bounds': (-4.0, -1.0), 'log_scale': True},
-        'corr_agg_1': {'bounds': (-4.0, -1.0), 'log_scale': True},
-        'corr_agg_2': {'bounds': (-4.0, -1.0), 'log_scale': True},
+        # 'corr_agg_1': {'bounds': (-4.0, -1.0), 'log_scale': True},
+        # 'corr_agg_2': {'bounds': (-4.0, -1.0), 'log_scale': True},
         'pl_v': {'bounds': (0.5, 2.0), 'log_scale': False},
         'pl_P1': {'bounds': (-4.0, 0.0), 'log_scale': True},
         'pl_P2': {'bounds': (0.5, 3.0), 'log_scale': False},
-        'pl_P3': {'bounds': (-4.0, 0.0), 'log_scale': True},
-        'pl_P4': {'bounds': (0.5, 3.0), 'log_scale': False},
+        # 'pl_P3': {'bounds': (-4.0, 0.0), 'log_scale': True},
+        # 'pl_P4': {'bounds': (0.5, 3.0), 'log_scale': False},
     },
     ## The diameter ratio of the primary particles can also be used as a variable
     'R_NM': 8.677468940430804e-07,

@@ -18,7 +18,7 @@ class write_read_exp():
         if read:
             # read the original data
             self.file_name = os.path.basename(path_exp_data)
-            self.exp_data = pd.read_excel(path_exp_data)
+            self.exp_data = pd.read_excel(path_exp_data, sheet_name='q_x1')
             self.exp_data = self.exp_data.set_index('Circular Equivalent Diameter')
                     
             # Parse time in Format %H:%M:%S and convert to minutes
