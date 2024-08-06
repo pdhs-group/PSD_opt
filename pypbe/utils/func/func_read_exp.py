@@ -13,12 +13,15 @@ from scipy.interpolate import interp1d
 
 class write_read_exp():
     
-    def __init__(self, path_exp_data = None, read = False):
+    def __init__(self, path_exp_data = None, read = False, sheet_name=None):
         
         if read:
             # read the original data
             self.file_name = os.path.basename(path_exp_data)
-            self.exp_data = pd.read_excel(path_exp_data, sheet_name='q_x1')
+            if sheet_name is None:
+                self.exp_data = pd.read_excel(path_exp_data)
+            else:
+                self.exp_data = pd.read_excel(path_exp_data, sheet_name=sheet_name)
             self.exp_data = self.exp_data.set_index('Circular Equivalent Diameter')
                     
             # Parse time in Format %H:%M:%S and convert to minutes

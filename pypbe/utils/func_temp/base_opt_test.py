@@ -64,6 +64,7 @@ def normal_test():
     # find.algo.set_comp_para(R_NM=R_NM, R_M=R_M,R01_0_scl=R01_0_scl,R03_0_scl=R03_0_scl)
     # find.algo.set_init_N(find.algo.sample_num, exp_data_paths, 'mean')
     find.algo.calc_all_pop(result_dict["opt_parameters"])
+    find.algo.calc_pop(find.algo.p, result_dict["opt_parameters"])
     return_pop_distribution(find.algo.p, axq3, fig, clr='r', q3lbl='q3_opt')
     return_pop_distribution(find.algo.p_NM, axq3_NM, fig_NM, clr='r', q3lbl='q3_opt')
     return_pop_distribution(find.algo.p_M, axq3_M, fig_M, clr='r', q3lbl='q3_opt')   
@@ -235,11 +236,11 @@ if __name__ == '__main__':
         dist_path_NM = None
         dist_path_M = None
     else:
-        USE_PSD = True
+        USE_PSD = False
         dist_path_NM = os.path.join(base_path, "PSD_data", conf.config['dist_scale_1'])
         dist_path_M = os.path.join(base_path, "PSD_data", conf.config['dist_scale_1'])
         
-    R_NM = conf.config['R_NM']
+    R_NM = conf.config['R_01']
     R_M=conf.config['R_M']
     R01_0_scl=conf.config['R01_0_scl']
     R03_0_scl=conf.config['R03_0_scl']

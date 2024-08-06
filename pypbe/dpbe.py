@@ -858,7 +858,7 @@ class population():
                     a = idx[0]
                     if a != 0:
                         self.B_R[a] = self.pl_P1*self.G*(self.V[a]/V_mean)**self.pl_P2   
-                        # self.B_R[a] = self.pl_P1*self.G*self.V[a]**self.pl_P2  
+                        # self.B_R[a] = self.pl_P1*self.G*self.V[a]**self.pl_P2             
         # 2-D case            
         if self.dim == 2:
             self.B_R = np.zeros((self.NS, self.NS))

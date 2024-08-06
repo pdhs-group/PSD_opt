@@ -73,7 +73,7 @@ def load_excel_data(file_path):
 
 def extract_minutes(label):
     match = re.search(r'(\d+) min', label)
-    return int(match.group(1)) if match else 0
+    return int(match.group(1)) - 15  if match else 0
 
 def interpolate_data(original_data, original_coords, new_coords):
     interpolated_data = np.zeros((original_data.shape[0], original_data.shape[1], len(new_coords)))

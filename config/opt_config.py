@@ -10,13 +10,13 @@ import os
 
 config = {
     ## Use only 2D Data or 1D+2D
-    'multi_flag': True,
+    'multi_flag': False,
     
     'algo_params': {
-        'dim': 1,
-        't_init' : np.array([0, 1, 3, 5]),
-        #'t_vec' : np.arange(0, 3601, 100, dtype=float),
-        't_vec' : np.array([900, 1200, 1500, 1800, 2100, 2400, 3000, 3600]),
+        'dim': 2,
+        't_init' : np.array([0]),
+        # 't_vec' : np.arange(0, 3601, 100, dtype=float),
+        't_vec' : np.array([0, 300, 600, 900, 1200, 1500, 2100, 2700]),
         ## Sometimes there is a gap between the initial conditions calculated based on experimental data 
         ## and the real values, resulting in unavoidable errors in the first few time steps. 
         ## These errors will gradually disappear as the calculation time becomes longer. 
@@ -28,14 +28,15 @@ config = {
         'noise_type': 'Mul',
         'noise_strength': 0.1,
         'sample_num': 3,
-        'exp_data' : True, 
+        'exp_data' : False, 
+        'sheet_name' : 'q_x1', 
         ## method = HEBO: Heteroscedastic Evolutionary Bayesian Optimization
         ## method = GP: Sampler using Gaussian process-based Bayesian optimization.
         ## method = TPE: Sampler using TPE (Tree-structured Parzen Estimator) algorithm.
         ## method = Cmaes: A sampler using cmaes as the backend.
         ## method = NSGA: Multi-objective sampler using the NSGA-III(Nondominated Sorting Genetic Algorithm III) algorithm.
         ## method = QMC: A Quasi Monte Carlo Sampler that generates low-discrepancy sequences.    
-        'method': 'Cmaes',
+        'method': 'HEBO',
         'n_iter': 400,
         ## Initialize PBE using psd data(False) or 
         ## with the help of first few time points of experimental data(True)
@@ -50,14 +51,14 @@ config = {
         ## 'MAE': Mean Absolute Error
         ## 'KL': Kullback–Leibler divergence(Only q3 and Q3 are compatible with KL) 
 
-        'delta_flag': [('q3','MSE'), 
-                       #('Q3','KL'), 
+        'delta_flag': [#('q3','MSE'), 
+                       ('Q3','KL'), 
                        #('x_50','MSE')
                        ],
         'tune_storage_path': r'C:\Users\px2030\Code\Ray_Tune',
         'use_bundles': False,
         'num_bundles': 2,
-        'cpus_per_trail': 2,
+        'cpus_per_trail': 1,
         },
     
     ## PBE parameters
@@ -106,7 +107,7 @@ config = {
         # 'pl_P4': {'bounds': (0.5, 3.0), 'log_scale': False},
     },
     ## The diameter ratio of the primary particles can also be used as a variable
-    'R_NM': 8.677468940430804e-07,
+    'R_01': 8.677468940430804e-07,
     'R_M': 8.677468940430804e-07*1,
     ## Adjust the coordinate of PBE(optional)
     'R01_0_scl': 1e-1,

@@ -208,6 +208,7 @@ class opt_algo():
     def get_all_exp_data(self, exp_data_path):
         if self.sample_num == 1:
             x_uni_exp, q3_exp = self.read_exp(exp_data_path, self.t_vec[self.delta_t_start_step:]) 
+            data_exp = q3_exp
         else:
             x_uni_exp = []
             data_exp = []
@@ -558,7 +559,7 @@ class opt_algo():
             - `x_uni_exp`: An array of unique particle sizes.
             - `sumN_uni_exp`: An array of sum of number concentrations for the unique particle sizes.
         """
-        exp_data = write_read_exp(exp_data_path, read=True)
+        exp_data = write_read_exp(exp_data_path, read=True, sheet_name=self.sheet_name)
         df = exp_data.get_exp_data(t_vec)
         x_uni_exp = df.index.to_numpy()
         sumN_uni_exp = df.to_numpy()
@@ -859,12 +860,16 @@ class opt_algo():
             The method to use for initialization: 'int' for interpolation or 'mean' for averaging
             the initial sets.
         """
-        self.calc_all_R()
-        self.set_init_N_1D(self.p_NM, exp_data_paths[1], init_flag)
-        self.set_init_N_1D(self.p_M, exp_data_paths[2], init_flag)
-        self.p.N = np.zeros((self.p.NS, self.p.NS, len(self.p.t_vec)))
-        self.p.N[1:, 1, 0] = self.p_NM.N[1:, 0]
-        self.p.N[1, 1:, 0] = self.p_M.N[1:, 0]
+        if self.dim ==1:
+            self.p.calc_R()
+            self.set_init_N_1D(self.p, exp_data_paths, init_flag)
+        elif self.dim == 2:
+            self.calc_all_R()
+            self.set_init_N_1D(self.p_NM, exp_data_paths[1], init_flag)
+            self.set_init_N_1D(self.p_M, exp_data_paths[2], init_flag)
+            self.p.N = np.zeros((self.p.NS, self.p.NS, len(self.p.t_vec)))
+            self.p.N[1:, 1, 0] = self.p_NM.N[1:, 0]
+            self.p.N[1, 1:, 0] = self.p_M.N[1:, 0]
     
     def set_init_N_1D(self, pop, exp_data_path, init_flag):
         """
