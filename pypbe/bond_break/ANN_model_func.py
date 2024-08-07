@@ -268,16 +268,16 @@ def train_model_2d(model, train_data, test_data, x, y, mask, print_status, weigh
         # evaluate_model
         validate_results = validate_model_2d(model,test_data,x,y,mask)
         # Early Stopping Check with validate_results[0](mse)
-        if validate_results[0] < best_val_loss:
-            best_val_loss = validate_results[0]
-            best_validate_results = validate_results
-            patience_counter = 0
-        else:
-            patience_counter += 1
-            if patience_counter >= patience:
-                if print_status:
-                    print(f"Early stopping at epoch {epoch+1}")
-                return best_validate_results
+        # if validate_results[0] < best_val_loss:
+        #     best_val_loss = validate_results[0]
+        #     best_validate_results = validate_results
+        #     patience_counter = 0
+        # else:
+        #     patience_counter += 1
+        #     if patience_counter >= patience:
+        #         if print_status:
+        #             print(f"Early stopping at epoch {epoch+1}")
+        #         return best_validate_results
         
     if print_status:
         print(f"Training of Echos = {epochs} completed!")

@@ -16,7 +16,7 @@ from ray.tune.search.optuna import OptunaSearch
 from optuna.samplers import GPSampler, TPESampler, NSGAIIISampler, QMCSampler
 
 RT_space = {
-    'epochs': tune.randint(10, 1000),
+    'epochs': tune.randint(10, 200),
     'batch_size': tune.randint(16, 128),
     'learning_rate': tune.loguniform(1e-6, 1e-2),
     'optimizer_type': tune.choice(['sgd', 'adam', 'rmsprop']),
@@ -89,7 +89,10 @@ def run_ray_tune(result_path, n_steps):
     
     # 运行Ray Tune进行超参数搜索
     tuner = tune.Tuner(
-        RT_train_model,
+        tune.with_resources(
+            RT_train_model,
+            {"cpu": 2}
+        ),
         param_space=RT_space,
         tune_config=tune.TuneConfig(
             num_samples=n_steps,
@@ -162,7 +165,7 @@ if __name__ == '__main__':
     ## The reverse improves the robustness of the model (set m_global_seed=0)
     m_global_seed = 42
     
-    m_dim = 1
+    m_dim = 2
     m_NS = 50
     m_S = 1.3
     m_n_splits = 5
@@ -172,12 +175,11 @@ if __name__ == '__main__':
     result_path = "best_results.pkl"
     n_steps = 400
     
-    # start_time = time.time()
-    # # best_result = run_BO(result_path, n_steps)
-    # best_result = run_ray_tune(result_path, n_steps)
-    # end_time = time.time()
-    # opt_time = end_time - start_time
+    start_time = time.time()
+    best_result = run_ray_tune(result_path, n_steps)
+    end_time = time.time()
+    opt_time = end_time - start_time
     
-    ann, test_result, load_result = read_best_params_and_train_model(result_path)
-    loss = test_result[0,0] * m_mse_weight + test_result[0,2] * m_frag_num_weight
+    # ann, test_result, load_result = read_best_params_and_train_model(result_path)
+    # loss = test_result[0,0] * m_mse_weight + test_result[0,2] * m_frag_num_weight
     
