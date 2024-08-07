@@ -17,13 +17,15 @@ import time
 import matplotlib.pyplot as plt
 import pypbe.utils.plotter.plotter as pt  
 
+os.environ["NUMEXPR_MAX_THREADS"] = "8"
+
 def normal_test():
     start_time = time.time()
 
     # corr_beta_opt, alpha_prim_opt, para_diff, delta_opt= \
     #     find.find_opt_kernels(sample_num=sample_num, method='delta', data_name=data_name)
     result_dict = \
-        find.find_opt_kernels(sample_num=find.algo.sample_num, method='delta', data_name=data_name)
+        find.find_opt_kernels(method='delta', data_names=exp_data_paths)
     
     end_time = time.time()
     elapsed_time = end_time - start_time
@@ -62,6 +64,7 @@ def normal_test():
     # find.algo.set_comp_para(R_NM=R_NM, R_M=R_M,R01_0_scl=R01_0_scl,R03_0_scl=R03_0_scl)
     # find.algo.set_init_N(find.algo.sample_num, exp_data_paths, 'mean')
     find.algo.calc_all_pop(result_dict["opt_parameters"])
+    find.algo.calc_pop(find.algo.p, result_dict["opt_parameters"])
     return_pop_distribution(find.algo.p, axq3, fig, clr='r', q3lbl='q3_opt')
     return_pop_distribution(find.algo.p_NM, axq3_NM, fig_NM, clr='r', q3lbl='q3_opt')
     return_pop_distribution(find.algo.p_M, axq3_M, fig_M, clr='r', q3lbl='q3_opt')   
@@ -179,8 +182,9 @@ def return_pop_distribution(pop, axq3=None,fig=None, clr='b', q3lbl='q3'):
     return df
 
 def calc_delta_test(var_delta=False):
-    find.algo.set_init_N(find.algo.sample_num, exp_data_paths, 'mean')
-    
+    if find.algo.calc_init_N:
+        find.algo.set_init_N(exp_data_paths, 'mean')
+    x_uni_exp, data_exp = find.algo.get_all_exp_data(exp_data_paths)
     # corr_agg = pop_params['CORR_BETA'] * pop_params['alpha_prim']
     # pop_params_test = {}
     # pop_params_test['corr_agg'] = corr_agg
@@ -188,10 +192,10 @@ def calc_delta_test(var_delta=False):
         delta_arr = np.zeros(len(find.algo.t_vec))
         for start_step in range(1,len(find.algo.t_vec)):
             find.algo.delta_t_start_step = start_step
-            delta_arr[start_step] = find.algo.calc_delta_agg(pop_params, sample_num=find.algo.sample_num, exp_data_path=exp_data_paths)
+            delta_arr[start_step] = find.algo.calc_delta_agg(pop_params, x_uni_exp, data_exp)
         return delta_arr
     else:
-        delta = find.algo.calc_delta_agg(pop_params, sample_num=find.algo.sample_num, exp_data_path=exp_data_paths)
+        delta = find.algo.calc_delta_agg(pop_params, x_uni_exp, data_exp)
         return delta
 
 if __name__ == '__main__':
@@ -232,11 +236,11 @@ if __name__ == '__main__':
         dist_path_NM = None
         dist_path_M = None
     else:
-        USE_PSD = True
+        USE_PSD = False
         dist_path_NM = os.path.join(base_path, "PSD_data", conf.config['dist_scale_1'])
         dist_path_M = os.path.join(base_path, "PSD_data", conf.config['dist_scale_1'])
         
-    R_NM = conf.config['R_NM']
+    R_NM = conf.config['R_01']
     R_M=conf.config['R_M']
     R01_0_scl=conf.config['R01_0_scl']
     R03_0_scl=conf.config['R03_0_scl']
@@ -246,14 +250,14 @@ if __name__ == '__main__':
                             dist_path_NM=dist_path_NM, dist_path_M=dist_path_M)
     find.algo.weight_2d = conf.config['weight_2d']
 
-    data_name = "Sim_Mul_0.1_para_0.01_1.0_1.0_1.0_2_0.01_1.0_0.001_0.5.xlsx"  
+    data_name = "Batchversuch_600rpm_1200rpm.xlsx"  
     
-    exp_data_path = os.path.join(base_path, data_name)
-    exp_data_paths = [
-        exp_data_path,
-        exp_data_path.replace(".xlsx", "_NM.xlsx"),
-        exp_data_path.replace(".xlsx", "_M.xlsx")
-    ]
+    exp_data_paths = os.path.join(base_path, data_name)
+    # exp_data_paths = [
+    #     exp_data_path,
+    #     exp_data_path.replace(".xlsx", "_NM.xlsx"),
+    #     exp_data_path.replace(".xlsx", "_M.xlsx")
+    # ]
     
     # Run an optimization and generate graphs of the results
     result_dict = normal_test()

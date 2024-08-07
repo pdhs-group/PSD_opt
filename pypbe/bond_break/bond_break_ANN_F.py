@@ -299,7 +299,7 @@ class ANN_bond_break():
         if len(self.y) != self.NS:
             self.y = self.y[:-1]
             
-    def train_and_evaluate_model(self, split, epochs, training, model_path=None):
+    def train_and_evaluate_model(self, split, epochs, training, model_path=None, validate_only=False):
         self.check_x_y()
         train_index = self.train_indexs[split]
         test_index = self.test_indexs[split]
@@ -309,53 +309,67 @@ class ANN_bond_break():
             train_data.append(array[train_index])
             test_data.append(array[test_index])
         epochs_total = epochs * (training + 1)
+        
         ## training and evaluation for 2d-model 
         if self.dim == 2:
             x_expand = np.outer(self.x, np.ones(self.NS))
             y_expand = np.outer(np.ones(self.NS), self.y)
             mask = np.ones((len(self.x),len(self.y)), dtype=bool)
             mask[0, 0] = False
-            # train model
-            if self.use_custom_loss:
-                results = model_func.train_model_2d(self.model, train_data, test_data, x_expand, y_expand, mask, self.print_status,
-                                          self.weight_loss_FRAG_NUM, epochs, self.batch_size,
-                                          self.optimizer_type, self.learning_rate)
-            else:
-                self.model[0].fit(train_data[3], train_data[1], epochs=epochs, batch_size=32, validation_split=0.2)   
-                self.model[1].fit(train_data[3], train_data[2], epochs=epochs, batch_size=32, validation_split=0.2)
-            if self.save_model:
-                if model_path is None:
-                    self.model[0].save(self.model_name + f'X1_{epochs_total}.keras')
-                    self.model[1].save(self.model_name + f'X2_{epochs_total}.keras')
+            model_path_temX1 = self.model_name + f'X1_{epochs_total}.keras'
+            model_path_temX2 = self.model_name + f'X2_{epochs_total}.keras'
+            if model_path is not None:
+                model_path_temX1 = os.path.join(model_path, model_path_temX1)
+                model_path_temX2 = os.path.join(model_path, model_path_temX2)
+            if not validate_only: 
+                # train model
+                if self.use_custom_loss:
+                    results = model_func.train_model_2d(self.model, train_data, test_data, x_expand, y_expand, mask, self.print_status,
+                                              self.weight_loss_FRAG_NUM, epochs, self.batch_size,
+                                              self.optimizer_type, self.learning_rate)
                 else:
-                    self.model[0].save(os.path.join(model_path, 'model2d_X1.keras'))
-                    self.model[1].save(os.path.join(model_path, 'model2d_X2.keras'))
+                    self.model[0].fit(train_data[3], train_data[1], epochs=epochs, batch_size=32, validation_split=0.2)   
+                    self.model[1].fit(train_data[3], train_data[2], epochs=epochs, batch_size=32, validation_split=0.2)
+                if self.save_model:
+                    self.model[0].save(model_path_temX1)
+                    self.model[1].save(model_path_temX2)
+            else:
+                model = []
+                model_tem = load_model(model_path_temX1)
+                model.append(model_tem)
+                model_tem = load_model(model_path_temX2)
+                model.append(model_tem)
+                results = model_func.validate_model_2d(model, test_data, x_expand, y_expand, mask)
 
         ## training and evaluation for 2d-model 
         if self.dim == 1:
             mask = np.ones(self.x.shape, dtype=bool)
             mask[0] = False
+            model_path_tem = self.model_name + f'_{epochs_total}.keras'
+            if model_path is not None:
+                model_path_tem = os.path.join(model_path, model_path_tem)
+            if not validate_only: 
             # train model
-            if self.use_custom_loss:
-                results = model_func.train_model_1d(self.model, train_data, test_data, self.x, mask, self.print_status, self.weight_loss_FRAG_NUM,
-                                          epochs, self.batch_size, self.optimizer_type, self.learning_rate)
-            else:
-                self.model.fit(train_data[2], train_data[1], epochs=epochs, batch_size=32, validation_split=0.2)   
-            if self.save_model:
-                if model_path is None:
-                    self.model.save(self.model_name + f'_{epochs_total}.keras')
+                if self.use_custom_loss:
+                    results = model_func.train_model_1d(self.model, train_data, test_data, self.x, mask, self.print_status, self.weight_loss_FRAG_NUM,
+                                              epochs, self.batch_size, self.optimizer_type, self.learning_rate)
                 else:
-                    self.model.save(os.path.join(model_path, 'model1d.keras'))
+                    self.model.fit(train_data[2], train_data[1], epochs=epochs, batch_size=32, validation_split=0.2)   
+                if self.save_model:
+                    self.model.save(model_path_tem)
+            else:
+                model = load_model(model_path_tem)
+                results = model_func.validate_model_1d(model, test_data, self.x, mask)
                 
         return results
     
-    def cross_validation(self, epochs, num_training, model_path=None):
+    def cross_validation(self, epochs, num_training, model_path=None, validate_only=False):
         ## 2rd dimension of results is: mse, mae, number_error, x_mass_error, y_mass_error
         results = np.zeros((num_training,5))
         for split in range(self.n_splits):
             self.create_models(split)
             for training in range(num_training):
-                results[training] += self.train_and_evaluate_model(split, epochs, training, model_path)
+                results[training] += self.train_and_evaluate_model(split, epochs, training, model_path, validate_only)
         results /= self.n_splits
         if self.save_validate_results:
             with open(f'epochs_{epochs*num_training}_weight_{self.weight_loss_FRAG_NUM}.pkl', 'wb') as f:
@@ -573,18 +587,25 @@ class ANN_bond_break():
         
         return   
     
-    def plot_1d_F(self, x,NS,test_data,epochs_total,data_index=0,vol_dis=False):
-        model = load_model(f'model_1d_{epochs_total}.keras')
-        test_Input = test_data[2][data_index].reshape(1,3)
-        test_Output = test_data[1][data_index]
-        predicted_Output = model.predict(test_Input).reshape(NS)
+    def plot_1d_F(self, epochs_total, data_index=0, vol_dis=False):
+        self.check_x_y()
+        test_Input = self.all_data[2][data_index].reshape(1,3)
+        test_Output = self.all_data[1][data_index]
+        predicted_Output = np.zeros(self.NS)
+        
+        for split in range(self.n_splits):
+            model_path_tem = f'model_1d_{split}_{epochs_total}.keras'    
+            model = load_model(model_path_tem)
+            predicted_Output += model.predict(test_Input).reshape(self.NS)
+        predicted_Output /= self.n_splits
+        
         ylbl = 'Total Relative Volume / $-$'
         if not vol_dis:
-            mask = np.ones(x.shape, dtype=bool)
+            mask = np.ones(self.x.shape, dtype=bool)
             mask[0] = False
-            test_Output[mask] /= x[mask]
+            test_Output[mask] /= self.x[mask]
             test_Output[0] = 0.0
-            predicted_Output[mask] /= x[mask]
+            predicted_Output[mask] /= self.x[mask]
             test_Output[0] = 0.0
             ylbl = 'Counts / $-$'
         ## Convert to quantity distribution matrix counts
@@ -593,25 +614,35 @@ class ANN_bond_break():
         x_test_counts = []
         x_predicted_counts = []
         for i in range(test_counts.shape[0]):
-            x_test_counts.extend([x[i]] * test_counts[i])
-            x_predicted_counts.extend([x[i]] * predicted_counts[i])
+            x_test_counts.extend([self.x[i]] * test_counts[i])
+            x_predicted_counts.extend([self.x[i]] * predicted_counts[i])
         x_test_counts = np.array(x_test_counts)
         x_predicted_counts = np.array(x_predicted_counts)
         
-        ax1, fig1, H1, xe1 = pt.plot_1d_hist(x=x_test_counts,bins=100,scale='line',xlbl='Relative Volume of Fragments / $-$',
+        ax1, fig1, H1, xe1 = pt.plot_1d_hist(x=x_test_counts,bins=100,scale='log',xlbl='Relative Volume of Fragments / $-$',
                                              ylbl=ylbl,tit='LMC',clr=c_KIT_green,norm=False, alpha=0.7)
-        ax2, fig2, H2, xe2 = pt.plot_1d_hist(x=x_predicted_counts,bins=100,scale='line',xlbl='Relative Volume of Fragments / $-$',
+        ax2, fig2, H2, xe2 = pt.plot_1d_hist(x=x_predicted_counts,bins=100,scale='log',xlbl='Relative Volume of Fragments / $-$',
                                              ylbl=ylbl,tit='ANN',clr=c_KIT_green,norm=False, alpha=0.7)
         return ax1, ax2
         
     def plot_2d_F(self, x,y,NS,test_data,epochs_total,data_index=0,vol_dis=False):
-        model_X1 = load_model(f'model_2dX1_{epochs_total}.keras')
-        model_X2 = load_model(f'model_2dX2_{epochs_total}.keras')
-        test_Input = test_data[3][data_index].reshape(1,7)
-        test_OutputX1 = test_data[1][data_index]
-        test_OutputX2 = test_data[2][data_index]
-        predicted_OutputX1 = model_X1.predict(test_Input).reshape(NS,NS)
-        predicted_OutputX2 = model_X2.predict(test_Input).reshape(NS,NS)
+        self.check_x_y()
+        test_Input = self.all_data[3][data_index].reshape(1,7)
+        test_OutputX1 = self.all_data[1][data_index]
+        test_OutputX2 = self.all_data[2][data_index]
+        predicted_OutputX1 = np.zeros((self.NS,self.NS))
+        predicted_OutputX2 = np.zeros((self.NS,self.NS))
+        
+        for split in range(self.n_splits):
+            model_path_temX1 = f'model_2d_{split}X1_{epochs_total}.keras'   
+            model_path_temX2 = f'model_2d_{split}X2_{epochs_total}.keras'   
+            model_X1 = load_model(model_path_temX1)
+            model_X2 = load_model(model_path_temX2)
+            predicted_OutputX1 += model_X1.predict(test_Input).reshape(self.NS,self.NS)
+            predicted_OutputX2 += model_X2.predict(test_Input).reshape(self.NS,self.NS)
+        predicted_OutputX1 /= self.n_splits
+        predicted_OutputX2 /= self.n_splits
+        
         test_Output = test_OutputX1+test_OutputX2
         predicted_Output = predicted_OutputX1+predicted_OutputX2
         if not vol_dis:
@@ -653,7 +684,6 @@ class ANN_bond_break():
                                                        scale_hist='log', hist_thr=1e-4,tit='ANN')
         return ax1, ax2
     
-
 # %% MAIN
 if __name__ == '__main__':
     ## The value of random seed (int value) itself is not important.

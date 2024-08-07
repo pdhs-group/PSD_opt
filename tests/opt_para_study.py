@@ -7,21 +7,19 @@ Created on Tue Dec  5 10:58:09 2023
 import sys, os
 import time
 import numpy as np
-import multiprocessing
 import logging
 sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),".."))
 from pypbe.kernel_opt import opt_find as opt
 from config import opt_config as conf
 
+logging.getLogger("ray").setLevel(logging.ERROR)
 logging.basicConfig(filename='parallel.log', level=logging.INFO)
 logger = logging.getLogger(__name__)
+os.environ["NUMEXPR_MAX_THREADS"] = "8"
 
-def optimization_process(algo_params,pop_params,multi_flag,opt_params,ori_params,file_name, data_path):
+def optimization_process(algo_params,pop_params,multi_flag,opt_params,data_names, data_path):
     #%%  Input for Opt 
     find = opt.opt_find()
-
-    ## Update the parameter for PBE
-    pop_params.update(ori_params)
 
     find.init_opt_algo(multi_flag, algo_params, opt_params, data_path)
     
@@ -48,9 +46,9 @@ def optimization_process(algo_params,pop_params,multi_flag,opt_params,ori_params
     find.algo.weight_2d = conf.config['weight_2d']
 
     result_dict = \
-        find.find_opt_kernels(sample_num=find.algo.sample_num, method='delta', data_name=file_name)
+        find.find_opt_kernels(method='delta', data_names=data_names)
 
-    return result_dict, ori_params
+    return result_dict
 
 if __name__ == '__main__':
     #%%  Input for Opt
@@ -68,8 +66,8 @@ if __name__ == '__main__':
     
     #%% Prepare test data set
     ## define the range of corr_beta
-    var_corr_beta = np.array([1e-2])
-    # var_corr_beta = np.array([1e-2])
+    # var_corr_beta = np.array([1e-3,1e-2,1e-1])
+    var_corr_beta = np.array([1e-3])
     ## define the range of alpha_prim 27x3
     values = np.array([1.0])
     a1, a2, a3 = np.meshgrid(values, values, values, indexing='ij')
@@ -87,13 +85,12 @@ if __name__ == '__main__':
     var_alpha_prim = np.array(unique_alpha_prim)
 
     ## define the range of v(breakage function)
-    var_v = np.array([2])
+    var_v = np.array([0.7])
     # var_v = np.array([0.01])    ## define the range of P1, P2 for power law breakage rate
-    var_P1 = np.array([1e-2])
-    var_P2 = np.array([1.0])
-    var_P3 = np.array([1e-3])
-    var_P4 = np.array([0.5])
-
+    var_P1 = np.array([1e-3])
+    var_P2 = np.array([2.0])
+    var_P3 = np.array([1e-1])
+    var_P4 = np.array([0.5,2.0])
 
     ## define the range of particle size scale and minimal size
     # pth = '/pfs/work7/workspace/scratch/px2030-MC_train'
@@ -104,7 +101,7 @@ if __name__ == '__main__':
     # size_scale = np.array([1, 10])
     # R01_0 = 'r0_001'
     # R03_0 = 'r0_001'
-    results = []
+    data_names = []
     start_time = time.time()
     for j,corr_beta in enumerate(var_corr_beta):
         for k,alpha_prim in enumerate(var_alpha_prim):
@@ -113,27 +110,24 @@ if __name__ == '__main__':
                     for m2,P2 in enumerate(var_P2):
                         for m3,P3 in enumerate(var_P3):
                             for m4,P4 in enumerate(var_P4):
-                                        ## Set parameters for PBE
-                                        conf_params = {
-                                            'pop_params':{
-                                                'CORR_BETA' : corr_beta,
-                                                'alpha_prim' : alpha_prim,
-                                                'pl_v' : v,
-                                                'pl_P1' : P1,
-                                                'pl_P2' : P2,
-                                                'pl_P3' : P3,
-                                                'pl_P4' : P4,
-                                                }
-                                            }
-                                        file_name = f"Sim_{noise_type}_{noise_strength}_para_{corr_beta}_{alpha_prim[0]}_{alpha_prim[1]}_{alpha_prim[2]}_{v}_{P1}_{P2}_{P3}_{P4}.xlsx"
-                                        file_path = os.path.join(data_path, file_name)
-                                        file_path = file_path.replace(".xlsx", "_0.xlsx")
-                                        if not os.path.exists(file_path):
-                                            continue
-                                        var_pop_params = conf_params['pop_params']
-                                        result = optimization_process(algo_params,pop_params,multi_flag,opt_params,
-                                                      var_pop_params,file_name, data_path)
-                                        results.append(result)
+                                data_name = f"Sim_{noise_type}_{noise_strength}_para_{corr_beta}_{alpha_prim[0]}_{alpha_prim[1]}_{alpha_prim[2]}_{v}_{P1}_{P2}_{P3}_{P4}.xlsx"
+                                data_path_tem = os.path.join(data_path, data_name)
+                                data_path_tem = data_path_tem.replace(".xlsx", "_0.xlsx")
+                                if not os.path.exists(data_path_tem):
+                                    continue
+                                data_names.append(data_name) 
+    if multi_flag:
+        data_names_tem= []
+        for data_name in data_names:
+            data_name_ex = [
+                data_name,
+                data_name.replace(".xlsx", "_NM.xlsx"),
+                data_name.replace(".xlsx", "_M.xlsx")
+            ]
+            data_names_tem.append(data_name_ex)
+        data_names = data_names_tem
+    result = optimization_process(algo_params,pop_params,multi_flag,opt_params,
+                  data_names, data_path)       
     end_time = time.time()
     elapsed_time = end_time - start_time
     ## save the results in npz
@@ -143,7 +137,7 @@ if __name__ == '__main__':
         result_name =  f'{delta_flag}_{method}_wight_{weight_2d}_iter_{n_iter}'
         
     np.savez(f'{result_name}.npz', 
-          results=results, 
+          results=result, 
           time=elapsed_time
           )
     

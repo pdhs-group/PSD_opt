@@ -3,10 +3,14 @@
 Calculate the difference between the PSD of the simulation results and the experimental data.
 Minimize the difference by optimization algorithm to obtain the kernel of PBE.
 """
+import uuid
+import os
 import numpy as np
 # import math
-# import ray
+import ray
 from ray import tune, train
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from ray.util.placement_group import placement_group, placement_group_table
 from ray.tune.search.optuna import OptunaSearch
 from ray.tune.search.hebo import HEBOSearch
 from optuna.samplers import GPSampler,CmaEsSampler,TPESampler,NSGAIIISampler,QMCSampler
@@ -61,8 +65,10 @@ class opt_algo():
         self.calc_init_N = False
         self.set_init_pop_para_flag = False
         self.set_comp_para_flag = False
+        self.num_bundles = 4
+        # self.cpu_per_bundles = 20
     #%%  Optimierer    
-    def calc_delta_agg(self, params_in, sample_num=1, exp_data_path=None):
+    def calc_delta_agg(self, params_in, x_uni_exp, data_exp):
         """
         Calculate the difference (delta) of PSD.
         
@@ -94,11 +100,11 @@ class opt_algo():
 
         self.calc_pop(self.p, params, self.t_vec)
         if self.p.calc_status:
-            return self.calc_delta_tem(sample_num, exp_data_path, self.p)
+            return self.calc_delta_tem(x_uni_exp, data_exp, self.p)
         else:
             return 10
 
-    def calc_delta_tem(self, sample_num, exp_data_path, pop):
+    def calc_delta_tem(self, x_uni_exp, data_exp, pop):
         """
         Loop through all the experimental data and calculate the average diffences.
         
@@ -128,12 +134,7 @@ class opt_algo():
                 kde_list.append(kde)
                 
         delta_sum = 0    
-        if sample_num == 1:
-            x_uni_exp, sumN_uni_exp = self.read_exp(exp_data_path, self.t_vec[self.delta_t_start_step:]) 
-            x_uni_exp = np.insert(x_uni_exp, 0, 0.0)
-            sumN_uni_exp = np.insert(sumN_uni_exp, 0, 0.0, axis=0)
-            vol_uni = np.tile((1/6)*np.pi*x_uni_exp**3, (self.num_t_steps-self.delta_t_start_step, 1)).T
-            sumvol_uni_exp = sumN_uni_exp * vol_uni
+        if self.sample_num == 1:
             q3_mod = np.zeros((len(x_uni_exp), self.num_t_steps-self.delta_t_start_step))
             for idt in range(self.num_t_steps-self.delta_t_start_step):
                 if self.smoothing:
@@ -143,13 +144,9 @@ class opt_algo():
                     q3_mod[:, idt] = pop.return_distribution(t=idt+self.delta_t_start_step, flag='q3')[0]
                 Q3 = self.calc_Q3(x_uni_exp, q3_mod[:, idt]) 
                 q3_mod[:, idt] = q3_mod[:, idt] / Q3.max() 
-            
-            sumvol_uni_exp = np.insert(sumvol_uni_exp, 0, 0.0, axis=0)
-            x_uni_exp = np.insert(x_uni_exp, 0, 0.0)
             q3_mod = np.insert(q3_mod, 0, 0.0, axis=0)
             for flag, cost_func_type in self.delta_flag:
                 data_mod = self.re_calc_distribution(x_uni_exp, q3=q3_mod, flag=flag)[0]
-                data_exp = self.re_calc_distribution(x_uni_exp, sum_uni=sumvol_uni_exp, flag=flag)[0]
                 # Calculate the error between experimental data and simulation results
                 delta = self.cost_fun(data_exp, data_mod, cost_func_type, flag)
                 delta_sum += delta 
@@ -158,36 +155,196 @@ class opt_algo():
             x_uni_num = len(x_uni_exp)
             return delta / x_uni_num
         else:
-            for i in range (0, sample_num):
-                exp_data_path = self.traverse_path(i, exp_data_path)
-                x_uni_exp, sumN_uni_exp = self.read_exp(exp_data_path, self.t_vec[self.delta_t_start_step:])
-                x_uni_exp = np.insert(x_uni_exp, 0, 0.0)
-                sumN_uni_exp = np.insert(sumN_uni_exp, 0, 0.0, axis=0)
-                vol_uni = np.tile((1/6)*np.pi*x_uni_exp**3, (self.num_t_steps-self.delta_t_start_step, 1)).T
-                sumvol_uni_exp = sumN_uni_exp * vol_uni
-                q3_mod = np.zeros((len(x_uni_exp), self.num_t_steps-self.delta_t_start_step))
+            for i in range (0, self.sample_num):
+                q3_mod = np.zeros((len(x_uni_exp[i]), self.num_t_steps-self.delta_t_start_step))
                 for idt in range(self.num_t_steps-self.delta_t_start_step):
                     if self.smoothing:
-                        q3_mod_tem = self.KDE_score(kde_list[idt], x_uni_exp[1:])
+                        q3_mod_tem = self.KDE_score(kde_list[idt], x_uni_exp[i][1:])
                         q3_mod[1:, idt] = q3_mod_tem
                     else:
                         q3_mod[:, idt] = pop.return_distribution(t=idt+self.delta_t_start_step, flag='q3')[0]
-                    Q3 = self.calc_Q3(x_uni_exp, q3_mod[:, idt]) 
+                    Q3 = self.calc_Q3(x_uni_exp[i], q3_mod[:, idt]) 
                     q3_mod[:, idt] = q3_mod[:, idt] / Q3.max()
                 for flag, cost_func_type in self.delta_flag:
-                    data_mod = self.re_calc_distribution(x_uni_exp, q3=q3_mod, flag=flag)[0]
-                    data_exp = self.re_calc_distribution(x_uni_exp, sum_uni=sumvol_uni_exp, flag=flag)[0]
+                    data_mod = self.re_calc_distribution(x_uni_exp[i], q3=q3_mod, flag=flag)[0]
                     # Calculate the error between experimental data and simulation results
-                    delta = self.cost_fun(data_exp, data_mod, cost_func_type, flag)
+                    delta = self.cost_fun(data_exp[i], data_mod, cost_func_type, flag)
                     delta_sum += delta 
             # Restore the original name of the file to prepare for the next step of training
-            delta_sum /= sample_num
+            delta_sum /= self.sample_num
             # Because the number of x_uni is different in different pop equations, 
             # the average value needs to be used instead of the sum.
-            x_uni_num = len(x_uni_exp)  
+            x_uni_num = len(x_uni_exp[i])  
             return delta_sum / x_uni_num
+        
+    def get_all_synth_data(self, exp_data_path):
+        if self.sample_num == 1:
+            x_uni_exp, sumN_uni_exp = self.read_exp(exp_data_path, self.t_vec[self.delta_t_start_step:]) 
+            x_uni_exp = np.insert(x_uni_exp, 0, 0.0)
+            sumN_uni_exp = np.insert(sumN_uni_exp, 0, 0.0, axis=0)
+            vol_uni = np.tile((1/6)*np.pi*x_uni_exp**3, (self.num_t_steps-self.delta_t_start_step, 1)).T
+            sumvol_uni_exp = sumN_uni_exp * vol_uni
+            sumvol_uni_exp = np.insert(sumvol_uni_exp, 0, 0.0, axis=0)
+            x_uni_exp = np.insert(x_uni_exp, 0, 0.0)
+            for flag, _ in self.delta_flag:
+                data_exp = self.re_calc_distribution(x_uni_exp, sum_uni=sumvol_uni_exp, flag=flag)[0]
+
+        else:
+            x_uni_exp = []
+            data_exp = []
+            for i in range (0, self.sample_num):
+                exp_data_path = self.traverse_path(i, exp_data_path)
+                x_uni_exp_tem, sumN_uni_exp = self.read_exp(exp_data_path, self.t_vec[self.delta_t_start_step:])
+                x_uni_exp_tem = np.insert(x_uni_exp_tem, 0, 0.0)
+                sumN_uni_exp = np.insert(sumN_uni_exp, 0, 0.0, axis=0)
+                vol_uni = np.tile((1/6)*np.pi*x_uni_exp_tem**3, (self.num_t_steps-self.delta_t_start_step, 1)).T
+                sumvol_uni_exp = sumN_uni_exp * vol_uni
+                for flag, _ in self.delta_flag:
+                    data_exp_tem = self.re_calc_distribution(x_uni_exp_tem, sum_uni=sumvol_uni_exp, flag=flag)[0] 
+                x_uni_exp.append(x_uni_exp_tem)
+                data_exp.append(data_exp_tem)
+        return x_uni_exp, data_exp
     
-    def optimierer_agg(self, opt_params, init_points=4, sample_num=1, hyperparameter=None, exp_data_path=None):
+    def get_all_exp_data(self, exp_data_path):
+        if self.sample_num == 1:
+            x_uni_exp, q3_exp = self.read_exp(exp_data_path, self.t_vec[self.delta_t_start_step:]) 
+            data_exp = q3_exp
+        else:
+            x_uni_exp = []
+            data_exp = []
+            for i in range (0, self.sample_num):
+                exp_data_path = self.traverse_path(i, exp_data_path)
+                x_uni_exp_tem, q3_exp = self.read_exp(exp_data_path, self.t_vec[self.delta_t_start_step:])
+                x_uni_exp.append(x_uni_exp_tem)
+                data_exp.append(q3_exp)
+        return x_uni_exp, data_exp
+    
+    def optimierer_agg_bundles(self, opt_params, init_points=4, hyperparameter=None, exp_data_paths=None):
+        """
+        Optimize the corr_agg based on :meth:~.calc_delta_agg. 
+        Results are saved in corr_agg_opt.
+        
+        Parameters
+        ----------
+        method : str
+            Which algorithm to use for optimization.
+        init_points : int, optional. Default 4.
+            Number of steps for random exploration in BayesianOptimization.
+        sample_num : int, optional. Default 1.
+            Set how many sets of experimental data are used simultaneously for optimization.
+        exp_data_path : str
+            path for experimental data.
+            
+        Returns   
+        -------
+        delta_opt : float
+            Optimized value of the objective.
+        """
+        self.RT_space = {}
+        
+        for param, info in opt_params.items():
+            bounds = info['bounds']
+            log_scale = info.get('log_scale', False)
+            
+            if log_scale:
+                self.RT_space[param] = tune.loguniform(10**bounds[0], 10**bounds[1])
+            else:
+                self.RT_space[param] = tune.uniform(bounds[0], bounds[1])
+
+        total_cpus = ray.cluster_resources().get("CPU", 1)
+        
+        ## Add all data (groups for multi_flag=True case) to the task queue
+        task_queue = ray.util.queue.Queue()
+        queue_length = 0
+        for path in exp_data_paths:
+            task_queue.put(path)
+            queue_length += 1
+
+        self.check_num_bundles(queue_length, total_cpus)
+        num_bundles_max = self.num_bundles
+        results = []
+        # 获取最优结果
+        while not task_queue.empty():
+            run_tune_task = self.create_remote_worker()
+            active_tasks = []
+            for i in range(num_bundles_max):
+                if not task_queue.empty():
+                    exp_data_path = task_queue.get()
+                    queue_length -= 1
+                    task = run_tune_task.remote(exp_data_path)
+                    active_tasks.append(task)
+
+            # 等待所有当前活跃的任务完成
+            completed_tasks = ray.get(active_tasks)
+            if queue_length != 0:
+                self.check_num_bundles(queue_length, total_cpus)
+            for task_result, path in completed_tasks:
+                best_result = task_result.get_best_result(metric="loss", mode="min")
+                results.append({
+                    "opt_params": best_result.config,
+                    "opt_score": best_result.metrics["loss"],
+                    "file_path": path
+                })
+       
+        return results
+    def check_num_bundles(self, queue_length, total_cpus):
+        if queue_length < self.num_bundles:
+            self.num_bundles = queue_length
+        self.cpus_per_bundle = int(max(1, total_cpus//self.num_bundles))
+        
+    def create_remote_worker(self):
+        @ray.remote(num_cpus=self.cpus_per_bundle)
+        def run_tune_task(exp_data_path):
+            algo = self.create_algo()
+            if isinstance(exp_data_path, list):
+                x_uni_exp = []
+                data_exp = []
+                for exp_data_path_tem in exp_data_path:
+                    if self.exp_data:
+                        x_uni_exp_tem, data_exp_tem = self.get_all_exp_data(exp_data_path_tem)
+                    else:
+                        x_uni_exp_tem, data_exp_tem = self.get_all_synth_data(exp_data_path_tem)
+                    x_uni_exp.append(x_uni_exp_tem)
+                    data_exp.append(data_exp_tem)
+                data_name = os.path.basename(exp_data_path[0])
+            else:
+                if self.exp_data:
+                    x_uni_exp, data_exp = self.get_all_exp_data(exp_data_path)
+                else:
+                    x_uni_exp, data_exp = self.get_all_synth_data(exp_data_path)
+                data_name = os.path.basename(exp_data_path)
+                
+            if data_name.startswith("Sim_"):
+                data_name = data_name[len("Sim_"):]
+            if data_name.endswith(".xlsx"):
+                data_name = data_name[:-len(".xlsx")]
+                
+            def objective_func(config):
+                # message = f"The value is: {data_exp[0][0][10,10]}"
+                # print_notice(message)
+                return self.objective(config, x_uni_exp, data_exp)
+            objective_func.__name__ = "objective_func" + uuid.uuid4().hex[:8]
+            tuner = tune.Tuner(
+                tune.with_resources(
+                    objective_func,
+                    {"cpu": self.cpus_per_trail}
+                ),
+                param_space=self.RT_space,
+                tune_config=tune.TuneConfig(
+                    num_samples=self.n_iter,
+                    search_alg=algo,
+                    max_concurrent_trials=self.cpus_per_bundle
+                ),
+                run_config=train.RunConfig(
+                    storage_path=self.tune_storage_path,
+                    name = data_name, 
+                    verbose = 0,
+                    log_to_file=True,
+                ),
+            )
+            return tuner.fit(), exp_data_path
+        return run_tune_task
+    def optimierer_agg(self, opt_params, init_points=4, hyperparameter=None, exp_data_path=None):
         """
         Optimize the corr_agg based on :meth:`~.calc_delta_agg`. 
         Results are saved in corr_agg_opt.
@@ -208,6 +365,22 @@ class opt_algo():
         delta_opt : `float`
             Optimized value of the objective.
         """
+        if isinstance(exp_data_path, list):
+            x_uni_exp = []
+            data_exp = []
+            for exp_data_path_tem in exp_data_path:
+                if self.exp_data:
+                    x_uni_exp_tem, data_exp_tem = self.get_all_exp_data(exp_data_path_tem)
+                else:
+                    x_uni_exp_tem, data_exp_tem = self.get_all_synth_data(exp_data_path_tem)
+                x_uni_exp.append(x_uni_exp_tem)
+                data_exp.append(data_exp_tem)
+        else:
+            if self.exp_data:
+                x_uni_exp, data_exp = self.get_all_exp_data(exp_data_path)
+            else:
+                x_uni_exp, data_exp = self.get_all_synth_data(exp_data_path)
+            
         RT_space = {}
         
         for param, info in opt_params.items():
@@ -218,32 +391,26 @@ class opt_algo():
                 RT_space[param] = tune.loguniform(10**bounds[0], 10**bounds[1])
             else:
                 RT_space[param] = tune.uniform(bounds[0], bounds[1])
-                
-        # Objective function considering the log scale transformation if necessary
-        def objective(config):
-            # Special handling for corr_agg based on dimension
-            if 'corr_agg_0' in config:
-                transformed_params = self.array_dict_transform(config)
-                
-            loss = self.calc_delta_agg(transformed_params, sample_num=sample_num, exp_data_path=exp_data_path)
-            train.report({"loss": loss})
+   
+        algo = self.create_algo()
             
-        if self.method == 'HEBO': 
-            algo = HEBOSearch(metric="loss", mode="min")
-        elif self.method == 'GP': 
-            algo = OptunaSearch(metric="loss", mode="min", sampler=GPSampler())
-        elif self.method == 'TPS': 
-            algo = OptunaSearch(metric="loss", mode="min", sampler=TPESampler())
-        elif self.method == 'Cmaes':    
-            algo = OptunaSearch(metric="loss", mode="min", sampler=CmaEsSampler())
-        elif self.method == 'NSGA':    
-            algo = OptunaSearch(metric="loss", mode="min", sampler=NSGAIIISampler())
-        elif self.method == 'QMC':    
-            algo = OptunaSearch(metric="loss", mode="min", sampler=QMCSampler())
+        if isinstance(exp_data_path, list):
+            data_name = os.path.basename(exp_data_path[0])
+        else:
+            data_name = os.path.basename(exp_data_path)
             
+        if data_name.startswith("Sim_"):
+            data_name = data_name[len("Sim_"):]
+        if data_name.endswith(".xlsx"):
+            data_name = data_name[:-len(".xlsx")]
         # 运行Ray Tune进行超参数搜索
+        trainable_with_resources  = tune.with_resources(lambda config: self.objective(config, x_uni_exp, data_exp), 
+                                                        resources=tune.PlacementGroupFactory([
+            {"CPU": self.cpus_per_trail}
+        ]))
+        
         tuner = tune.Tuner(
-            objective,
+            trainable_with_resources,
             param_space=RT_space,
             tune_config=tune.TuneConfig(
                 num_samples=self.n_iter,
@@ -251,7 +418,10 @@ class opt_algo():
                 search_alg=algo
             ),
             run_config=train.RunConfig(
-            storage_path =self.tune_storage_path
+            storage_path =self.tune_storage_path,
+            name = data_name, 
+            verbose = 1,
+            # log_to_file=("stdout.log", "stderr.log")
             )
         )
         
@@ -263,10 +433,42 @@ class opt_algo():
         
         result_dict = {
             "opt_score": opt_score,
-            "opt_parameters": opt_params,
+            "opt_params": opt_params,
+            "file_path": exp_data_path
         }
         
         return result_dict
+    
+    # Objective function considering the log scale transformation if necessary
+    def objective(self, config, x_uni_exp, data_exp):
+        # Special handling for corr_agg based on dimension
+        if 'corr_agg_0' in config:
+            transformed_params = self.array_dict_transform(config)
+        else:
+            transformed_params = config
+        # checkpoint_config=train.CheckpointConfig(
+        #     checkpoint_at_end=True,  # 仅在任务结束时保存检查点
+        #     checkpoint_frequency=0   # 禁用中间检查点保存
+        # ),  
+        checkpoint_config = None
+        
+        loss = self.calc_delta_agg(transformed_params, x_uni_exp, data_exp)
+        train.report({"loss": loss}, checkpoint=checkpoint_config)
+        
+    def create_algo(self):
+        if self.method == 'HEBO': 
+            return HEBOSearch(metric="loss", mode="min")
+        elif self.method == 'GP': 
+            return OptunaSearch(metric="loss", mode="min", sampler=GPSampler())
+        elif self.method == 'TPE': 
+            return OptunaSearch(metric="loss", mode="min", sampler=TPESampler())
+        elif self.method == 'Cmaes':    
+            return OptunaSearch(metric="loss", mode="min", sampler=CmaEsSampler())
+        elif self.method == 'NSGA':    
+            return OptunaSearch(metric="loss", mode="min", sampler=NSGAIIISampler())
+        elif self.method == 'QMC':    
+            return OptunaSearch(metric="loss", mode="min", sampler=QMCSampler())
+
     def array_dict_transform(self, array_dict):
         # Special handling for array in dictionary like corr_agg based on dimension
             if self.p.dim == 1:
@@ -321,6 +523,7 @@ class opt_algo():
         """
         if cost_func_type == 'MSE':
             return mean_squared_error(data_mod, data_exp)
+            # return self.squared_errors(data_mod, data_exp)
         elif cost_func_type == 'RMSE':
             mse = mean_squared_error(data_mod, data_exp)
             return np.sqrt(mse)
@@ -332,6 +535,12 @@ class opt_algo():
             return entropy(data_mod, data_exp).mean()
         else:
             raise Exception("Current cost function type is not supported")
+    
+    def squared_errors(self, y_true, y_pred):
+        y_true = np.array(y_true)
+        y_pred = np.array(y_pred)
+        errors = (y_true - y_pred) ** 2
+        return errors.sum()
     #%% Data Process  
     ## Read the experimental data and re-interpolate the particle distribution 
     ## of the experimental data according to the simulation results.
@@ -350,7 +559,7 @@ class opt_algo():
             - `x_uni_exp`: An array of unique particle sizes.
             - `sumN_uni_exp`: An array of sum of number concentrations for the unique particle sizes.
         """
-        exp_data = write_read_exp(exp_data_path, read=True)
+        exp_data = write_read_exp(exp_data_path, read=True, sheet_name=self.sheet_name)
         df = exp_data.get_exp_data(t_vec)
         x_uni_exp = df.index.to_numpy()
         sumN_uni_exp = df.to_numpy()
@@ -637,7 +846,7 @@ class opt_algo():
         self.p_M.calc_R()
     
     ## only for 1D-pop, 
-    def set_init_N(self, sample_num, exp_data_paths, init_flag):
+    def set_init_N(self, exp_data_paths, init_flag):
         """
         Initialize the number concentration N for 1D DPBESolvers based on experimental data.
         
@@ -651,14 +860,18 @@ class opt_algo():
             The method to use for initialization: 'int' for interpolation or 'mean' for averaging
             the initial sets.
         """
-        self.calc_all_R()
-        self.set_init_N_1D(self.p_NM, sample_num, exp_data_paths[1], init_flag)
-        self.set_init_N_1D(self.p_M, sample_num, exp_data_paths[2], init_flag)
-        self.p.N = np.zeros((self.p.NS, self.p.NS, len(self.p.t_vec)))
-        self.p.N[1:, 1, 0] = self.p_NM.N[1:, 0]
-        self.p.N[1, 1:, 0] = self.p_M.N[1:, 0]
+        if self.dim ==1:
+            self.p.calc_R()
+            self.set_init_N_1D(self.p, exp_data_paths, init_flag)
+        elif self.dim == 2:
+            self.calc_all_R()
+            self.set_init_N_1D(self.p_NM, exp_data_paths[1], init_flag)
+            self.set_init_N_1D(self.p_M, exp_data_paths[2], init_flag)
+            self.p.N = np.zeros((self.p.NS, self.p.NS, len(self.p.t_vec)))
+            self.p.N[1:, 1, 0] = self.p_NM.N[1:, 0]
+            self.p.N[1, 1:, 0] = self.p_M.N[1:, 0]
     
-    def set_init_N_1D(self, pop, sample_num, exp_data_path, init_flag):
+    def set_init_N_1D(self, pop, exp_data_path, init_flag):
         """
         Initialize the number concentration N for a single 1D DPBESolver using experimental data.
         
@@ -678,14 +891,14 @@ class opt_algo():
             Initialization method: 'int' for interpolation, 'mean' for averaging.
         """
         x_uni = self.calc_x_uni(pop)
-        if sample_num == 1:
+        if self.sample_num == 1:
             x_uni_exp, sumN_uni_init_sets = self.read_exp(exp_data_path, self.t_init[1:])
         else:
             exp_data_path=self.traverse_path(0, exp_data_path)
             x_uni_exp, sumN_uni_tem = self.read_exp(exp_data_path, self.t_init[1:])
-            sumN_uni_all_samples = np.zeros((len(x_uni_exp), len(self.t_init[1:]), sample_num))
+            sumN_uni_all_samples = np.zeros((len(x_uni_exp), len(self.t_init[1:]), self.sample_num))
             sumN_uni_all_samples[:, :, 0] = sumN_uni_tem
-            for i in range(1, sample_num):
+            for i in range(1, self.sample_num):
                 exp_data_path=self.traverse_path(i, exp_data_path)
                 _, sumN_uni_tem = self.read_exp(exp_data_path, self.t_init[1:])
                 sumN_uni_all_samples[:, :, i] = sumN_uni_tem
@@ -820,3 +1033,17 @@ class opt_algo():
         q3 = np.zeros_like(Q3)
         q3[1:] = np.diff(Q3) / np.diff(x_uni)
         return q3
+    
+def print_notice(message):
+    # 上下空很多行
+    empty_lines = "\n" * 5
+    
+    # 定义符号和边框
+    border = "*" * 80
+    padding = "\n" + " " * 10  # 左右留白
+    
+    # 构建完整的提示消息
+    notice = f"{empty_lines}{border}{padding}{message}{padding}{border}{empty_lines}"
+    
+    # 打印消息
+    print(notice)

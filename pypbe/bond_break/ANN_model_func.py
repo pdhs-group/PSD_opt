@@ -55,7 +55,7 @@ def train_model_1d(model, train_data, test_data, x, mask, print_status, weight_l
     mask_tf = tf.convert_to_tensor(mask)
     
     best_val_loss = float('inf')
-    patience = 5
+    patience = 20
     patience_counter = 0
     for epoch in range(epochs):
         if print_status:
@@ -63,12 +63,15 @@ def train_model_1d(model, train_data, test_data, x, mask, print_status, weight_l
         # Training
         for step, (batch_inputs, batch_outputs, batch_inputs_scaled) in enumerate(train_dataset):
             FRAG_NUM = batch_inputs[:,1]
-            with tf.GradientTape() as tape:
-                prediction  = model(batch_inputs_scaled, training=True)
-                loss = combined_custom_loss(batch_outputs, prediction, FRAG_NUM, x_tf, mask_tf, 
-                                            alpha=weight_loss_FRAG_NUM, beta=1-weight_loss_FRAG_NUM)
+            loss, grads = compute_loss_and_grads(model, batch_inputs_scaled, batch_outputs, 
+                                                       x_tf, model(batch_inputs_scaled, training=False), 
+                                                       mask_tf, FRAG_NUM, weight_loss_FRAG_NUM)
+            # with tf.GradientTape() as tape:
+            #     prediction  = model(batch_inputs_scaled, training=True)
+            #     loss = combined_custom_loss(batch_outputs, prediction, FRAG_NUM, x_tf, mask_tf, 
+            #                                 alpha=weight_loss_FRAG_NUM, beta=1-weight_loss_FRAG_NUM)
             
-            grads = tape.gradient(loss, model.trainable_weights)
+            # grads = tape.gradient(loss, model.trainable_weights)
             # grads = [tf.clip_by_value(g, -1.0, 1.0) for g in grads]
             optimizer.apply_gradients(zip(grads, model.trainable_weights))
             if print_status:
@@ -76,19 +79,19 @@ def train_model_1d(model, train_data, test_data, x, mask, print_status, weight_l
         # evaluate_model
         validate_results = validate_model_1d(model,test_data,x,mask)
         # Early Stopping Check with validate_results[0](mse)
-        if validate_results[0] < best_val_loss:
-            best_val_loss = validate_results[0]
-            best_validate_results = validate_results
-            patience_counter = 0
-        else:
-            patience_counter += 1
-            if patience_counter >= patience:
-                if print_status:
-                    print(f"Early stopping at epoch {epoch+1}")
-                    return best_validate_results
+        # if validate_results[0] < best_val_loss:
+        #     best_val_loss = validate_results[0]
+        #     best_validate_results = validate_results
+        #     patience_counter = 0
+        # else:
+        #     patience_counter += 1
+        #     if patience_counter >= patience:
+        #         if print_status:
+        #             print(f"Early stopping at epoch {epoch+1}")
+        #         return best_validate_results
     if print_status:    
         print(f"Training of Echos = {epochs} completed!")
-    return best_validate_results
+    return validate_results
     
 def validate_model_1d(model,test_data,x,mask): 
     test_Inputs = test_data[0]
@@ -265,20 +268,20 @@ def train_model_2d(model, train_data, test_data, x, y, mask, print_status, weigh
         # evaluate_model
         validate_results = validate_model_2d(model,test_data,x,y,mask)
         # Early Stopping Check with validate_results[0](mse)
-        if validate_results[0] < best_val_loss:
-            best_val_loss = validate_results[0]
-            best_validate_results = validate_results
-            patience_counter = 0
-        else:
-            patience_counter += 1
-            if patience_counter >= patience:
-                if print_status:
-                    print(f"Early stopping at epoch {epoch+1}")
-                    return best_validate_results
+        # if validate_results[0] < best_val_loss:
+        #     best_val_loss = validate_results[0]
+        #     best_validate_results = validate_results
+        #     patience_counter = 0
+        # else:
+        #     patience_counter += 1
+        #     if patience_counter >= patience:
+        #         if print_status:
+        #             print(f"Early stopping at epoch {epoch+1}")
+        #         return best_validate_results
         
     if print_status:
         print(f"Training of Echos = {epochs} completed!")
-    return best_validate_results
+    return validate_results
     
 def validate_model_2d(model,test_data,x,y,mask): 
     test_Inputs = test_data[0]

@@ -739,7 +739,7 @@ class Population():
                     a = idx[0]
                     if a != 0:
                         self.B_R[a] = self.pl_P1*self.G*(self.V[a]/V_mean)**self.pl_P2   
-                        # self.B_R[a] = self.pl_P1*self.G*self.V[a]**self.pl_P2  
+                        # self.B_R[a] = self.pl_P1*self.G*self.V[a]**self.pl_P2             
         # 2-D case            
         if self.dim == 2:
             self.B_R = np.zeros((self.NS, self.NS))
@@ -845,8 +845,8 @@ class Population():
                 
                 if self.B_F_type == 'MC_bond':
                     mc_bond = np.load(self.PTH_MC_BOND, allow_pickle=True)
-                    self.int_B_F = mc_bond['int_B_F'][:,0,:,0]
-                    self.intx_B_F = mc_bond['intx_B_F'][:,0,:,0] * self.V_e[1]
+                    self.int_B_F = mc_bond['int_B_F']
+                    self.intx_B_F = mc_bond['intx_B_F']
                     # for i in range(2, self.NS):
                     #     self.intx_B_F[:,i] = mc_bond['intx_B_F'][:,0,i,0] * self.V[i]
                 elif self.B_F_type == 'int_func':
@@ -887,8 +887,8 @@ class Population():
                 #         else:
                 #             self.intx_B_F[:,:,i,j] = mc_bond['intx_B_F'][:,:,i,j] * self.V[i,j]
                 #             self.inty_B_F[:,:,i,j] = mc_bond['inty_B_F'][:,:,i,j] * self.V[i,j]
-                self.intx_B_F = mc_bond['intx_B_F'] * self.V_e1[1]
-                self.inty_B_F = mc_bond['inty_B_F'] * self.V_e3[1]
+                self.intx_B_F = mc_bond['intx_B_F']
+                self.inty_B_F = mc_bond['inty_B_F']
 
             elif self.B_F_type == 'int_func':
                 if self.JIT_BF:
