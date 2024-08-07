@@ -1,4 +1,7 @@
-{
+import numpy as np
+
+config = {
+    
     "NS": 8,
     "S": 4,
     "R01": 8.677468940430804e-07,
@@ -9,9 +12,9 @@
     "process_type": "mix",
     "solver": "ivp",
     "V_unit": 1e-15,
-    "USE_PSD": false,
-    "DIST1_path": null,
-    "DIST3_path": null,
+    "USE_PSD": False,
+    "DIST1_path": None,
+    "DIST3_path": None,
     "DIST1_name": "PSD_x50_2.0E-6_RelSigmaV_1.5E-1.npy",
     "DIST3_name": "PSD_x50_2.0E-6_RelSigmaV_1.5E-1.npy",
 
@@ -20,9 +23,7 @@
     "SIZEEVAL": 1,
     "aggl_crit": 100,
     "CORR_BETA": 1e-4,
-    "alpha_prim_0": 1,
-    "alpha_prim_1": 1,
-    "alpha_prim_2": 1,
+    'alpha_prim': np.array([1,1,1,1]),
 
     "BREAKRVAL": 4,
     "BREAKFVAL": 5,

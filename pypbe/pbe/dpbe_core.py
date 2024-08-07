@@ -161,16 +161,7 @@ class Population():
         ## reset psd-file path
         self.DIST1 = os.path.join(self.DIST1_path,self.DIST1_name)
         self.DIST2 = os.path.join(self.DIST2_path,self.DIST2_name)
-        self.DIST3 = os.path.join(self.DIST3_path,self.DIST3_name)
-        ## reset alpha_prim
-        if hasattr(self, 'alpha_prim_0'):
-            if self.dim == 1:
-                self.alpha_prim = self.alpha_prim_0
-            elif self.dim == 2:
-                self.alpha_prim[0] = self.alpha_prim_0
-                self.alpha_prim[1] = self.alpha_prim[2] = self.alpha_prim_1
-                self.alpha_prim[3] = self.alpha_prim_2
-                
+        self.DIST3 = os.path.join(self.DIST3_path,self.DIST3_name)     
         
         self.EPS = self.EPSR*self.EPS0
         
