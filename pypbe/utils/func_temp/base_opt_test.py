@@ -39,6 +39,7 @@ def normal_test():
     axq3_M=fig_M.add_subplot(1,1,1)
     
     ## Calculate PBE direkt with psd-data and original parameter
+    pop_params = conf.config['pop_params']
     param_str = data_name.split('para_')[-1]
     param_str = param_str.rsplit('.', 1)[0] 
     params = param_str.split('_')
@@ -85,6 +86,7 @@ def calc_N_test():
     axq3_M=fig_M.add_subplot(1,1,1)
     
     ## Calculate PBE direkt with psd-data, result is raw exp-data
+    pop_params = conf.config['pop_params']
     param_str = data_name.split('para_')[-1]
     param_str = param_str.rsplit('.', 1)[0] 
     params = param_str.split('_')
@@ -98,8 +100,7 @@ def calc_N_test():
     pop_params['pl_P4'] = converted_params[8]
     find.algo.set_init_pop_para(pop_params)
     find.algo.calc_init_N = False
-    find.algo.set_comp_para(USE_PSD, R01_0, R03_0, R_NM=R_NM, R_M=R_M,R01_0_scl=R01_0_scl,R03_0_scl=R03_0_scl,
-                            dist_path_NM=dist_path_NM, dist_path_M=dist_path_M)
+    find.algo.set_comp_para(find.base_path)
     find.algo.calc_all_pop()
     # return_pop_num_distribution(find.algo.p, axq3, fig, clr='b', q3lbl='q3_psd')
     # q3_psd = return_pop_num_distribution(find.algo.p_NM, axq3_NM, fig_NM, clr='b', q3lbl='q3_psd')
@@ -182,6 +183,7 @@ def return_pop_distribution(pop, axq3=None,fig=None, clr='b', q3lbl='q3'):
     return df
 
 def calc_delta_test(var_delta=False):
+    pop_params = conf.config['pop_params']
     if find.algo.calc_init_N:
         find.algo.set_init_N(exp_data_paths, 'mean')
     x_uni_exp, data_exp = find.algo.get_all_exp_data(exp_data_paths)
@@ -199,60 +201,13 @@ def calc_delta_test(var_delta=False):
         return delta
 
 if __name__ == '__main__':
-    #%%  Input for Opt
-    algo_params = conf.config['algo_params']
-    pop_params = conf.config['pop_params']
-    
-    # pop_params['CORR_BETA'] = 1e2
-    # pop_params['alpha_prim'] = np.array([0.5, 0.5, 0.5])
-    # pop_params['pl_v'] = 2
-    # pop_params['pl_P1'] = 1e-2
-    # pop_params['pl_P2'] = 0.5
-    # pop_params['pl_P3'] = 1e-2
-    # pop_params['pl_P4'] = 0.5
-    # pop_params['pl_P5'] = 1e-2
-    # pop_params['pl_P6'] = 1e-1
-    
     ## Instantiate find and algo.
     ## The find class determines how the experimental 
     ## data is used, while algo determines the optimization process.
-    find = opt.opt_find()
-     
-    #%% Variable parameters
-    ## Set the R0 particle radius and 
-    ## whether to calculate the initial conditions from experimental data
-    ## 0. Use only 2D Data or 1D+2D
-    multi_flag = conf.config['multi_flag']
-    opt_params = conf.config['opt_params']
+    find = opt.OptFind()
     
-    find.init_opt_algo(multi_flag, algo_params, opt_params)
-    
-    find.algo.set_init_pop_para(pop_params)
-    
-    base_path = os.path.join(find.algo.p.pth, "data")
-    find.base_path = base_path
-    if find.algo.p.process_type == 'breakage':
-        USE_PSD = False
-        dist_path_NM = None
-        dist_path_M = None
-    else:
-        USE_PSD = False
-        dist_path_NM = os.path.join(base_path, "PSD_data", conf.config['dist_scale_1'])
-        dist_path_M = os.path.join(base_path, "PSD_data", conf.config['dist_scale_1'])
-        
-    R_NM = conf.config['R_01']
-    R_M=conf.config['R_M']
-    R01_0_scl=conf.config['R01_0_scl']
-    R03_0_scl=conf.config['R03_0_scl']
-    R01_0 = 'r0_001'
-    R03_0 = 'r0_001'
-    find.algo.set_comp_para(USE_PSD, R01_0, R03_0, R_NM=R_NM, R_M=R_M,R01_0_scl=R01_0_scl,R03_0_scl=R03_0_scl,
-                            dist_path_NM=dist_path_NM, dist_path_M=dist_path_M)
-    find.algo.weight_2d = conf.config['weight_2d']
-
     data_name = "Batchversuch_600rpm_1200rpm.xlsx"  
-    
-    exp_data_paths = os.path.join(base_path, data_name)
+    exp_data_paths = os.path.join(find.data_path, data_name)
     # exp_data_paths = [
     #     exp_data_path,
     #     exp_data_path.replace(".xlsx", "_NM.xlsx"),

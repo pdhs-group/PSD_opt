@@ -13,8 +13,8 @@ from .dpbe_post import PBEPost
 from .dpbe_mag_sep import MagSep
 
 class DPBESolver():
-    def __init__(self, dim, t_total=601, t_write=100, config_path=None, disc='geo', **attr):
-        self.pbe = Population(dim, t_total, t_write, disc, **attr)
+    def __init__(self, dim, t_total=601, t_write=100, t_vec=None, load_attr=True, config_path=None, disc='geo', **attr):
+        self.pbe = Population(dim, t_total, t_write, t_vec, disc, **attr)
         self.post = PBEPost(self.pbe)
         self.visual = PBEVisualization(self.pbe, self.post)
         self.mag_sep = MagSep(self.pbe)
@@ -24,7 +24,7 @@ class DPBESolver():
             config_name = "PBE_config"
         if not os.path.exists(config_path):
             print (f"Warning: Config file not found at: {config_path}.")
-        else:
+        elif load_attr:
             config_name = os.path.splitext(os.path.basename(config_path))[0]
             self.load_attributes(config_name, config_path)
 

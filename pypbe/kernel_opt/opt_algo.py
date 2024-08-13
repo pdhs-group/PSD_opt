@@ -19,10 +19,10 @@ from sklearn.neighbors import KernelDensity
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 from scipy.interpolate import interp1d
 ## import internal package
-from ..pbe import DPBESolver
+from ..pbe.dpbe_base import DPBESolver
 from ..utils.func.func_read_exp import write_read_exp
 
-class opt_algo():
+class OptAlgo():
     """
     Class definition for calculations within optimization process class.
 
@@ -98,13 +98,13 @@ class opt_algo():
             
             del params["corr_agg"]
 
-        self.calc_pop(self.p, params, self.t_vec)
+        self.calc_pop(self.p, params)
         if self.p.calc_status:
-            return self.calc_delta_tem(x_uni_exp, data_exp, self.p)
+            return self.calc_delta_tem(x_uni_exp, data_exp, self.p, self.p_post)
         else:
             return 10
 
-    def calc_delta_tem(self, x_uni_exp, data_exp, pop):
+    def calc_delta_tem(self, x_uni_exp, data_exp, pop, pop_post):
         """
         Loop through all the experimental data and calculate the average diffences.
         
@@ -127,7 +127,7 @@ class opt_algo():
         x_uni = self.calc_x_uni(pop)
         for idt in range(self.delta_t_start_step, self.num_t_steps):
             if self.smoothing:
-                sumvol_uni = pop.return_distribution(t=idt, flag='sumvol_uni')[0]
+                sumvol_uni = pop_post.return_distribution(t=idt, flag='sumvol_uni')[0]
                 ## The volume of particles with index=0 is 0. 
                 ## In theory, such particles do not exist.
                 kde = self.KDE_fit(x_uni[1:], sumvol_uni[1:])
@@ -141,7 +141,7 @@ class opt_algo():
                     q3_mod_tem = self.KDE_score(kde_list[idt], x_uni_exp[1:])
                     q3_mod[1:, idt] = q3_mod_tem
                 else:
-                    q3_mod[:, idt] = pop.return_distribution(t=idt+self.delta_t_start_step, flag='q3')[0]
+                    q3_mod[:, idt] = pop_post.return_distribution(t=idt+self.delta_t_start_step, flag='q3')[0]
                 Q3 = self.calc_Q3(x_uni_exp, q3_mod[:, idt]) 
                 q3_mod[:, idt] = q3_mod[:, idt] / Q3.max() 
             q3_mod = np.insert(q3_mod, 0, 0.0, axis=0)
@@ -162,7 +162,7 @@ class opt_algo():
                         q3_mod_tem = self.KDE_score(kde_list[idt], x_uni_exp[i][1:])
                         q3_mod[1:, idt] = q3_mod_tem
                     else:
-                        q3_mod[:, idt] = pop.return_distribution(t=idt+self.delta_t_start_step, flag='q3')[0]
+                        q3_mod[:, idt] = pop_post.return_distribution(t=idt+self.delta_t_start_step, flag='q3')[0]
                     Q3 = self.calc_Q3(x_uni_exp[i], q3_mod[:, idt]) 
                     q3_mod[:, idt] = q3_mod[:, idt] / Q3.max()
                 for flag, cost_func_type in self.delta_flag:
@@ -706,14 +706,18 @@ class opt_algo():
         else:
             return update_path(path_ori, label)        
     #%% PBE    
-    def create_1d_pop(self, disc='geo'):
+    def create_1d_pop(self, t_vec, disc='geo'):
         """
         Instantiate one-dimensional DPBESolvers for both non-magnetic (NM) and magnetic (M) particles.
         """
-        self.p_NM = DPBESolver(dim=1,disc=disc)
-        self.p_M = DPBESolver(dim=1,disc=disc)
+        self.p_NM_base = DPBESolver(dim=1,disc=disc, t_vec=t_vec, load_attr=False)
+        self.p_NM = self.p_NM_base.pbe
+        self.p_NM_post = self.p_NM_base.post
+        self.p_M_base = DPBESolver(dim=1,disc=disc, t_vec=t_vec, load_attr=False)
+        self.p_M = self.p_M_base.pbe
+        self.p_M_post = self.p_M_base.post
             
-    def calc_pop(self, pop, params=None, t_vec=None):
+    def calc_pop(self, pop, params=None):
         """
         Configure and calculate the PBE.
         """
@@ -725,10 +729,8 @@ class opt_algo():
             pop.calc_F_M()
             pop.calc_B_R()
             pop.calc_int_B_F()
-        
-        if t_vec is None: pop.solve_PBE(t_vec=self.t_vec)      
-        else: pop.solve_PBE(t_vec=t_vec) 
-        
+        pop.solve_PBE()      
+
     def set_init_pop_para(self,pop_params):
         
         self.set_pop_para(self.p, pop_params)
@@ -737,10 +739,6 @@ class opt_algo():
             self.set_pop_para(self.p_NM, pop_params)
         if hasattr(self, 'p_M'):
             self.set_pop_para(self.p_M, pop_params)
-            ## P3 and P4 correspond to the breakage rate parameters of magnetic particles
-            if 'BREAKRVAL' in pop_params and pop_params['BREAKRVAL'] == 4:
-                self.p_M.pl_P1 = pop_params['pl_P3']
-                self.p_M.pl_P2 = pop_params['pl_P4']
         
         self.set_init_pop_para_flag = True
 
@@ -789,8 +787,7 @@ class opt_algo():
             if key != 'alpha_prim':
                 setattr(pop, key, value)
         
-    def set_comp_para(self, USE_PSD, R01_0='r0_005', R03_0='r0_005', dist_path_NM=None, dist_path_M=None,
-                      R_NM=2.9e-7, R_M=2.9e-7,R01_0_scl=1,R03_0_scl=1):
+    def set_comp_para(self, data_path):
         """
         Set component parameters for non-magnetic and magnetic particle.
         
@@ -812,19 +809,21 @@ class opt_algo():
         R_M : `float`, optional
             Default radius for M particles if `dist_path_M` is not provided. Defaults to 2.9e-7.
         """
-        self.p.USE_PSD = USE_PSD
+        self.p.USE_PSD = self.USE_PSD
         if self.p.USE_PSD:
-            if dist_path_NM is None or dist_path_M is None:
-                raise Exception("Please give the full path to all PSD data!")
-            psd_dict_NM = np.load(dist_path_NM,allow_pickle=True).item()
-            psd_dict_M = np.load(dist_path_M,allow_pickle=True).item()
-            self.p.DIST1 = dist_path_NM
-            self.p.DIST3 = dist_path_M
-            self.p.R01 = psd_dict_NM[R01_0] * R01_0_scl
-            self.p.R03 = psd_dict_M[R03_0] * R03_0_scl
+            dist_path_R01 = os.path.join(data_path, self.PSD_R01)
+            dist_path_R03 = os.path.join(data_path, self.PSD_R03)
+            if not os.path.exists(dist_path_R01) or not os.path.exists(dist_path_R03):
+                raise Exception("Please give the name to PSD data!")
+            psd_dict_R01 = np.load(dist_path_R01,allow_pickle=True).item()
+            psd_dict_R03 = np.load(dist_path_R03,allow_pickle=True).item()
+            self.p.DIST1 = dist_path_R01
+            self.p.DIST3 = dist_path_R03
+            self.p.R01 = psd_dict_R01[self.R01_0] * self.R01_0_scl
+            self.p.R03 = psd_dict_R03[self.R03_0] * self.R03_0_scl
         else:
-            self.p.R01 = R_NM * R01_0_scl
-            self.p.R03 = R_M * R03_0_scl
+            self.p.R01 = self.R_01 * self.R01_0_scl
+            self.p.R03 = self.R_03 * self.R03_0_scl
         if self.dim > 1:
             ## Set particle parameter for 1D PBE
             self.p_NM.USE_PSD = self.p_M.USE_PSD = self.p.USE_PSD

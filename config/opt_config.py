@@ -41,6 +41,21 @@ config = {
         ## Initialize PBE using psd data(False) or 
         ## with the help of first few time points of experimental data(True)
         'calc_init_N': False,
+        ## Setting the basic parameters of the smallest particles, 
+        ## whether they are read from PSD data or not
+        'USE_PSD' : False,
+        'R01_0' : 'r0_001',
+        'R03_0' : 'r0_001',
+        ## The diameter ratio of the primary particles can also be used as a variable
+        'R_01': 8.677468940430804e-07,
+        'R_03': 8.677468940430804e-07*1,
+        ## Adjust the coordinate of PBE(optional)
+        'R01_0_scl': 1e-1,
+        'R03_0_scl': 1e-1,
+        'PSD_R01' : 'PSD_x50_2.0E-6_RelSigmaV_1.5E-1.npy',
+        'PSD_R03' : 'PSD_x50_2.0E-6_RelSigmaV_1.5E-1.npy',
+        ## The error of 2d pop may be more important, so weight needs to be added
+        'weight_2d': 1,
         ## delta_flag = q3: use q3
         ## delta_flag = Q3: use Q3
         ## delta_flag = x_10: use x_10
@@ -63,7 +78,7 @@ config = {
     
     ## PBE parameters
     'pop_params': {
-        'NS' : 15,
+        'NS' : 8,
         'S' : 4,
         'BREAKRVAL' : 4,
         'BREAKFVAL' : 5,
@@ -98,26 +113,13 @@ config = {
     ## Parameters which should be optimized
     'opt_params' : {
         'corr_agg_0': {'bounds': (-4.0, -1.0), 'log_scale': True},
-        # 'corr_agg_1': {'bounds': (-4.0, -1.0), 'log_scale': True},
-        # 'corr_agg_2': {'bounds': (-4.0, -1.0), 'log_scale': True},
+        'corr_agg_1': {'bounds': (-4.0, -1.0), 'log_scale': True},
+        'corr_agg_2': {'bounds': (-4.0, -1.0), 'log_scale': True},
         'pl_v': {'bounds': (0.5, 2.0), 'log_scale': False},
         'pl_P1': {'bounds': (-4.0, 0.0), 'log_scale': True},
         'pl_P2': {'bounds': (0.5, 3.0), 'log_scale': False},
-        # 'pl_P3': {'bounds': (-4.0, 0.0), 'log_scale': True},
-        # 'pl_P4': {'bounds': (0.5, 3.0), 'log_scale': False},
+        'pl_P3': {'bounds': (-4.0, 0.0), 'log_scale': True},
+        'pl_P4': {'bounds': (0.5, 3.0), 'log_scale': False},
     },
-    ## The diameter ratio of the primary particles can also be used as a variable
-    'R_01': 8.677468940430804e-07,
-    'R_M': 8.677468940430804e-07*1,
-    ## Adjust the coordinate of PBE(optional)
-    'R01_0_scl': 1e-1,
-    'R03_0_scl': 1e-1,
-    
-    ## The error of 2d pop may be more important, so weight needs to be added
-    'weight_2d': 1,
-    
-    ## PSD data to initialize the PBE, when needed.
-    'dist_scale_1': "PSD_x50_2.0E-6_RelSigmaV_1.5E-1.npy",
-    'dist_scale_5': "PSD_x50_1.0E-5_RelSigmaV_1.5E-1.npy",
-    'dist_scale_10': "PSD_x50_2.0E-5_RelSigmaV_1.5E-1.npy",
+
 }

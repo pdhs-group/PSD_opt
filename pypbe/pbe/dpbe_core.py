@@ -34,7 +34,7 @@ class Population():
     """
     
     ## Initialize:
-    def __init__(self, dim, t_total, t_write, disc, **attr):
+    def __init__(self, dim, t_total, t_write, t_vec, disc, **attr):
         
         # Check if given dimension and discretization is valid
         if not (dim in [1,2,3] and disc in ['geo','uni']):
@@ -50,6 +50,7 @@ class Population():
         self.S = 2                            # Geometric grid ratio (V[i] = S*V[i-1])      
         self.t_total = t_total                       # total simulation time [second]
         self.t_write = t_write
+        self.t_vec = t_vec
         self.solver = "ivp"                   # "ivp": use integrate.solve_ivp
                                               # "radau": use RK.radau_ii_a  
         
@@ -156,7 +157,10 @@ class Population():
     
     def reset_params(self):
         ## reset t_vec
-        self.t_vec = np.arange(0, self.t_total, self.t_write, dtype=float)
+        if self.t_vec is None:
+            self.t_vec = np.arange(0, self.t_total, self.t_write, dtype=float)
+        else:
+            print("t_vec already exists, t_total and t_write settings will be discarded!")
         self.t_num = len(self.t_vec)
         ## reset psd-file path
         self.DIST1 = os.path.join(self.DIST1_path,self.DIST1_name)

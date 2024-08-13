@@ -7,18 +7,19 @@ visualizing results.
 
 import numpy as np
 import os
+import importlib.util
 import warnings
 import pandas as pd
 import ray
-from ..dpbe import population
-from .opt_algo import opt_algo 
-from .opt_algo_multi import opt_algo_multi
+from ..pbe.dpbe_base import DPBESolver
+from .opt_algo import OptAlgo 
+from .opt_algo_multi import OptAlgoMulti
 from ..utils.func.func_read_exp import write_read_exp
 ## For plots
 import matplotlib.pyplot as plt
 from ..utils.plotter import plotter as pt        
 
-class opt_find():
+class OptFind():
     """
     A class to manage the optimization process for finding the kernel of PBE.
     
@@ -31,10 +32,33 @@ class opt_find():
     -------
 
     """
-    def __init__(self):
-        self.multi_flag=True
+    def __init__(self, config_path=None, data_path=None):
+        ## read config file and get all attribute
+        self.pth = os.path.dirname( __file__ )
+        config = self.check_config_path(config_path)
+        self.algo_params = config['algo_params']
+        self.pop_params = config['pop_params']
+        self.multi_flag = config['multi_flag']
+        self.opt_params = config['opt_params']
+        self.dim = self.algo_params.get('dim', None)
+        ## initialize instance of optimization algorithm and PBE
+        self.init_opt_algo(data_path)
+        self.init_opt_pop()
         
-    def init_opt_algo(self, multi_flag, algo_params, opt_params, data_path=None):
+    def check_config_path(self, config_path):
+        if config_path is None:
+            config_path = os.path.join(self.pth, "..","..","config","opt_config.py")
+            config_name = "opt_config"
+        if not os.path.exists(config_path):
+            raise Exception(f"Warning: Config file not found at: {config_path}.")
+        else:
+            config_name = os.path.splitext(os.path.basename(config_path))[0]
+            spec = importlib.util.spec_from_file_location(config_name, config_path)
+            conf = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(conf)
+            config = conf.config
+            return config
+    def init_opt_algo(self, data_path=None):
         """
         Initializes the optimization algorithm with specified parameters and configurations.
         
@@ -56,17 +80,15 @@ class opt_find():
         smoothing : `bool`, optional
             Flag to determine whether to apply smoothing(KDE) to the data. Default is False.
         """
-        dim = algo_params.get('dim', None)
-        if dim == 1:
+        
+        if self.dim == 1:
             print("The multi algorithm does not support 1-D pop!")
-            multi_flag = False
-        self.opt_params = opt_params
-        self.multi_flag = multi_flag
+            self.multi_flag = False
         if not self.multi_flag:
-            self.algo = opt_algo()
+            self.algo = OptAlgo()
         else:
-            self.algo = opt_algo_multi()  
-        for key, value in algo_params.items():
+            self.algo = OptAlgoMulti()  
+        for key, value in self.algo_params.items():
             setattr(self.algo, key, value)
 
         self.algo.num_t_init = len(self.algo.t_init)
@@ -79,18 +101,24 @@ class opt_find():
         self.algo.t_all = np.unique(self.algo.t_all)
         self.algo.idt_init = [np.where(self.algo.t_all == t_time)[0][0] for t_time in self.algo.t_init]
         self.idt_vec = [np.where(self.algo.t_all == t_time)[0][0] for t_time in self.algo.t_vec]
-        
-        self.algo.p = population(dim=dim, disc='geo')
-        ## The 1D-pop data is also used when calculating the initial N of 2/3D-pop.
-        if dim >= 2:
-            self.algo.create_1d_pop(disc='geo')
         # Set the base path for exp_data_path
         if data_path is None:
             print('Data path is not found or is None, default path will be used.')
-            self.base_path = os.path.join(self.algo.p.pth, "data")
+            self.data_path = os.path.join(self.pth, "..", "data")
         else:
-            self.base_path = data_path
-        os.makedirs(self.base_path, exist_ok=True)
+            self.data_path = data_path
+        os.makedirs(self.data_path, exist_ok=True)
+        
+    def init_opt_pop(self):
+        self.algo.p_base = DPBESolver(dim=self.dim, disc='geo', t_vec=self.algo.t_vec, load_attr=False)
+        self.algo.p = self.algo.p_base.pbe
+        self.algo.p_post = self.algo.p_base.post
+        ## The 1D-pop data is also used when calculating the initial N of 2/3D-pop.
+        if self.dim == 2:
+            self.algo.create_1d_pop(self.algo.t_vec, disc='geo')
+        self.algo.set_init_pop_para(self.pop_params)
+        self.algo.set_comp_para(self.data_path)
+        
     def generate_data(self, pop_params=None, add_info=""):
         """
         Generates synthetic data based on simulation results, optionally adding noise.
@@ -102,6 +130,8 @@ class opt_find():
         add_info : `str`, optional
             Additional information to append to the file name. Default is an empty string.
         """
+        if pop_params is None:
+            pop_params = self.pop_params
         if self.algo.add_noise:
             # Modify the file name to include noise type and strength
             filename = f"Sim_{self.algo.noise_type}_{self.algo.noise_strength}"+add_info+".xlsx"
@@ -110,7 +140,7 @@ class opt_find():
             filename = "Sim"+add_info+".xlsx"
 
         # Combine the base path with the modified file name
-        exp_data_path = os.path.join(self.base_path, filename)
+        exp_data_path = os.path.join(self.data_path, filename)
         
         if not self.multi_flag:
             self.algo.calc_pop(self.algo.p, pop_params, self.algo.t_all)
@@ -170,8 +200,8 @@ class opt_find():
         else:
             def join_paths(names):
                 if isinstance(names, list):
-                    return [os.path.join(self.base_path, name) for name in names]
-                return os.path.join(self.base_path, names)
+                    return [os.path.join(self.data_path, name) for name in names]
+                return os.path.join(self.data_path, names)
             
             exp_data_paths = []
             if self.multi_flag:
@@ -381,7 +411,7 @@ class opt_find():
         Saves a figure as a PNG file.
         
         """
-        file_path = os.path.join(self.base_path, file_name)
+        file_path = os.path.join(self.data_path, file_name)
         fig.savefig(file_path, dpi=150)
         return 0
     

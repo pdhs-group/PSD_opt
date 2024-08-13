@@ -1,7 +1,6 @@
 import numpy as np
 
 config = {
-    
     "NS": 8,
     "S": 4,
     "R01": 8.677468940430804e-07,
