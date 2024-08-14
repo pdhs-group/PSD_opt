@@ -6,6 +6,7 @@ Created on Thu Jul 18 09:45:12 2024
 """
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.animation import FuncAnimation
 from ..kernel_opt.opt_data import KDE_fit, KDE_score
 from ..utils.plotter import plotter as pt          
 from ..utils.plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
@@ -246,17 +247,16 @@ def visualize_sumvol_t(self, sumvol, ax=None,fig=None,close_all=False,lbl='',clr
     
     return ax, fig
 
-def visualize_distribution(self, x_uni=None, q3=None, Q3=None, t=-1, smoothing=False, vol_dis=True,
+def visualize_distribution(self, q3=None, Q3=None, t=-1, smoothing=False, vol_dis=True,
                            axq3=None,axQ3=None, fig=None,close_all=False,log_x_axis=True, 
-                           lbl='',clr='k',mrk='o',scl_a4=1,figsze=[12.8,6.4*1.5]):
-    if x_uni is None:
-        x_uni = self.calc_x_uni(unit_trans=True)
-    
+                           lbl='',clr='k',mrk='o',scl_a4=1,figsze=[12.8,6.4*1.5]): 
     if q3 is None or Q3 is None:
         if vol_dis:
-            q3, Q3, sum_uni = self.return_distribution(t=t, flag='q3, Q3, sumvol_uni')
+            x_uni, q3, Q3, sum_uni = self.return_distribution(t=t, flag='x_uni, q3, Q3, sumvol_uni')
+            ylbl = 'volume distribution of agglomerates $q3$ / $-$'
         else:
-            q3, Q3, sum_uni = self.return_num_distribution(t=t, flag='q3, Q3, sumN_uni')
+            x_uni, q3, Q3, sum_uni = self.return_num_distribution(t=t, flag='x_uni, q3, Q3, sumN_uni')
+            ylbl = 'number distribution of agglomerates $q3$ / $-$'
     if smoothing:
         kde = KDE_fit(None, x_uni[1:], sum_uni[1:])
         q3 = KDE_score(self, kde, x_uni[1:])
@@ -274,12 +274,12 @@ def visualize_distribution(self, x_uni=None, q3=None, Q3=None, t=-1, smoothing=F
     
     axq3, fig = pt.plot_data(x_uni, q3, fig=fig, ax=axq3,
                            xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
-                           ylbl='volume distribution of agglomerates $q3$ / $-$',
+                           ylbl=ylbl,
                            lbl=lbl,clr=clr,mrk=mrk)
     
     axQ3, fig = pt.plot_data(x_uni, Q3, fig=fig, ax=axQ3,
                            xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
-                           ylbl='volume distribution of agglomerates $Q3$ / $-$',
+                           ylbl=ylbl,
                            lbl=lbl,clr=clr,mrk=mrk)
 
     axq3.grid('minor')
@@ -291,4 +291,59 @@ def visualize_distribution(self, x_uni=None, q3=None, Q3=None, t=-1, smoothing=F
     plt.tight_layout()   
     
     return axq3, axQ3, fig
+
+def visualize_distribution_animation(self, t_vec=None, smoothing=False, 
+                                     vol_dis=True,axq3=None, fig=None,fps=5,
+                                     log_x_axis=True,others=None, other_labels=None):
+    if fig is None or axq3 is None:
+        fig=plt.figure()    
+        axq3=fig.add_subplot(1,1,1)    
+    def update(frame):
+        q3lbl = f"t={t_vec[frame]}"
+        while len(axq3.lines) > 0:
+            axq3.lines[0].remove()
+            
+        if vol_dis:
+            x_uni, q3, Q3, sum_uni = self.return_distribution(t=frame, flag='x_uni, q3, Q3, sumvol_uni')
+        else:
+            x_uni, q3, Q3, sum_uni = self.return_num_distribution(t=frame, flag='x_uni, q3, Q3, sumN_uni')
+        if smoothing:
+            kde = KDE_fit(None, x_uni[1:], sum_uni[1:])
+            q3 = KDE_score(self, kde, x_uni[1:])
+            q3 = np.insert(q3, 0, 0.0)
+        axq3.plot(x_uni, q3, label=q3lbl, color='b', marker='o')
+        # 绘制其他实例的结果
+        if others is not None:
+            colors = ['r', 'g', 'm', 'c', 'y']
+            for i, other in enumerate(others):
+                if vol_dis:
+                    x_uni_other, q3_other, Q3_other, sum_uni_other = other.return_distribution(t=frame, flag='x_uni, q3, Q3, sumvol_uni')
+                else:
+                    x_uni_other, q3_other, Q3_other, sumvol__other = other.return_num_distribution(t=frame, flag='x_uni, q3, Q3, sumN_uni')
+                if smoothing:
+                    kde_other = KDE_fit(None, x_uni_other[1:], sum_uni_other[1:])
+                    q3_other = KDE_score(self, kde_other, x_uni_other[1:])
+                    q3_other = np.insert(q3_other, 0, 0.0)
+                    
+                label = other_labels[i] if other_labels and i < len(other_labels) else f"Other {i+1} (t={t_vec[frame]})"
+                axq3.plot(x_uni_other, q3_other, label=label, color=colors[i % len(colors)], marker='^')
+        axq3.legend()
+        return axq3,
+
+    if vol_dis:
+        ylbl = 'volume distribution of agglomerates $q3$ / $-$'
+    else:
+        ylbl = 'number distribution of agglomerates $q3$ / $-$'
+    if t_vec is None:
+        t_vec = self.t_vec
+    t_frame = np.arange(len(t_vec))
+    axq3.set_xlabel('Agglomeration size $x_\mathrm{A}$ / $-$')
+    axq3.set_ylabel(ylbl)
+    axq3.grid('minor')
+    if log_x_axis:
+        axq3.set_xscale('log')
+    plt.tight_layout()
+
+    ani = FuncAnimation(fig, update, frames=t_frame, blit=False)
+    return ani
 
