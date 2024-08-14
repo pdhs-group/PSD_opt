@@ -10,16 +10,16 @@ import numpy as np
 from pypbe.pbe import DPBESolver
 ## for plotter
 import matplotlib.pyplot as plt
-import pypbe.kernel_opt.opt_algo as algo
+import pypbe.kernel_opt.opt_core as core
 import pypbe.utils.plotter.plotter as pt
 from matplotlib.animation import FuncAnimation
 
 def visualize_distribution(t_frame=-1, axq3=None,fig=None, clr='b', q3lbl='q3'):
-    x_uni, q3, Q3, sumvol_uni = dpbe.post.return_distribution(t=t_frame, flag='x_uni, q3, Q3,sumvol_uni')
+    x_uni, q3, Q3, sumvol_uni = p.return_distribution(t=t_frame, flag='x_uni, q3, Q3,sumvol_uni')
     if smoothing:
-        algo_ins = algo.opt_algo()
-        kde = algo_ins.KDE_fit(x_uni[1:],sumvol_uni[1:],bandwidth='scott', kernel_func='epanechnikov')
-        q3 = algo_ins.KDE_score(kde,x_uni[1:])
+        core_ins = core.OptCore()
+        kde = core_ins.KDE_fit(x_uni[1:],sumvol_uni[1:],bandwidth='scott', kernel_func='epanechnikov')
+        q3 = core_ins.KDE_score(kde,x_uni[1:])
         q3 = np.insert(q3, 0, 0.0)
     
     axq3, fig = pt.plot_data(x_uni, q3, fig=fig, ax=axq3,
@@ -36,11 +36,11 @@ def animation_distribution(t_vec, fps=10):
         q3lbl = f"t={t_vec[frame]}"
         while len(axq3.lines) > 0:
             axq3.lines[0].remove()
-        x_uni, q3, Q3, sumvol_uni = dpbe.post.return_distribution(t=frame, flag='x_uni, q3, Q3, sumvol_uni')
+        x_uni, q3, Q3, sumvol_uni = p.return_distribution(t=frame, flag='x_uni, q3, Q3, sumvol_uni')
         if smoothing:
-            algo_ins = algo.opt_algo()
-            kde = algo_ins.KDE_fit(x_uni[1:],sumvol_uni[1:],bandwidth='scott', kernel_func='epanechnikov')
-            q3 = algo_ins.KDE_score(kde,x_uni[1:])
+            core_ins = core.OptCore()
+            kde = core_ins.KDE_fit(x_uni[1:],sumvol_uni[1:],bandwidth='scott', kernel_func='epanechnikov')
+            q3 = core_ins.KDE_score(kde,x_uni[1:])
             q3 = np.insert(q3, 0, 0.0)
         
         axq3.plot(x_uni, q3, label=q3lbl, color=clr, marker='o')  
@@ -100,8 +100,7 @@ def visualize_N():
 #%% MAIN   
 if __name__ == "__main__":
     dim=2
-    dpbe = DPBESolver(dim=dim)
-    p = dpbe.pbe
+    p = DPBESolver(dim=dim)
     smoothing = True
     p.full_init(calc_alpha=False)
     t_vec = p.t_vec

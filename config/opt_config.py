@@ -10,7 +10,7 @@ import os
 
 config = {
     ## Use only 2D Data or 1D+2D
-    'multi_flag': False,
+    'multi_flag': True,
     
     'algo_params': {
         'dim': 2,
@@ -29,15 +29,15 @@ config = {
         'noise_strength': 0.1,
         'sample_num': 3,
         'exp_data' : False, 
-        'sheet_name' : 'q_x1', 
+        'sheet_name' : None, 
         ## method = HEBO: Heteroscedastic Evolutionary Bayesian Optimization
         ## method = GP: Sampler using Gaussian process-based Bayesian optimization.
         ## method = TPE: Sampler using TPE (Tree-structured Parzen Estimator) algorithm.
         ## method = Cmaes: A sampler using cmaes as the backend.
         ## method = NSGA: Multi-objective sampler using the NSGA-III(Nondominated Sorting Genetic Algorithm III) algorithm.
         ## method = QMC: A Quasi Monte Carlo Sampler that generates low-discrepancy sequences.    
-        'method': 'HEBO',
-        'n_iter': 400,
+        'method': 'GP',
+        'n_iter': 10,
         ## Initialize PBE using psd data(False) or 
         ## with the help of first few time points of experimental data(True)
         'calc_init_N': False,
@@ -71,6 +71,9 @@ config = {
                        #('x_50','MSE')
                        ],
         'tune_storage_path': r'C:\Users\px2030\Code\Ray_Tune',
+        ## When use_bundles is True, multiple Tune will be run locally at the same time. 
+        ## The psd-data must also be multiple! Multiple here means data with different conditions 
+        ## rather than the same data in different dimensions.
         'use_bundles': False,
         'num_bundles': 2,
         'cpus_per_trail': 1,

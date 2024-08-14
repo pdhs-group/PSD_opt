@@ -5,9 +5,9 @@ Created on Mon Dec 11 09:05:42 2023
 @author: px2030
 """
 
-from .opt_algo import OptAlgo        
+from .opt_core import OptCore   
 
-class OptAlgoMulti(OptAlgo):
+class OptCoreMulti(OptCore):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.weight_2d = 1
@@ -47,17 +47,17 @@ class OptAlgoMulti(OptAlgo):
         
         self.calc_all_pop(params)
         if self.p.calc_status:
-            delta = self.calc_delta_tem(x_uni_exp[0], data_exp[0], self.p, self.p_post)
+            delta = self.calc_delta_tem(x_uni_exp[0], data_exp[0], self.p)
         else:
             print('p not converged')
             delta = 10
         if self.p_NM.calc_status:
-            delta_NM = self.calc_delta_tem(x_uni_exp[1], data_exp[1], self.p_NM, self.p_NM_post)
+            delta_NM = self.calc_delta_tem(x_uni_exp[1], data_exp[1], self.p_NM)
         else:
             print('p_NM not converged')
             delta_NM = 10
         if self.p_M.calc_status:    
-            delta_M = self.calc_delta_tem(x_uni_exp[2], data_exp[2], self.p_M, self.p_M_post)
+            delta_M = self.calc_delta_tem(x_uni_exp[2], data_exp[2], self.p_M)
         else:
             print('p_M not converged')
             delta_M = 10
@@ -66,8 +66,8 @@ class OptAlgoMulti(OptAlgo):
         return delta_sum        
 
         
-    def calc_all_pop(self, params=None):
-        self.calc_pop(self.p_NM, params)
-        self.calc_pop(self.p_M, params)
-        self.calc_pop(self.p, params)           
+    def calc_all_pop(self, params=None, t_vec=None):
+        self.calc_pop(self.p_NM, params, t_vec)
+        self.calc_pop(self.p_M, params, t_vec)
+        self.calc_pop(self.p, params, t_vec)           
         
