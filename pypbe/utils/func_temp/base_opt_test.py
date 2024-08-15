@@ -76,84 +76,6 @@ def normal_test():
     opt.save_as_png(fig_M, "PSD-M")
     
     return result_dict
-    
-def calc_N_test():
-    opt.core.calc_init_N = False
-    
-    fig=plt.figure()    
-    axq3=fig.add_subplot(1,1,1)
-    fig_NM=plt.figure()    
-    axq3_NM=fig_NM.add_subplot(1,1,1)
-    fig_M=plt.figure()    
-    axq3_M=fig_M.add_subplot(1,1,1)
-    
-    ## Calculate PBE direkt with psd-data, result is raw exp-data
-    pop_params = conf.config['pop_params']
-    param_str = data_name.split('para_')[-1]
-    param_str = param_str.rsplit('.', 1)[0] 
-    params = param_str.split('_')
-    converted_params = [float(param) if '.' in param or 'e' in param.lower() else int(param) for param in params]
-    pop_params['CORR_BETA'] = converted_params[0]
-    pop_params['alpha_prim'] = np.array(converted_params[1:4])
-    pop_params['pl_v'] = converted_params[4]
-    pop_params['pl_P1'] = converted_params[5]
-    pop_params['pl_P2'] = converted_params[6]
-    pop_params['pl_P3'] = converted_params[7]
-    pop_params['pl_P4'] = converted_params[8]
-    opt.core.set_init_pop_para(pop_params)
-    opt.core.calc_init_N = False
-    opt.core.set_comp_para(opt.base_path)
-    opt.core.calc_all_pop()
-    # return_pop_num_distribution(opt.core.p, axq3, fig, clr='b', q3lbl='q3_psd')
-    # q3_psd = return_pop_num_distribution(opt.core.p_NM, axq3_NM, fig_NM, clr='b', q3lbl='q3_psd')
-    # return_pop_num_distribution(opt.core.p_M, axq3_M, fig_M, clr='b', q3lbl='q3_psd')
-    q3_psd = return_pop_distribution(opt.core.p, axq3, fig, clr='b', q3lbl='q3_psd')
-    return_pop_distribution(opt.core.p_NM, axq3_NM, fig_NM, clr='b', q3lbl='q3_psd')
-    return_pop_distribution(opt.core.p_M, axq3_M, fig_M, clr='b', q3lbl='q3_psd')
-    N_exp = opt.core.p.N
-    N_exp_1D = opt.core.p_NM.N
-    ## Calculate PBE with exp-data
-    # opt.core.calc_init_N = True
-    # opt.core.set_init_N(opt.core.sample_num, exp_data_paths, 'mean')
-    opt.core.calc_all_pop()
-    # return_pop_num_distribution(opt.core.p, axq3, fig, clr='r', q3lbl='q3_exp')
-    # q3_exp = return_pop_num_distribution(opt.core.p_NM, axq3_NM, fig_NM, clr='r', q3lbl='q3_exp')
-    # return_pop_num_distribution(opt.core.p_M, axq3_M, fig_M, clr='r', q3lbl='q3_exp')   
-    q3_exp = return_pop_distribution(opt.core.p, axq3, fig, clr='r', q3lbl='q3_exp')
-    return_pop_distribution(opt.core.p_NM, axq3_NM, fig_NM, clr='r', q3lbl='q3_exp')
-    return_pop_distribution(opt.core.p_M, axq3_M, fig_M, clr='r', q3lbl='q3_exp')   
-    N_calc = opt.core.p.N
-    N_calc_1D = opt.core.p_NM.N
-    
-    return N_exp, N_calc, N_exp_1D, N_calc_1D, q3_psd, q3_exp
-
-# def return_pop_num_distribution(pop, axq3=None,fig=None, clr='b', q3lbl='q3'):
-
-#     x_uni, q3, Q3, sumvol_uni = pop.return_distribution(t=1, flag='x_uni, q3, Q3,sumvol_uni')
-#     # kde = opt.core.KDE_fit(x_uni, q3)
-#     # q3_sm = opt.core.KDE_score(kde, x_uni)
-
-#     kde = opt.core.KDE_fit(x_uni, sumvol_uni)
-#     q3_sm = opt.core.KDE_score(kde, x_uni)
-    
-#     axq3, fig = pt.plot_data(x_uni, q3, fig=fig, ax=axq3,
-#                            xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
-#                            ylbl='number distribution of agglomerates $q3$ / $-$',
-#                            lbl=q3lbl,clr=clr,mrk='o')
-    
-#     axq3, fig = pt.plot_data(x_uni, q3_sm, fig=fig, ax=axq3,
-#                             lbl=q3lbl+'_sm',clr=clr,mrk='^')
-    
-#     # axq3, fig = pt.plot_data(x_uni, sumN_uni, fig=fig, ax=axq3,
-#     #                         xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
-#     #                         ylbl='number distribution of agglomerates $q3$ / $-$',
-#     #                         lbl='sumN_uni',clr='r',mrk='o') 
-    
-#     df = pd.DataFrame(data=q3_sm, index=x_uni)
-#     axq3.grid('minor')
-#     axq3.set_xscale('log')
-#     # axq3.set_yscale('log')
-#     return df
 
 def calc_delta_test(var_delta=False):
     pop_params = conf.config['pop_params']
@@ -194,17 +116,16 @@ if __name__ == '__main__':
     ## data is used, while algo determines the optimization process.
     opt = OptBase()
     
-    data_name = "Sim_Mul_0.1_para_0.01_0.5_0.5_0.5_2_0.1_2.0_0.1_2.0.xlsx"  
-    exp_data_path = os.path.join(opt.data_path, data_name)
-    exp_data_paths = [
-        exp_data_path,
-        exp_data_path.replace(".xlsx", "_NM.xlsx"),
-        exp_data_path.replace(".xlsx", "_M.xlsx")
-    ]
+    data_name = "Batchversuch_600rpm_1200rpm.xlsx"  
+    exp_data_paths = os.path.join(opt.data_path, data_name)
+    # exp_data_paths = [
+    #     exp_data_path,
+    #     exp_data_path.replace(".xlsx", "_NM.xlsx"),
+    #     exp_data_path.replace(".xlsx", "_M.xlsx")
+    # ]
     
     # Run an optimization and generate graphs of the results
-    result_dict = normal_test()
+    # result_dict = normal_test()
+
     
-    # N_exp, N_calc, N_exp_1D, N_calc_1D, q3_psd, q3_exp = calc_N_test()
-    
-    # delta = calc_delta_test(var_delta=False)
+    delta = calc_delta_test(var_delta=False)

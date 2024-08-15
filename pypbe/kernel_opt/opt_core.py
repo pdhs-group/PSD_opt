@@ -74,16 +74,7 @@ class OptCore():
         exp_data_path : `str`
             path for experimental data.
         """
-        params = params_in.copy()
-        if "corr_agg" in params:
-            corr_agg = params["corr_agg"]
-            CORR_BETA = self.return_syth_beta(corr_agg)
-            alpha_prim = corr_agg / CORR_BETA
-            
-            params["CORR_BETA"] = CORR_BETA
-            params["alpha_prim"] = alpha_prim
-            
-            del params["corr_agg"]
+        params = self.check_corr_agg(params_in)
 
         self.calc_pop(self.p, params)
         if self.p.calc_status:
@@ -164,47 +155,18 @@ class OptCore():
             x_uni_num = len(x_uni_exp[i])  
             return delta_sum / x_uni_num
         
-    def get_all_synth_data(self, exp_data_path):
-        if self.sample_num == 1:
-            x_uni_exp, sumN_uni_exp = self.read_exp(exp_data_path, self.t_vec[self.delta_t_start_step:]) 
-            x_uni_exp = np.insert(x_uni_exp, 0, 0.0)
-            sumN_uni_exp = np.insert(sumN_uni_exp, 0, 0.0, axis=0)
-            vol_uni = np.tile((1/6)*np.pi*x_uni_exp**3, (self.num_t_steps-self.delta_t_start_step, 1)).T
-            sumvol_uni_exp = sumN_uni_exp * vol_uni
-            sumvol_uni_exp = np.insert(sumvol_uni_exp, 0, 0.0, axis=0)
-            x_uni_exp = np.insert(x_uni_exp, 0, 0.0)
-            for flag, _ in self.delta_flag:
-                data_exp = self.re_calc_distribution(x_uni_exp, sum_uni=sumvol_uni_exp, flag=flag)[0]
-
-        else:
-            x_uni_exp = []
-            data_exp = []
-            for i in range (0, self.sample_num):
-                exp_data_path = self.traverse_path(i, exp_data_path)
-                x_uni_exp_tem, sumN_uni_exp = self.read_exp(exp_data_path, self.t_vec[self.delta_t_start_step:])
-                x_uni_exp_tem = np.insert(x_uni_exp_tem, 0, 0.0)
-                sumN_uni_exp = np.insert(sumN_uni_exp, 0, 0.0, axis=0)
-                vol_uni = np.tile((1/6)*np.pi*x_uni_exp_tem**3, (self.num_t_steps-self.delta_t_start_step, 1)).T
-                sumvol_uni_exp = sumN_uni_exp * vol_uni
-                for flag, _ in self.delta_flag:
-                    data_exp_tem = self.re_calc_distribution(x_uni_exp_tem, sum_uni=sumvol_uni_exp, flag=flag)[0] 
-                x_uni_exp.append(x_uni_exp_tem)
-                data_exp.append(data_exp_tem)
-        return x_uni_exp, data_exp
-
-    def get_all_exp_data(self, exp_data_path):
-        if self.sample_num == 1:
-            x_uni_exp, q3_exp = self.read_exp(exp_data_path, self.t_vec[self.delta_t_start_step:]) 
-            data_exp = q3_exp
-        else:
-            x_uni_exp = []
-            data_exp = []
-            for i in range (0, self.sample_num):
-                exp_data_path = self.traverse_path(i, exp_data_path)
-                x_uni_exp_tem, q3_exp = self.read_exp(exp_data_path, self.t_vec[self.delta_t_start_step:])
-                x_uni_exp.append(x_uni_exp_tem)
-                data_exp.append(q3_exp)
-        return x_uni_exp, data_exp
+    def check_corr_agg(self, params_in):
+        params = params_in.copy()
+        if "corr_agg" in params:
+            corr_agg = params["corr_agg"]
+            CORR_BETA = self.return_syth_beta(corr_agg)
+            alpha_prim = corr_agg / CORR_BETA
+            
+            params["CORR_BETA"] = CORR_BETA
+            params["alpha_prim"] = alpha_prim
+            
+            del params["corr_agg"]
+        return params
     
     def return_syth_beta(self,corr_agg):
         """

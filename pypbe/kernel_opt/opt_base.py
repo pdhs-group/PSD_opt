@@ -262,8 +262,8 @@ class OptBase():
                     exp_data_paths = join_paths(data_names)
             else:
                 exp_data_paths = join_paths(data_names)
-            if self.core.calc_init_N:
-                self.core.set_init_N(exp_data_paths, init_flag='mean')
+            # if self.core.calc_init_N:
+            #     self.core.set_init_N(exp_data_paths, init_flag='mean')
                 
             # ray.init(address="auto", log_to_driver=False, runtime_env={"env_vars": {"PYTHONPATH": os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))}})
             ray.init(log_to_driver=True, runtime_env={"env_vars": {"PYTHONPATH": os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))}})
@@ -334,16 +334,30 @@ class OptBase():
             return result_dict
                 
             # return self.core.CORR_BETA_opt, self.core.alpha_prim_opt, para_diff, delta_opt
-        
- 
-    
-    def save_as_png(self, fig, file_name):
-        """
-        Saves a figure as a PNG file.
-        
-        """
-        file_path = os.path.join(self.data_path, file_name)
-        fig.savefig(file_path, dpi=150)
-        return 0
+            
+    def calc_PSD_delta(self, params, exp_data_path):
+        if self.core.calc_init_N:
+            self.core.set_init_N(exp_data_path, init_flag='mean')
+        if isinstance(exp_data_path, list):
+            ## When set to multi, the exp_data_path entered here is a list 
+            ## containing one 2d data name and two 1d data names.
+            x_uni_exp = []
+            data_exp = []
+            for exp_data_path_tem in exp_data_path:
+                if self.exp_data:
+                    x_uni_exp_tem, data_exp_tem = self.get_all_exp_data(exp_data_path_tem)
+                else:
+                    x_uni_exp_tem, data_exp_tem = self.get_all_synth_data(exp_data_path_tem)
+                x_uni_exp.append(x_uni_exp_tem)
+                data_exp.append(data_exp_tem)
+        else:
+            ## When not set to multi or optimization of 1d-data, the exp_data_path 
+            ## contain the name of that data.
+            if self.exp_data:
+                x_uni_exp, data_exp = self.get_all_exp_data(exp_data_path)
+            else:
+                x_uni_exp, data_exp = self.get_all_synth_data(exp_data_path)
+        delta = self.core.calc_delta_agg(params, x_uni_exp, data_exp)
+        return delta
     
         

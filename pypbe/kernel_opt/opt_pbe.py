@@ -188,8 +188,12 @@ def set_init_N_1D(self, pop, exp_data_path, init_flag):
     """
     x_uni = pop.calc_x_uni(pop)
     if self.sample_num == 1:
+        ## For synthetic data, we want to extrapolate the initial conditions at the zero point 
+        ## based on the data from the first few time points. 
+        ## Therefore the zero point itself will be excluded.
         x_uni_exp, sumN_uni_init_sets = self.read_exp(exp_data_path, self.t_init[1:])
     else:
+        ## If multiple samples exist, average the data values at t_init[1:].
         exp_data_path=self.traverse_path(0, exp_data_path)
         x_uni_exp, sumN_uni_tem = self.read_exp(exp_data_path, self.t_init[1:])
         sumN_uni_all_samples = np.zeros((len(x_uni_exp), len(self.t_init[1:]), self.sample_num))
@@ -210,12 +214,12 @@ def set_init_N_1D(self, pop, exp_data_path, init_flag):
     elif init_flag == 'mean':
         sumN_uni_init = sumN_uni_init_sets.mean(axis=1)
             
-    ## Remap q3 corresponding to the x value of the experimental data to x of the PBE
-    # kde = self.KDE_fit(x_uni_exp, q3_init)
-    # sumV_uni = self.KDE_score(kde, x_uni)
-    # q3_init = sumV_uni / sumV_uni.sum()
     inter_grid = interp1d(x_uni_exp, sumN_uni_init, kind='linear', fill_value="extrapolate")
     sumN_uni_init = inter_grid(x_uni)
+    
+    ## TODO
+    ## Q3_init = Q3_init / Q3.max() # Normalize Q3 to ensure that its maximum value is 1 
+    ## calculate sumN_uni_init based on Q3_init
             
     pop.N = np.zeros((pop.NS, len(pop.t_vec)))
     ## Because sumN_uni_init[0] = 0
@@ -223,6 +227,3 @@ def set_init_N_1D(self, pop, exp_data_path, init_flag):
     thr = 1e-5
     pop.N[pop.N < (thr * pop.N[1:, 0].max())]=0   
     pop.N[:, 0] *= pop.V_unit
-    
-    
-

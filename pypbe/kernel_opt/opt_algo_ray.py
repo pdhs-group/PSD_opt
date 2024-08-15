@@ -8,8 +8,8 @@ import numpy as np
 # import math
 import ray
 from ray import tune, train
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-from ray.util.placement_group import placement_group, placement_group_table
+# from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+# from ray.util.placement_group import placement_group, placement_group_table
 from ray.tune.search.optuna import OptunaSearch
 from ray.tune.search.hebo import HEBOSearch
 from optuna.samplers import GPSampler,CmaEsSampler,TPESampler,NSGAIIISampler,QMCSampler
@@ -91,6 +91,8 @@ def check_num_bundles(self, queue_length, total_cpus):
 def create_remote_worker(self):
     @ray.remote(num_cpus=self.cpus_per_bundle)
     def run_tune_task(exp_data_path):
+        if self.calc_init_N:
+            self.set_init_N(exp_data_path, init_flag='mean')
         algo = self.create_algo()
         if isinstance(exp_data_path, list):
             x_uni_exp = []
@@ -162,7 +164,11 @@ def optimierer_agg(self, opt_params, init_points=4, hyperparameter=None, exp_dat
     delta_opt : `float`
         Optimized value of the objective.
     """
+    if self.calc_init_N:
+        self.set_init_N(exp_data_path, init_flag='mean')
     if isinstance(exp_data_path, list):
+        ## When set to multi, the exp_data_path entered here is a list 
+        ## containing one 2d data name and two 1d data names.
         x_uni_exp = []
         data_exp = []
         for exp_data_path_tem in exp_data_path:
@@ -173,6 +179,8 @@ def optimierer_agg(self, opt_params, init_points=4, hyperparameter=None, exp_dat
             x_uni_exp.append(x_uni_exp_tem)
             data_exp.append(data_exp_tem)
     else:
+        ## When not set to multi or optimization of 1d-data, the exp_data_path 
+        ## contain the name of that data.
         if self.exp_data:
             x_uni_exp, data_exp = self.get_all_exp_data(exp_data_path)
         else:

@@ -29,6 +29,48 @@ def read_exp(self, exp_data_path, t_vec):
     sumN_uni_exp = df.to_numpy()
     return x_uni_exp, sumN_uni_exp
 
+def get_all_synth_data(self, exp_data_path):
+    if self.sample_num == 1:
+        x_uni_exp, sumN_uni_exp = self.read_exp(exp_data_path, self.t_vec[self.delta_t_start_step:]) 
+        x_uni_exp = np.insert(x_uni_exp, 0, 0.0)
+        sumN_uni_exp = np.insert(sumN_uni_exp, 0, 0.0, axis=0)
+        vol_uni = np.tile((1/6)*np.pi*x_uni_exp**3, (self.num_t_steps-self.delta_t_start_step, 1)).T
+        sumvol_uni_exp = sumN_uni_exp * vol_uni
+        sumvol_uni_exp = np.insert(sumvol_uni_exp, 0, 0.0, axis=0)
+        x_uni_exp = np.insert(x_uni_exp, 0, 0.0)
+        for flag, _ in self.delta_flag:
+            data_exp = self.re_calc_distribution(x_uni_exp, sum_uni=sumvol_uni_exp, flag=flag)[0]
+
+    else:
+        x_uni_exp = []
+        data_exp = []
+        for i in range (0, self.sample_num):
+            exp_data_path = self.traverse_path(i, exp_data_path)
+            x_uni_exp_tem, sumN_uni_exp = self.read_exp(exp_data_path, self.t_vec[self.delta_t_start_step:])
+            x_uni_exp_tem = np.insert(x_uni_exp_tem, 0, 0.0)
+            sumN_uni_exp = np.insert(sumN_uni_exp, 0, 0.0, axis=0)
+            vol_uni = np.tile((1/6)*np.pi*x_uni_exp_tem**3, (self.num_t_steps-self.delta_t_start_step, 1)).T
+            sumvol_uni_exp = sumN_uni_exp * vol_uni
+            for flag, _ in self.delta_flag:
+                data_exp_tem = self.re_calc_distribution(x_uni_exp_tem, sum_uni=sumvol_uni_exp, flag=flag)[0] 
+            x_uni_exp.append(x_uni_exp_tem)
+            data_exp.append(data_exp_tem)
+    return x_uni_exp, data_exp
+
+def get_all_exp_data(self, exp_data_path):
+    if self.sample_num == 1:
+        x_uni_exp, q3_exp = self.read_exp(exp_data_path, self.t_vec[self.delta_t_start_step:]) 
+        data_exp = q3_exp
+    else:
+        x_uni_exp = []
+        data_exp = []
+        for i in range (0, self.sample_num):
+            exp_data_path = self.traverse_path(i, exp_data_path)
+            x_uni_exp_tem, q3_exp = self.read_exp(exp_data_path, self.t_vec[self.delta_t_start_step:])
+            x_uni_exp.append(x_uni_exp_tem)
+            data_exp.append(q3_exp)
+    return x_uni_exp, data_exp
+
 def function_noise(self, ori_data):
     """
     Adds noise to the original data based on the specified noise type.

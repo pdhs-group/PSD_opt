@@ -14,7 +14,7 @@ config = {
     
     'algo_params': {
         'dim': 2,
-        't_init' : np.array([0]),
+        't_init' : np.array([0, 0]),
         # 't_vec' : np.arange(0, 3601, 100, dtype=float),
         't_vec' : np.array([0, 300, 600, 900, 1200, 1500, 2100, 2700]),
         ## Sometimes there is a gap between the initial conditions calculated based on experimental data 

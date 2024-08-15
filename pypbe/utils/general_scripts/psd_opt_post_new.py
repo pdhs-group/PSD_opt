@@ -8,8 +8,7 @@ Created on Mon Jan 15 12:41:37 2024
 import sys, os
 sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),"../../.."))
 import config.opt_config as conf
-import pypbe.kernel_opt.opt_find as opt
-import pypbe.kernel_opt.opt_algo as algo
+from pypbe.kernel_opt.opt_base import OptBase
 import numpy as np
 import copy
 from sklearn.linear_model import LinearRegression
@@ -220,45 +219,45 @@ def visualize_diff_kernel_mse(result):
     
     fig.tight_layout()
     plt.show()
-    
-    
-def visualize_diff_kernel_value(result, eval_kernels, log_axis=False):
-    diff_kernels, opt_kernels, ori_kernels = calc_diff(result)
 
-    pt.plot_init(scl_a4=1,figsze=[12.8,6.4*1.5],lnewdth=0.8,mrksze=5,use_locale=True,scl=1.2)
-    fig=plt.figure()    
-    ax=fig.add_subplot(1,1,1)
-    colors = itertools.cycle(['b', 'g', 'r', 'c', 'm', 'y', 'k'])
-    markers = itertools.cycle(['o', 's', 'D', '^', 'v', '<', '>', 'p', '*', '+', 'x'])
+def calc_save_PSD_delta(results, data_paths):
+    for i, result in enumerate(results):
+        opt_kernels = result[:,1]
+        delta = np.zeros(len(result))
+        # for j, variable in enumerate(result):
+        j = 351
+        variable = result[j]
+        opt, exp_data_paths = initial_pop(variable, pbe_type)
+        opt.core.set_init_N(opt.core.sample_num, exp_data_paths, 'mean')
+        delta[j] = opt.core.calc_delta_agg(opt_kernels[j], sample_num=opt.core.sample_num, exp_data_path=exp_data_paths)
+        new_result = np.column_stack((result, delta))
+        results[i] = new_result    
+        np.savez(data_paths[i], results=new_result)
     
-    for kernel in eval_kernels:
-        color = next(colors)
-        marker = next(markers)
-        
-        ori_values = np.array(ori_kernels[kernel]).reshape(-1, 1)
-        opt_values = np.array(opt_kernels[kernel])
-        
-        plt.scatter(ori_values, opt_values, label=kernel, color=color, marker=marker)
-        
-        model = LinearRegression()
-        model.fit(ori_values, opt_values)
-        predicted_opt = model.predict(ori_values)
-        
-        ax, fig = pt.plot_data(ori_values, predicted_opt, fig=fig, ax=ax,
-                               xlbl='Original Kernel Values',
-                               ylbl='Optimized Kernel Values',
-                               lbl=f'{kernel} (fit)',clr=color,mrk=marker)
-        ax, fig = pt.plot_data(ori_values, ori_values, fig=fig, ax=ax,
-                                lbl=f'{kernel} (correct)',clr='k',mrk='x')    
-    
-    if log_axis:
-        ax.set_xscale('log')
-        ax.set_yscale('log')
-    plt.title('Optimized Kernel Values vs. Original kerneleter Values')
-    ax.grid('minor')
-    plt.tight_layout() 
-    return diff_kernels
+def do_remove_small_results(results):
+    indices_to_remove = set()
+    if pbe_type == 'agglomeration':
+        for i in range(len(results[0])):
+            corr_agg = results[0][i, 2]['corr_agg']
+            if corr_agg[0] * corr_agg[1] * corr_agg[2] < 1:
+                indices_to_remove.add(i)
+    elif pbe_type == 'breakage':
+        for i in range(len(results[0])):
+            pl_P1 = results[0][i, 2]['pl_P1']
+            pl_P3 = results[0][i, 2]['pl_P3']
+            if pl_P1 * pl_P3 < 1e-9:
+                indices_to_remove.add(i)
+          
+    for idx in sorted(indices_to_remove, reverse=True):
+        for j in range(len(results)):
+            results[j] = np.delete(results[j], idx, axis=0)
+                
+    return results
 
+
+
+#%% VISUALIZE KERNEL DIFFERENCE
+#%%%VISUALZE IN RADAR
 def visualize_diff_mean_radar(results, data_labels):
     diff_mean = []
     if vis_criteria == 'kernels':
@@ -300,87 +299,50 @@ def radar_chart(data, data_labels, kernels_labels, title):
     plt.title(title, size=20, color='black', y=1.1)
     plt.legend(loc='upper right', bbox_to_anchor=(1.1, 1.1), fontsize=18)
     plt.show()
-    
-def visualize_PSD(variable, pbe_type, one_frame):
-    find, exp_data_paths= initial_pop(variable, pbe_type)
+
+#%%%VISUALZE IN BLOCK
+def visualize_diff_kernel_value(result, eval_kernels, log_axis=False):
+    diff_kernels, opt_kernels, ori_kernels = calc_diff(result)
+
+    pt.plot_init(scl_a4=1,figsze=[12.8,6.4*1.5],lnewdth=0.8,mrksze=5,use_locale=True,scl=1.2)
     fig=plt.figure()    
-    axq3=fig.add_subplot(1,1,1)
-    fig_NM=plt.figure()    
-    axq3_NM=fig_NM.add_subplot(1,1,1)
-    fig_M=plt.figure()    
-    axq3_M=fig_M.add_subplot(1,1,1)
+    ax=fig.add_subplot(1,1,1)
+    colors = itertools.cycle(['b', 'g', 'r', 'c', 'm', 'y', 'k'])
+    markers = itertools.cycle(['o', 's', 'D', '^', 'v', '<', '>', 'p', '*', '+', 'x'])
     
-    if one_frame:
-        return_one_frame(variable, find, exp_data_paths,fig,axq3,fig_NM,axq3_NM,fig_M,axq3_M)
-    else:
-        return_animation(variable, find, exp_data_paths,fig,axq3,fig_NM,axq3_NM,fig_M,axq3_M)
+    for kernel in eval_kernels:
+        color = next(colors)
+        marker = next(markers)
+        
+        ori_values = np.array(ori_kernels[kernel]).reshape(-1, 1)
+        opt_values = np.array(opt_kernels[kernel])
+        
+        plt.scatter(ori_values, opt_values, label=kernel, color=color, marker=marker)
+        
+        model = LinearRegression()
+        model.fit(ori_values, opt_values)
+        predicted_opt = model.predict(ori_values)
+        
+        ax, fig = pt.plot_data(ori_values, predicted_opt, fig=fig, ax=ax,
+                               xlbl='Original Kernel Values',
+                               ylbl='Optimized Kernel Values',
+                               lbl=f'{kernel} (fit)',clr=color,mrk=marker)
+        ax, fig = pt.plot_data(ori_values, ori_values, fig=fig, ax=ax,
+                                lbl=f'{kernel} (correct)',clr='k',mrk='x')    
     
-def return_animation(variable, find, exp_data_paths,fig,axq3,fig_NM,axq3_NM,fig_M,axq3_M):
-    find_opt = copy.deepcopy(find)
-    find.algo.calc_init_N = False
-    find.algo.calc_all_pop(variable[2])
-    t_vec = find.algo.t_vec
-    smoothing = find.algo.smoothing
+    if log_axis:
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+    plt.title('Optimized Kernel Values vs. Original kerneleter Values')
+    ax.grid('minor')
+    plt.tight_layout() 
+    return diff_kernels
     
-    find_opt.algo.calc_init_N = calc_init
-    if calc_init:
-        find_opt.algo.set_init_N(find.algo.sample_num, exp_data_paths, 'mean')
-    find_opt.algo.calc_all_pop(variable[1])
-    ani=return_animation_distribution(t_vec,smoothing,find.algo.p,find_opt.algo.p,fig,axq3,fps)
-    ani_NM=return_animation_distribution(t_vec,smoothing,find.algo.p_NM,find_opt.algo.p_NM,fig_NM,axq3_NM,fps)
-    ani_M=return_animation_distribution(t_vec,smoothing,find.algo.p_M,find_opt.algo.p_M,fig_M,axq3_M,fps)
-    ani.save('PSD_ani.gif', writer='imagemagick', fps=fps)
-    ani_NM.save('PSD_ani_NM.gif', writer='imagemagick', fps=fps)
-    ani_M.save('PSD_ani_M.gif', writer='imagemagick', fps=fps)
-    
-def return_one_frame(variable, find, exp_data_paths,fig,axq3,fig_NM,axq3_NM,fig_M,axq3_M ):
-    ## Calculate original PSD(exp)
-    find.algo.calc_init_N = False
-    find.algo.calc_all_pop(variable[2])
-    return_pop_distribution(find, find.algo.p, axq3, fig, clr='b', q3lbl='q3_psd')
-    return_pop_distribution(find, find.algo.p_NM, axq3_NM, fig_NM, clr='b', q3lbl='q3_psd')
-    return_pop_distribution(find, find.algo.p_M, axq3_M, fig_M, clr='b', q3lbl='q3_psd')
-    
-    ## Calculate PSD using opt_value
-    find.algo.calc_init_N = calc_init
-    if calc_init:
-        find.algo.set_init_N(find.algo.sample_num, exp_data_paths, 'mean')
-    find.algo.calc_all_pop(variable[1])
-    return_pop_distribution(find, find.algo.p, axq3, fig, clr='r', q3lbl='q3_opt')
-    return_pop_distribution(find, find.algo.p_NM, axq3_NM, fig_NM, clr='r', q3lbl='q3_opt')
-    return_pop_distribution(find, find.algo.p_M, axq3_M, fig_M, clr='r', q3lbl='q3_opt')   
-    fig.savefig('PSD', dpi=150)
-    fig_NM.savefig('PSD_NM', dpi=150)
-    fig_M.savefig('PSD_M', dpi=150)
-    
+#%% RETURN PSD IN FRAME/ANIMATION
 def initial_pop(variable, pbe_type):
-    algo_params = conf.config['algo_params']
-    pop_params = conf.config['pop_params']
-    pop_params['process_type'] = pbe_type
-    find = opt.opt_find()        
-    multi_flag = conf.config['multi_flag']
-    opt_params = conf.config['opt_params']
-    find.init_opt_algo(multi_flag, algo_params, opt_params)
-    find.algo.set_init_pop_para(pop_params)
-    base_path = os.path.join(find.algo.p.pth, "data")
-    if find.algo.p.process_type == 'breakage':
-        USE_PSD = False
-        dist_path_NM = None
-        dist_path_M = None
-    else:
-        USE_PSD = True
-        dist_path_NM = os.path.join(base_path, "PSD_data", conf.config['dist_scale_1'])
-        dist_path_M = os.path.join(base_path, "PSD_data", conf.config['dist_scale_1'])
-    R_NM = conf.config['R_NM']
-    R_M=conf.config['R_M']
-    R01_0_scl=conf.config['R01_0_scl']
-    R03_0_scl=conf.config['R03_0_scl']
-    R01_0 = 'r0_001'
-    R03_0 = 'r0_001'
-    find.algo.set_comp_para(USE_PSD, R01_0, R03_0, R_NM=R_NM, R_M=R_M,R01_0_scl=R01_0_scl,R03_0_scl=R03_0_scl,
-                            dist_path_NM=dist_path_NM, dist_path_M=dist_path_M)
-    find.algo.weight_2d = conf.config['weight_2d']
-    pop_params.update(variable[2])
+    opt = OptBase()
+    
+    pop_params = opt.core.check_corr_agg(variable[2])
     b = pop_params['CORR_BETA']
     a = pop_params['alpha_prim']
     v = pop_params['pl_v']
@@ -395,92 +357,65 @@ def initial_pop(variable, pbe_type):
         exp_data_path.replace(".xlsx", "_NM.xlsx"),
         exp_data_path.replace(".xlsx", "_M.xlsx")
     ]
-    return find, exp_data_paths
+    return opt, exp_data_paths
 
-def return_animation_distribution(t_vec,smoothing,p,p_opt,fig,axq3,fps):
-    def update(frame):
-        q3lbl = f"t={t_vec[frame]}"
-        q3lbl_opt = f"t_opt={t_vec[frame]}"
-        while len(axq3.lines) > 0:
-            axq3.lines[0].remove()
-        x_uni, q3, Q3, sumvol_uni = p.return_distribution(t=frame, flag='x_uni, q3, Q3, sumvol_uni')
-        x_uni_opt, q3_opt, Q3_opt, sumvol_uni_opt = p_opt.return_distribution(t=frame, flag='x_uni, q3, Q3, sumvol_uni')
-        if smoothing:
-            algo_ins = algo.opt_algo()
-            kde = algo_ins.KDE_fit(x_uni[1:],sumvol_uni[1:],bandwidth='scott', kernel_func='epanechnikov')
-            q3 = algo_ins.KDE_score(kde,x_uni[1:])
-            q3 = np.insert(q3, 0, 0.0)
-            kde_opt = algo_ins.KDE_fit(x_uni_opt[1:],sumvol_uni_opt[1:],bandwidth='scott', kernel_func='epanechnikov')
-            q3_opt = algo_ins.KDE_score(kde_opt,x_uni_opt[1:])
-            q3_opt = np.insert(q3_opt, 0, 0.0)
-        
-        axq3.plot(x_uni, q3, label=q3lbl, color='b', marker='o')  
-        axq3.plot(x_uni_opt, q3_opt, label=q3lbl_opt, color='r', marker='^')  
-        axq3.legend()
-        return axq3,
-    t_frame = np.arange(len(t_vec))
-    axq3.set_xlabel('Agglomeration size $x_\mathrm{A}$ / $-$')
-    axq3.set_ylabel('number distribution of agglomerates $q3$ / $-$')
-    axq3.grid('minor')
-    axq3.set_xscale('log')
-    plt.tight_layout()  
+def visualize_PSD(variable, pbe_type, one_frame):
+    opt, exp_data_paths= initial_pop(variable, pbe_type)
     
-    ani = FuncAnimation(fig, update, frames=t_frame, blit=False)
-    return ani
+    if one_frame:
+        return_one_frame(variable, opt, exp_data_paths)
+    else:
+        return_animation(variable, opt, exp_data_paths)
     
+def return_animation(variable, opt, exp_data_paths):
+    opt_opt = copy.deepcopy(opt)
+    calc_init_N_tem = opt.core.calc_init_N
+    opt.core.calc_init_N = False
+    opt.core.calc_all_pop(variable[2])
     
-def return_pop_distribution(find, pop, axq3=None,fig=None, clr='b', q3lbl='q3'):
-    x_uni, q3, Q3, sumvol_uni = pop.return_distribution(t=t_return, flag='x_uni, q3, Q3, sumvol_uni')
-
-    kde = find.algo.KDE_fit(x_uni[1:], sumvol_uni[1:])
-    q3_sm = find.algo.KDE_score(kde, x_uni[1:])
-    q3_sm = np.insert(q3_sm, 0, 0.0)
-    axq3, fig = pt.plot_data(x_uni, q3_sm, fig=fig, ax=axq3,
-                           xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
-                           ylbl='number distribution of agglomerates $q3$ / $-$',
-                           lbl=q3lbl+'_sm',clr=clr,mrk='o')
-    if not find.algo.smoothing:    
-        axq3, fig = pt.plot_data(x_uni, q3, fig=fig, ax=axq3,
-                                lbl=q3lbl,clr=clr,mrk='^')
+    opt_opt.core.calc_init_N = calc_init_N_tem
+    if opt_opt.core.calc_init_N:
+        opt_opt.core.set_init_N(exp_data_paths, 'mean')
+    opt_opt.core.calc_all_pop(variable[1])
+    ani=opt.core.p.visualize_distribution_animation(smoothing=opt.core.smoothing,fps=fps,others=[opt_opt.core.p],other_labels=['opt'])
+    ani_NM=opt.core.p_NM.visualize_distribution_animation(smoothing=opt.core.smoothing,fps=fps,others=[opt_opt.core.p_NM],other_labels=['opt'])
+    ani_M=opt.core.p_M.visualize_distribution_animation(smoothing=opt.core.smoothing,fps=fps,others=[opt_opt.core.p_M],other_labels=['opt'])
     
-    axq3.grid('minor')
-    axq3.set_xscale('log')
+    ani.save('PSD_ani.gif', writer='imagemagick', fps=fps)
+    ani_NM.save('PSD_ani_NM.gif', writer='imagemagick', fps=fps)
+    ani_M.save('PSD_ani_M.gif', writer='imagemagick', fps=fps)
     
-def do_remove_small_results(results):
-    indices_to_remove = set()
-    if pbe_type == 'agglomeration':
-        for i in range(len(results[0])):
-            corr_agg = results[0][i, 2]['corr_agg']
-            if corr_agg[0] * corr_agg[1] * corr_agg[2] < 1:
-                indices_to_remove.add(i)
-    elif pbe_type == 'breakage':
-        for i in range(len(results[0])):
-            pl_P1 = results[0][i, 2]['pl_P1']
-            pl_P3 = results[0][i, 2]['pl_P3']
-            if pl_P1 * pl_P3 < 1e-9:
-                indices_to_remove.add(i)
-          
-    for idx in sorted(indices_to_remove, reverse=True):
-        for j in range(len(results)):
-            results[j] = np.delete(results[j], idx, axis=0)
-                
-    return results
-
-def calc_save_PSD_delta(results, data_paths):
+def return_one_frame(variable, opt, exp_data_paths):
+    fig=plt.figure()    
+    axq3=fig.add_subplot(1,2,1)
+    axQ3=fig.add_subplot(1,2,2)
+    fig_NM=plt.figure()    
+    axq3_NM=fig_NM.add_subplot(1,2,1)
+    axQ3_NM=fig_NM.add_subplot(1,2,2)
+    fig_M=plt.figure()    
+    axq3_M=fig_M.add_subplot(1,2,1)
+    axQ3_M=fig_M.add_subplot(1,2,2)
     
-    for i, result in enumerate(results):
-        opt_kernels = result[:,1]
-        delta = np.zeros(len(result))
-        # for j, variable in enumerate(result):
-        j = 351
-        variable = result[j]
-        find, exp_data_paths = initial_pop(variable, pbe_type)
-        find.algo.set_init_N(find.algo.sample_num, exp_data_paths, 'mean')
-        delta[j] = find.algo.calc_delta_agg(opt_kernels[j], sample_num=find.algo.sample_num, exp_data_path=exp_data_paths)
-        new_result = np.column_stack((result, delta))
-        results[i] = new_result    
-        np.savez(data_paths[i], results=new_result)
-        
+    calc_init_N_tem = opt.core.calc_init_N
+    ## Calculate original PSD(exp)
+    opt.core.calc_init_N = False
+    opt.core.calc_all_pop(variable[2])
+    opt.core.p.visualize_distribution(smoothing=opt.core.smoothing,axq3=axq3,axQ3=axQ3,fig=fig,clr='b',lbl='PSD_ori')
+    opt.core.p_NM.visualize_distribution(smoothing=opt.core.smoothing,axq3=axq3_NM,axQ3=axQ3_NM,fig=fig_NM,clr='b',lbl='PSD_ori')
+    opt.core.p_M.visualize_distribution(smoothing=opt.core.smoothing,axq3=axq3_M,axQ3=axQ3_M,fig=fig_M,clr='b',lbl='PSD_ori')
+    
+    ## Calculate PSD using opt_value
+    opt.core.calc_init_N = calc_init_N_tem
+    if opt.core.calc_init_N:
+        opt.core.set_init_N(exp_data_paths, 'mean')
+    opt.core.calc_all_pop(variable[1])
+    opt.core.p.visualize_distribution(smoothing=True,axq3=axq3,axQ3=axQ3,fig=fig,clr='r',lbl='PSD_opt')
+    opt.core.p_NM.visualize_distribution(smoothing=True,axq3=axq3_NM,axQ3=axQ3_NM,fig=fig_NM,clr='r',lbl='PSD_opt')
+    opt.core.p_M.visualize_distribution(smoothing=True,axq3=axq3_M,axQ3=axQ3_M,fig=fig_M,clr='r',lbl='PSD_opt')
+    fig.savefig('PSD', dpi=150)
+    fig_NM.savefig('PSD_NM', dpi=150)
+    fig_M.savefig('PSD_M', dpi=150)
+#%% MAIN FUNCTION
 if __name__ == '__main__': 
     # diff_type = 'rel'
     # diff_type = 'abs'
@@ -605,12 +540,12 @@ if __name__ == '__main__':
     #     pl_P24_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P2','pl_P4'])
     
     # visualize_diff_mean_radar(results, labels)
-    visualize_diff_kernel_mse(result_to_analyse)
+    # visualize_diff_kernel_mse(result_to_analyse)
     
-    # variable_to_analyse = result_to_analyse[2]
-    # one_frame = False
+    variable_to_analyse = result_to_analyse[2]
+    one_frame = False
     # calc_init = False
-    # t_return = -1
-    # fps = 5
-    # visualize_PSD(variable_to_analyse, pbe_type, one_frame)
+    t_return = -1
+    fps = 5
+    visualize_PSD(variable_to_analyse, pbe_type, one_frame)
 
