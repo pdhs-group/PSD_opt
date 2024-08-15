@@ -15,8 +15,8 @@ import copy
 
 ## For plots
 import matplotlib.pyplot as plt
-from .utils.plotter import plotter as pt          
-from .utils.plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
+from ..utils.plotter import plotter as pt          
+from ..utils.plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
 
 ### ------ POPULATION CLASS DEFINITION ------ ###
 class population_MC():

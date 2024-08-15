@@ -7,19 +7,19 @@ Created on Wed Apr 17 08:57:57 2024
 import sys, os
 sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),".."))
 import numpy as np
-from pypbe.dpbe import population as pop
+from pypbe.pbe import DPBESolver
 ## for plotter
 import matplotlib.pyplot as plt
-import pypbe.kernel_opt.opt_algo as algo
+import pypbe.kernel_opt.opt_core as core
 import pypbe.utils.plotter.plotter as pt
 from matplotlib.animation import FuncAnimation
 
 def visualize_distribution(t_frame=-1, axq3=None,fig=None, clr='b', q3lbl='q3'):
     x_uni, q3, Q3, sumvol_uni = p.return_distribution(t=t_frame, flag='x_uni, q3, Q3,sumvol_uni')
     if smoothing:
-        algo_ins = algo.opt_algo()
-        kde = algo_ins.KDE_fit(x_uni[1:],sumvol_uni[1:],bandwidth='scott', kernel_func='epanechnikov')
-        q3 = algo_ins.KDE_score(kde,x_uni[1:])
+        core_ins = core.OptCore()
+        kde = core_ins.KDE_fit(x_uni[1:],sumvol_uni[1:],bandwidth='scott', kernel_func='epanechnikov')
+        q3 = core_ins.KDE_score(kde,x_uni[1:])
         q3 = np.insert(q3, 0, 0.0)
     
     axq3, fig = pt.plot_data(x_uni, q3, fig=fig, ax=axq3,
@@ -38,9 +38,9 @@ def animation_distribution(t_vec, fps=10):
             axq3.lines[0].remove()
         x_uni, q3, Q3, sumvol_uni = p.return_distribution(t=frame, flag='x_uni, q3, Q3, sumvol_uni')
         if smoothing:
-            algo_ins = algo.opt_algo()
-            kde = algo_ins.KDE_fit(x_uni[1:],sumvol_uni[1:],bandwidth='scott', kernel_func='epanechnikov')
-            q3 = algo_ins.KDE_score(kde,x_uni[1:])
+            core_ins = core.OptCore()
+            kde = core_ins.KDE_fit(x_uni[1:],sumvol_uni[1:],bandwidth='scott', kernel_func='epanechnikov')
+            q3 = core_ins.KDE_score(kde,x_uni[1:])
             q3 = np.insert(q3, 0, 0.0)
         
         axq3.plot(x_uni, q3, label=q3lbl, color=clr, marker='o')  
@@ -100,64 +100,12 @@ def visualize_N():
 #%% MAIN   
 if __name__ == "__main__":
     dim=2
-    p = pop(dim=dim)
+    p = DPBESolver(dim=dim)
     smoothing = True
-    
-    ## Set the PBE parameters
-    t_vec = np.arange(0, 3601, 100, dtype=float)
-    # Note that it must correspond to the settings of MC-Bond-Break.
-    p.NS = 8
-    p.S = 4
-    
-    p.BREAKRVAL= 4
-    p.BREAKFVAL= 5
-    p.aggl_crit= 100
-    p.process_type= "mix"
-    p.pl_v= 0.8
-    p.pl_P1= 1e-3
-    p.pl_P2= 2
-    p.pl_P3= 1e-3
-    p.pl_P4= 2
-    # p.pl_P5= 1e-2
-    # p.pl_P6= 1
-    p.COLEVAL= 2
-    p.EFFEVAL= 1
-    p.SIZEEVAL= 1
-    if dim == 2:
-        p.alpha_prim = np.array([1, 1, 1, 1])
-    elif dim == 1:
-        p.alpha_prim = 1
-    p.CORR_BETA= 1e-4
-    ## The original value is the particle size at 1% of the PSD distribution. 
-    ## The position of this value in the coordinate system can be adjusted by multiplying by size_scale.
-    size_scale = 1e-1
-    p.R01 = 8.677468940430804e-07*size_scale
-    p.R03 = 8.677468940430804e-07*size_scale
-    
-    ## If you need to read PSD data as initial conditions, set the PSD data path
-    if p.process_type == 'breakage':
-        p.USE_PSD = False
-    else:
-        p.USE_PSD = True
-        p.DIST1 = os.path.join(p.pth,'data','PSD_data','PSD_x50_2.0E-6_RelSigmaV_1.5E-1.npy')
-        p.DIST3 = os.path.join(p.pth,'data','PSD_data','PSD_x50_2.0E-6_RelSigmaV_1.5E-1.npy')
-    
-    ## Use the breakage function calculated by the MC-Bond-Break method
-    p.USE_MC_BOND = False
-    p.solver = "ivp"
-    
-    ## Initialize the PBE
-    p.V_unit = 1e-15
     p.full_init(calc_alpha=False)
-    
-    ## Additional modifications for testing
-    ## Total volume concentration of component, original value = 0.0001
-    ## Used to increase/decrease the overall order of magnitude of a calculated value(N)
-    ## Reducing the magnitude of N can improve the stability of calculation
-    # p.N_scale = 0
-    
+    t_vec = p.t_vec
     ## solve the PBE
-    p.solve_PBE(t_vec=t_vec)
+    p.solve_PBE()
     ## View number concentration of partikel
     N = p.N
     if p.solver == "radau":

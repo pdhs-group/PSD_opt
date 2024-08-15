@@ -5,9 +5,9 @@ Created on Mon Dec 11 09:05:42 2023
 @author: px2030
 """
 
-from .opt_algo import opt_algo        
+from .opt_core import OptCore   
 
-class opt_algo_multi(opt_algo):
+class OptCoreMulti(OptCore):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.weight_2d = 1
@@ -45,7 +45,7 @@ class opt_algo_multi(opt_algo):
             
             del params["corr_agg"]
         
-        self.calc_all_pop(params, self.t_vec)
+        self.calc_all_pop(params)
         if self.p.calc_status:
             delta = self.calc_delta_tem(x_uni_exp[0], data_exp[0], self.p)
         else:
