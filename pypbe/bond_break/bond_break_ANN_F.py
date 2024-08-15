@@ -503,7 +503,7 @@ class ANN_bond_break():
         ## The volume V00 of the main particles of the system, 
         ## this volume directly corresponds to the model input parameters. 
         ## The volume of other particles is defined relative to V00
-        V00 = 2
+        V00 = 1
         V_rel = V / min(V1[1],V3[1]) * V00
         
         e1 = np.zeros(NS+1)
@@ -625,7 +625,7 @@ class ANN_bond_break():
                                              ylbl=ylbl,tit='ANN',clr=c_KIT_green,norm=False, alpha=0.7)
         return ax1, ax2
         
-    def plot_2d_F(self, x,y,NS,test_data,epochs_total,data_index=0,vol_dis=False):
+    def plot_2d_F(self, epochs_total,data_index=0,vol_dis=False):
         self.check_x_y()
         test_Input = self.all_data[3][data_index].reshape(1,7)
         test_OutputX1 = self.all_data[1][data_index]
@@ -646,14 +646,14 @@ class ANN_bond_break():
         test_Output = test_OutputX1+test_OutputX2
         predicted_Output = predicted_OutputX1+predicted_OutputX2
         if not vol_dis:
-            mask = np.ones((len(x),len(y)), dtype=bool)
-            V = np.zeros((len(x),len(y)))
+            mask = np.ones((len(self.x),len(self.y)), dtype=bool)
+            V = np.zeros((len(self.x),len(self.y)))
             mask[0, 0] = False
             X1 = test_Input[0,1]
             X2 = 1 - X1
-            for i in range(len(x)):
-                for j in range(len(y)):
-                    V[i,j] = x[i] / X1 + y[j] / X2
+            for i in range(len(self.x)):
+                for j in range(len(self.y)):
+                    V[i,j] = self.x[i] / X1 +self.y[j] / X2
             test_Output[mask] = (test_OutputX1[mask]+test_OutputX2[mask])/ V[mask]     
             predicted_Output[mask] = (predicted_OutputX1[mask]+predicted_OutputX2[mask])/ V[mask]
         test_counts = (1e5 * test_Output).astype(int)
@@ -664,10 +664,10 @@ class ANN_bond_break():
         y_predicted_counts = []
         for i in range(test_counts.shape[0]):
             for j in range(test_counts.shape[1]):
-                x_test_counts.extend([x[i]] * test_counts[i,j])
-                x_predicted_counts.extend([x[i]] * predicted_counts[i,j])
-                y_test_counts.extend([y[j]] * test_counts[i,j])
-                y_predicted_counts.extend([y[j]] * predicted_counts[i,j])
+                x_test_counts.extend([self.x[i]] * test_counts[i,j])
+                x_predicted_counts.extend([self.x[i]] * predicted_counts[i,j])
+                y_test_counts.extend([self.y[j]] * test_counts[i,j])
+                y_predicted_counts.extend([self.y[j]] * predicted_counts[i,j])
         x_test_counts = np.array(x_test_counts)
         x_predicted_counts = np.array(x_predicted_counts)
         y_test_counts = np.array(y_test_counts)

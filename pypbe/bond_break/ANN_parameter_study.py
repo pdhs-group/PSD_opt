@@ -130,7 +130,6 @@ def read_best_params_and_train_model(result_path):
     with open(result_path, "rb") as f:
         load_result = pickle.load(f)
     
-    model_path = load_result["best_model_path"]
     ann = ANN_bond_break(m_dim,m_NS,m_S,m_global_seed)
     ann.save_model = True
     ann.save_validate_results = True
@@ -144,20 +143,23 @@ def read_best_params_and_train_model(result_path):
     ann.dropout_rate = load_result["best_parameters"]["dropout_rate"]
     ann.num_layers = load_result["best_parameters"]["num_layers"]
     ann.init_neurons = load_result["best_parameters"]["init_neurons"]
-    # epochs = 1000
-    # ann.batch_size = 64
-    # ann.learning_rate = 1e-4
+    # epochs = 152
+    # ann.batch_size = 86
+    # ann.learning_rate = 0.000409987
     # ann.optimizer_type = 'rmsprop'
-    # ann.l1_factor = 1e-4
-    # ann.dropout_rate = 0.2
-    # ann.num_layers = 2
-    # ann.init_neurons = 64
+    # ann.l1_factor = 0.00381228
+    # ann.dropout_rate = 0.463052
+    # ann.num_layers = 1
+    # ann.init_neurons = 41
     
     # ann.processing_train_data()
     ann.split_data_set(n_splits=m_n_splits)
-    # results = ann.cross_validation(epochs, 1, model_path=None, validate_only=False)
-    ann.plot_1d_F(epochs, 20, vol_dis=True)
-    return ann#, results, load_result
+    results = ann.cross_validation(epochs, 1, model_path=None, validate_only=True)
+    if m_dim == 1:
+        ann.plot_1d_F(epochs, 20, vol_dis=False)
+    elif m_dim == 2:
+        ann.plot_2d_F(epochs, 20, vol_dis=True)
+    return ann, results
     
 if __name__ == '__main__':
     ## The value of random seed (int value) itself is not important.
@@ -165,7 +167,7 @@ if __name__ == '__main__':
     ## The reverse improves the robustness of the model (set m_global_seed=0)
     m_global_seed = 42
     
-    m_dim = 2
+    m_dim = 1
     m_NS = 50
     m_S = 1.3
     m_n_splits = 5
@@ -175,11 +177,11 @@ if __name__ == '__main__':
     result_path = "best_results.pkl"
     n_steps = 400
     
-    start_time = time.time()
-    best_result = run_ray_tune(result_path, n_steps)
-    end_time = time.time()
-    opt_time = end_time - start_time
+    # start_time = time.time()
+    # best_result = run_ray_tune(result_path, n_steps)
+    # end_time = time.time()
+    # opt_time = end_time - start_time
     
-    # ann, test_result, load_result = read_best_params_and_train_model(result_path)
-    # loss = test_result[0,0] * m_mse_weight + test_result[0,2] * m_frag_num_weight
+    ann, test_result = read_best_params_and_train_model(result_path)
+    loss = test_result[0,0] * m_mse_weight + test_result[0,2] * m_frag_num_weight
     
