@@ -54,3 +54,63 @@ WARNING:matplotlib.animation:MovieWriter imagemagick unavailable; using Pillow i
 INFO:matplotlib.animation:Animation.save using <class 'matplotlib.animation.PillowWriter'>
 WARNING:matplotlib.animation:MovieWriter imagemagick unavailable; using Pillow instead.
 INFO:matplotlib.animation:Animation.save using <class 'matplotlib.animation.PillowWriter'>
+ERROR:asyncio:Task exception was never retrieved
+future: <Task finished name='Task-5' coro=<opt_algo.optimierer_agg() done, defined at c:\users\px2030\code\psd_opt\tests\..\pypbe\kernel_opt\opt_algo.py:196> exception=RaySystemError("Ray has not been started yet. You can start Ray with 'ray.init()'.")>
+Traceback (most recent call last):
+  File "c:\users\px2030\code\psd_opt\tests\..\pypbe\kernel_opt\opt_algo.py", line 261, in optimierer_agg
+    total_cpus = ray.cluster_resources().get("CPU", 1)
+                 ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\px2030\AppData\Local\anaconda3\Lib\site-packages\ray\_private\client_mode_hook.py", line 103, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\px2030\AppData\Local\anaconda3\Lib\site-packages\ray\_private\state.py", line 994, in cluster_resources
+    return state.cluster_resources()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\px2030\AppData\Local\anaconda3\Lib\site-packages\ray\_private\state.py", line 732, in cluster_resources
+    self._check_connected()
+  File "C:\Users\px2030\AppData\Local\anaconda3\Lib\site-packages\ray\_private\state.py", line 53, in _check_connected
+    raise ray.exceptions.RaySystemError(
+ray.exceptions.RaySystemError: System error: Ray has not been started yet. You can start Ray with 'ray.init()'.
+ERROR:asyncio:Task exception was never retrieved
+future: <Task finished name='Task-5' coro=<opt_algo.optimierer_agg() done, defined at c:\users\px2030\code\psd_opt\tests\..\pypbe\kernel_opt\opt_algo.py:196> exception=AttributeError("'opt_algo_multi' object has no attribute 'task_queue'")>
+Traceback (most recent call last):
+  File "c:\users\px2030\code\psd_opt\tests\..\pypbe\kernel_opt\opt_algo.py", line 321, in optimierer_agg
+    return asyncio.run(main(task_queue))
+              ^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\users\px2030\code\psd_opt\tests\..\pypbe\kernel_opt\opt_algo.py", line 303, in run_task_queue
+    task_result, path = await run_tune_task.remote(exp_data_path)
+          ^^^^^^^^^^^^^^^
+AttributeError: 'opt_algo_multi' object has no attribute 'task_queue'
+ERROR:asyncio:Task exception was never retrieved
+future: <Task finished name='Task-5' coro=<optimization_process() done, defined at c:\users\px2030\code\psd_opt\tests\opt_para_study.py:19> exception=TypeError("object ResultGrid can't be used in 'await' expression")>
+Traceback (most recent call last):
+  File "c:\users\px2030\code\psd_opt\tests\opt_para_study.py", line 48, in optimization_process
+    await find.find_opt_kernels(method='delta', data_names=data_names)
+  File "c:\users\px2030\code\psd_opt\tests\..\pypbe\kernel_opt\opt_find.py", line 218, in find_opt_kernels
+    result_dict = await self.algo.optimierer_agg(self.opt_params,exp_data_paths=exp_data_paths)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\users\px2030\code\psd_opt\tests\..\pypbe\kernel_opt\opt_algo.py", line 251, in optimierer_agg
+    completed_tasks = await asyncio.gather(*active_tasks)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\users\px2030\code\psd_opt\tests\..\pypbe\kernel_opt\opt_algo.py", line 290, in run_tune_task
+    return await tuner.fit(), exp_data_path
+           ^^^^^^^^^^^^^^^^^
+TypeError: object ResultGrid can't be used in 'await' expression
+WARNING:matplotlib.animation:MovieWriter imagemagick unavailable; using Pillow instead.
+INFO:matplotlib.animation:Animation.save using <class 'matplotlib.animation.PillowWriter'>
+WARNING:matplotlib.animation:MovieWriter imagemagick unavailable; using Pillow instead.
+INFO:matplotlib.animation:Animation.save using <class 'matplotlib.animation.PillowWriter'>
+WARNING:matplotlib.animation:MovieWriter imagemagick unavailable; using Pillow instead.
+INFO:matplotlib.animation:Animation.save using <class 'matplotlib.animation.PillowWriter'>
+WARNING:matplotlib.animation:MovieWriter imagemagick unavailable; using Pillow instead.
+INFO:matplotlib.animation:Animation.save using <class 'matplotlib.animation.PillowWriter'>
+WARNING:matplotlib.animation:MovieWriter imagemagick unavailable; using Pillow instead.
+INFO:matplotlib.animation:Animation.save using <class 'matplotlib.animation.PillowWriter'>
+WARNING:matplotlib.animation:MovieWriter imagemagick unavailable; using Pillow instead.
+INFO:matplotlib.animation:Animation.save using <class 'matplotlib.animation.PillowWriter'>
+WARNING:matplotlib.animation:MovieWriter imagemagick unavailable; using Pillow instead.
+INFO:matplotlib.animation:Animation.save using <class 'matplotlib.animation.PillowWriter'>
+WARNING:matplotlib.animation:MovieWriter imagemagick unavailable; using Pillow instead.
+INFO:matplotlib.animation:Animation.save using <class 'matplotlib.animation.PillowWriter'>
+WARNING:matplotlib.animation:MovieWriter imagemagick unavailable; using Pillow instead.
+INFO:matplotlib.animation:Animation.save using <class 'matplotlib.animation.PillowWriter'>

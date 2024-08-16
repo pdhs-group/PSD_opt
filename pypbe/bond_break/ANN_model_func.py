@@ -55,7 +55,7 @@ def train_model_1d(model, train_data, test_data, x, mask, print_status, weight_l
     mask_tf = tf.convert_to_tensor(mask)
     
     best_val_loss = float('inf')
-    patience = 5
+    patience = 20
     patience_counter = 0
     for epoch in range(epochs):
         if print_status:
@@ -63,12 +63,15 @@ def train_model_1d(model, train_data, test_data, x, mask, print_status, weight_l
         # Training
         for step, (batch_inputs, batch_outputs, batch_inputs_scaled) in enumerate(train_dataset):
             FRAG_NUM = batch_inputs[:,1]
-            with tf.GradientTape() as tape:
-                prediction  = model(batch_inputs_scaled, training=True)
-                loss = combined_custom_loss(batch_outputs, prediction, FRAG_NUM, x_tf, mask_tf, 
-                                            alpha=weight_loss_FRAG_NUM, beta=1-weight_loss_FRAG_NUM)
+            loss, grads = compute_loss_and_grads(model, batch_inputs_scaled, batch_outputs, 
+                                                       x_tf, None, 
+                                                       mask_tf, FRAG_NUM, weight_loss_FRAG_NUM)
+            # with tf.GradientTape() as tape:
+            #     prediction  = model(batch_inputs_scaled, training=True)
+            #     loss = combined_custom_loss(batch_outputs, prediction, FRAG_NUM, x_tf, mask_tf, 
+            #                                 alpha=weight_loss_FRAG_NUM, beta=1-weight_loss_FRAG_NUM)
             
-            grads = tape.gradient(loss, model.trainable_weights)
+            # grads = tape.gradient(loss, model.trainable_weights)
             # grads = [tf.clip_by_value(g, -1.0, 1.0) for g in grads]
             optimizer.apply_gradients(zip(grads, model.trainable_weights))
             if print_status:
@@ -76,27 +79,28 @@ def train_model_1d(model, train_data, test_data, x, mask, print_status, weight_l
         # evaluate_model
         validate_results = validate_model_1d(model,test_data,x,mask)
         # Early Stopping Check with validate_results[0](mse)
-        if validate_results[0] < best_val_loss:
-            best_val_loss = validate_results[0]
-            best_validate_results = validate_results
-            patience_counter = 0
-        else:
-            patience_counter += 1
-            if patience_counter >= patience:
-                if print_status:
-                    print(f"Early stopping at epoch {epoch+1}")
-                    return best_validate_results
+        # if validate_results[0] < best_val_loss:
+        #     best_val_loss = validate_results[0]
+        #     best_validate_results = validate_results
+        #     patience_counter = 0
+        # else:
+        #     patience_counter += 1
+        #     if patience_counter >= patience:
+        #         if print_status:
+        #             print(f"Early stopping at epoch {epoch+1}")
+        #         return best_validate_results
     if print_status:    
         print(f"Training of Echos = {epochs} completed!")
-    return best_validate_results
+    return validate_results
     
 def validate_model_1d(model,test_data,x,mask): 
     test_Inputs = test_data[0]
     test_Outputs = test_data[1]
     test_Inputs_scaled = test_data[2]
     predicted_Outputs = model.predict(test_Inputs_scaled, verbose=0)
-    all_mse = tf.keras.losses.mean_squared_error(test_Outputs, predicted_Outputs).numpy()
-    all_mae = tf.keras.losses.mean_absolute_error(test_Outputs, predicted_Outputs).numpy()
+    ## Compatible with lower versions of tensorfolw
+    all_mse = tf.keras.losses.MeanSquaredError()(test_Outputs, predicted_Outputs).numpy()
+    all_mae = tf.keras.losses.MeanAbsoluteError()(test_Outputs, predicted_Outputs).numpy()
     mse = all_mse.mean()
     mae = all_mae.mean()
 
@@ -265,20 +269,20 @@ def train_model_2d(model, train_data, test_data, x, y, mask, print_status, weigh
         # evaluate_model
         validate_results = validate_model_2d(model,test_data,x,y,mask)
         # Early Stopping Check with validate_results[0](mse)
-        if validate_results[0] < best_val_loss:
-            best_val_loss = validate_results[0]
-            best_validate_results = validate_results
-            patience_counter = 0
-        else:
-            patience_counter += 1
-            if patience_counter >= patience:
-                if print_status:
-                    print(f"Early stopping at epoch {epoch+1}")
-                    return best_validate_results
+        # if validate_results[0] < best_val_loss:
+        #     best_val_loss = validate_results[0]
+        #     best_validate_results = validate_results
+        #     patience_counter = 0
+        # else:
+        #     patience_counter += 1
+        #     if patience_counter >= patience:
+        #         if print_status:
+        #             print(f"Early stopping at epoch {epoch+1}")
+        #         return best_validate_results
         
     if print_status:
         print(f"Training of Echos = {epochs} completed!")
-    return best_validate_results
+    return validate_results
     
 def validate_model_2d(model,test_data,x,y,mask): 
     test_Inputs = test_data[0]
@@ -289,11 +293,11 @@ def validate_model_2d(model,test_data,x,y,mask):
     model_X2 = model[1]
     predicted_Outputs_X1 = model_X1.predict(test_Inputs_scaled, verbose=0)
     predicted_Outputs_X2 = model_X2.predict(test_Inputs_scaled, verbose=0)
-    
-    all_mse_X1 = tf.keras.losses.mean_squared_error(test_Outputs_X1, predicted_Outputs_X1).numpy()
-    all_mae_X1 = tf.keras.losses.mean_absolute_error(test_Outputs_X1, predicted_Outputs_X1).numpy()
-    all_mse_X2 = tf.keras.losses.mean_squared_error(test_Outputs_X2, predicted_Outputs_X2).numpy()
-    all_mae_X2 = tf.keras.losses.mean_absolute_error(test_Outputs_X2, predicted_Outputs_X2).numpy()
+    ## Compatible with lower versions of tensorfolw
+    all_mse_X1 = tf.keras.losses.MeanSquaredError()(test_Outputs_X1, predicted_Outputs_X1).numpy()
+    all_mae_X1 = tf.keras.losses.MeanAbsoluteError()(test_Outputs_X1, predicted_Outputs_X1).numpy()
+    all_mse_X2 = tf.keras.losses.MeanSquaredError()(test_Outputs_X2, predicted_Outputs_X2).numpy()
+    all_mae_X2 = tf.keras.losses.MeanAbsoluteError()(test_Outputs_X2, predicted_Outputs_X2).numpy()
     mse = (all_mse_X1+all_mse_X2).mean()
     mae = (all_mae_X1+all_mae_X2).mean()
     
@@ -339,6 +343,7 @@ def combined_custom_loss(y_true, y_pred, FRAG_NUM, V, mask, y_pred_other=None, a
     custom_loss_func_all_prob = custom_loss_all_prob(FRAG_NUM, V, mask, y_pred_other)
     loss_custom_all_prob = custom_loss_func_all_prob(y_true, y_pred)
     # loss_mse = tf.keras.losses.mean_squared_error(y_true, y_pred)
-    loss_kl = tf.keras.losses.kl_divergence(y_true, y_pred)
+    ## Compatible with lower versions of tensorfolw
+    loss_kl = tf.keras.losses.KLDivergence()(y_true, y_pred)
 
     return alpha * loss_custom_all_prob + beta * loss_kl

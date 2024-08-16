@@ -14,8 +14,9 @@ config = {
     
     'algo_params': {
         'dim': 2,
-        't_init' : np.array([0, 1, 3, 5]),
+        't_init' : np.array([0, 0]),
         't_vec' : np.arange(0, 3601, 100, dtype=float),
+        # 't_vec' : np.array([0, 300, 600, 900, 1200, 1500, 2100, 2700]),
         ## Sometimes there is a gap between the initial conditions calculated based on experimental data 
         ## and the real values, resulting in unavoidable errors in the first few time steps. 
         ## These errors will gradually disappear as the calculation time becomes longer. 
@@ -27,13 +28,34 @@ config = {
         'noise_type': 'Mul',
         'noise_strength': 0.1,
         'sample_num': 5,
-        ## method = basinhopping
-        ## method = BO: use Bayesian Optimization
-        'method': 'BO',
-        'n_iter': 400,
+        'exp_data' : False, 
+        'sheet_name' : None, 
+        ## method = HEBO: Heteroscedastic Evolutionary Bayesian Optimization
+        ## method = GP: Sampler using Gaussian process-based Bayesian optimization.
+        ## method = TPE: Sampler using TPE (Tree-structured Parzen Estimator) algorithm.
+        ## method = Cmaes: A sampler using cmaes as the backend.
+        ## method = NSGA: Multi-objective sampler using the NSGA-III(Nondominated Sorting Genetic Algorithm III) algorithm.
+        ## method = QMC: A Quasi Monte Carlo Sampler that generates low-discrepancy sequences.    
+        'method': 'GP',
+        'n_iter': 10,
         ## Initialize PBE using psd data(False) or 
         ## with the help of first few time points of experimental data(True)
         'calc_init_N': False,
+        ## Setting the basic parameters of the smallest particles, 
+        ## whether they are read from PSD data or not
+        'USE_PSD' : True,
+        'R01_0' : 'r0_001',
+        'R03_0' : 'r0_001',
+        ## The diameter ratio of the primary particles can also be used as a variable
+        'R_01': 8.677468940430804e-07,
+        'R_03': 8.677468940430804e-07*1,
+        ## Adjust the coordinate of PBE(optional)
+        'R01_0_scl': 1e-1,
+        'R03_0_scl': 1e-1,
+        'PSD_R01' : 'PSD_x50_2.0E-6_RelSigmaV_1.5E-1.npy',
+        'PSD_R03' : 'PSD_x50_2.0E-6_RelSigmaV_1.5E-1.npy',
+        ## The error of 2d pop may be more important, so weight needs to be added
+        'weight_2d': 1,
         ## delta_flag = q3: use q3
         ## delta_flag = Q3: use Q3
         ## delta_flag = x_10: use x_10
@@ -45,9 +67,16 @@ config = {
         ## 'KL': Kullback–Leibler divergence(Only q3 and Q3 are compatible with KL) 
 
         'delta_flag': [('q3','MSE'), 
-                       #('Q3','KL'), 
+                       # ('Q3','KL'), 
                        #('x_50','MSE')
                        ],
+        'tune_storage_path': r'C:\Users\px2030\Code\Ray_Tune',
+        ## When use_bundles is True, multiple Tune will be run locally at the same time. 
+        ## The psd-data must also be multiple! Multiple here means data with different conditions 
+        ## rather than the same data in different dimensions.
+        'use_bundles': False,
+        'num_bundles': 2,
+        'cpus_per_trail': 1,
         },
     
     ## PBE parameters
@@ -62,10 +91,8 @@ config = {
         'pl_v' : 2,
         'pl_P1' : 1e1,
         'pl_P2' : 2,
-        'pl_P3' : 1e1,
+        # 'pl_P3' : 1e1,
         'pl_P4' : 2,
-        # 'pl_P5' : 3e-4,
-        # 'pl_P6' : 0.3,
         'COLEVAL' : 2,
         'EFFEVAL' : 1,
         'SIZEEVAL' : 1,
@@ -90,23 +117,10 @@ config = {
         'corr_agg_1': {'bounds': (-4.0, -1.0), 'log_scale': True},
         'corr_agg_2': {'bounds': (-4.0, -1.0), 'log_scale': True},
         'pl_v': {'bounds': (0.5, 2.0), 'log_scale': False},
-        'pl_P1': {'bounds': (-4.0, 0.0), 'log_scale': True},
+        # 'pl_P1': {'bounds': (-4.0, 0.0), 'log_scale': True},
         'pl_P2': {'bounds': (0.5, 3.0), 'log_scale': False},
-        'pl_P3': {'bounds': (-4.0, 0.0), 'log_scale': True},
+        # 'pl_P3': {'bounds': (-4.0, 0.0), 'log_scale': True},
         'pl_P4': {'bounds': (0.5, 3.0), 'log_scale': False},
     },
-    ## The diameter ratio of the primary particles can also be used as a variable
-    'R_NM': 8.677468940430804e-07,
-    'R_M': 8.677468940430804e-07*1,
-    ## Adjust the coordinate of PBE(optional)
-    'R01_0_scl': 1e-1,
-    'R03_0_scl': 1e-1,
-    
-    ## The error of 2d pop may be more important, so weight needs to be added
-    'weight_2d': 1,
-    
-    ## PSD data to initialize the PBE, when needed.
-    'dist_scale_1': "PSD_x50_2.0E-6_RelSigmaV_1.5E-1.npy",
-    'dist_scale_5': "PSD_x50_1.0E-5_RelSigmaV_1.5E-1.npy",
-    'dist_scale_10': "PSD_x50_2.0E-5_RelSigmaV_1.5E-1.npy",
+
 }

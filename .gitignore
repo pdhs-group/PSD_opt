@@ -12,6 +12,7 @@
 *.zip
 *.pkl
 *.json
+*.txt
 
 # ignore ordner
 __pycache__
