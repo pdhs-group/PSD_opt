@@ -99,7 +99,7 @@ if __name__ == '__main__':
             ]
             data_names_list_tem.append(data_name_ex)
         data_names_list = data_names_list_tem
-    result = opt.find_opt_kernels(method='delta', data_names=data_names_list, known_params=known_params)       
+    result = opt.find_opt_kernels(method='delta', data_names=data_names_list, known_params=known_params_list)       
     end_time = time.time()
     elapsed_time = end_time - start_time
     ## save the results in npz

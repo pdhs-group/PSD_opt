@@ -238,6 +238,7 @@ class OptCore():
         print(notice)
 
 bind_methods_from_module(OptCore, 'pypbe.kernel_opt.opt_algo_ray')
+bind_methods_from_module(OptCore, 'pypbe.kernel_opt.opt_algo_bo')
 bind_methods_from_module(OptCore, 'pypbe.kernel_opt.opt_data')
 bind_methods_from_module(OptCore, 'pypbe.kernel_opt.opt_pbe')
 bind_methods_from_module(OptCore, 'pypbe.pbe.dpbe_post')

@@ -14,7 +14,7 @@ from ray.tune.search.optuna import OptunaSearch
 from ray.tune.search.hebo import HEBOSearch
 from optuna.samplers import GPSampler,CmaEsSampler,TPESampler,NSGAIIISampler,QMCSampler
 
-def optimierer_agg_bundles(self, opt_params, hyperparameter=None, 
+def optimierer_ray_bundles(self, opt_params, hyperparameter=None, 
                            exp_data_paths=None, known_params=None):
     """
     Optimize the corr_agg based on :meth:~.calc_delta_agg. 
@@ -144,7 +144,7 @@ def create_remote_worker(self):
         return tuner.fit(), exp_data_paths
     return run_tune_task
 
-def optimierer_agg(self, opt_params, hyperparameter=None, exp_data_paths=None,known_params=None):
+def optimierer_ray(self, opt_params, hyperparameter=None, exp_data_paths=None,known_params=None):
     """
     Optimize the corr_agg based on :meth:`~.calc_delta_agg`. 
     Results are saved in corr_agg_opt.

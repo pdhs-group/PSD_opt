@@ -313,18 +313,22 @@ class OptBase():
                 print("not coded yet")
             elif method == 'delta':
                 if self.core.use_bundles:
-                    result_dict = self.core.optimierer_agg_bundles(self.opt_params,exp_data_paths=exp_data_paths, 
+                    result_dict = self.core.optimierer_ray_bundles(self.opt_params,exp_data_paths=exp_data_paths, 
                                                                    known_params=known_params)
                 else:
                     result_dict = []
                     if isinstance(exp_data_paths[0], list):
                         for exp_data_paths_tem, known_params_tem in zip(exp_data_paths, known_params):
-                            result_dict_tem = self.core.optimierer_agg(self.opt_params,exp_data_paths=exp_data_paths_tem,
-                                                                       known_params=known_params_tem)
+                            # result_dict_tem = self.core.optimierer_ray(self.opt_params,exp_data_paths=exp_data_paths_tem,
+                            #                                            known_params=known_params_tem)
+                            result_dict_tem = self.core.optimierer_bo(self.opt_params,exp_data_paths=exp_data_paths_tem,
+                                                                        known_params=known_params_tem)
                             result_dict.append(result_dict_tem)
                     else:
-                        result_dict = self.core.optimierer_agg(self.opt_params,exp_data_paths=exp_data_paths,
+                        result_dict = self.core.optimierer_ray(self.opt_params,exp_data_paths=exp_data_paths,
                                                                known_params=known_params)
+                        # result_dict = self.core.optimierer_bo(self.opt_params,exp_data_paths=exp_data_paths_tem,
+                        #                                            known_params=known_params)
                 # delta_opt = self.core.optimierer(sample_num=sample_num, 
                 #                       exp_data_path=exp_data_path)
                 

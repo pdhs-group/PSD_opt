@@ -74,7 +74,7 @@ config = {
         ## When use_bundles is True, multiple Tune will be run locally at the same time. 
         ## The psd-data must also be multiple! Multiple here means data with different conditions 
         ## rather than the same data in different dimensions.
-        'use_bundles': True,
+        'use_bundles': False,
         'num_bundles': 2,
         'cpus_per_trail': 1,
         },
