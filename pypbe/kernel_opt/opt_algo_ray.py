@@ -14,7 +14,8 @@ from ray.tune.search.optuna import OptunaSearch
 from ray.tune.search.hebo import HEBOSearch
 from optuna.samplers import GPSampler,CmaEsSampler,TPESampler,NSGAIIISampler,QMCSampler
 
-def optimierer_agg_bundles(self, opt_params, init_points=4, hyperparameter=None, exp_data_paths=None):
+def optimierer_agg_bundles(self, opt_params, hyperparameter=None, 
+                           exp_data_paths=None, known_params=None):
     """
     Optimize the corr_agg based on :meth:~.calc_delta_agg. 
     Results are saved in corr_agg_opt.
@@ -27,7 +28,7 @@ def optimierer_agg_bundles(self, opt_params, init_points=4, hyperparameter=None,
         Number of steps for random exploration in BayesianOptimization.
     sample_num : int, optional. Default 1.
         Set how many sets of experimental data are used simultaneously for optimization.
-    exp_data_path : str
+    exp_data_paths : str
         path for experimental data.
         
     Returns   
@@ -51,8 +52,8 @@ def optimierer_agg_bundles(self, opt_params, init_points=4, hyperparameter=None,
     ## Add all data (groups for multi_flag=True case) to the task queue
     task_queue = ray.util.queue.Queue()
     queue_length = 0
-    for path in exp_data_paths:
-        task_queue.put(path)
+    for paths, params in zip(exp_data_paths, known_params):
+        task_queue.put((paths, params))
         queue_length += 1
 
     self.check_num_bundles(queue_length, total_cpus)
@@ -64,21 +65,21 @@ def optimierer_agg_bundles(self, opt_params, init_points=4, hyperparameter=None,
         active_tasks = []
         for i in range(num_bundles_max):
             if not task_queue.empty():
-                exp_data_path = task_queue.get()
+                paths, params = task_queue.get()
                 queue_length -= 1
-                task = run_tune_task.remote(exp_data_path)
+                task = run_tune_task.remote(paths, params)
                 active_tasks.append(task)
 
         # 等待所有当前活跃的任务完成
         completed_tasks = ray.get(active_tasks)
         if queue_length != 0:
             self.check_num_bundles(queue_length, total_cpus)
-        for task_result, path in completed_tasks:
+        for task_result, paths in completed_tasks:
             best_result = task_result.get_best_result(metric="loss", mode="min")
             results.append({
                 "opt_params": best_result.config,
                 "opt_score": best_result.metrics["loss"],
-                "file_path": path
+                "file_path": paths
             })
    
     return results
@@ -90,27 +91,27 @@ def check_num_bundles(self, queue_length, total_cpus):
     
 def create_remote_worker(self):
     @ray.remote(num_cpus=self.cpus_per_bundle)
-    def run_tune_task(exp_data_path):
+    def run_tune_task(exp_data_paths, known_params):
         if self.calc_init_N:
-            self.set_init_N(exp_data_path, init_flag='mean')
+            self.set_init_N(exp_data_paths, init_flag='mean')
         algo = self.create_algo()
-        if isinstance(exp_data_path, list):
+        if isinstance(exp_data_paths, list):
             x_uni_exp = []
             data_exp = []
-            for exp_data_path_tem in exp_data_path:
+            for exp_data_paths_tem in exp_data_paths:
                 if self.exp_data:
-                    x_uni_exp_tem, data_exp_tem = self.get_all_exp_data(exp_data_path_tem)
+                    x_uni_exp_tem, data_exp_tem = self.get_all_exp_data(exp_data_paths_tem)
                 else:
-                    x_uni_exp_tem, data_exp_tem = self.get_all_synth_data(exp_data_path_tem)
+                    x_uni_exp_tem, data_exp_tem = self.get_all_synth_data(exp_data_paths_tem)
                 x_uni_exp.append(x_uni_exp_tem)
                 data_exp.append(data_exp_tem)
-            data_name = os.path.basename(exp_data_path[0])
+            data_name = os.path.basename(exp_data_paths[0])
         else:
             if self.exp_data:
-                x_uni_exp, data_exp = self.get_all_exp_data(exp_data_path)
+                x_uni_exp, data_exp = self.get_all_exp_data(exp_data_paths)
             else:
-                x_uni_exp, data_exp = self.get_all_synth_data(exp_data_path)
-            data_name = os.path.basename(exp_data_path)
+                x_uni_exp, data_exp = self.get_all_synth_data(exp_data_paths)
+            data_name = os.path.basename(exp_data_paths)
             
         if data_name.startswith("Sim_"):
             data_name = data_name[len("Sim_"):]
@@ -120,7 +121,7 @@ def create_remote_worker(self):
         def objective_func(config):
             # message = f"The value is: {data_exp[0][0][10,10]}"
             # self.print_notice(message)
-            return self.objective(config, x_uni_exp, data_exp)
+            return self.objective(config, x_uni_exp, data_exp, known_params)
         objective_func.__name__ = "objective_func" + uuid.uuid4().hex[:8]
         tuner = tune.Tuner(
             tune.with_resources(
@@ -140,10 +141,10 @@ def create_remote_worker(self):
                 log_to_file=True,
             ),
         )
-        return tuner.fit(), exp_data_path
+        return tuner.fit(), exp_data_paths
     return run_tune_task
 
-def optimierer_agg(self, opt_params, init_points=4, hyperparameter=None, exp_data_path=None):
+def optimierer_agg(self, opt_params, hyperparameter=None, exp_data_paths=None,known_params=None):
     """
     Optimize the corr_agg based on :meth:`~.calc_delta_agg`. 
     Results are saved in corr_agg_opt.
@@ -156,7 +157,7 @@ def optimierer_agg(self, opt_params, init_points=4, hyperparameter=None, exp_dat
         Number of steps for random exploration in BayesianOptimization.
     sample_num : `int`, optional. Default 1.
         Set how many sets of experimental data are used simultaneously for optimization.
-    exp_data_path : `str`
+    exp_data_paths : `str`
         path for experimental data.
         
     Returns   
@@ -165,26 +166,26 @@ def optimierer_agg(self, opt_params, init_points=4, hyperparameter=None, exp_dat
         Optimized value of the objective.
     """
     if self.calc_init_N:
-        self.set_init_N(exp_data_path, init_flag='mean')
-    if isinstance(exp_data_path, list):
-        ## When set to multi, the exp_data_path entered here is a list 
+        self.set_init_N(exp_data_paths, init_flag='mean')
+    if isinstance(exp_data_paths, list):
+        ## When set to multi, the exp_data_paths entered here is a list 
         ## containing one 2d data name and two 1d data names.
         x_uni_exp = []
         data_exp = []
-        for exp_data_path_tem in exp_data_path:
+        for exp_data_paths_tem in exp_data_paths:
             if self.exp_data:
-                x_uni_exp_tem, data_exp_tem = self.get_all_exp_data(exp_data_path_tem)
+                x_uni_exp_tem, data_exp_tem = self.get_all_exp_data(exp_data_paths_tem)
             else:
-                x_uni_exp_tem, data_exp_tem = self.get_all_synth_data(exp_data_path_tem)
+                x_uni_exp_tem, data_exp_tem = self.get_all_synth_data(exp_data_paths_tem)
             x_uni_exp.append(x_uni_exp_tem)
             data_exp.append(data_exp_tem)
     else:
-        ## When not set to multi or optimization of 1d-data, the exp_data_path 
+        ## When not set to multi or optimization of 1d-data, the exp_data_paths 
         ## contain the name of that data.
         if self.exp_data:
-            x_uni_exp, data_exp = self.get_all_exp_data(exp_data_path)
+            x_uni_exp, data_exp = self.get_all_exp_data(exp_data_paths)
         else:
-            x_uni_exp, data_exp = self.get_all_synth_data(exp_data_path)
+            x_uni_exp, data_exp = self.get_all_synth_data(exp_data_paths)
         
     RT_space = {}
     
@@ -199,17 +200,17 @@ def optimierer_agg(self, opt_params, init_points=4, hyperparameter=None, exp_dat
    
     algo = self.create_algo()
         
-    if isinstance(exp_data_path, list):
-        data_name = os.path.basename(exp_data_path[0])
+    if isinstance(exp_data_paths, list):
+        data_name = os.path.basename(exp_data_paths[0])
     else:
-        data_name = os.path.basename(exp_data_path)
+        data_name = os.path.basename(exp_data_paths)
         
     if data_name.startswith("Sim_"):
         data_name = data_name[len("Sim_"):]
     if data_name.endswith(".xlsx"):
         data_name = data_name[:-len(".xlsx")]
     # 运行Ray Tune进行超参数搜索
-    trainable_with_resources  = tune.with_resources(lambda config: self.objective(config, x_uni_exp, data_exp), 
+    trainable_with_resources  = tune.with_resources(lambda config: self.objective(config, x_uni_exp, data_exp,known_params), 
                                                     resources=tune.PlacementGroupFactory([
         {"CPU": self.cpus_per_trail}
     ]))
@@ -239,22 +240,24 @@ def optimierer_agg(self, opt_params, init_points=4, hyperparameter=None, exp_dat
     result_dict = {
         "opt_score": opt_score,
         "opt_params": opt_params,
-        "file_path": exp_data_path
+        "file_path": exp_data_paths
     }
     
     return result_dict
 
 # Objective function considering the log scale transformation if necessary
-def objective(self, config, x_uni_exp, data_exp):
+def objective(self, config, x_uni_exp, data_exp, known_params):
     # Special handling for corr_agg based on dimension
     if 'corr_agg_0' in config:
         transformed_params = self.array_dict_transform(config)
     else:
         transformed_params = config
-    # checkpoint_config=train.CheckpointConfig(
-    #     checkpoint_at_end=True,  # 仅在任务结束时保存检查点
-    #     checkpoint_frequency=0   # 禁用中间检查点保存
-    # ),  
+    
+    if known_params is not None:
+        for key, value in known_params.items():
+            if key in transformed_params:
+                print(f"Warning: Known parameter '{key}' are set for optimization.")
+            transformed_params[key] = value
     checkpoint_config = None
     
     loss = self.calc_delta_agg(transformed_params, x_uni_exp, data_exp)

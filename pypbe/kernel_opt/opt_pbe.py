@@ -72,7 +72,7 @@ def set_pop_para(self, pop, params_in):
                 pop.alpha_prim = alpha_prim_value[0]
             elif pop is self.p_M:
                 pop.alpha_prim = alpha_prim_value[2]
-        if 'pl_P3' and 'pl_P4' in params:
+        if 'pl_P3' in params and 'pl_P4' in params:
             if pop is self.p_M:
                 pop.pl_P1 = params['pl_P3']
                 pop.pl_P2 = params['pl_P4']
@@ -108,8 +108,8 @@ def set_comp_para(self, data_path):
     """
     self.p.USE_PSD = self.USE_PSD
     if self.p.USE_PSD:
-        dist_path_R01 = os.path.join(data_path, self.PSD_R01)
-        dist_path_R03 = os.path.join(data_path, self.PSD_R03)
+        dist_path_R01 = os.path.join(data_path, 'PSD_data', self.PSD_R01)
+        dist_path_R03 = os.path.join(data_path, 'PSD_data', self.PSD_R03)
         if not os.path.exists(dist_path_R01) or not os.path.exists(dist_path_R03):
             raise Exception("Please give the name to PSD data!")
         psd_dict_R01 = np.load(dist_path_R01,allow_pickle=True).item()

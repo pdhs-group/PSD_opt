@@ -34,16 +34,7 @@ class OptCoreMulti(OptCore):
         return delta_sum
     
     def calc_delta_agg(self, params_in,x_uni_exp, data_exp): 
-        params = params_in.copy()
-        if "corr_agg" in params:
-            corr_agg = params["corr_agg"]
-            CORR_BETA = self.return_syth_beta(corr_agg)
-            alpha_prim = corr_agg / CORR_BETA
-            
-            params["CORR_BETA"] = CORR_BETA
-            params["alpha_prim"] = alpha_prim
-            
-            del params["corr_agg"]
+        params = self.check_corr_agg(params_in)
         
         self.calc_all_pop(params)
         if self.p.calc_status:

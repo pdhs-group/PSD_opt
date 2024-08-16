@@ -175,13 +175,13 @@ if __name__ == '__main__':
     m_frag_num_weight = 1e-2
     
     result_path = "best_results.pkl"
-    n_steps = 400
+    n_steps = 10
     
-    # start_time = time.time()
-    # best_result = run_ray_tune(result_path, n_steps)
-    # end_time = time.time()
-    # opt_time = end_time - start_time
+    start_time = time.time()
+    best_result = run_ray_tune(result_path, n_steps)
+    end_time = time.time()
+    opt_time = end_time - start_time
     
-    ann, test_result = read_best_params_and_train_model(result_path)
-    loss = test_result[0,0] * m_mse_weight + test_result[0,2] * m_frag_num_weight
+    # ann, test_result = read_best_params_and_train_model(result_path)
+    # loss = test_result[0,0] * m_mse_weight + test_result[0,2] * m_frag_num_weight
     

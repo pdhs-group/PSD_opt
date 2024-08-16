@@ -111,21 +111,20 @@ def calc_delta_test(var_delta=False):
         return delta
 
 if __name__ == '__main__':
-    ## Instantiate find and algo.
-    ## The find class determines how the experimental 
+    ## Instantiate OptBase.
+    ## The OptBase class determines how the experimental 
     ## data is used, while algo determines the optimization process.
     opt = OptBase()
     
-    data_name = "Batchversuch_600rpm_1200rpm.xlsx"  
-    exp_data_paths = os.path.join(opt.data_path, data_name)
-    # exp_data_paths = [
-    #     exp_data_path,
-    #     exp_data_path.replace(".xlsx", "_NM.xlsx"),
-    #     exp_data_path.replace(".xlsx", "_M.xlsx")
-    # ]
+    data_name = "Sim_Mul_0.1_para_0.001_0.5_0.5_0.5_0.7_0.001_0.5_0.001_0.5.xlsx"  
+    exp_data_path = os.path.join(opt.data_path, data_name)
+    exp_data_paths = [
+        exp_data_path,
+        exp_data_path.replace(".xlsx", "_NM.xlsx"),
+        exp_data_path.replace(".xlsx", "_M.xlsx")
+    ]
     
     # Run an optimization and generate graphs of the results
     # result_dict = normal_test()
-
     
     delta = calc_delta_test(var_delta=False)

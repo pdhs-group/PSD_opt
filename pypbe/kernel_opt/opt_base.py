@@ -164,8 +164,8 @@ class OptBase():
                     if self.core.sample_num != 1:
                         exp_data_paths = self.core.traverse_path(i, exp_data_paths)
                         self.write_new_data(self.core.p, exp_data_paths[0])
-                        self.write_new_data(self.core.p_NM, self.core.p_NM_post, exp_data_paths[1])
-                        self.write_new_data(self.core.p_M, self.core.p_M_post, exp_data_paths[2])
+                        self.write_new_data(self.core.p_NM, exp_data_paths[1])
+                        self.write_new_data(self.core.p_M, exp_data_paths[2])
             else:
                 return
     def write_new_data(self, pop, exp_data_path):
@@ -182,8 +182,8 @@ class OptBase():
         if not pop.calc_status:
             return
         # save the calculation result in experimental data form
-        x_uni = self.core.calc_x_uni(pop)
-        v_uni = self.core.calc_v_uni(pop)
+        x_uni = pop.calc_x_uni()
+        v_uni = pop.calc_v_uni()
         formatted_times = write_read_exp.convert_seconds_to_time(self.core.t_all)
         sumN_uni = np.zeros((len(x_uni)-1, len(self.core.t_all)))
         
@@ -219,7 +219,7 @@ class OptBase():
         # save DataFrame as Excel file
         df.to_excel(exp_data_path)
         return        
-    def find_opt_kernels(self, method='kernels', data_names=None):
+    def find_opt_kernels(self, method='kernels', data_names=None, known_params=None):
         """
         Finds optimal kernels for the PBE model by minimizing the difference between 
         simulation results and experimental data.
@@ -256,11 +256,21 @@ class OptBase():
             exp_data_paths = []
             if self.multi_flag:
                 if isinstance(data_names[0], list):
+                    ## known_params needs to always be the same length as data_names, 
+                    ## even if its contents are None.
+                    if known_params is None:
+                        known_params = [None] * len(data_names)
+                    ## optimization for multiple exp_data
                     for data_names_ex in data_names:
                         exp_data_paths.append(join_paths(data_names_ex))
                 else:
+                    ## optimization for one exp_data
                     exp_data_paths = join_paths(data_names)
             else:
+                if isinstance(data_names, list):
+                    if known_params is None:
+                        known_params = [None] * len(data_names)
+                            
                 exp_data_paths = join_paths(data_names)
             # if self.core.calc_init_N:
             #     self.core.set_init_N(exp_data_paths, init_flag='mean')
@@ -303,15 +313,18 @@ class OptBase():
                 print("not coded yet")
             elif method == 'delta':
                 if self.core.use_bundles:
-                    result_dict = self.core.optimierer_agg_bundles(self.opt_params,exp_data_paths=exp_data_paths)
+                    result_dict = self.core.optimierer_agg_bundles(self.opt_params,exp_data_paths=exp_data_paths, 
+                                                                   known_params=known_params)
                 else:
                     result_dict = []
                     if isinstance(exp_data_paths[0], list):
-                        for exp_data_path in exp_data_paths:
-                            result_dict_tem = self.core.optimierer_agg(self.opt_params,exp_data_path=exp_data_path)
+                        for exp_data_paths_tem, known_params_tem in zip(exp_data_paths, known_params):
+                            result_dict_tem = self.core.optimierer_agg(self.opt_params,exp_data_paths=exp_data_paths_tem,
+                                                                       known_params=known_params_tem)
                             result_dict.append(result_dict_tem)
                     else:
-                        result_dict = self.core.optimierer_agg(self.opt_params,exp_data_path=exp_data_paths)
+                        result_dict = self.core.optimierer_agg(self.opt_params,exp_data_paths=exp_data_paths,
+                                                               known_params=known_params)
                 # delta_opt = self.core.optimierer(sample_num=sample_num, 
                 #                       exp_data_path=exp_data_path)
                 
@@ -341,23 +354,25 @@ class OptBase():
         if isinstance(exp_data_path, list):
             ## When set to multi, the exp_data_path entered here is a list 
             ## containing one 2d data name and two 1d data names.
+            exp_data_path_ori = exp_data_path[0]
             x_uni_exp = []
             data_exp = []
             for exp_data_path_tem in exp_data_path:
-                if self.exp_data:
-                    x_uni_exp_tem, data_exp_tem = self.get_all_exp_data(exp_data_path_tem)
+                if self.core.exp_data:
+                    x_uni_exp_tem, data_exp_tem = self.core.get_all_exp_data(exp_data_path_tem)
                 else:
-                    x_uni_exp_tem, data_exp_tem = self.get_all_synth_data(exp_data_path_tem)
+                    x_uni_exp_tem, data_exp_tem = self.core.get_all_synth_data(exp_data_path_tem)
                 x_uni_exp.append(x_uni_exp_tem)
                 data_exp.append(data_exp_tem)
         else:
             ## When not set to multi or optimization of 1d-data, the exp_data_path 
             ## contain the name of that data.
-            if self.exp_data:
-                x_uni_exp, data_exp = self.get_all_exp_data(exp_data_path)
+            exp_data_path_ori = exp_data_path
+            if self.core.exp_data:
+                x_uni_exp, data_exp = self.core.get_all_exp_data(exp_data_path)
             else:
-                x_uni_exp, data_exp = self.get_all_synth_data(exp_data_path)
+                x_uni_exp, data_exp = self.core.get_all_synth_data(exp_data_path)
         delta = self.core.calc_delta_agg(params, x_uni_exp, data_exp)
-        return delta
+        return delta, exp_data_path_ori
     
         

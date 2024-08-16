@@ -15,8 +15,8 @@ config = {
     'algo_params': {
         'dim': 2,
         't_init' : np.array([0, 0]),
-        # 't_vec' : np.arange(0, 3601, 100, dtype=float),
-        't_vec' : np.array([0, 300, 600, 900, 1200, 1500, 2100, 2700]),
+        't_vec' : np.arange(0, 3601, 100, dtype=float),
+        # 't_vec' : np.array([0, 300, 600, 900, 1200, 1500, 2100, 2700]),
         ## Sometimes there is a gap between the initial conditions calculated based on experimental data 
         ## and the real values, resulting in unavoidable errors in the first few time steps. 
         ## These errors will gradually disappear as the calculation time becomes longer. 
@@ -27,7 +27,7 @@ config = {
         'smoothing': True,
         'noise_type': 'Mul',
         'noise_strength': 0.1,
-        'sample_num': 3,
+        'sample_num': 5,
         'exp_data' : False, 
         'sheet_name' : None, 
         ## method = HEBO: Heteroscedastic Evolutionary Bayesian Optimization
@@ -43,7 +43,7 @@ config = {
         'calc_init_N': False,
         ## Setting the basic parameters of the smallest particles, 
         ## whether they are read from PSD data or not
-        'USE_PSD' : False,
+        'USE_PSD' : True,
         'R01_0' : 'r0_001',
         'R03_0' : 'r0_001',
         ## The diameter ratio of the primary particles can also be used as a variable
@@ -66,15 +66,15 @@ config = {
         ## 'MAE': Mean Absolute Error
         ## 'KL': Kullback–Leibler divergence(Only q3 and Q3 are compatible with KL) 
 
-        'delta_flag': [#('q3','MSE'), 
-                       ('Q3','KL'), 
+        'delta_flag': [('q3','MSE'), 
+                       # ('Q3','KL'), 
                        #('x_50','MSE')
                        ],
         'tune_storage_path': r'C:\Users\px2030\Code\Ray_Tune',
         ## When use_bundles is True, multiple Tune will be run locally at the same time. 
         ## The psd-data must also be multiple! Multiple here means data with different conditions 
         ## rather than the same data in different dimensions.
-        'use_bundles': False,
+        'use_bundles': True,
         'num_bundles': 2,
         'cpus_per_trail': 1,
         },
@@ -91,10 +91,8 @@ config = {
         'pl_v' : 2,
         'pl_P1' : 1e1,
         'pl_P2' : 2,
-        'pl_P3' : 1e1,
+        # 'pl_P3' : 1e1,
         'pl_P4' : 2,
-        # 'pl_P5' : 3e-4,
-        # 'pl_P6' : 0.3,
         'COLEVAL' : 2,
         'EFFEVAL' : 1,
         'SIZEEVAL' : 1,
@@ -119,9 +117,9 @@ config = {
         'corr_agg_1': {'bounds': (-4.0, -1.0), 'log_scale': True},
         'corr_agg_2': {'bounds': (-4.0, -1.0), 'log_scale': True},
         'pl_v': {'bounds': (0.5, 2.0), 'log_scale': False},
-        'pl_P1': {'bounds': (-4.0, 0.0), 'log_scale': True},
+        # 'pl_P1': {'bounds': (-4.0, 0.0), 'log_scale': True},
         'pl_P2': {'bounds': (0.5, 3.0), 'log_scale': False},
-        'pl_P3': {'bounds': (-4.0, 0.0), 'log_scale': True},
+        # 'pl_P3': {'bounds': (-4.0, 0.0), 'log_scale': True},
         'pl_P4': {'bounds': (0.5, 3.0), 'log_scale': False},
     },
 

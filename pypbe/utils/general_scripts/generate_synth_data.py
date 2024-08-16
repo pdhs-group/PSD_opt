@@ -10,32 +10,31 @@ import numpy as np
 import multiprocessing
 sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),"../../.."))
 from generate_psd import full_psd
-import pypbe.kernel_opt.opt_find as opt
+from pypbe.kernel_opt.opt_base import OptBase
 import config.opt_config as conf
 
 def calc_function(conf_params):
     #%%  Input for Opt 
-    find = opt.OptFind()
+    find = OptBase()
     if not isinstance(conf_params, dict):
         raise TypeError("conf_params should be a dictionary.")
-    var_pop_params = conf_params['pop_params']
-    b = var_pop_params['CORR_BETA']
-    a = var_pop_params['alpha_prim']
-    v = var_pop_params['pl_v']
-    p1 = var_pop_params['pl_P1']
-    p2 = var_pop_params['pl_P2']
-    p3 = var_pop_params['pl_P3']
-    p4 = var_pop_params['pl_P4']
+    b = conf_params['CORR_BETA']
+    a = conf_params['alpha_prim']
+    v = conf_params['pl_v']
+    p1 = conf_params['pl_P1']
+    p2 = conf_params['pl_P2']
+    p3 = conf_params['pl_P3']
+    p4 = conf_params['pl_P4']
 
     add_info = f"_para_{b}_{a[0]}_{a[1]}_{a[2]}_{v}_{p1}_{p2}_{p3}_{p4}"
     # Generate synthetic Data
-    find.generate_data(var_pop_params, add_info=add_info)
+    find.generate_data(conf_params, add_info=add_info)
     
 if __name__ == '__main__':
     generate_new_psd = True
     pth = '/pfs/work7/workspace/scratch/px2030-MC_train'
     # data_path = os.path.join(pth,"mix", "data")
-    data_path = r"C:\Users\Administrator\Desktop\Doktorand\Arbeit\Code\Python\PSD_opt\pypbe\data"
+    data_path = r"C:\Users\px2030\Code\PSD_opt\pypbe\data"
     
     if generate_new_psd:
         ## Input for generating psd-data
@@ -53,10 +52,9 @@ if __name__ == '__main__':
         dist_path_10 = os.path.join(data_path, "PSD_data", conf.config['dist_scale_10'])
 
     ## define the range of corr_beta
-    var_corr_beta = np.array([1e-2])
-    # var_corr_beta = np.array([1e-2])
+    var_corr_beta = np.array([1e-3])
     ## define the range of alpha_prim 27x3
-    values = np.array([0.5,1.0])
+    values = np.array([1.0])
     a1, a2, a3 = np.meshgrid(values, values, values, indexing='ij')
     var_alpha_prim = np.column_stack((a1.flatten(), a2.flatten(), a3.flatten()))
     ## The case of all zero α is meaningless, that means no Agglomeration occurs
@@ -72,12 +70,12 @@ if __name__ == '__main__':
     var_alpha_prim = np.array(unique_alpha_prim)
 
     ## define the range of v(breakage function)
-    var_v = np.array([2])
+    var_v = np.array([0.7])
     # var_v = np.array([0.01])    ## define the range of P1, P2 for power law breakage rate
-    var_P1 = np.array([1e-1])
+    var_P1 = np.array([1e-3])
     var_P2 = np.array([2.0])
     var_P3 = np.array([1e-1])
-    var_P4 = np.array([2.0])
+    var_P4 = np.array([0.5,2.0])
     
     ## define the range of particle size scale and minimal size
     dist_path = [dist_path_1] # [dist_path_1, dist_path_10]
@@ -100,15 +98,13 @@ if __name__ == '__main__':
                                 for m4,P4 in enumerate(var_P4):
                                     ## Set parameters for PBE
                                     conf_params = {
-                                        'pop_params':{
-                                            'CORR_BETA' : corr_beta,
-                                            'alpha_prim' : alpha_prim,
-                                            'pl_v' : v,
-                                            'pl_P1' : P1,
-                                            'pl_P2' : P2,
-                                            'pl_P3' : P3,
-                                            'pl_P4' : P4,
-                                            }
+                                        'CORR_BETA' : corr_beta,
+                                        'alpha_prim' : alpha_prim,
+                                        'pl_v' : v,
+                                        'pl_P1' : P1,
+                                        'pl_P2' : P2,
+                                        'pl_P3' : P3,
+                                        'pl_P4' : P4,
                                         }
                                     func_list.append(conf_params)
     # pool = multiprocessing.Pool(processes=16)

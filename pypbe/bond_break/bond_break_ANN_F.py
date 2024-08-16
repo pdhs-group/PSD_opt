@@ -24,10 +24,6 @@ import matplotlib.pyplot as plt
 import pypbe.utils.plotter.plotter as pt
 from pypbe.utils.plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue, KIT_black_green_white
 
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-tf.get_logger().setLevel('ERROR')
-tf.autograph.set_verbosity(0)
-
 class ANN_bond_break():
     def __init__(self,dim,NS,S,global_seed):
         self.pth = os.path.dirname( __file__ )
@@ -689,9 +685,9 @@ if __name__ == '__main__':
     ## The value of random seed (int value) itself is not important.
     ## But fixing random seeds can ensure the consistency and comparability of the results.
     ## The reverse improves the robustness of the model (set m_global_seed=0)
-    m_global_seed = 0
+    m_global_seed = 42
     
-    m_dim = 2
+    m_dim = 1
     m_NS = 50
     m_S = 1.3
     m_n_splits = 5
@@ -701,6 +697,7 @@ if __name__ == '__main__':
     ann = ANN_bond_break(m_dim,m_NS,m_S,m_global_seed)
     ann.save_model = False
     ann.save_validate_results = False
+    ann.print_status = True
     ann.processing_train_data()
     ann.split_data_set(n_splits=m_n_splits)
     results = ann.cross_validation(m_epochs, m_num_training)
