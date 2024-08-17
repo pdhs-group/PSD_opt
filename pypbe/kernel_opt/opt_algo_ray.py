@@ -260,7 +260,7 @@ def objective(self, config, x_uni_exp, data_exp, known_params):
             transformed_params[key] = value
     checkpoint_config = None
     
-    loss = self.calc_delta_agg(transformed_params, x_uni_exp, data_exp)
+    loss = self.calc_delta(transformed_params, x_uni_exp, data_exp)
     train.report({"loss": loss}, checkpoint=checkpoint_config)
     
 def array_dict_transform(self, array_dict):

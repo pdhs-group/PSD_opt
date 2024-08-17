@@ -230,7 +230,7 @@ def calc_save_PSD_delta(results, data_paths):
         variable = result[j]
         opt, exp_data_paths = initial_pop(variable, pbe_type)
         opt.core.set_init_N(opt.core.sample_num, exp_data_paths, 'mean')
-        delta[j] = opt.core.calc_delta_agg(opt_kernels[j], sample_num=opt.core.sample_num, exp_data_path=exp_data_paths)
+        delta[j] = opt.core.calc_delta(opt_kernels[j], sample_num=opt.core.sample_num, exp_data_path=exp_data_paths)
         new_result = np.column_stack((result, delta))
         results[i] = new_result    
         np.savez(data_paths[i], results=new_result)
@@ -279,6 +279,7 @@ def calc_ori_mse():
                                     exp_data_path.replace(".xlsx", "_NM.xlsx"),
                                     exp_data_path.replace(".xlsx", "_M.xlsx")
                                 ]
+                                # print(data_name)
                                 # results = opt.calc_PSD_delta(ori_params, exp_data_paths)
                                 func_list.append((ori_params,exp_data_paths))
     pool = multiprocessing.Pool(processes=24)

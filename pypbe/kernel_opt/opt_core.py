@@ -55,7 +55,7 @@ class OptCore():
         self.set_comp_para_flag = False
         self.num_bundles = 4
         # self.cpu_per_bundles = 20   
-    def calc_delta_agg(self, params_in, x_uni_exp, data_exp):
+    def calc_delta(self, params_in, x_uni_exp, data_exp):
         """
         Calculate the difference (delta) of PSD.
         
@@ -76,7 +76,7 @@ class OptCore():
         """
         params = self.check_corr_agg(params_in)
 
-        self.calc_pop(self.p, params)
+        self.calc_pop(self.p, params, self.t_vec)
         if self.p.calc_status:
             return self.calc_delta_tem(x_uni_exp, data_exp, self.p)
         else:

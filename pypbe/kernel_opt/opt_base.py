@@ -276,7 +276,7 @@ class OptBase():
             #     self.core.set_init_N(exp_data_paths, init_flag='mean')
                 
             # ray.init(address="auto", log_to_driver=False, runtime_env={"env_vars": {"PYTHONPATH": os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))}})
-            ray.init(log_to_driver=True, runtime_env={"env_vars": {"PYTHONPATH": os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))}})
+            ray.init(log_to_driver=False, runtime_env={"env_vars": {"PYTHONPATH": os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))}})
             if method == 'kernels':
                 # delta_opt_sample = np.zeros(sample_num)
                 # CORR_BETA_sample = np.zeros(sample_num)
@@ -319,10 +319,10 @@ class OptBase():
                     result_dict = []
                     if isinstance(exp_data_paths[0], list):
                         for exp_data_paths_tem, known_params_tem in zip(exp_data_paths, known_params):
-                            # result_dict_tem = self.core.optimierer_ray(self.opt_params,exp_data_paths=exp_data_paths_tem,
-                            #                                            known_params=known_params_tem)
-                            result_dict_tem = self.core.optimierer_bo(self.opt_params,exp_data_paths=exp_data_paths_tem,
+                            result_dict_tem = self.core.optimierer_ray(self.opt_params,exp_data_paths=exp_data_paths_tem,
                                                                         known_params=known_params_tem)
+                            # result_dict_tem = self.core.optimierer_bo(self.opt_params,exp_data_paths=exp_data_paths_tem,
+                            #                                             known_params=known_params_tem)
                             result_dict.append(result_dict_tem)
                     else:
                         result_dict = self.core.optimierer_ray(self.opt_params,exp_data_paths=exp_data_paths,
@@ -376,7 +376,7 @@ class OptBase():
                 x_uni_exp, data_exp = self.core.get_all_exp_data(exp_data_path)
             else:
                 x_uni_exp, data_exp = self.core.get_all_synth_data(exp_data_path)
-        delta = self.core.calc_delta_agg(params, x_uni_exp, data_exp)
+        delta = self.core.calc_delta(params, x_uni_exp, data_exp)
         return delta, exp_data_path_ori
     
         

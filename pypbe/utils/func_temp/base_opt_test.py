@@ -104,10 +104,10 @@ def calc_delta_test(var_delta=False):
         delta_arr = np.zeros(len(opt.core.t_vec))
         for start_step in range(1,len(opt.core.t_vec)):
             opt.core.delta_t_start_step = start_step
-            delta_arr[start_step] = opt.core.calc_delta_agg(pop_params, x_uni_exp, data_exp)
+            delta_arr[start_step] = opt.core.calc_delta(pop_params, x_uni_exp, data_exp)
         return delta_arr
     else:
-        delta = opt.core.calc_delta_agg(pop_params, x_uni_exp, data_exp)
+        delta = opt.core.calc_delta(pop_params, x_uni_exp, data_exp)
         return delta
 
 if __name__ == '__main__':

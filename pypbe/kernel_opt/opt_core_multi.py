@@ -11,32 +11,15 @@ class OptCoreMulti(OptCore):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.weight_2d = 1
-        
-        
-    def calc_delta(self, corr_beta=None, alpha_prim=None, exp_data_path=None):  
-        self.calc_all_pop(corr_beta, alpha_prim, self.t_vec)
-
-        if self.p.calc_status:
-            delta = self.calc_delta_tem(exp_data_path[0], self.p)
-        else:
-            delta = 10
-        if self.p_NM.calc_status:
-            delta_NM = self.calc_delta_tem(exp_data_path[1], self.p_NM)
-        else:
-            delta_NM = 10
-        if self.p_M.calc_status:
-            delta_M = self.calc_delta_tem(exp_data_path[2], self.p_M)
-        else:
-            delta_M = 10
-        # increase the weight of the 2D case
-        delta_sum = delta * self.weight_2d + delta_NM + delta_M
-            
-        return delta_sum
     
-    def calc_delta_agg(self, params_in,x_uni_exp, data_exp): 
+    def calc_delta(self, params_in,x_uni_exp, data_exp): 
         params = self.check_corr_agg(params_in)
         
-        self.calc_all_pop(params)
+        self.calc_all_pop(params, self.t_vec)
+        ## for test
+        # if len(self.t_vec) != len(self.p.t_vec):
+        #     print(params)
+        #     print(self.p.t_vec)
         if self.p.calc_status:
             delta = self.calc_delta_tem(x_uni_exp[0], data_exp[0], self.p)
         else:
