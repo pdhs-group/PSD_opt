@@ -13,6 +13,7 @@ from ray import tune, train
 from ray.tune.search.optuna import OptunaSearch
 from ray.tune.search.hebo import HEBOSearch
 from optuna.samplers import GPSampler,CmaEsSampler,TPESampler,NSGAIIISampler,QMCSampler
+from ray.tune.search import ConcurrencyLimiter
 
 def optimierer_ray_bundles(self, opt_params, hyperparameter=None, 
                            exp_data_paths=None, known_params=None):
@@ -138,7 +139,6 @@ def create_remote_worker(self):
                 storage_path=self.tune_storage_path,
                 name = data_name, 
                 verbose = 0,
-                log_to_file=True,
             ),
         )
         return tuner.fit(), exp_data_paths
@@ -210,18 +210,25 @@ def optimierer_ray(self, opt_params, hyperparameter=None, exp_data_paths=None,kn
     if data_name.endswith(".xlsx"):
         data_name = data_name[:-len(".xlsx")]
     # 运行Ray Tune进行超参数搜索
-    trainable_with_resources  = tune.with_resources(lambda config: self.objective(config, x_uni_exp, data_exp,known_params), 
+    def objective_func(config):
+        # message = f"The value is: {data_exp[0][0][10,10]}"
+        # self.print_notice(message)
+        return self.objective(config, x_uni_exp, data_exp, known_params)
+    # objective_func.__name__ = "objective_func" + uuid.uuid4().hex[:8]
+    trainable_with_resources  = tune.with_resources(objective_func, 
                                                     resources=tune.PlacementGroupFactory([
         {"CPU": self.cpus_per_trail}
     ]))
     
     tuner = tune.Tuner(
         trainable_with_resources,
+        # objective_func,
         param_space=RT_space,
         tune_config=tune.TuneConfig(
             num_samples=self.n_iter,
             # scheduler=scheduler,
-            search_alg=algo
+            search_alg=algo,
+            reuse_actors=True,
         ),
         run_config=train.RunConfig(
         storage_path =self.tune_storage_path,
@@ -274,16 +281,20 @@ def array_dict_transform(self, array_dict):
                 del array_dict[f'corr_agg_{i}']
         return array_dict
     
-def create_algo(self):
+def create_algo(self, max_concurrent=None, batch=False):
     if self.method == 'HEBO': 
-        return HEBOSearch(metric="loss", mode="min")
+        search_alg = HEBOSearch(metric="loss", mode="min")
     elif self.method == 'GP': 
-        return OptunaSearch(metric="loss", mode="min", sampler=GPSampler())
+        search_alg = OptunaSearch(metric="loss", mode="min", sampler=GPSampler())
     elif self.method == 'TPE': 
-        return OptunaSearch(metric="loss", mode="min", sampler=TPESampler())
+        search_alg = OptunaSearch(metric="loss", mode="min", sampler=TPESampler())
     elif self.method == 'Cmaes':    
-        return OptunaSearch(metric="loss", mode="min", sampler=CmaEsSampler())
+        search_alg = OptunaSearch(metric="loss", mode="min", sampler=CmaEsSampler())
     elif self.method == 'NSGA':    
-        return OptunaSearch(metric="loss", mode="min", sampler=NSGAIIISampler())
+        search_alg = OptunaSearch(metric="loss", mode="min", sampler=NSGAIIISampler())
     elif self.method == 'QMC':    
-        return OptunaSearch(metric="loss", mode="min", sampler=QMCSampler())
+        search_alg = OptunaSearch(metric="loss", mode="min", sampler=QMCSampler())
+    if max_concurrent is None:
+        return search_alg
+    else:
+        return ConcurrencyLimiter(search_alg, max_concurrent=max_concurrent, batch=batch)

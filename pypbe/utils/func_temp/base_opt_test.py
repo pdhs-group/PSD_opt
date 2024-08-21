@@ -125,6 +125,6 @@ if __name__ == '__main__':
     ]
     
     # Run an optimization and generate graphs of the results
-    # result_dict = normal_test()
+    result_dict = normal_test()
     
-    delta = calc_delta_test(var_delta=False)
+    # delta = calc_delta_test(var_delta=False)

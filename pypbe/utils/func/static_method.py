@@ -2,7 +2,6 @@
     
 import numpy as np
 ## Interpolate PSD
-@staticmethod
 def interpolate_psd(d,psd_data,v0,x_init=None,Q_init=None):
     """
     Obtain initial conditions from a PSD data file.
@@ -85,7 +84,6 @@ def interpolate_psd(d,psd_data,v0,x_init=None,Q_init=None):
     
     return n    
 ## Plot 2D-distribution:
-@staticmethod
 def plot_N2D(N,V,V0_tot,ax=None,fig=None,close_all=False,scl_a4=1,figsze=[12.8*1.05,12.8],THR_N=1e-4,
              exp_file=None,t_stamp=None):
                 

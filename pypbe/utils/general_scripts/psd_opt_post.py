@@ -18,55 +18,10 @@ import pypbe.utils.plotter.plotter as pt
 import itertools
 import multiprocessing
 from matplotlib.animation import FuncAnimation
+from scipy.stats import pearsonr
 
 epsilon = 1e-20
 
-def read_results(data_paths):
-    post_results = []
-    elapsed_time = []
-    for data_path in data_paths:
-        data = np.load(data_path,allow_pickle=True)
-        results=data['results']
-        tem_time = data['time']
-        results_tem = np.empty((len(results), 3), dtype=object)
-        for i in range(results.shape[0]):
-            # results_tem[i, 0] = results[i, 0]['opt_score']
-            # results_tem[i, 1] = results[i, 0]['opt_parameters']
-            # results_tem[i, 2] = results[i, 1]
-            results_tem[i, 0] = results[i]['opt_score']
-            results_tem[i, 1] = results[i]['opt_params']
-            filename = results[i]['file_path'] 
-            if isinstance(filename, list):
-                data_name = filename[0]
-            else:
-                data_name = filename
-            results_tem[i, 2] = get_kernels_form_data_name(data_name)
-            
-        # For comparison, CORR_BETA and alpha_prim in the original parameters are merged into corr_agg
-        # ori_kernels = results_tem[:,2]
-        # if 'CORR_BETA' in ori_kernels[0] and 'alpha_prim' in ori_kernels[0]:
-        #     for ori_kernel in ori_kernels:
-        #         ori_kernel['corr_agg'] = ori_kernel['CORR_BETA'] * ori_kernel['alpha_prim']
-        post_results.append(results_tem)
-        elapsed_time.append(tem_time)
-        data.close()
-    return post_results, elapsed_time
-
-def get_kernels_form_data_name(data_name):
-    kernels = {}
-    param_str = data_name.split('para_')[-1]
-    param_str = param_str.rsplit('.', 1)[0] 
-    params = param_str.split('_')
-    converted_params = [float(param) if '.' in param or 'e' in param.lower() else int(param) for param in params]
-    CORR_BETA = converted_params[0]
-    alpha_prim = np.array(converted_params[1:4])
-    kernels['corr_agg'] = CORR_BETA * alpha_prim
-    kernels['pl_v'] = converted_params[4]
-    kernels['pl_P1'] = converted_params[5]
-    kernels['pl_P2'] = converted_params[6]
-    kernels['pl_P3'] = converted_params[7]
-    kernels['pl_P4'] = converted_params[8]
-    return kernels
 def calc_diff(result):
     # delta_opt = result[:,0]
     opt_kernels_tem = result[:,1]
@@ -215,25 +170,61 @@ def visualize_diff_kernel_mse(result):
     ax2.tick_params(axis='y', labelcolor='tab:red', labelsize=15)
     
     for axis in ['top', 'bottom', 'left', 'right']:
-        ax1.spines[axis].set_linewidth(1)  # 设置主轴的粗细
-        ax1.spines[axis].set_color('black')  # 设置主轴的颜色
+        ax1.spines[axis].set_linewidth(1)  
+        ax1.spines[axis].set_color('black')  
     
     fig.tight_layout()
     plt.show()
+  
+def visualize_correlation(results):
+    pearson_corrs = np.zeros(len(results))
+    for i, result in enumerate(results):
+        pearson_corrs[i] = correlation_analysis(result)
+    return pearson_corrs
+def correlation_analysis(result, plot=False):
+    diff_kernels, _, _ = calc_diff(result)
+    mean_diff_kernels_tem = []
+    for key, diff_kernel in diff_kernels.items():
+        mean_diff_kernels_tem.append(diff_kernel)
+    mean_diff_kernels = np.array(mean_diff_kernels_tem).mean(axis=0)
+    mse = np.array(result[:,0], dtype=float)
+    # Calculate the Pearson correlation coefficient
+    pearson_corr, _ = pearsonr(mse, mean_diff_kernels)
+    if plot:
+        plt.figure(figsize=(16, 8))
+        plt.scatter(mse, mean_diff_kernels, color='blue', label='Data Points')
+        
+        # Fit a straight line to show the trend
+        m, b = np.polyfit(mse, mean_diff_kernels, 1)
+        plt.plot(mse, m*mse + b, color='red', label=f'Fit Line (y = {m:.2f}x + {b:.2f})')
+        
+        plt.xlabel('MSE', fontsize=20)
+        plt.ylabel('Mean Diff Kernels', fontsize=20)
+        plt.xticks(fontsize=15)
+        plt.yticks(fontsize=15)
+        plt.title(f'Mean Diff Kernels vs MSE (Pearson r = {pearson_corr:.2f})', fontsize=24)
+        plt.legend(fontsize=15)
+        plt.grid(True)
+        plt.show()
+    return pearson_corr
 
 def calc_save_PSD_delta(results, data_paths):
+    opt = OptBase()
     for i, result in enumerate(results):
+        func_list = []
         opt_kernels = result[:,1]
-        delta = np.zeros(len(result))
-        # for j, variable in enumerate(result):
-        j = 351
-        variable = result[j]
-        opt, exp_data_paths = initial_pop(variable, pbe_type)
-        opt.core.set_init_N(opt.core.sample_num, exp_data_paths, 'mean')
-        delta[j] = opt.core.calc_delta(opt_kernels[j], sample_num=opt.core.sample_num, exp_data_path=exp_data_paths)
+        # delta = np.zeros(len(result))
+        # path = np.empty(len(result),dtype=str)
+        for j, variable in enumerate(result):
+            variable = result[j]
+            exp_data_paths = initial_pop(opt, variable, pbe_type)
+            func_list.append((opt_kernels[j], exp_data_paths))
+            # delta[j], path[j] = opt.calc_PSD_delta(opt_kernels[j], exp_data_paths)
+        pool = multiprocessing.Pool(processes=24)
+        delta = pool.starmap(opt.calc_PSD_delta, func_list)
         new_result = np.column_stack((result, delta))
-        results[i] = new_result    
         np.savez(data_paths[i], results=new_result)
+    return new_result
         
 def calc_ori_mse():
     opt = OptBase()
@@ -310,7 +301,84 @@ def do_remove_small_results(results):
     return results
 
 
+#%% PRE-POCESSING
+def read_results(data_paths):
+    ori_mse_path = os.path.join(results_pth, pbe_type, 'ori_mse.npz')
+    ori_mse = np.load(ori_mse_path,allow_pickle=True)['results']
+    ori_mse_tem = np.empty(ori_mse.shape, dtype=object)
+    ori_mse_tem[:,0] = ori_mse[:,0]
+    for i, data_name in enumerate(ori_mse[:,1]):
+        ori_mse_tem[i, 1] = get_kernels_form_data_name(data_name)
+        
+    post_results = []
+    elapsed_time = []
+    for data_path in data_paths:
+        data = np.load(data_path,allow_pickle=True)
+        results=data['results']
+        tem_time = data['time']
+        results_tem = np.empty((len(results), 3), dtype=object)
+        for i in range(results.shape[0]):
+            # results_tem[i, 0] = results[i, 0]['opt_score']
+            # results_tem[i, 1] = results[i, 0]['opt_parameters']
+            # results_tem[i, 2] = results[i, 1]
+            results_tem[i, 0] = results[i]['opt_score']
+            results_tem[i, 1] = results[i]['opt_params']
+            filename = results[i]['file_path'] 
+            if isinstance(filename, list):
+                data_name = filename[0]
+            else:
+                data_name = filename
+            results_tem[i, 2] = get_kernels_form_data_name(data_name)
+        # if vis_criteria == 'mse':
+        #     results_tem = calc_rel_mse(results_tem, ori_mse_tem) 
+        # For comparison, CORR_BETA and alpha_prim in the original parameters are merged into corr_agg
+        # ori_kernels = results_tem[:,2]
+        # if 'CORR_BETA' in ori_kernels[0] and 'alpha_prim' in ori_kernels[0]:
+        #     for ori_kernel in ori_kernels:
+        #         ori_kernel['corr_agg'] = ori_kernel['CORR_BETA'] * ori_kernel['alpha_prim']
+        post_results.append(results_tem)
+        elapsed_time.append(tem_time)
+        data.close()
+    return post_results, elapsed_time
 
+def get_kernels_form_data_name(data_name):
+    kernels = {}
+    param_str = data_name.split('para_')[-1]
+    param_str = param_str.rsplit('.', 1)[0] 
+    params = param_str.split('_')
+    converted_params = [float(param) if '.' in param or 'e' in param.lower() else int(param) for param in params]
+    CORR_BETA = converted_params[0]
+    alpha_prim = np.array(converted_params[1:4])
+    kernels['corr_agg'] = CORR_BETA * alpha_prim
+    kernels['pl_v'] = converted_params[4]
+    kernels['pl_P1'] = converted_params[5]
+    kernels['pl_P2'] = converted_params[6]
+    kernels['pl_P3'] = converted_params[7]
+    kernels['pl_P4'] = converted_params[8]
+    return kernels
+
+def calc_rel_mse(results_tem, ori_mse_tem):
+    for i in range(results_tem.shape[0]):
+        current_dict = results_tem[i, 2]  
+        for j in range(ori_mse_tem.shape[0]):
+            if compare_dicts(ori_mse_tem[j, 1], current_dict): 
+                results_tem[i, 0] = results_tem[i, 0] / float(ori_mse_tem[j, 0])
+                break  
+    return results_tem
+
+def compare_dicts(dict1, dict2):
+    if dict1.keys() != dict2.keys():
+        return False
+    for key in dict1:
+        val1 = dict1[key]
+        val2 = dict2[key]
+        if isinstance(val1, np.ndarray) and isinstance(val2, np.ndarray):
+            if not np.array_equal(val1, val2): 
+                return False
+        else:
+            if val1 != val2: 
+                return False
+    return True
 #%% VISUALIZE KERNEL DIFFERENCE
 #%%%VISUALZE IN RADAR
 def visualize_diff_mean_radar(results, data_labels):
@@ -356,7 +424,7 @@ def radar_chart(data, data_labels, kernels_labels, title):
     plt.show()
 
 #%%%VISUALZE IN BLOCK
-def visualize_diff_kernel_value(result, eval_kernels, log_axis=False):
+def visualize_diff_kernel_value_old(result, eval_kernels, log_axis=False):
     diff_kernels, opt_kernels, ori_kernels = calc_diff(result)
 
     pt.plot_init(scl_a4=1,figsze=[12.8,6.4*1.5],lnewdth=0.8,mrksze=5,use_locale=True,scl=1.2)
@@ -392,11 +460,64 @@ def visualize_diff_kernel_value(result, eval_kernels, log_axis=False):
     ax.grid('minor')
     plt.tight_layout() 
     return diff_kernels
+
+def visualize_diff_kernel_value(result, eval_kernels, log_axis=False):
+    diff_kernels, opt_kernels, ori_kernels = calc_diff(result)
+
+    fig=plt.figure()    
+    ax=fig.add_subplot(1,1,1)
+    colors = itertools.cycle(['b', 'g', 'r', 'c', 'm', 'y', 'k'])
+    width_factor = 0.0
+    for kernel in eval_kernels:
+        color = next(colors)
+        
+        ori_values = np.array(ori_kernels[kernel]).reshape(-1, 1)
+        opt_values = np.array(opt_kernels[kernel])
+        
+        mean_opt = []
+        std_opt = []
+        ori_value_list = []
+        width_factor += (ori_values.max() - ori_values.min()) / 40
+        
+        # Iterate over each unique original kernel value
+        for ori_value in np.unique(ori_values):
+            opt_values_for_ori = opt_values[ori_values.flatten() == ori_value]
+            
+            # Calculate statistics
+            q25, q75 = np.percentile(opt_values_for_ori, [25, 75])
+            mean_val = np.mean(opt_values_for_ori)
+            std_val = np.std(opt_values_for_ori)
+            
+            # Draws a rectangle ranging from 25% to 75%
+            ax.fill_between([ori_value - width_factor, ori_value + width_factor], q25, q75, color=color, alpha=0.3)
+            
+            # Record the mean and standard deviation
+            mean_opt.append(mean_val)
+            std_opt.append(std_val)
+            ori_value_list.append(ori_value)
+        
+        
+        # Plot the average and right value
+        ax.plot(ori_value_list, mean_opt, label=f'{kernel} (mean)', color=color, marker='o')
+        ax.plot(ori_value_list, ori_value_list, label=f'{kernel} (right)', color='k', marker='v')
+        
+        # Mark the standard deviation range at the mean
+        ax.errorbar(ori_value_list, mean_opt, yerr=std_opt, fmt='none', ecolor=color, capsize=5)
+        
+    ax.set_xlabel('Original Kernel Values')
+    ax.set_ylabel('Optimized Kernel Values')
+    if log_axis:
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+    ax.grid('minor')
+    plt.title('Optimized Kernel Values vs. Original Kernel Values')
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+    return diff_kernels
     
 #%% RETURN PSD IN FRAME/ANIMATION
-def initial_pop(variable, pbe_type):
-    opt = OptBase()
-    
+def initial_pop(opt, variable, pbe_type):
     pop_params = opt.core.check_corr_agg(variable[2])
     b = pop_params['CORR_BETA']
     a = pop_params['alpha_prim']
@@ -406,17 +527,17 @@ def initial_pop(variable, pbe_type):
     p3 = pop_params['pl_P3']
     p4 = pop_params['pl_P4']
     data_name = f"Sim_Mul_0.1_para_{b}_{a[0]}_{a[1]}_{a[2]}_{v}_{p1}_{p2}_{p3}_{p4}.xlsx" 
-    exp_data_path = os.path.join('PSD_data', pbe_type, data_name)
+    exp_data_path = os.path.join('PSD_data', pbe_type, 'data', data_name)
     exp_data_paths = [
         exp_data_path,
         exp_data_path.replace(".xlsx", "_NM.xlsx"),
         exp_data_path.replace(".xlsx", "_M.xlsx")
     ]
-    return opt, exp_data_paths
+    return exp_data_paths
 
 def visualize_PSD(variable, pbe_type, one_frame):
-    opt, exp_data_paths= initial_pop(variable, pbe_type)
-    
+    opt = OptBase()
+    exp_data_paths= initial_pop(opt, variable, pbe_type)
     if one_frame:
         return_one_frame(variable, opt, exp_data_paths)
     else:
@@ -479,14 +600,14 @@ if __name__ == '__main__':
     remove_small_results = False
     results_pth = 'Parameter_study'
     calc_criteria = False
-    vis_criteria = 'kernels'
-    # vis_criteria = 'mse'
+    # vis_criteria = 'kernels'
+    vis_criteria = 'mse'
 
     # pbe_type = 'agglomeration'
     # pbe_type = 'breakage'
     pbe_type = 'mix'
     
-    results_mse = calc_ori_mse()
+    # results_mse = calc_ori_mse()
     # file_names = [
     #     'multi_[(\'q3\', \'KL\')]_HEBO_wight_1_iter_400.npz',
     #     'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_400.npz',
@@ -557,19 +678,19 @@ if __name__ == '__main__':
     #     ]
         
     file_names = [
-        'multi_[(\'q3\', \'MSE\')]_GP_wight_1_iter_800.npz',
-        'multi_[(\'q3\', \'MSE\')]_NSGA_wight_1_iter_800.npz',
-        'multi_[(\'q3\', \'MSE\')]_QMC_wight_1_iter_800.npz',
-        'multi_[(\'q3\', \'MSE\')]_TPS_wight_1_iter_800.npz',
-        'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_800.npz',
+        # 'multi_[(\'q3\', \'MSE\')]_GP_wight_1_iter_800.npz',
+        # 'multi_[(\'q3\', \'MSE\')]_NSGA_wight_1_iter_800.npz',
+        # 'multi_[(\'q3\', \'MSE\')]_QMC_wight_1_iter_800.npz',
+        # 'multi_[(\'q3\', \'MSE\')]_TPS_wight_1_iter_800.npz',
+        # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_800.npz',
         'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_800.npz',
         ]
     labels = [
-        'GP',
-        'NSGA',
-        'QMC',
-        'TPS',
-        'Cmaes',
+        # 'GP',
+        # 'NSGA',
+        # 'QMC',
+        # 'TPS',
+        # 'Cmaes',
         'HEBO',
         ]
     
@@ -581,7 +702,7 @@ if __name__ == '__main__':
     results, elapsed_time = read_results(data_paths)
     
     if calc_criteria:
-        calc_save_PSD_delta(results, data_paths)
+        new_result = calc_save_PSD_delta(results, data_paths)
     if remove_small_results:
         results = do_remove_small_results(results)
         
@@ -598,6 +719,8 @@ if __name__ == '__main__':
     
     # visualize_diff_mean_radar(results, labels)
     # visualize_diff_kernel_mse(result_to_analyse)
+    correlation_analysis(result_to_analyse,plot=True)
+    # pearson_corrs = visualize_correlation(results)
     
     variable_to_analyse = result_to_analyse[2]
     one_frame = False

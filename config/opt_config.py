@@ -37,7 +37,7 @@ config = {
         ## method = NSGA: Multi-objective sampler using the NSGA-III(Nondominated Sorting Genetic Algorithm III) algorithm.
         ## method = QMC: A Quasi Monte Carlo Sampler that generates low-discrepancy sequences.    
         'method': 'GP',
-        'n_iter': 10,
+        'n_iter': 400,
         ## Initialize PBE using psd data(False) or 
         ## with the help of first few time points of experimental data(True)
         'calc_init_N': False,
@@ -74,7 +74,7 @@ config = {
         ## When use_bundles is True, multiple Tune will be run locally at the same time. 
         ## The psd-data must also be multiple! Multiple here means data with different conditions 
         ## rather than the same data in different dimensions.
-        'use_bundles': True,
+        'use_bundles': False,
         'num_bundles': 2,
         'cpus_per_trail': 1,
         },
@@ -117,9 +117,9 @@ config = {
         'corr_agg_1': {'bounds': (-4.0, -1.0), 'log_scale': True},
         'corr_agg_2': {'bounds': (-4.0, -1.0), 'log_scale': True},
         'pl_v': {'bounds': (0.5, 2.0), 'log_scale': False},
-        # 'pl_P1': {'bounds': (-4.0, 0.0), 'log_scale': True},
+        'pl_P1': {'bounds': (-4.0, 0.0), 'log_scale': True},
         'pl_P2': {'bounds': (0.5, 3.0), 'log_scale': False},
-        # 'pl_P3': {'bounds': (-4.0, 0.0), 'log_scale': True},
+        'pl_P3': {'bounds': (-4.0, 0.0), 'log_scale': True},
         'pl_P4': {'bounds': (0.5, 3.0), 'log_scale': False},
     },
 

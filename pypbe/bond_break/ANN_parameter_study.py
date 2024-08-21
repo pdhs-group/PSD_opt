@@ -175,7 +175,7 @@ if __name__ == '__main__':
     m_frag_num_weight = 1e-2
     
     result_path = "best_results.pkl"
-    n_steps = 10
+    n_steps = 100
     
     start_time = time.time()
     best_result = run_ray_tune(result_path, n_steps)
