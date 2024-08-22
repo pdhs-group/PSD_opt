@@ -97,7 +97,8 @@ def run_ray_tune(result_path, n_steps):
         tune_config=tune.TuneConfig(
             num_samples=n_steps,
             # scheduler=scheduler,
-            search_alg=algo
+            search_alg=algo,
+            reuse_actors=True,
         ),
         run_config=train.RunConfig(
         storage_path =r"C:\Users\px2030\Code\Ray_Tune"  

@@ -274,9 +274,8 @@ class OptBase():
                 exp_data_paths = join_paths(data_names)
             # if self.core.calc_init_N:
             #     self.core.set_init_N(exp_data_paths, init_flag='mean')
-                
             # ray.init(address="auto", log_to_driver=False, runtime_env={"env_vars": {"PYTHONPATH": os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))}})
-            ray.init(num_cpus=24,log_to_driver=False, runtime_env={"env_vars": {"PYTHONPATH": os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))}})
+            ray.init(log_to_driver=False, runtime_env={"env_vars": {"PYTHONPATH": os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))}})    
             if method == 'kernels':
                 # delta_opt_sample = np.zeros(sample_num)
                 # CORR_BETA_sample = np.zeros(sample_num)
@@ -312,8 +311,8 @@ class OptBase():
                 #     self.core.alpha_prim_opt = alpha_prim
                 print("not coded yet")
             elif method == 'delta':
-                if self.core.use_bundles:
-                    result_dict = self.core.optimierer_ray_bundles(self.opt_params,exp_data_paths=exp_data_paths, 
+                if self.core.multi_jobs:
+                    result_dict = self.core.multi_optimierer_ray(self.opt_params,exp_data_paths=exp_data_paths, 
                                                                    known_params=known_params)
                 else:
                     result_dict = []

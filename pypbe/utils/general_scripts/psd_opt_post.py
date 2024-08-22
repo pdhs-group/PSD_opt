@@ -647,20 +647,20 @@ if __name__ == '__main__':
     #     'wight_10',
     #     ]
     
-    # file_names = [
-    #     'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_50.npz',
-    #     'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_100.npz',
-    #     'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_200.npz',
-    #     'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_400.npz',
-    #     'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_800.npz',
-    #     ]
-    # labels = [
-    #     'iter_50',
-    #     'iter_100',
-    #     'iter_200',
-    #     'iter_400',
-    #     'iter_800',
-    #     ]
+    file_names = [
+        'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_50.npz',
+        'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_100.npz',
+        'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_200.npz',
+        'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_400.npz',
+        'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_800.npz',
+        ]
+    labels = [
+        'iter_50',
+        'iter_100',
+        'iter_200',
+        'iter_400',
+        'iter_800',
+        ]
     
     # file_names = [
     #     '[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_50.npz',
@@ -677,22 +677,22 @@ if __name__ == '__main__':
     #     'iter_800',
     #     ]
         
-    file_names = [
-        # 'multi_[(\'q3\', \'MSE\')]_GP_wight_1_iter_800.npz',
-        # 'multi_[(\'q3\', \'MSE\')]_NSGA_wight_1_iter_800.npz',
-        # 'multi_[(\'q3\', \'MSE\')]_QMC_wight_1_iter_800.npz',
-        # 'multi_[(\'q3\', \'MSE\')]_TPS_wight_1_iter_800.npz',
-        # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_800.npz',
-        'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_800.npz',
-        ]
-    labels = [
-        # 'GP',
-        # 'NSGA',
-        # 'QMC',
-        # 'TPS',
-        # 'Cmaes',
-        'HEBO',
-        ]
+    # file_names = [
+    #     'multi_[(\'q3\', \'MSE\')]_GP_wight_1_iter_800.npz',
+    #     'multi_[(\'q3\', \'MSE\')]_NSGA_wight_1_iter_800.npz',
+    #     'multi_[(\'q3\', \'MSE\')]_QMC_wight_1_iter_800.npz',
+    #     'multi_[(\'q3\', \'MSE\')]_TPS_wight_1_iter_800.npz',
+    #     'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_800.npz',
+    #     'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_800.npz',
+    #     ]
+    # labels = [
+    #     'GP',
+    #     'NSGA',
+    #     'QMC',
+    #     'TPS',
+    #     'Cmaes',
+    #     'HEBO',
+    #     ]
     
     data_paths = [os.path.join(results_pth, pbe_type, file_name) for file_name in file_names]
     # 'results' saves the results of all reading files. 
@@ -706,20 +706,20 @@ if __name__ == '__main__':
     if remove_small_results:
         results = do_remove_small_results(results)
         
-    # visualize_diff_mean(results, labels)
+    visualize_diff_mean(results, labels)
     
     # kernel: corr_agg_0, corr_agg_1, corr_agg_2, pl_v, pl_P1, pl_P2, pl_P3, pl_P4
-    result_to_analyse = results[-1]
-    # if pbe_type == 'agglomeration' or pbe_type == 'mix':
-    #     corr_agg_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['corr_agg_0','corr_agg_1','corr_agg_2'])
-    # if pbe_type == 'breakage' or pbe_type == 'mix':
-    #     pl_v_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_v'])
-    #     pl_P13_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P1','pl_P3'], log_axis=False)
-    #     pl_P24_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P2','pl_P4'])
+    result_to_analyse = results[-3]
+    if pbe_type == 'agglomeration' or pbe_type == 'mix':
+        corr_agg_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['corr_agg_0','corr_agg_1','corr_agg_2'])
+    if pbe_type == 'breakage' or pbe_type == 'mix':
+        pl_v_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_v'])
+        pl_P13_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P1','pl_P3'], log_axis=False)
+        pl_P24_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P2','pl_P4'])
     
     # visualize_diff_mean_radar(results, labels)
     # visualize_diff_kernel_mse(result_to_analyse)
-    correlation_analysis(result_to_analyse,plot=True)
+    # correlation_analysis(result_to_analyse,plot=True)
     # pearson_corrs = visualize_correlation(results)
     
     variable_to_analyse = result_to_analyse[2]
