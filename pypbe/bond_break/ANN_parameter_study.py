@@ -26,12 +26,7 @@ RT_space = {
     'init_neurons': tune.randint(10, 512)
 }
 
-def RT_train_model(config):
-    ann = ANN_bond_break(m_dim, m_NS, m_S, m_global_seed)
-    ann.save_model = False
-    ann.save_validate_results = False
-    ann.print_status = False
-
+def RT_train_model(config, ann):
     epochs = config['epochs']
     ann.batch_size = config['batch_size']
     ann.learning_rate = config['learning_rate']
@@ -49,10 +44,8 @@ def RT_train_model(config):
     # ann.num_layers = 2
     # ann.init_neurons = 64
     
-
     # ann.processing_train_data()
     model_path = train.get_context().get_trial_dir()
-    ann.split_data_set(n_splits=m_n_splits)
     results = ann.cross_validation(epochs, 1, model_path)
     
     ## single objective with weighted sum
@@ -70,6 +63,17 @@ def RT_train_model(config):
     # print(f"The mse is {results[0,0]}, the frag_error is {results[0,2]}")
     
 def run_ray_tune(result_path, n_steps):
+    ## Initialize ANN training Instance 
+    ann = ANN_bond_break(m_dim, m_NS, m_S, m_global_seed)
+    ann.save_model = False
+    ann.save_validate_results = False
+    ann.print_status = False
+    ## For unicluster
+    tmpdir = os.environ.get('TMPDIR')
+    ann.path_scaler = os.path.join(tmpdir,'Inputs_scaler.pkl')
+    ann.path_all_data = os.path.join(tmpdir,'output_data_vol.pkl')
+    ## Read training data and split them
+    ann.split_data_set(n_splits=m_n_splits)
     # 初始化Ray
     ray.init(runtime_env={"env_vars": {"PYTHONPATH": os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))}},
              # num_cpus=12
@@ -86,11 +90,12 @@ def run_ray_tune(result_path, n_steps):
     # 使用Bayesian Optimization作为搜索算法
     algo = OptunaSearch(metric="loss", mode="min", sampler=GPSampler())
     # algo = OptunaSearch(metric=["loss1", "loss2"], mode=["min", "min"], sampler=TPESampler())
-    
+    def objective_func(config):
+        return RT_train_model(config, ann)
     # 运行Ray Tune进行超参数搜索
     tuner = tune.Tuner(
         tune.with_resources(
-            RT_train_model,
+            objective_func,
             {"cpu": 2}
         ),
         param_space=RT_space,
