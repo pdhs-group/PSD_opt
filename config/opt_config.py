@@ -37,7 +37,7 @@ config = {
         ## method = NSGA: Multi-objective sampler using the NSGA-III(Nondominated Sorting Genetic Algorithm III) algorithm.
         ## method = QMC: A Quasi Monte Carlo Sampler that generates low-discrepancy sequences.    
         'method': 'HEBO',
-        'n_iter': 400,
+        'n_iter': 100,
         ## Initialize PBE using psd data(False) or 
         ## with the help of first few time points of experimental data(True)
         'calc_init_N': False,
@@ -74,9 +74,10 @@ config = {
         ## When use_bundles is True, multiple Tune will be run locally at the same time. 
         ## The psd-data must also be multiple! Multiple here means data with different conditions 
         ## rather than the same data in different dimensions.
-        'multi_jobs': True,
+        'multi_jobs': False,
         'num_jobs': 2,
-        'cpus_per_trail': 1,
+        'cpus_per_trail': 8,
+        'max_concurrent':8
         },
     
     ## PBE parameters

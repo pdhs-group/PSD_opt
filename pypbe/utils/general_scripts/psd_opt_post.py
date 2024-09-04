@@ -59,37 +59,6 @@ def calc_diff(result):
                 diff = scaled_diff
             diff_kernels[kernel] = diff
     return diff_kernels, opt_kernels, ori_kernels 
-
-# def visualize_diff_mean(results, labels):
-#     num_results = len(results)
-#     diff_mean = np.zeros(num_results)
-#     diff_std = np.zeros(num_results)
-#     diff_var = np.zeros(num_results)
-    
-#     for i, result in enumerate(results):
-#         if vis_criteria == 'kernels':
-#             diff_kernels, _, _ = calc_diff(result)
-#             all_elements = np.concatenate(list(diff_kernels.values()))
-#             ylabel = 'Kernels Error'
-#         elif vis_criteria == 'mse':
-#             # all_elements = result[:,3]
-#             all_elements = result[:,0]
-#             ylabel = 'MSE of PSD'
-#         diff_mean[i] = np.mean(all_elements)
-#         diff_std[i] = np.std(all_elements)
-#         diff_var[i] = np.var(all_elements)
-    
-#     x_pos = np.arange(len(labels))
-#     fig, ax = plt.subplots(figsize=(16, 8))
-#     ax.bar(x_pos, diff_mean, yerr=diff_std, align='center', alpha=0.7, ecolor='black', capsize=10)
-    
-#     ax.set_ylabel(ylabel, fontsize=20)
-#     ax.tick_params(axis='y', labelsize=15)
-#     ax.set_xticks(x_pos)
-#     ax.set_xticklabels(labels, fontsize=20)
-    
-#     plt.tight_layout()
-#     plt.show()
     
 def visualize_diff_mean(results, labels):
     num_results = len(results)
@@ -116,28 +85,38 @@ def visualize_diff_mean(results, labels):
     fig, ax1 = plt.subplots(figsize=(16, 8))
 
     # ax1.set_xlabel('Labels')
-    ax1.set_ylabel('Kernels Error', color='tab:blue', fontsize=20)
-    ax1.bar(x_pos - 0.2, diff_mean_kernels, yerr=diff_std_kernels, width=0.4, align='center', alpha=0.7, ecolor='black', capsize=10, color='tab:blue', label='Kernels Error')
+    ax1.set_ylabel('$\overline{k_{\delta}}$', color='tab:blue', fontsize=20)
+    ax1.bar(x_pos - 0.2, diff_mean_kernels, yerr=diff_std_kernels, width=0.4, align='center', alpha=0.7, ecolor='black', capsize=10, color='tab:blue')
     ax1.tick_params(axis='y', labelcolor='tab:blue', labelsize=15)
     ax1.set_xticks(x_pos)
     ax1.set_xticklabels(labels, fontsize=20)
     ax1.axhline(0, color='black', linewidth=0.8)
 
     ax2 = ax1.twinx()
-    ax2.set_ylabel('MSE of PSD', color='tab:red', fontsize=20)
-    ax2.bar(x_pos + 0.2, diff_mean_mse, yerr=diff_std_mse, width=0.4, align='center', alpha=0.7, ecolor='black', capsize=10, color='tab:red', label='MSE of PSD')
+    ax2.set_ylabel('$\overline{MSE_{q3}}$', color='tab:red', fontsize=20)
+    ax2.bar(x_pos + 0.2, diff_mean_mse, yerr=diff_std_mse, width=0.4, align='center', alpha=0.7, ecolor='black', capsize=10, color='tab:red')
     ax2.tick_params(axis='y', labelcolor='tab:red', labelsize=15)
     ax2.axhline(0, color='black', linewidth=0.8)
-
+    ## Indicator line for theoretical minimum mse
+    ax2.axhline(1, color='red', linestyle='--', linewidth=1.5)
+    ax2.text(len(labels) - 0.5, 1.1, '$\overline{MSE_{q3}} = 1$', color='red', fontsize=15, va='bottom', ha='right')
     
     all_lims = [0]
-    all_lims.extend(diff_mean_kernels - diff_std_kernels-0.1)
-    all_lims.extend(diff_mean_kernels + diff_std_kernels+0.1)
-    all_lims.extend(diff_mean_mse - diff_std_mse-0.1)
-    all_lims.extend(diff_mean_mse + diff_std_mse+0.1)
-    y1lim = [min(all_lims), max(all_lims)]
-    scale_y2 = max(diff_std_mse / diff_std_kernels)*1.5
-    y2lim = [min(all_lims)*scale_y2, max(all_lims)*scale_y2] 
+    # y1lim_tem = diff_mean_kernels - diff_std_kernels
+    # y1lim_tem.extend(diff_mean_kernels + diff_std_kernels)
+    # y2lim_tem = diff_mean_mse - diff_std_mse
+    # y2lim_tem.extend(diff_mean_mse + diff_std_mse)
+    all_lims.extend(diff_mean_kernels - diff_std_kernels)
+    all_lims.extend(diff_mean_kernels + diff_std_kernels)
+    all_lims.extend(diff_mean_mse - diff_std_mse)
+    all_lims.extend(diff_mean_mse + diff_std_mse)
+    ## Slightly shift the upper or lower limit
+    min_lim=min(all_lims)-1.5
+    max_lim=max(all_lims)+0.1
+
+    y2lim = [min_lim, max_lim]
+    scale_y2 = max(diff_std_mse / diff_std_kernels)
+    y1lim = [min_lim/scale_y2, max_lim/scale_y2] 
     ax1.set_ylim(y1lim)
     ax2.set_ylim(y2lim)
     
@@ -198,11 +177,11 @@ def correlation_analysis(result, plot=False):
         m, b = np.polyfit(mse, mean_diff_kernels, 1)
         plt.plot(mse, m*mse + b, color='red', label=f'Fit Line (y = {m:.2f}x + {b:.2f})')
         
-        plt.xlabel('MSE', fontsize=20)
-        plt.ylabel('Mean Diff Kernels', fontsize=20)
+        plt.xlabel('$\overline{MSE_{q3}}$', fontsize=20)
+        plt.ylabel('k$_{\delta}$', fontsize=20)
         plt.xticks(fontsize=15)
         plt.yticks(fontsize=15)
-        plt.title(f'Mean Diff Kernels vs MSE (Pearson r = {pearson_corr:.2f})', fontsize=24)
+        plt.title('$\overline{k_{\delta}}$ vs $\overline{MSE_{q3}}$'+f'(Pearson r = {pearson_corr:.2f})', fontsize=24)
         plt.legend(fontsize=15)
         plt.grid(True)
         plt.show()
@@ -315,22 +294,31 @@ def read_results(data_paths):
     for data_path in data_paths:
         data = np.load(data_path,allow_pickle=True)
         results=data['results']
-        tem_time = data['time']
+        if 'time' in data:
+            tem_time = data['time']
+        else:
+            tem_time = 0
         results_tem = np.empty((len(results), 3), dtype=object)
-        for i in range(results.shape[0]):
-            # results_tem[i, 0] = results[i, 0]['opt_score']
-            # results_tem[i, 1] = results[i, 0]['opt_parameters']
-            # results_tem[i, 2] = results[i, 1]
-            results_tem[i, 0] = results[i]['opt_score']
-            results_tem[i, 1] = results[i]['opt_params']
-            filename = results[i]['file_path'] 
-            if isinstance(filename, list):
-                data_name = filename[0]
-            else:
-                data_name = filename
-            results_tem[i, 2] = get_kernels_form_data_name(data_name)
-        # if vis_criteria == 'mse':
-        #     results_tem = calc_rel_mse(results_tem, ori_mse_tem) 
+        if results.ndim == 1:
+            for i in range(results.shape[0]):
+                # results_tem[i, 0] = results[i, 0]['opt_score']
+                # results_tem[i, 1] = results[i, 0]['opt_parameters']
+                # results_tem[i, 2] = results[i, 1]
+                results_tem[i, 0] = results[i]['opt_score']
+                results_tem[i, 1] = results[i]['opt_params']
+                filename = results[i]['file_path'] 
+                if isinstance(filename, list):
+                    data_name = filename[0]
+                else:
+                    data_name = filename
+                results_tem[i, 2] = get_kernels_form_data_name(data_name)
+        else:
+            for i in range(results.shape[0]):
+                results_tem[i, 0] = results[i,3]
+                results_tem[i, 1] = results[i,1]
+                results_tem[i, 2] = results[i,2]
+        ## convert absolute mse into relative mse     
+        results_tem = calc_rel_mse(results_tem, ori_mse_tem) 
         # For comparison, CORR_BETA and alpha_prim in the original parameters are merged into corr_agg
         # ori_kernels = results_tem[:,2]
         # if 'CORR_BETA' in ori_kernels[0] and 'alpha_prim' in ori_kernels[0]:
@@ -362,7 +350,7 @@ def calc_rel_mse(results_tem, ori_mse_tem):
         current_dict = results_tem[i, 2]  
         for j in range(ori_mse_tem.shape[0]):
             if compare_dicts(ori_mse_tem[j, 1], current_dict): 
-                results_tem[i, 0] = results_tem[i, 0] / float(ori_mse_tem[j, 0])
+                results_tem[i, 0] = float(results_tem[i, 0]) / float(ori_mse_tem[j, 0])
                 break  
     return results_tem
 
@@ -383,20 +371,19 @@ def compare_dicts(dict1, dict2):
 #%%%VISUALZE IN RADAR
 def visualize_diff_mean_radar(results, data_labels):
     diff_mean = []
-    if vis_criteria == 'kernels':
-        for i, result in enumerate(results):
-            diff_mean_tem =[]
-            kernels_labels = []
-            diff_kernels, _, _ = calc_diff(result)
-            for key, array in diff_kernels.items():
-                avg  = np.mean(array)
-                diff_mean_tem.append(avg)
-                kernels_labels.append(key) 
-            diff_mean.append(np.array(diff_mean_tem))
-            title = 'Kernels Error'
-        radar_chart(diff_mean, data_labels, kernels_labels, title)
-    else:
-        return
+
+    for i, result in enumerate(results):
+        diff_mean_tem =[]
+        kernels_labels = []
+        diff_kernels, _, _ = calc_diff(result)
+        for key, array in diff_kernels.items():
+            avg  = np.mean(array)
+            diff_mean_tem.append(avg)
+            kernels_labels.append(key) 
+        diff_mean.append(np.array(diff_mean_tem))
+        title = '$\overline{k_{j,\delta}}$'
+    radar_chart(diff_mean, data_labels, kernels_labels, title)
+
     
 def radar_chart(data, data_labels, kernels_labels, title):
     # Number of variables
@@ -600,8 +587,6 @@ if __name__ == '__main__':
     remove_small_results = False
     results_pth = 'Parameter_study'
     calc_criteria = False
-    # vis_criteria = 'kernels'
-    vis_criteria = 'mse'
 
     # pbe_type = 'agglomeration'
     # pbe_type = 'breakage'
@@ -652,7 +637,7 @@ if __name__ == '__main__':
         'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_100.npz',
         'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_200.npz',
         'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_400.npz',
-        'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_800.npz',
+        'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_800_P1P3.npz',
         ]
     labels = [
         'iter_50',
@@ -678,12 +663,12 @@ if __name__ == '__main__':
     #     ]
         
     # file_names = [
-    #     'multi_[(\'q3\', \'MSE\')]_GP_wight_1_iter_800.npz',
-    #     'multi_[(\'q3\', \'MSE\')]_NSGA_wight_1_iter_800.npz',
-    #     'multi_[(\'q3\', \'MSE\')]_QMC_wight_1_iter_800.npz',
-    #     'multi_[(\'q3\', \'MSE\')]_TPS_wight_1_iter_800.npz',
-    #     'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_800.npz',
-    #     'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_800.npz',
+    #     'multi_[(\'q3\', \'MSE\')]_GP_wight_1_iter_400.npz',
+    #     'multi_[(\'q3\', \'MSE\')]_NSGA_wight_1_iter_400.npz',
+    #     'multi_[(\'q3\', \'MSE\')]_QMC_wight_1_iter_400.npz',
+    #     'multi_[(\'q3\', \'MSE\')]_TPS_wight_1_iter_400.npz',
+    #     'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400.npz',
+    #     'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_400.npz',
     #     ]
     # labels = [
     #     'GP',
@@ -702,25 +687,25 @@ if __name__ == '__main__':
     results, elapsed_time = read_results(data_paths)
     
     if calc_criteria:
-        new_result = calc_save_PSD_delta(results, data_paths)
+        results = calc_save_PSD_delta(results, data_paths)
     if remove_small_results:
         results = do_remove_small_results(results)
         
     visualize_diff_mean(results, labels)
     
     # kernel: corr_agg_0, corr_agg_1, corr_agg_2, pl_v, pl_P1, pl_P2, pl_P3, pl_P4
-    result_to_analyse = results[-3]
-    if pbe_type == 'agglomeration' or pbe_type == 'mix':
-        corr_agg_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['corr_agg_0','corr_agg_1','corr_agg_2'])
-    if pbe_type == 'breakage' or pbe_type == 'mix':
-        pl_v_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_v'])
-        pl_P13_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P1','pl_P3'], log_axis=False)
-        pl_P24_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P2','pl_P4'])
+    result_to_analyse = results[-1]
+    # if pbe_type == 'agglomeration' or pbe_type == 'mix':
+    #     corr_agg_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['corr_agg_0','corr_agg_1','corr_agg_2'])
+    # if pbe_type == 'breakage' or pbe_type == 'mix':
+    #     pl_v_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_v'])
+    #     pl_P13_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P1','pl_P3'], log_axis=False)
+    #     pl_P24_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P2','pl_P4'])
     
-    # visualize_diff_mean_radar(results, labels)
+    visualize_diff_mean_radar(results, labels)
+    pearson_corrs = visualize_correlation(results)
+    correlation_analysis(result_to_analyse,plot=True)
     # visualize_diff_kernel_mse(result_to_analyse)
-    # correlation_analysis(result_to_analyse,plot=True)
-    # pearson_corrs = visualize_correlation(results)
     
     variable_to_analyse = result_to_analyse[2]
     one_frame = False

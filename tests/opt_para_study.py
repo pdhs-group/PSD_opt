@@ -52,7 +52,7 @@ if __name__ == '__main__':
     var_P1 = np.array([1e-3])
     var_P2 = np.array([2.0])
     var_P3 = np.array([1e-1])
-    var_P4 = np.array([0.5,2.0])
+    var_P4 = np.array([0.5])
 
     ## define the range of particle size scale and minimal size
     

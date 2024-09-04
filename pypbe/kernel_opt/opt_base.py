@@ -35,6 +35,9 @@ class OptBase():
     def __init__(self, config_path=None, data_path=None):
         ## read config file and get all attribute
         self.pth = os.path.dirname( __file__ )
+        self.requirements_path = os.path.abspath(os.path.join(self.pth, "..","..", "requirements_ray.txt"))
+        if not os.path.exists(self.requirements_path):
+            raise Exception(f"Warning: Requirements file for ray not found at: {self.requirements_path}.")
         config = self.check_config_path(config_path)
         self.core_params = config['algo_params']
         self.pop_params = config['pop_params']
@@ -275,7 +278,8 @@ class OptBase():
             # if self.core.calc_init_N:
             #     self.core.set_init_N(exp_data_paths, init_flag='mean')
             # ray.init(address="auto", log_to_driver=False, runtime_env={"env_vars": {"PYTHONPATH": os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))}})
-            ray.init(log_to_driver=False, runtime_env={"env_vars": {"PYTHONPATH": os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))}})    
+            ray.init(log_to_driver=False, runtime_env={#"pip": self.requirements_path,
+                "env_vars": {"PYTHONPATH": os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))}})
             if method == 'kernels':
                 # delta_opt_sample = np.zeros(sample_num)
                 # CORR_BETA_sample = np.zeros(sample_num)

@@ -69,9 +69,9 @@ def init_pbe_params(self, dim, t_total, t_write, t_vec, disc, **attr):
     self.R02 = 2.9e-7                     # Radius primary particle component 2 [m] - NM2
     self.R03 = 2.9e-7                     # Radius primary particle component 3 [m] - M3
     self.USE_PSD = True                   # Define wheter or not the PSD should be initializes (False = monodisperse primary particles)
-    self.DIST1_path = os.path.join(self.pth,'data','PSD_data')
-    self.DIST2_path = os.path.join(self.pth,'data','PSD_data')
-    self.DIST3_path = os.path.join(self.pth,'data','PSD_data')
+    self.DIST1_path = os.path.join(self.pth,'..','data','PSD_data')
+    self.DIST2_path = os.path.join(self.pth,'..','data','PSD_data')
+    self.DIST3_path = os.path.join(self.pth,'..','data','PSD_data')
     self.DIST1_name = 'PSD_x50_1.0E-6_r01_2.9E-7.npy'
     self.DIST2_name = 'PSD_x50_1.0E-6_r01_2.9E-7.npy'
     self.DIST3_name = 'PSD_x50_1.0E-6_r01_2.9E-7.npy'

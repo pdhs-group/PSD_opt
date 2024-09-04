@@ -6,13 +6,13 @@
 #SBATCH --nodes=2
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=80
-#SBATCH --time=30
+#SBATCH --time=72:00:00
 #SBATCH --mem=60000mb
 
 module purge
 module load jupyter/tensorflow/2023-10-10
 . /pfs/data5/home/kit/mvm/px2030/code/tensorflow/bin/activate
-tar -C $TMPDIR/ -xzf $(ws_find MC_train)/ANN_train.tar.gz
+srun --nodes=1 --ntasks=1 tar -C $TMPDIR/ -xzf $(ws_find MC_train)/ANN_train.tar.gz
 
 # __doc_head_address_start__
 

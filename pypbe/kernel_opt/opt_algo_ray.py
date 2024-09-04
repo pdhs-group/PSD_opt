@@ -16,6 +16,15 @@ from ray.tune.search.hebo import HEBOSearch
 from optuna.samplers import GPSampler,CmaEsSampler,TPESampler,NSGAIIISampler,QMCSampler
 from ray.tune.search import ConcurrencyLimiter
 
+from ray._private import state
+
+def print_current_actors():
+    actors = state.actors()
+    print(f"Number of actors: {len(actors)}")
+    for actor_id, actor_info in actors.items():
+        print(f"Actor ID: {actor_id}, State: {actor_info['State']}")
+
+
 def multi_optimierer_ray(self, opt_params, exp_data_paths=None, known_params=None):
     """
     Optimize the corr_agg based on :meth:~.calc_delta_agg. 
@@ -149,6 +158,8 @@ def optimierer_ray(self, opt_params=None, exp_data_paths=None,known_params=None)
         # message = f"The value is: {data_exp[0][0][10,10]}"
         # self.print_notice(message)
         return self.objective(config, x_uni_exp, data_exp, known_params)
+    def trial_dirname_creator(trial):
+        return f"trial_{trial.trial_id}"
     # objective_func.__name__ = "objective_func" + uuid.uuid4().hex[:8]
     trainable_with_resources  = tune.with_resources(objective_func, 
                                                     resources=tune.PlacementGroupFactory([
@@ -164,16 +175,18 @@ def optimierer_ray(self, opt_params=None, exp_data_paths=None,known_params=None)
             # scheduler=scheduler,
             search_alg=algo,
             reuse_actors=True,
+            trial_dirname_creator=trial_dirname_creator,
         ),
         run_config=train.RunConfig(
         storage_path =self.tune_storage_path,
         name = data_name, 
-        verbose = 1,
+        verbose = 0,
         # log_to_file=("stdout.log", "stderr.log")
         )
     )
     
     results = tuner.fit()
+    print_current_actors()
     # 获取最优结果
     opt_result = results.get_best_result(metric="loss", mode="min")
     opt_params = opt_result.config
@@ -216,7 +229,7 @@ def array_dict_transform(self, array_dict):
                 del array_dict[f'corr_agg_{i}']
         return array_dict
     
-def create_algo(self, max_concurrent=4, batch=False):
+def create_algo(self, batch=False):
     if self.method == 'HEBO': 
         search_alg = HEBOSearch(metric="loss", mode="min")
     elif self.method == 'GP': 
@@ -229,7 +242,7 @@ def create_algo(self, max_concurrent=4, batch=False):
         search_alg = OptunaSearch(metric="loss", mode="min", sampler=NSGAIIISampler())
     elif self.method == 'QMC':    
         search_alg = OptunaSearch(metric="loss", mode="min", sampler=QMCSampler())
-    if max_concurrent is None:
+    if self.max_concurrent is None:
         return search_alg
     else:
-        return ConcurrencyLimiter(search_alg, max_concurrent=max_concurrent, batch=batch)
+        return ConcurrencyLimiter(search_alg, max_concurrent=self.max_concurrent, batch=batch)

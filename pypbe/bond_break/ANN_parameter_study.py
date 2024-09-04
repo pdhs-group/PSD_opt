@@ -90,12 +90,10 @@ def run_ray_tune(result_path, n_steps):
     # 使用Bayesian Optimization作为搜索算法
     algo = OptunaSearch(metric="loss", mode="min", sampler=GPSampler())
     # algo = OptunaSearch(metric=["loss1", "loss2"], mode=["min", "min"], sampler=TPESampler())
-    def objective_func(config):
-        return RT_train_model(config, ann)
     # 运行Ray Tune进行超参数搜索
     tuner = tune.Tuner(
         tune.with_resources(
-            objective_func,
+            tune.with_parameters(RT_train_model,ann=ann),
             {"cpu": 2}
         ),
         param_space=RT_space,
