@@ -6,9 +6,10 @@ Minimize the difference by optimization algorithm to obtain the kernel of PBE.
 import os ,sys
 sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),"../.."))
 import numpy as np
+from ray import tune
 from scipy.stats import entropy
 from sklearn.metrics import mean_squared_error, mean_absolute_error
-from pypbe.pbe.dpbe_base import bind_methods_from_module, unbind_methods_from_class
+from pypbe.pbe.dpbe_base import DPBESolver, bind_methods_from_module, unbind_methods_from_class
 
 class OptCore():
     """
@@ -37,24 +38,35 @@ class OptCore():
         Whether to use experimental data to calculate initial conditions. If False, the initial conditions for PBE need to be defined manually. Default is False.
     """
     def __init__(self):
-        self.n_iter = 100
-        ## delta_flag = 1: use q3
-        ## delta_flag = 2: use Q3
-        ## delta_flag = 3: use x_10
-        ## delta_flag = 4: use x_50
-        ## delta_flag = 5: use x_90
-        self.delta_flag = 'q3'    
-        ## 'MSE': Mean Squared Error
-        ## 'RMSE': Root Mean Squared Error
-        ## 'MAE': Mean Absolute Error
-        ## 'KL': Kullback–Leibler divergence(Only q3 and Q3 are compatible with KL) 
-        self.cost_func_type = 'MSE'
-
         self.calc_init_N = False
         self.set_init_pop_para_flag = False
         self.set_comp_para_flag = False
-        self.num_bundles = 4
-        # self.cpu_per_bundles = 20   
+ 
+    def init_attr(self, core_params):
+        ## Initializing class attributes
+        for key, value in core_params.items():
+            setattr(self, key, value)
+        self.t_init = self.t_init.astype(float)
+        self.t_vec = self.t_vec.astype(float)
+        self.num_t_init = len(self.t_init)
+        self.num_t_steps = len(self.t_vec)
+        if self.delta_t_start_step < 1 or self.delta_t_start_step >= self.num_t_steps:
+            raise Exception("The value of delta_t_start_step must be within the indices range of t_vec! and >0")
+        ## Get the complete simulation time and get the indices corresponding 
+        ## to the vec and init time vectors
+        self.t_all = np.concatenate((self.t_init, self.t_vec))
+        self.t_all = np.unique(self.t_all)
+        self.idt_init = [np.where(self.t_all == t_time)[0][0] for t_time in self.t_init]
+        
+    def init_pbe(self, pop_params, data_path):
+        ## Initialize pbe
+        self.p = DPBESolver(dim=self.dim, disc='geo', t_vec=self.t_vec, load_attr=False)
+        ## The 1D-pop data is also used when calculating the initial N of 2/3D-pop.
+        if self.dim == 2:
+            self.create_1d_pop(self.t_vec, disc='geo')
+        self.set_init_pop_para(pop_params)
+        self.set_comp_para(data_path)
+        
     def calc_delta(self, params_in, x_uni_exp, data_exp):
         """
         Calculate the difference (delta) of PSD.
@@ -189,7 +201,18 @@ class OptCore():
         power = np.log10(max_val)
         power = np.ceil(power)
         return 10**power
-
+    
+    def array_dict_transform(self, array_dict):
+        # Special handling for array in dictionary like corr_agg based on dimension
+            if self.p.dim == 1:
+                array_dict['corr_agg'] = np.array([array_dict['corr_agg_0']])
+                del array_dict["corr_agg_0"]
+            elif self.p.dim == 2:
+                array_dict['corr_agg'] = np.array([array_dict[f'corr_agg_{i}'] for i in range(3)])
+                for i in range(3):
+                    del array_dict[f'corr_agg_{i}']
+            return array_dict
+        
     def cost_fun(self, data_exp, data_mod, cost_func_type, flag):
         """
         Calculate the difference(cost) between experimental and model data.
@@ -237,7 +260,7 @@ class OptCore():
         # 打印消息
         print(notice)
 
-bind_methods_from_module(OptCore, 'pypbe.kernel_opt.opt_algo_ray')
+
 bind_methods_from_module(OptCore, 'pypbe.kernel_opt.opt_algo_bo')
 bind_methods_from_module(OptCore, 'pypbe.kernel_opt.opt_data')
 bind_methods_from_module(OptCore, 'pypbe.kernel_opt.opt_pbe')

@@ -15,6 +15,7 @@ from ..pbe.dpbe_base import DPBESolver
 from .opt_core import OptCore
 from .opt_core_multi import OptCoreMulti
 from ..utils.func.func_read_exp import write_read_exp
+from pypbe.pbe.dpbe_base import bind_methods_from_module
 ## For plots
 import matplotlib.pyplot as plt
 from ..utils.plotter import plotter as pt        
@@ -44,9 +45,17 @@ class OptBase():
         self.multi_flag = config['multi_flag']
         self.opt_params = config['opt_params']
         self.dim = self.core_params.get('dim', None)
+        # Set the data path
+        if data_path is None:
+            print('Data path is not found or is None, default path will be used.')
+            self.data_path = os.path.join(self.pth, "..", "data")
+        else:
+            self.data_path = data_path
+        os.makedirs(self.data_path, exist_ok=True)
         ## initialize instance of optimization algorithm and PBE
-        self.init_opt_algo(data_path)
-        self.init_opt_pop()
+        self.init_opt_core()
+        ## Initialize t_vec for creating new files as may be required
+        self.idt_vec = [np.where(self.core.t_all == t_time)[0][0] for t_time in self.core.t_vec]
         
     def check_config_path(self, config_path):
         if config_path is None:
@@ -61,29 +70,8 @@ class OptBase():
             spec.loader.exec_module(conf)
             config = conf.config
             return config
-    def init_opt_algo(self, data_path=None):
-        """
-        Initializes the optimization algorithm with specified parameters and configurations.
         
-        Parameters
-        ----------
-        dim : `int`, optional
-            Dimensionality of the population to optimize. Default is 1.
-        t_init : `array`, optional
-            Time points used to calculate the initial conditions for the simulation. Default is None.
-        t_vec : `array`, optional
-            Time vector over which to perform the optimization. Default is None.
-        add_noise : `bool`, optional
-            Flag to determine whether to add noise to the data. Default is False.
-        noise_type : `str`, optional
-            Type of noise to add: Gaussian ('Gaus'), Uniform ('Uni'), 
-            Poisson ('Po'), and Multiplicative ('Mul'). Default is 'Gaus'.
-        noise_strength : `float`, optional
-            Strength of the noise to add. Default is 0.01.
-        smoothing : `bool`, optional
-            Flag to determine whether to apply smoothing(KDE) to the data. Default is False.
-        """
-        
+    def init_opt_core(self):
         if self.dim == 1:
             print("The multi algorithm does not support 1-D pop!")
             self.multi_flag = False
@@ -91,36 +79,8 @@ class OptBase():
             self.core = OptCore()
         else:
             self.core = OptCoreMulti()  
-        for key, value in self.core_params.items():
-            setattr(self.core, key, value)
-
-        self.core.t_init = self.core.t_init.astype(float)
-        self.core.t_vec = self.core.t_vec.astype(float)
-        self.core.num_t_init = len(self.core.t_init)
-        self.core.num_t_steps = len(self.core.t_vec)
-        if self.core.delta_t_start_step < 1 or self.core.delta_t_start_step >= self.core.num_t_steps:
-            raise Exception("The value of delta_t_start_step must be within the indices range of t_vec! and >0")
-        ## Get the complete simulation time and get the indices corresponding 
-        ## to the vec and init time vectors
-        self.core.t_all = np.concatenate((self.core.t_init, self.core.t_vec))
-        self.core.t_all = np.unique(self.core.t_all)
-        self.core.idt_init = [np.where(self.core.t_all == t_time)[0][0] for t_time in self.core.t_init]
-        self.idt_vec = [np.where(self.core.t_all == t_time)[0][0] for t_time in self.core.t_vec]
-        # Set the base path for exp_data_path
-        if data_path is None:
-            print('Data path is not found or is None, default path will be used.')
-            self.data_path = os.path.join(self.pth, "..", "data")
-        else:
-            self.data_path = data_path
-        os.makedirs(self.data_path, exist_ok=True)
-        
-    def init_opt_pop(self):
-        self.core.p = DPBESolver(dim=self.dim, disc='geo', t_vec=self.core.t_vec, load_attr=False)
-        ## The 1D-pop data is also used when calculating the initial N of 2/3D-pop.
-        if self.dim == 2:
-            self.core.create_1d_pop(self.core.t_vec, disc='geo')
-        self.core.set_init_pop_para(self.pop_params)
-        self.core.set_comp_para(self.data_path)
+        self.core.init_attr(self.core_params)
+        self.core.init_pbe(self.pop_params, self.data_path)
         
     def generate_data(self, pop_params=None, add_info=""):
         """
@@ -316,19 +276,19 @@ class OptBase():
                 print("not coded yet")
             elif method == 'delta':
                 if self.core.multi_jobs:
-                    result_dict = self.core.multi_optimierer_ray(self.opt_params,exp_data_paths=exp_data_paths, 
+                    result_dict = self.multi_optimierer_ray(self.opt_params,exp_data_paths=exp_data_paths, 
                                                                    known_params=known_params)
                 else:
                     result_dict = []
                     if isinstance(exp_data_paths[0], list):
                         for exp_data_paths_tem, known_params_tem in zip(exp_data_paths, known_params):
-                            result_dict_tem = self.core.optimierer_ray(self.opt_params,exp_data_paths=exp_data_paths_tem,
+                            result_dict_tem = self.optimierer_ray(self.opt_params,exp_data_paths=exp_data_paths_tem,
                                                                         known_params=known_params_tem)
                             # result_dict_tem = self.core.optimierer_bo(self.opt_params,exp_data_paths=exp_data_paths_tem,
                             #                                             known_params=known_params_tem)
                             result_dict.append(result_dict_tem)
                     else:
-                        result_dict = self.core.optimierer_ray(self.opt_params,exp_data_paths=exp_data_paths,
+                        result_dict = self.optimierer_ray(self.opt_params,exp_data_paths=exp_data_paths,
                                                                known_params=known_params)
                         # result_dict = self.core.optimierer_bo(self.opt_params,exp_data_paths=exp_data_paths_tem,
                         #                                            known_params=known_params)
@@ -350,6 +310,7 @@ class OptBase():
             # corr_agg_opt = self.core.CORR_BETA_opt * self.core.alpha_prim_opt
             # corr_agg_diff = abs(corr_agg_opt - corr_agg) / np.where(corr_agg == 0, 1, corr_agg)
             # para_diff=para_diff_i.mean()
+            self.print_current_actors()
             ray.shutdown()
             return result_dict
                 
@@ -382,4 +343,4 @@ class OptBase():
         delta = self.core.calc_delta(params, x_uni_exp, data_exp)
         return delta, exp_data_path_ori
     
-        
+bind_methods_from_module(OptBase, 'pypbe.kernel_opt.opt_base_ray')        

@@ -82,20 +82,18 @@ def visualize_diff_mean(results, labels):
         diff_var_mse[i] = np.var(all_elements_mse)
     
     x_pos = np.arange(len(labels))
-    fig, ax1 = plt.subplots(figsize=(16, 8))
+    fig=plt.figure() 
+    ax1=fig.add_subplot(1,1,1)
 
-    # ax1.set_xlabel('Labels')
-    ax1.set_ylabel('$\overline{k_{\delta}}$', color='tab:blue', fontsize=20)
+    ax1.set_ylabel('$\overline{k_{\delta}}$')
     ax1.bar(x_pos - 0.2, diff_mean_kernels, yerr=diff_std_kernels, width=0.4, align='center', alpha=0.7, ecolor='black', capsize=10, color='tab:blue')
-    ax1.tick_params(axis='y', labelcolor='tab:blue', labelsize=15)
     ax1.set_xticks(x_pos)
-    ax1.set_xticklabels(labels, fontsize=20)
+    ax1.set_xticklabels(labels)
     ax1.axhline(0, color='black', linewidth=0.8)
 
     ax2 = ax1.twinx()
-    ax2.set_ylabel('$\overline{MSE_{q3}}$', color='tab:red', fontsize=20)
+    ax2.set_ylabel('$\overline{MSE_{q3}}$')
     ax2.bar(x_pos + 0.2, diff_mean_mse, yerr=diff_std_mse, width=0.4, align='center', alpha=0.7, ecolor='black', capsize=10, color='tab:red')
-    ax2.tick_params(axis='y', labelcolor='tab:red', labelsize=15)
     ax2.axhline(0, color='black', linewidth=0.8)
     ## Indicator line for theoretical minimum mse
     ax2.axhline(1, color='red', linestyle='--', linewidth=1.5)
@@ -111,7 +109,7 @@ def visualize_diff_mean(results, labels):
     all_lims.extend(diff_mean_mse - diff_std_mse)
     all_lims.extend(diff_mean_mse + diff_std_mse)
     ## Slightly shift the upper or lower limit
-    min_lim=min(all_lims)-1.5
+    min_lim=min(all_lims)-2.5
     max_lim=max(all_lims)+0.1
 
     y2lim = [min_lim, max_lim]
@@ -155,10 +153,20 @@ def visualize_diff_kernel_mse(result):
     fig.tight_layout()
     plt.show()
   
-def visualize_correlation(results):
+def visualize_correlation(results, labels):
     pearson_corrs = np.zeros(len(results))
     for i, result in enumerate(results):
         pearson_corrs[i] = correlation_analysis(result)
+    fig=plt.figure()   
+    ax=fig.add_subplot(1,1,1)
+
+    ax, fig = pt.plot_data(labels, pearson_corrs, fig=fig, ax=ax,
+                           xlbl='',
+                           ylbl='Pearson value',lbl='Pearson correlation coefficient',
+                           clr='k',mrk='o')
+    ax.grid('minor')
+    plt.tight_layout() 
+        
     return pearson_corrs
 def correlation_analysis(result, plot=False):
     diff_kernels, _, _ = calc_diff(result)
@@ -170,21 +178,19 @@ def correlation_analysis(result, plot=False):
     # Calculate the Pearson correlation coefficient
     pearson_corr, _ = pearsonr(mse, mean_diff_kernels)
     if plot:
-        plt.figure(figsize=(16, 8))
+        fig=plt.figure()   
+        ax=fig.add_subplot(1,1,1)
+        # plot data points
         plt.scatter(mse, mean_diff_kernels, color='blue', label='Data Points')
-        
         # Fit a straight line to show the trend
         m, b = np.polyfit(mse, mean_diff_kernels, 1)
-        plt.plot(mse, m*mse + b, color='red', label=f'Fit Line (y = {m:.2f}x + {b:.2f})')
-        
-        plt.xlabel('$\overline{MSE_{q3}}$', fontsize=20)
-        plt.ylabel('k$_{\delta}$', fontsize=20)
-        plt.xticks(fontsize=15)
-        plt.yticks(fontsize=15)
-        plt.title('$\overline{k_{\delta}}$ vs $\overline{MSE_{q3}}$'+f'(Pearson r = {pearson_corr:.2f})', fontsize=24)
-        plt.legend(fontsize=15)
-        plt.grid(True)
-        plt.show()
+        ax, fig = pt.plot_data(mse, m*mse + b, fig=fig, ax=ax,
+                               xlbl='$MSE_{q3}$',
+                               ylbl='k$_{\delta}$',lbl='Fit Line (y = {m:.2f}x + {b:.2f})',
+                               tit='$k_{\delta}$ vs $MSE_{q3}$'+f'(Pearson r = {pearson_corr:.2f})',
+                               clr='r',mrk='')
+        ax.grid('minor')
+        plt.tight_layout() 
     return pearson_corr
 
 def calc_save_PSD_delta(results, data_paths):
@@ -393,7 +399,7 @@ def radar_chart(data, data_labels, kernels_labels, title):
     angles = np.linspace(0, 2 * np.pi, num_vars, endpoint=False).tolist()
     angles += angles[:1]  # Complete the loop
 
-    fig, ax = plt.subplots(figsize=(10, 10), subplot_kw=dict(polar=True))
+    fig, ax = plt.subplots(figsize=(8, 8), subplot_kw=dict(polar=True))
 
     for i, d in enumerate(data):
         values = d.tolist()
@@ -402,19 +408,19 @@ def radar_chart(data, data_labels, kernels_labels, title):
 
     # Draw one axe per variable + add labels
     ax.set_yticks([0.2, 0.4, 0.6, 0.8, 1.0])
-    ax.set_yticklabels(["0.2", "0.4", "0.6", "0.8", "1.0"], fontsize=15)
+    ax.set_yticklabels(["0.2", "0.4", "0.6", "0.8", "1.0"])
     ax.set_xticks(angles[:-1])
-    ax.set_xticklabels(kernels_labels, fontsize=15)
+    ax.set_xticklabels(kernels_labels)
 
-    plt.title(title, size=20, color='black', y=1.1)
-    plt.legend(loc='upper right', bbox_to_anchor=(1.1, 1.1), fontsize=18)
+    plt.title(title, color='black', y=1.1)
+    plt.legend(loc='upper right', bbox_to_anchor=(1.1, 1.1))
     plt.show()
 
 #%%%VISUALZE IN BLOCK
 def visualize_diff_kernel_value_old(result, eval_kernels, log_axis=False):
     diff_kernels, opt_kernels, ori_kernels = calc_diff(result)
 
-    pt.plot_init(scl_a4=1,figsze=[12.8,6.4*1.5],lnewdth=0.8,mrksze=5,use_locale=True,scl=1.2)
+    pt.plot_init(scl_a4=2,figsze=[6,4*2,4,8*2],lnewdth=0.8,mrksze=5,use_locale=True,scl=1.5)
     fig=plt.figure()    
     ax=fig.add_subplot(1,1,1)
     colors = itertools.cycle(['b', 'g', 'r', 'c', 'm', 'y', 'k'])
@@ -637,7 +643,7 @@ if __name__ == '__main__':
         'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_100.npz',
         'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_200.npz',
         'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_400.npz',
-        'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_800_P1P3.npz',
+        'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_800.npz',
         ]
     labels = [
         'iter_50',
@@ -690,11 +696,12 @@ if __name__ == '__main__':
         results = calc_save_PSD_delta(results, data_paths)
     if remove_small_results:
         results = do_remove_small_results(results)
-        
+    
+    pt.plot_init(scl_a4=1,figsze=[6.4*2,4.8*2],lnewdth=0.8,mrksze=5,use_locale=True,scl=2)
     visualize_diff_mean(results, labels)
     
     # kernel: corr_agg_0, corr_agg_1, corr_agg_2, pl_v, pl_P1, pl_P2, pl_P3, pl_P4
-    result_to_analyse = results[-1]
+    result_to_analyse = results[4]
     # if pbe_type == 'agglomeration' or pbe_type == 'mix':
     #     corr_agg_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['corr_agg_0','corr_agg_1','corr_agg_2'])
     # if pbe_type == 'breakage' or pbe_type == 'mix':
@@ -703,7 +710,7 @@ if __name__ == '__main__':
     #     pl_P24_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P2','pl_P4'])
     
     visualize_diff_mean_radar(results, labels)
-    pearson_corrs = visualize_correlation(results)
+    pearson_corrs = visualize_correlation(results, labels)
     correlation_analysis(result_to_analyse,plot=True)
     # visualize_diff_kernel_mse(result_to_analyse)
     

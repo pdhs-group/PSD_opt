@@ -15,10 +15,12 @@ from ray.tune.search.optuna import OptunaSearch
 from ray.tune.search.hebo import HEBOSearch
 from optuna.samplers import GPSampler,CmaEsSampler,TPESampler,NSGAIIISampler,QMCSampler
 from ray.tune.search import ConcurrencyLimiter
+from .opt_core_ray import OptCoreRay
+from .opt_core_multi_ray import OptCoreMultiRay
 
 from ray._private import state
 
-def print_current_actors():
+def print_current_actors(self):
     actors = state.actors()
     print(f"Number of actors: {len(actors)}")
     for actor_id, actor_info in actors.items():
@@ -57,14 +59,12 @@ def multi_optimierer_ray(self, opt_params, exp_data_paths=None, known_params=Non
         else:
             self.RT_space[param] = tune.uniform(bounds[0], bounds[1])
 
-    total_cpus = os.cpu_count()
-    
     ## Add all data (groups for multi_flag=True case) to the job queue
     job_queue = [(paths, params) for paths, params in zip(exp_data_paths, known_params)]
     queue_length = len(job_queue)
 
-    self.check_num_jobs(queue_length, total_cpus)
-    num_jobs_max = self.num_jobs
+    self.check_num_jobs(queue_length)
+    num_jobs_max = self.core.num_jobs
     results = []
     def worker(job_queue_slice):
         job_results = []
@@ -84,10 +84,9 @@ def multi_optimierer_ray(self, opt_params, exp_data_paths=None, known_params=Non
    
     return results
 
-def check_num_jobs(self, queue_length, total_cpus):
-    if queue_length < self.num_jobs:
-        self.num_jobs = queue_length
-    return int(max(1, total_cpus//self.num_jobs))
+def check_num_jobs(self, queue_length):
+    if queue_length < self.core.num_jobs:
+        self.core.num_jobs = queue_length
 
 def optimierer_ray(self, opt_params=None, exp_data_paths=None,known_params=None):
     """
@@ -111,28 +110,28 @@ def optimierer_ray(self, opt_params=None, exp_data_paths=None,known_params=None)
         Optimized value of the objective.
     """
 
-    if self.calc_init_N:
-        self.set_init_N(exp_data_paths, init_flag='mean')
+    if self.core.calc_init_N:
+        self.core.set_init_N(exp_data_paths, init_flag='mean')
     if isinstance(exp_data_paths, list):
         ## When set to multi, the exp_data_paths entered here is a list 
         ## containing one 2d data name and two 1d data names.
         x_uni_exp = []
         data_exp = []
         for exp_data_paths_tem in exp_data_paths:
-            if self.exp_data:
-                x_uni_exp_tem, data_exp_tem = self.get_all_exp_data(exp_data_paths_tem)
+            if self.core.exp_data:
+                x_uni_exp_tem, data_exp_tem = self.core.get_all_exp_data(exp_data_paths_tem)
             else:
-                x_uni_exp_tem, data_exp_tem = self.get_all_synth_data(exp_data_paths_tem)
+                x_uni_exp_tem, data_exp_tem = self.core.get_all_synth_data(exp_data_paths_tem)
             x_uni_exp.append(x_uni_exp_tem)
             data_exp.append(data_exp_tem)
         data_name = os.path.basename(exp_data_paths[0])
     else:
         ## When not set to multi or optimization of 1d-data, the exp_data_paths 
         ## contain the name of that data.
-        if self.exp_data:
-            x_uni_exp, data_exp = self.get_all_exp_data(exp_data_paths)
+        if self.core.exp_data:
+            x_uni_exp, data_exp = self.core.get_all_exp_data(exp_data_paths)
         else:
-            x_uni_exp, data_exp = self.get_all_synth_data(exp_data_paths)
+            x_uni_exp, data_exp = self.core.get_all_synth_data(exp_data_paths)
         data_name = os.path.basename(exp_data_paths)
         
     if opt_params is not None:    
@@ -153,40 +152,47 @@ def optimierer_ray(self, opt_params=None, exp_data_paths=None,known_params=None)
         data_name = data_name[len("Sim_"):]
     if data_name.endswith(".xlsx"):
         data_name = data_name[:-len(".xlsx")]
-    # 运行Ray Tune进行超参数搜索
-    def objective_func(config):
-        # message = f"The value is: {data_exp[0][0][10,10]}"
-        # self.print_notice(message)
-        return self.objective(config, x_uni_exp, data_exp, known_params)
+
     def trial_dirname_creator(trial):
         return f"trial_{trial.trial_id}"
     # objective_func.__name__ = "objective_func" + uuid.uuid4().hex[:8]
-    trainable_with_resources  = tune.with_resources(objective_func, 
-                                                    resources=tune.PlacementGroupFactory([
-        {"CPU": self.cpus_per_trail}
-    ]))
+    if self.dim == 1:
+        trainable = tune.with_parameters(OptCoreRay, core_params=self.core_params, pop_params=self.pop_params,
+                                         data_path=self.data_path,
+                                         x_uni_exp=x_uni_exp, data_exp=data_exp, known_params=known_params)
+    else:
+        trainable = tune.with_parameters(OptCoreMultiRay, core_params=self.core_params, pop_params=self.pop_params,
+                                         data_path=self.data_path,
+                                         x_uni_exp=x_uni_exp, data_exp=data_exp, known_params=known_params)    
+    trainable_with_resources  = tune.with_resources(trainable, 
+                                                  resources=tune.PlacementGroupFactory([{"CPU": self.core.cpus_per_trail}]),
+    )
+    # trainable_with_resources  = tune.with_resources(trainable,                             
+    #     {"cpu": self.core.cpus_per_trail}, 
+    # )
     
     tuner = tune.Tuner(
         trainable_with_resources,
-        # objective_func,
+        # trainable,
         param_space=self.RT_space,
         tune_config=tune.TuneConfig(
-            num_samples=self.n_iter,
+            num_samples=self.core.n_iter,
             # scheduler=scheduler,
             search_alg=algo,
             reuse_actors=True,
             trial_dirname_creator=trial_dirname_creator,
         ),
         run_config=train.RunConfig(
-        storage_path =self.tune_storage_path,
+        storage_path =self.core.tune_storage_path,
         name = data_name, 
-        verbose = 0,
+        verbose = 1,
+        stop={"training_iteration": 1},
         # log_to_file=("stdout.log", "stderr.log")
         )
     )
     
     results = tuner.fit()
-    print_current_actors()
+
     # 获取最优结果
     opt_result = results.get_best_result(metric="loss", mode="min")
     opt_params = opt_result.config
@@ -199,50 +205,21 @@ def optimierer_ray(self, opt_params=None, exp_data_paths=None,known_params=None)
     }
 
     return result_dict
-
-# Objective function considering the log scale transformation if necessary
-def objective(self, config, x_uni_exp, data_exp, known_params):
-    # Special handling for corr_agg based on dimension
-    if 'corr_agg_0' in config:
-        transformed_params = self.array_dict_transform(config)
-    else:
-        transformed_params = config
-    
-    if known_params is not None:
-        for key, value in known_params.items():
-            if key in transformed_params:
-                print(f"Warning: Known parameter '{key}' are set for optimization.")
-            transformed_params[key] = value
-    checkpoint_config = None
-    
-    loss = self.calc_delta(transformed_params, x_uni_exp, data_exp)
-    train.report({"loss": loss}, checkpoint=checkpoint_config)
-    
-def array_dict_transform(self, array_dict):
-    # Special handling for array in dictionary like corr_agg based on dimension
-        if self.p.dim == 1:
-            array_dict['corr_agg'] = np.array([array_dict['corr_agg_0']])
-            del array_dict["corr_agg_0"]
-        elif self.p.dim == 2:
-            array_dict['corr_agg'] = np.array([array_dict[f'corr_agg_{i}'] for i in range(3)])
-            for i in range(3):
-                del array_dict[f'corr_agg_{i}']
-        return array_dict
     
 def create_algo(self, batch=False):
-    if self.method == 'HEBO': 
+    if self.core.method == 'HEBO': 
         search_alg = HEBOSearch(metric="loss", mode="min")
-    elif self.method == 'GP': 
+    elif self.core.method == 'GP': 
         search_alg = OptunaSearch(metric="loss", mode="min", sampler=GPSampler())
-    elif self.method == 'TPE': 
+    elif self.core.method == 'TPE': 
         search_alg = OptunaSearch(metric="loss", mode="min", sampler=TPESampler())
-    elif self.method == 'Cmaes':    
+    elif self.core.method == 'Cmaes':    
         search_alg = OptunaSearch(metric="loss", mode="min", sampler=CmaEsSampler())
-    elif self.method == 'NSGA':    
+    elif self.core.method == 'NSGA':    
         search_alg = OptunaSearch(metric="loss", mode="min", sampler=NSGAIIISampler())
-    elif self.method == 'QMC':    
+    elif self.core.method == 'QMC':    
         search_alg = OptunaSearch(metric="loss", mode="min", sampler=QMCSampler())
-    if self.max_concurrent is None:
+    if self.core.max_concurrent is None:
         return search_alg
     else:
-        return ConcurrencyLimiter(search_alg, max_concurrent=self.max_concurrent, batch=batch)
+        return ConcurrencyLimiter(search_alg, max_concurrent=self.core.max_concurrent, batch=batch)

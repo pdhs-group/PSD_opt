@@ -69,9 +69,9 @@ def run_ray_tune(result_path, n_steps):
     ann.save_validate_results = False
     ann.print_status = False
     ## For unicluster
-    tmpdir = os.environ.get('TMPDIR')
-    ann.path_scaler = os.path.join(tmpdir,'Inputs_scaler.pkl')
-    ann.path_all_data = os.path.join(tmpdir,'output_data_vol.pkl')
+    # tmpdir = os.environ.get('TMPDIR')
+    # ann.path_scaler = os.path.join(tmpdir,'Inputs_scaler.pkl')
+    # ann.path_all_data = os.path.join(tmpdir,'output_data_vol.pkl')
     ## Read training data and split them
     ann.split_data_set(n_splits=m_n_splits)
     # 初始化Ray
@@ -104,6 +104,7 @@ def run_ray_tune(result_path, n_steps):
             reuse_actors=True,
         ),
         run_config=train.RunConfig(
+        verbose = 0,
         storage_path =r"C:\Users\px2030\Code\Ray_Tune"  
         )
     )

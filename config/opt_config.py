@@ -74,10 +74,10 @@ config = {
         ## When use_bundles is True, multiple Tune will be run locally at the same time. 
         ## The psd-data must also be multiple! Multiple here means data with different conditions 
         ## rather than the same data in different dimensions.
-        'multi_jobs': False,
-        'num_jobs': 2,
-        'cpus_per_trail': 8,
-        'max_concurrent':8
+        'multi_jobs': True,
+        'num_jobs': 3,
+        'cpus_per_trail': 4,
+        'max_concurrent': 8
         },
     
     ## PBE parameters

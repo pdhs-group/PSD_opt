@@ -8,10 +8,6 @@ Created on Mon Dec 11 09:05:42 2023
 from .opt_core import OptCore   
 
 class OptCoreMulti(OptCore):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.weight_2d = 1
-    
     def calc_delta(self, params_in,x_uni_exp, data_exp): 
         params = self.check_corr_agg(params_in)
         

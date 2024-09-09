@@ -29,7 +29,7 @@ if __name__ == '__main__':
     #%% Prepare paths of test data set
     ## define the range of corr_beta
     # var_corr_beta = np.array([1e-3,1e-2,1e-1])
-    var_corr_beta = np.array([1e-3])
+    var_corr_beta = np.array([1e-3,1e-2,1e-1])
     ## define the range of alpha_prim 27x3
     values = np.array([1.0])
     a1, a2, a3 = np.meshgrid(values, values, values, indexing='ij')
@@ -50,7 +50,7 @@ if __name__ == '__main__':
     var_v = np.array([0.7])
     # var_v = np.array([0.01])    ## define the range of P1, P2 for power law breakage rate
     var_P1 = np.array([1e-3])
-    var_P2 = np.array([2.0])
+    var_P2 = np.array([0.5])
     var_P3 = np.array([1e-1])
     var_P4 = np.array([0.5])
 
@@ -102,6 +102,7 @@ if __name__ == '__main__':
     result = opt.find_opt_kernels(method='delta', data_names=data_names_list, known_params=known_params_list)       
     end_time = time.time()
     elapsed_time = end_time - start_time
+    print(f"elapsed_time = {elapsed_time} s")
     ## save the results in npz
     if multi_flag:
         result_name = f'multi_{delta_flag}_{method}_wight_{weight_2d}_iter_{n_iter}'
