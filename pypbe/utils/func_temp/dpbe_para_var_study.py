@@ -74,7 +74,7 @@ if __name__ == '__main__':
     t_vec = np.arange(0, 3601, 100, dtype=float)
     # Note that it m5ust correspond to the settings of MC-Bond-Break.3 üf
     p.NS = 8
-    p.S = 3
+    p.S = 4
     
     p.process_type= "mix"
     p.aggl_crit= 100
@@ -107,7 +107,7 @@ if __name__ == '__main__':
     var_corr_beta = np.array([1e-1])
     # var_corr_beta = np.array([1e-2])
     ## define the range of alpha_prim 27x3
-    values = np.array([0.5,1.0])
+    values = np.array([0.1,1.0])
     a1, a2, a3 = np.meshgrid(values, values, values, indexing='ij')
     var_alpha_prim = np.column_stack((a1.flatten(), a2.flatten(), a3.flatten()))
     ## The case of all zero α is meaningless, that means no Agglomeration occurs
@@ -144,7 +144,12 @@ if __name__ == '__main__':
                                 # calc_pbe(p, t_vec, corr_beta, alpha_prim, v, P1, P2, P3, P4, flag)
                                 pbe_list.append((p,t_vec,corr_beta,alpha_prim,v,P1,P2,P3,P4,flag))
     pool = multiprocessing.Pool(processes=24)
-    results=pool.starmap(calc_pbe, pbe_list)                        
-    pool.close()
-    pool.join()                        
-    results_arr = np.array(results)             
+    try:
+        results=pool.starmap(calc_pbe, pbe_list) 
+    except KeyboardInterrupt:
+        print("Caught KeyboardInterrupt, terminating workers")
+        pool.terminate()
+    finally:          
+        pool.close()
+        pool.join()                        
+        results_arr = np.array(results)             

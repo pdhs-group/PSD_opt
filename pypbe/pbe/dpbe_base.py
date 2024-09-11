@@ -43,7 +43,7 @@ class DPBESolver():
                 if key == "alpha_prim" and len(value) != self.dim**2:
                     raise Exception(f"The length of the array alpha_prim needs to be {self.pbe.dim**2}.")
                 setattr(self, key, value)
-        self.reset_params()
+        self.reset_params(reset_t=True)
     
 def bind_methods_from_module(cls, module_name):
     module = importlib.import_module(module_name)

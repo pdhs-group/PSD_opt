@@ -135,13 +135,13 @@ def init_pbe_params(self, dim, t_total, t_write, t_vec, disc, **attr):
         
     self.reset_params()
 
-def reset_params(self):
+def reset_params(self, reset_t=False):
     ## reset t_vec
-    if self.t_vec is None:
+    if reset_t:
         self.t_vec = np.arange(0, self.t_total, self.t_write, dtype=float)
+        self.t_num = len(self.t_vec)
     # else:
     #     print("t_vec already exists, t_total and t_write settings will be discarded!")
-    self.t_num = len(self.t_vec)
     ## reset psd-file path
     self.DIST1 = os.path.join(self.DIST1_path,self.DIST1_name)
     self.DIST2 = os.path.join(self.DIST2_path,self.DIST2_name)
