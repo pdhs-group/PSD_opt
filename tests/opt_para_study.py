@@ -11,8 +11,8 @@ sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),".."))
 from pypbe.kernel_opt.opt_base import OptBase
 
 if __name__ == '__main__':
-    # pth = '/pfs/work7/workspace/scratch/px2030-MC_train'
-    # data_path = os.path.join(pth,"mix", "data")
+    # tmpdir = os.environ.get('TMP_PATH')
+    # data_path = os.path.join(tmpdir, "data")
     data_path = r"C:\Users\px2030\Code\PSD_opt\pypbe\data"
     #%%  Instantiate OptBase.
     opt = OptBase(data_path=data_path)

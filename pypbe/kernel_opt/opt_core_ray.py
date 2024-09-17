@@ -9,31 +9,6 @@ from ray import tune
 from .opt_core import OptCore
 
 class OptCoreRay(OptCore, tune.Trainable):
-    """
-    Class definition for calculations within optimization process class.
-
-    Attributes
-    ----------
-    n_iter : `int`, optional
-        Number of iterations of the optimization process. Default is 100.
-    delta_flag : `str`, optional
-        Which data from the PSD is used for the calculation. Default is 'q3'. Options include:
-        
-        - 'q3': Number density distribution
-        - 'Q3': Cumulative distribution
-        - 'x_10': Particle size corresponding to 10% cumulative distribution
-        - 'x_50': Particle size corresponding to 50% cumulative distribution
-        - 'x_90': Particle size corresponding to 90% cumulative distribution
-    cost_func_type : `str`, optional
-        Method for calculating the PSD difference. Default is 'MSE'. Options include:
-        
-        - 'MSE': Mean Squared Error
-        - 'RMSE': Root Mean Squared Error
-        - 'MAE': Mean Absolute Error
-        - 'KL': Kullback–Leibler divergence (Only q3 and Q3 are compatible with KL)
-    calc_init_N : `bool`, optional
-        Whether to use experimental data to calculate initial conditions. If False, the initial conditions for PBE need to be defined manually. Default is False.
-    """  
     def __init__(self, *args, **kwargs):
         tune.Trainable.__init__(self, *args, **kwargs)
     def setup(self, config, core_params, pop_params, data_path, x_uni_exp, data_exp, known_params):

@@ -139,6 +139,7 @@ def reset_params(self, reset_t=False):
     ## reset t_vec
     if reset_t:
         self.t_vec = np.arange(0, self.t_total, self.t_write, dtype=float)
+    if self.t_vec is not None:
         self.t_num = len(self.t_vec)
     # else:
     #     print("t_vec already exists, t_total and t_write settings will be discarded!")

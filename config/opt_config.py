@@ -50,8 +50,8 @@ config = {
         'R_01': 8.677468940430804e-07,
         'R_03': 8.677468940430804e-07*1,
         ## Adjust the coordinate of PBE(optional)
-        'R01_0_scl': 1e-1,
-        'R03_0_scl': 1e-1,
+        'R01_0_scl': 1,
+        'R03_0_scl': 1,
         'PSD_R01' : 'PSD_x50_2.0E-6_RelSigmaV_1.5E-1.npy',
         'PSD_R03' : 'PSD_x50_2.0E-6_RelSigmaV_1.5E-1.npy',
         ## The error of 2d pop may be more important, so weight needs to be added
@@ -102,8 +102,8 @@ config = {
         'CORR_BETA' : 100,
         ## The "average volume" of the two elemental particles in the system.
         ## Used to scale the particle volume in calculation of the breakage rate.
-        'V1_mean' : 1e-18,
-        'V3_mean' : 1e-18,
+        'V1_mean' : 1e-15,
+        'V3_mean' : 1e-15,
         ## Reduce particle number desity concentration to improve calculation stability
         ## Default value = 1e14 
         'V_unit': 1e-15,

@@ -78,6 +78,9 @@ def run_ray_tune(result_path, n_steps):
     ray.init(runtime_env={"env_vars": {"PYTHONPATH": os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))}},
              # num_cpus=12
              )
+    # ray.init(address=os.environ["ip_head"], runtime_env={"env_vars": {"PYTHONPATH": os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))}},
+    #          # num_cpus=12
+    #          )
     
     # 使用ASHAScheduler进行早停
     # scheduler = ASHAScheduler(

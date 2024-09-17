@@ -8,12 +8,15 @@
 #SBATCH --cpus-per-task=80
 #SBATCH --time=72:00:00
 #SBATCH --mem=60000mb
+#SBATCH --constraint=BEEOND
 
 module purge
 module load jupyter/tensorflow/2023-10-10
-. /pfs/data5/home/kit/mvm/px2030/code/tensorflow/bin/activate
-srun --nodes=1 --ntasks=1 tar -C $TMPDIR/ -xzf $(ws_find MC_train)/ANN_train.tar.gz
 
+export TMP_PATH="/mnt/odfs/${SLURM_JOB_ID}/stripe_1"
+tar -C $TMP_PATH -xzf $(ws_find MC_train)/mix_data_shear.tar.gz
+tar -C $TMP_PATH -xzf $(ws_find MC_train)/tensorflow_env.tar.gz
+source $TMP_PATH/tensorflow/bin/activate
 # __doc_head_address_start__
 
 # Getting the node names
