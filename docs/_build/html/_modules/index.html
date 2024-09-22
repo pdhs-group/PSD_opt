@@ -12,11 +12,11 @@
     <script src="../_static/js/html5shiv.min.js"></script>
   <![endif]-->
   
-        <script src="../_static/jquery.js"></script>
-        <script src="../_static/_sphinx_javascript_frameworks_compat.js"></script>
         <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+        <script src="../_static/jquery.js"></script>
+        <script src="../_static/underscore.js"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js"></script>
         <script src="../_static/doctools.js"></script>
-        <script src="../_static/sphinx_highlight.js"></script>
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" /> 
@@ -47,7 +47,6 @@
 <li class="toctree-l1"><a class="reference internal" href="../attributes.html">Attributes of the dPBE Class</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../advanced_guide.html">Advanced Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../references.html">References</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../pop.html">pop module</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../modules.html">PSD_opt</a></li>
 </ul>
 
@@ -75,23 +74,43 @@
            <div itemprop="articleBody">
              
   <h1>All modules for which code is available</h1>
-<ul><li><a href="func/func_math.html">func.func_math</a></li>
-<li><a href="func/func_read_exp.html">func.func_read_exp</a></li>
-<li><a href="func_test/base_opt_test.html">func_test.base_opt_test</a></li>
-<li><a href="func_test/bond_break.html">func_test.bond_break</a></li>
-<li><a href="func_test/bond_break_jit.html">func_test.bond_break_jit</a></li>
-<li><a href="func_test/cell_average_agg_with_breakage_debug.html">func_test.cell_average_agg_with_breakage_debug</a></li>
-<li><a href="func_test/cell_average_agglomeration_debug.html">func_test.cell_average_agglomeration_debug</a></li>
-<li><a href="func_test/cell_average_breakage_debug.html">func_test.cell_average_breakage_debug</a></li>
-<li><a href="func_test/dependency_test.html">func_test.dependency_test</a></li>
-<li><a href="func_test/psd_read_and_smoothing_test.html">func_test.psd_read_and_smoothing_test</a></li>
-<li><a href="func_test/rhs_2d_geo_test.html">func_test.rhs_2d_geo_test</a></li>
-<li><a href="opt_algo.html">opt_algo</a></li>
-<li><a href="opt_algo_multi.html">opt_algo_multi</a></li>
-<li><a href="opt_find.html">opt_find</a></li>
-<li><a href="opt_main.html">opt_main</a></li>
-<li><a href="pop.html">pop</a></li>
-<li><a href="pop_MC.html">pop_MC</a></li>
+<ul><li><a href="pypbe/bond_break/bond_break_generate_data.html">pypbe.bond_break.bond_break_generate_data</a></li>
+<li><a href="pypbe/bond_break/bond_break_jit.html">pypbe.bond_break.bond_break_jit</a></li>
+<li><a href="pypbe/bond_break/bond_break_post.html">pypbe.bond_break.bond_break_post</a></li>
+<li><a href="pypbe/kernel_opt/opt_algo_bo.html">pypbe.kernel_opt.opt_algo_bo</a></li>
+<li><a href="pypbe/kernel_opt/opt_base.html">pypbe.kernel_opt.opt_base</a></li>
+<li><a href="pypbe/kernel_opt/opt_base_ray.html">pypbe.kernel_opt.opt_base_ray</a></li>
+<li><a href="pypbe/kernel_opt/opt_core.html">pypbe.kernel_opt.opt_core</a></li>
+<li><a href="pypbe/kernel_opt/opt_core_multi.html">pypbe.kernel_opt.opt_core_multi</a></li>
+<li><a href="pypbe/kernel_opt/opt_core_multi_ray.html">pypbe.kernel_opt.opt_core_multi_ray</a></li>
+<li><a href="pypbe/kernel_opt/opt_core_ray.html">pypbe.kernel_opt.opt_core_ray</a></li>
+<li><a href="pypbe/kernel_opt/opt_data.html">pypbe.kernel_opt.opt_data</a></li>
+<li><a href="pypbe/kernel_opt/opt_pbe.html">pypbe.kernel_opt.opt_pbe</a></li>
+<li><a href="pypbe/pbe/dpbe_base.html">pypbe.pbe.dpbe_base</a></li>
+<li><a href="pypbe/pbe/dpbe_core.html">pypbe.pbe.dpbe_core</a></li>
+<li><a href="pypbe/pbe/dpbe_mag_sep.html">pypbe.pbe.dpbe_mag_sep</a></li>
+<li><a href="pypbe/pbe/dpbe_post.html">pypbe.pbe.dpbe_post</a></li>
+<li><a href="pypbe/pbe/dpbe_visualization.html">pypbe.pbe.dpbe_visualization</a></li>
+<li><a href="pypbe/pbe/mcpbe.html">pypbe.pbe.mcpbe</a></li>
+<li><a href="pypbe/utils/func/RK_Radau.html">pypbe.utils.func.RK_Radau</a></li>
+<li><a href="pypbe/utils/func/func_math.html">pypbe.utils.func.func_math</a></li>
+<li><a href="pypbe/utils/func/func_read_exp.html">pypbe.utils.func.func_read_exp</a></li>
+<li><a href="pypbe/utils/func/jit_pop.html">pypbe.utils.func.jit_pop</a></li>
+<li><a href="pypbe/utils/func/static_method.html">pypbe.utils.func.static_method</a></li>
+<li><a href="pypbe/utils/func_temp/RK_Radau_debug.html">pypbe.utils.func_temp.RK_Radau_debug</a></li>
+<li><a href="pypbe/utils/func_temp/RK_Radau_debug_jit.html">pypbe.utils.func_temp.RK_Radau_debug_jit</a></li>
+<li><a href="pypbe/utils/func_temp/base_opt_test.html">pypbe.utils.func_temp.base_opt_test</a></li>
+<li><a href="pypbe/utils/func_temp/breakage_function_plot.html">pypbe.utils.func_temp.breakage_function_plot</a></li>
+<li><a href="pypbe/utils/func_temp/cell_average_agg_with_breakage_debug.html">pypbe.utils.func_temp.cell_average_agg_with_breakage_debug</a></li>
+<li><a href="pypbe/utils/func_temp/cell_average_agglomeration_debug.html">pypbe.utils.func_temp.cell_average_agglomeration_debug</a></li>
+<li><a href="pypbe/utils/func_temp/cell_average_breakage_debug.html">pypbe.utils.func_temp.cell_average_breakage_debug</a></li>
+<li><a href="pypbe/utils/func_temp/convert_exp_data.html">pypbe.utils.func_temp.convert_exp_data</a></li>
+<li><a href="pypbe/utils/func_temp/dpbe_para_var_study.html">pypbe.utils.func_temp.dpbe_para_var_study</a></li>
+<li><a href="pypbe/utils/func_temp/rhs_2d_geo_test.html">pypbe.utils.func_temp.rhs_2d_geo_test</a></li>
+<li><a href="pypbe/utils/general_scripts/extract_xls.html">pypbe.utils.general_scripts.extract_xls</a></li>
+<li><a href="pypbe/utils/general_scripts/generate_psd.html">pypbe.utils.general_scripts.generate_psd</a></li>
+<li><a href="pypbe/utils/general_scripts/psd_opt_post.html">pypbe.utils.general_scripts.psd_opt_post</a></li>
+<li><a href="pypbe/utils/plotter/plotter.html">pypbe.utils.plotter.plotter</a></li>
 </ul>
 
            </div>

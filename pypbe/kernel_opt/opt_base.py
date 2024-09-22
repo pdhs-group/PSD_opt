@@ -362,10 +362,10 @@ class OptBase():
     def calc_PSD_delta(self, params, exp_data_path):
         """
         Directly calculates the delta value using the input parameters.
-
-        This method is used to validate the accuracy of the calculated delta by comparing the 
+ulated delta by comparing the 
         particle size distribution (PSD) from the input parameters with the experimental data.
-        It can also be used to compute the theoretical minimum delta value for synthetically 
+        It can also be used to compute the theoretical minimum delta 
+        This method is used to validate the accuracy of the calcvalue for synthetically 
         generated data.
 
         Parameters

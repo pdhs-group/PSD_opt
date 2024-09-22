@@ -16,7 +16,7 @@ If you only change docstrings inside the .py files, also simply use
     
 Otherwise, you need to set up the documentation of new modules from the Powershell with the following commands.
 
-Inside the root directory (where pop.py is) use 
+Inside the root directory use 
 
     sphinx-apidoc -o docs . 
 

@@ -15,7 +15,7 @@ import config.opt_config as conf
 
 def calc_function(conf_params):
     #%%  Input for Opt 
-    find = OptBase()
+    find = OptBase(data_path=data_path)
     if not isinstance(conf_params, dict):
         raise TypeError("conf_params should be a dictionary.")
     b = conf_params['CORR_BETA']
@@ -42,9 +42,10 @@ if __name__ == '__main__':
         resigma = 0.2
         minscale = 0.01
         maxscale = 100
-        dist_path_1 = full_psd(x50, resigma, minscale=minscale, maxscale=maxscale, plot_psd=False)
-        dist_path_5 = full_psd(x50*5, resigma, minscale=minscale, maxscale=maxscale, plot_psd=False)
-        dist_path_10 = full_psd(x50*10, resigma, minscale=minscale, maxscale=maxscale, plot_psd=False)
+        output_dir = os.path.join(data_path, "PSD_data")
+        dist_path_1 = full_psd(x50, resigma, minscale=minscale, maxscale=maxscale, plot_psd=False, output_dir=output_dir)
+        dist_path_5 = full_psd(x50*5, resigma, minscale=minscale, maxscale=maxscale, plot_psd=False, output_dir=output_dir)
+        dist_path_10 = full_psd(x50*10, resigma, minscale=minscale, maxscale=maxscale, plot_psd=False, output_dir=output_dir)
     else:
         pth = os.path.dirname( __file__ )
         dist_path_1 = os.path.join(data_path, "PSD_data", conf.config['dist_scale_1'])

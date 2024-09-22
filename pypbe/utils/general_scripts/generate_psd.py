@@ -87,7 +87,7 @@ def find_x_f(Q_PSD,x_PSD,F):
     
     return x_F
 
-def full_psd(x50, resigma=0.2, minscale=None, maxscale=None, plot_psd=False):
+def full_psd(x50, resigma=0.2, minscale=None, maxscale=None, plot_psd=False, output_dir=None):
     
     ## INPUT-Parameters:
     # x50:   Median diameter of the distribution. Q(x50)=0.5. 
@@ -130,7 +130,8 @@ def full_psd(x50, resigma=0.2, minscale=None, maxscale=None, plot_psd=False):
         ax.set_xscale('log')
         ax.legend(['Density distribution q','Sum distribution Q'])
     # Generate full3 filestring
-    output_dir = os.path.join(os.path.dirname( __file__ ),"..","..","data","PSD_data")
+    if output_dir is None:
+        output_dir = os.path.join(os.path.dirname( __file__ ),"..","..","data","PSD_data")
     os.makedirs(output_dir, exist_ok=True)
     dist = os.path.join(output_dir, f"PSD_x50_{Decimal(x50):.1E}_RelSigmaV_{Decimal(resigma):.1E}.npy")
     
