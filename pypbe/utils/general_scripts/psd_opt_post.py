@@ -465,7 +465,7 @@ def visualize_diff_kernel_value(result, eval_kernels, log_axis=False):
         color = next(colors)
         
         ori_values = np.array(ori_kernels[kernel]).reshape(-1, 1)
-        opt_values = np.array(diff_kernels[kernel])
+        opt_values = np.array(opt_kernels[kernel])
         
         mean_opt = []
         std_opt = []
@@ -639,18 +639,20 @@ if __name__ == '__main__':
     #     ]
     
     file_names = [
-        'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_50.npz',
+        # 'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_50.npz',
         'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_100.npz',
-        'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_200.npz',
+        # 'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_200.npz',
         'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_400.npz',
-        # 'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_800.npz',
+        'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_800.npz',
+        # 'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_1600.npz',
         ]
     labels = [
-        'iter_50',
+        # 'iter_50',
         'iter_100',
-        'iter_200',
+        # 'iter_200',
         'iter_400',
-        # 'iter_800',
+        'iter_800',
+        # 'iter_1600',
         ]
     
     # file_names = [
@@ -702,12 +704,12 @@ if __name__ == '__main__':
     
     # kernel: corr_agg_0, corr_agg_1, corr_agg_2, pl_v, pl_P1, pl_P2, pl_P3, pl_P4
     result_to_analyse = results[-1]
-    # if pbe_type == 'agglomeration' or pbe_type == 'mix':
-    #     corr_agg_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['corr_agg_0','corr_agg_1','corr_agg_2'])
-    # if pbe_type == 'breakage' or pbe_type == 'mix':
-    #     pl_v_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_v'])
-    #     pl_P13_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P1','pl_P3'], log_axis=False)
-    #     pl_P24_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P2','pl_P4'])
+    if pbe_type == 'agglomeration' or pbe_type == 'mix':
+        corr_agg_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['corr_agg_0','corr_agg_1','corr_agg_2'])
+    if pbe_type == 'breakage' or pbe_type == 'mix':
+        pl_v_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_v'])
+        pl_P13_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P1','pl_P3'], log_axis=False)
+        pl_P24_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P2','pl_P4'])
     
     visualize_diff_mean_radar(results, labels)
     pearson_corrs = visualize_correlation(results, labels)

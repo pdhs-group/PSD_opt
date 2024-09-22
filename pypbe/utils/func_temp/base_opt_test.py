@@ -71,9 +71,6 @@ def normal_test():
     opt.core.p_NM.visualize_distribution(axq3=axq3_NM, axQ3=axQ3_NM, fig=fig_NM, clr='r', lbl='opt', smoothing=True)
     opt.core.p_M.visualize_distribution(axq3=axq3_M, axQ3=axQ3_M, fig=fig_M, clr='r', lbl='opt', smoothing=True) 
     opt.core.p.visualize_distribution_animation(smoothing=True)
-    opt.save_as_png(fig, "PSD")
-    opt.save_as_png(fig_NM, "PSD-NM")
-    opt.save_as_png(fig_M, "PSD-M")
     
     return result_dict
 
@@ -116,7 +113,7 @@ if __name__ == '__main__':
     ## data is used, while algo determines the optimization process.
     opt = OptBase()
     
-    data_name = "Sim_Mul_0.1_para_0.001_0.5_0.5_0.5_0.7_0.001_0.5_0.001_0.5.xlsx"  
+    data_name = "Sim_Mul_0.1_para_1.0_0.001_0.001_0.1_1.5_0.01_0.5_0.01_2.0.xlsx"  
     exp_data_path = os.path.join(opt.data_path, data_name)
     exp_data_paths = [
         exp_data_path,

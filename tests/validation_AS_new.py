@@ -14,8 +14,8 @@ import math
 import pypbe.utils.plotter.plotter as pt
 from pypbe.utils.plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
 
-from pypbe.dpbe import population as pop_disc
-from pypbe.mcpbe import population_MC as pop_mc 
+from pypbe.pbe.dpbe_base import DPBESolver as pop_disc
+from pypbe.pbe.mcpbe import population_MC as pop_mc 
 
 #%% CASES
 def calculate_case(CASE, PBE=True, MC=False):
@@ -33,16 +33,11 @@ def calculate_case(CASE, PBE=True, MC=False):
     if CASE == '1D_const_mono':
         ### POPULATION BALANCE
         if PBE:
-            p = pop_disc(1, disc=grid)
+            p = pop_disc(1, disc=grid, load_attr=False)
             
             p.process_type = process_type
             p.BREAKFVAL = 2
             p.BREAKRVAL = 2
-            p.pl_v = pl_v   ## number of fragments
-            p.pl_q = pl_q   ## parameter describes the breakage type
-            p.pl_P1 = pl_P1
-            p.pl_P2 = pl_P2
-            p.G = G
             
             p.NS = NS  
             p.S = S
@@ -51,14 +46,12 @@ def calculate_case(CASE, PBE=True, MC=False):
             p.CORR_BETA = beta0
             p.SIZEEVAL = 1
             p.R01 = x/2
-            p.USE_PSD = False                  
-            p.P1=0                                  # No breakage     
-            p.N01 = n0
-            
+            p.USE_PSD = False                      
+            # p.N01 = n0
               
             p.calc_R()
-            p.init_N(reset_N=False)
-            p.alpha_prim = 1
+            p.init_N(reset_N=True, N01=n0)
+            p.alpha_prim = alpha_pbe[0]
             p.calc_F_M()
             p.calc_B_R()
             p.calc_int_B_F()
@@ -102,16 +95,11 @@ def calculate_case(CASE, PBE=True, MC=False):
     elif CASE == '2D_const_mono':
         ### POPULATION BALANCE
         if PBE:
-            p = pop_disc(2, disc=grid)
+            p = pop_disc(2, disc=grid, load_attr=False)
             
             p.process_type = process_type
             p.BREAKFVAL = 2
             p.BREAKRVAL = 1
-            p.pl_v = pl_v   ## number of fragments
-            p.pl_q = pl_q   ## parameter describes the breakage type
-            p.pl_P1 = pl_P1
-            p.pl_P2 = pl_P2
-            p.G = G
             
             p.NS = NS  
             p.S = S
@@ -121,11 +109,10 @@ def calculate_case(CASE, PBE=True, MC=False):
             p.SIZEEVAL = 1
             p.R01, p.R03 = x/2, x/2
             p.USE_PSD = False                  
-            p.P1=0                                  # No breakage     
-            p.N01, p.N03 = n0, n0
+            # p.N01, p.N03 = n0, n0
     
             p.calc_R()
-            p.init_N(reset_N=False)
+            p.init_N(reset_N=True, N01=n0, N03=n0)
             p.alpha_prim = np.ones(4)
             p.calc_F_M()
             p.calc_B_R()
@@ -183,7 +170,7 @@ def calculate_case(CASE, PBE=True, MC=False):
     elif CASE == '1D_sum_mono':
         ### POPULATION BALANCE
         if PBE:
-            p = pop_disc(1, disc=grid)
+            p = pop_disc(1, disc=grid, load_attr=False)
         
             p.NS = NS  
             p.process_type = process_type
@@ -195,12 +182,11 @@ def calculate_case(CASE, PBE=True, MC=False):
             p.CORR_BETA = beta0/v0
             p.SIZEEVAL = 1
             p.R01 = x/2
-            p.USE_PSD = False                  
-            p.P1=0                                  # No breakage     
-            p.N01 = n0
+            p.USE_PSD = False                    
+            # p.N01 = n0
               
             p.calc_R()
-            p.init_N(reset_N=False)
+            p.init_N(reset_N=True, N01=n0)
             p.alpha_prim = 1
             p.calc_F_M()
             p.calc_B_R()
@@ -268,7 +254,7 @@ def calculate_case(CASE, PBE=True, MC=False):
     elif CASE == '2D_sum_mono':
         ### POPULATION BALANCE
         if PBE:
-            p = pop_disc(2, disc=grid)
+            p = pop_disc(2, disc=grid, load_attr=False)
         
             p.NS = NS  
             p.process_type = process_type
@@ -280,12 +266,11 @@ def calculate_case(CASE, PBE=True, MC=False):
             p.CORR_BETA = beta0/v0
             p.SIZEEVAL = 1
             p.R01, p.R03 = x/2, x/2
-            p.USE_PSD = False                  
-            p.P1=0                                  # No breakage     
-            p.N01, p.N03 = n0, n0
+            p.USE_PSD = False                    
+            # p.N01, p.N03 = n0, n0
     
             p.calc_R()
-            p.init_N(reset_N=False)
+            p.init_N(reset_N=True, N01=n0, N03=n0)
             p.alpha_prim = np.ones(4)
             p.calc_F_M()
             p.calc_B_R()
@@ -518,10 +503,6 @@ def plot_Q3(m_save, p, p2=None, alpha=1, label=None, Q3_grid=np.linspace(0,1,21)
 #%% MAIN    
 if __name__ == "__main__":
     ### Plot parameters
-    EXP = True
-    #EXPPTH = 'export/'
-    EXPPTH = 'C:/Users/px2030/Code/PSD_opt/general_scripts/temp/'
-    EXPRAW = False
     REL = True
     
     ### Define calculation case
@@ -532,33 +513,26 @@ if __name__ == "__main__":
     # '2D_sum_mono_ccm': 2D, sum kernel, monodisperse initial conditions, aplha from CCM
     # CASE = '1D_const_mono'
     # CASE = '2D_const_mono'
-    CASE = '1D_sum_mono'
-    # CASE = '2D_sum_mono'
+    # CASE = '1D_sum_mono'
+    CASE = '2D_sum_mono'
     
     ### General parameters
-    t = np.arange(0, 601, 30, dtype=float)     # Time array [s]
+    t = np.arange(0, 5, 0.25, dtype=float)     # Time array [s]
     c = 1                # Volume concentration [-]
-    # v0 = 1e-9
-    x = 1e-4                    # Particle diameter [m]
-    # x = (v0*6/math.pi)**(1/3)
-    beta0 = 1e-16                  # Collision frequency parameter [m^3/s]
+    x = 2e-1                  # Particle diameter [m]
     n0 = 3*c/(4*math.pi*(x/2)**3)   # Total number concentration of primary particles
-    # n0 = 1                        # validation for pure breakage
-    # v0 = 4*math.pi*(x/2)**3/3       # Volume of a primary particle
-    MULTI_INTERNAL = False
     
     ### PBE Parameters
     grid = 'geo'
-    NS = 8
+    S = 4
+    NS = 15
     # NS2 = 15
     #NS2 = 50
-    process_type = "agglomeration"
+    process_type = "breakage"
     
-    S = 4
+    beta0 = 1e-16                  # Collision frequency parameter [m^3/s]
     v0 = 4*math.pi*(x/2)**3/3*(1+S)/2
-    # alpha_pbe = np.array([1,0.2,0.2,0])
     alpha_pbe = np.array([1,1,1,1])
-    # alpha_pbe = np.array([1,0,0,0])
     
     ### MC Parameters
     a0 = 200
@@ -566,15 +540,6 @@ if __name__ == "__main__":
     VERBOSE = True    
     alpha_mc = np.reshape(alpha_pbe,(2,2))
     
-    EFFEVAL=2       #dPB
-    COLEVAL=3       #dPB
-    BREAKFVAL = 2
-    BREAKRVAL = 2
-    pl_v = 0.5   ## number of fragments
-    pl_q = 1   ## parameter describes the breakage type
-    pl_P1 = 1 
-    pl_P2 = 1
-    G = 2.3
 
     mu_as, mu_pbe, mu_mc, std_mu_mc, p, m, mu_mc_reps, m_save  = calculate_case(CASE,MC=False)
     
@@ -592,14 +557,14 @@ if __name__ == "__main__":
         ax3, fig3 = plot_moment_t(mu_as[:,:,1:], mu_pbe[:,:,1:], mu_mc[:,:,1:], std_mu_mc = std_mu_mc[:,:,1:], 
                                   i=1, j=1, t_mod=t[1:], label='(c)',labelpos='se', rel=REL, alpha = ALPHA)
         
-    # if NS2 is not None:
-    #     NS = NS2
-    #     _, mu_pbe2, _, _, p2, _, _, _  = calculate_case(CASE)
-    #     ax1, fig1 = add_moment_t(mu_pbe2, fig1, ax1, i=0, j=0, rel=REL, alpha = ALPHA)
-    #     ax2, fig2 = add_moment_t(mu_pbe2, fig2, ax2, i=1, j=0, rel=REL, alpha = ALPHA)
-    #     ax4, fig4 = add_moment_t(mu_pbe2, fig4, ax4, i=2, j=0, rel=REL, alpha = ALPHA)
-    #     if p.dim == 2:
-    #         ax3, fig3 = add_moment_t(mu_pbe2[:,:,1:], fig3, ax3, i=1, j=1, t_mod=t[1:], rel=REL, alpha = ALPHA)
+    if NS2 is not None:
+        NS = NS2
+        _, mu_pbe2, _, _, p2, _, _, _  = calculate_case(CASE)
+        ax1, fig1 = add_moment_t(mu_pbe2, fig1, ax1, i=0, j=0, rel=REL, alpha = ALPHA)
+        ax2, fig2 = add_moment_t(mu_pbe2, fig2, ax2, i=1, j=0, rel=REL, alpha = ALPHA)
+        ax4, fig4 = add_moment_t(mu_pbe2, fig4, ax4, i=2, j=0, rel=REL, alpha = ALPHA)
+        if p.dim == 2:
+            ax3, fig3 = add_moment_t(mu_pbe2[:,:,1:], fig3, ax3, i=1, j=1, t_mod=t[1:], rel=REL, alpha = ALPHA)
             
     # ax2.legend().remove()
     # if p.dim == 2: ax3.legend().remove()
@@ -607,23 +572,3 @@ if __name__ == "__main__":
     
     # ax5, fig5, x_mc, x_mc_std, x_mc_full = plot_Q3(m_save, p, p2, alpha=ALPHA, label='(d)')
     # ax5.legend().remove()
-    
-    # if EXP:
-    #     fig1.savefig(EXPPTH+f'{CASE}_MU00.png',dpi=300)
-    #     fig2.savefig(EXPPTH+f'{CASE}_MU10.png',dpi=300)
-    #     fig4.savefig(EXPPTH+f'{CASE}_MU20.png',dpi=300)
-    #     if p.dim == 2:
-    #         fig3.savefig(EXPPTH+f'{CASE}_MU11.png',dpi=300)   
-    #     fig5.savefig(EXPPTH+f'{CASE}_Q3.pdf')
-            
-    # if EXPRAW:
-    #     from datetime import datetime
-    #     current_time = datetime.now()
-    #     formatted_time = current_time.strftime('%Y%m%d_%H%M%S')
-    #     np.save(EXPPTH+'raw/raw_data_valid_'+formatted_time+'.npy',
-    #             {'mu_as':mu_as, 'mu_pbe':mu_pbe, 'mu_mc':mu_mc, 
-    #              'std_mu_mc':std_mu_mc, 'p':p, 'm':m, 
-    #              'mu_mc_reps':mu_mc_reps, 'm_save':m_save})
-        
-
-

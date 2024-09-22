@@ -28,10 +28,9 @@ if __name__ == '__main__':
     
     #%% Prepare paths of test data set
     ## define the range of corr_beta
-    # var_corr_beta = np.array([1e-3,1e-2,1e-1])
-    var_corr_beta = np.array([1e-3,1e-2,1e-1])
+    var_corr_beta = np.array([1.0])
     ## define the range of alpha_prim 27x3
-    values = np.array([1.0])
+    values = np.array([1e-3,1e-1])
     a1, a2, a3 = np.meshgrid(values, values, values, indexing='ij')
     var_alpha_prim = np.column_stack((a1.flatten(), a2.flatten(), a3.flatten()))
     ## The case of all zero α is meaningless, that means no Agglomeration occurs
@@ -47,12 +46,12 @@ if __name__ == '__main__':
     var_alpha_prim = np.array(unique_alpha_prim)
 
     ## define the range of v(breakage function)
-    var_v = np.array([0.7])
+    var_v = np.array([1.0,1.5])
     # var_v = np.array([0.01])    ## define the range of P1, P2 for power law breakage rate
-    var_P1 = np.array([1e-3])
-    var_P2 = np.array([0.5])
-    var_P3 = np.array([1e-1])
-    var_P4 = np.array([0.5])
+    var_P1 = np.array([1e-4,1e-2])
+    var_P2 = np.array([0.5,2.0])
+    var_P3 = np.array([1e-4,1e-2])
+    var_P4 = np.array([0.5,2.0])
 
     ## define the range of particle size scale and minimal size
     

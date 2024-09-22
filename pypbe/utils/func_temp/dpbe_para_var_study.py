@@ -72,42 +72,12 @@ if __name__ == '__main__':
     
     ## Set the PBE parameters
     t_vec = np.arange(0, 3601, 100, dtype=float)
-    # Note that it m5ust correspond to the settings of MC-Bond-Break.3 üf
-    p.NS = 8
-    p.S = 4
-    
-    p.process_type= "mix"
-    p.aggl_crit= 100
-    p.COLEVAL= 1
-    p.EFFEVAL= 1
-    p.SIZEEVAL= 1
-    p.BREAKRVAL= 4
-    p.BREAKFVAL= 5
-    ## The original value is the particle size at 1% of the PSD distribution. 
-    ## The position of this value in the coordinate system can be adjusted by multiplying by size_scale.
-    size_scale = 1e0
-    p.R01 = 8.677468940430804e-07*size_scale
-    p.R03 = 8.677468940430804e-07*size_scale
-    
-    ## If you need to read PSD data as initial conditions, set the PSD data path
-    if p.process_type == 'breakage':
-        p.USE_PSD = False
-    else:
-        p.USE_PSD = True
-    
-    ## Use the breakage function calculated by the MC-Bond-Break method
-    p.USE_MC_BOND = False
-    p.solver = "ivp"
-    
-    ## Initialize the PBE
-    p.V_unit = 1e-15
-    # p.full_init(calc_alpha=False)
 
     ## define the range of corr_beta
     var_corr_beta = np.array([1e-1])
     # var_corr_beta = np.array([1e-2])
     ## define the range of alpha_prim 27x3
-    values = np.array([0.1,1.0])
+    values = np.array([1e-3,1.0])
     a1, a2, a3 = np.meshgrid(values, values, values, indexing='ij')
     var_alpha_prim = np.column_stack((a1.flatten(), a2.flatten(), a3.flatten()))
     ## The case of all zero α is meaningless, that means no Agglomeration occurs
@@ -125,12 +95,10 @@ if __name__ == '__main__':
     ## define the range of v(breakage function)
     var_v = np.array([0.7,2.0])
     # var_v = np.array([0.01])    ## define the range of P1, P2 for power law breakage rate
-    var_P1 = np.array([1e-3,1e-1])
+    var_P1 = np.array([1e-5,1e-2])
     var_P2 = np.array([0.5,2.0])
-    var_P3 = np.array([1e-3,1e-1])
+    var_P3 = np.array([1e-5,1e-2])
     var_P4 = np.array([0.5,2.0])
-    p.V1_mean = 1e-15
-    p.V3_mean = 1e-15
 
     pbe_list = []
     for j,corr_beta in enumerate(var_corr_beta):
@@ -143,7 +111,7 @@ if __name__ == '__main__':
                                 ## Test with single process
                                 # calc_pbe(p, t_vec, corr_beta, alpha_prim, v, P1, P2, P3, P4, flag)
                                 pbe_list.append((p,t_vec,corr_beta,alpha_prim,v,P1,P2,P3,P4,flag))
-    pool = multiprocessing.Pool(processes=24)
+    pool = multiprocessing.Pool(processes=8)
     try:
         results=pool.starmap(calc_pbe, pbe_list) 
     except KeyboardInterrupt:

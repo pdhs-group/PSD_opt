@@ -42,7 +42,7 @@ def generate_psd_normal(x50,sigma,exp_name=None,xmin=None,xmax=None):
     Q_PSD=np.zeros(np.shape(q_PSD))
     for i in range(1,len(Q_PSD)):
         Q_PSD[i]=np.trapz(q_PSD[:i+1],x_PSD[:i+1])
-        
+    Q_PSD = Q_PSD/Q_PSD[-1]    
     return Q_PSD, q_PSD, x_PSD 
 
 def generate_psd_lognormal(x50,sigma,exp_name=None,xmin=None,xmax=None):
@@ -67,6 +67,7 @@ def generate_psd_lognormal(x50,sigma,exp_name=None,xmin=None,xmax=None):
     Q_PSD = np.zeros_like(q_PSD)
     for i in range(1, len(Q_PSD)):
         Q_PSD[i] = np.trapz(q_PSD[:i+1], x_PSD[:i+1])
+    Q_PSD = Q_PSD/Q_PSD[-1]
         
     return Q_PSD, q_PSD, x_PSD
     
@@ -128,7 +129,7 @@ def full_psd(x50, resigma=0.2, minscale=None, maxscale=None, plot_psd=False):
         plt.axvline(x=r0_005,color='k')
         ax.set_xscale('log')
         ax.legend(['Density distribution q','Sum distribution Q'])
-    # Generate full filestring
+    # Generate full3 filestring
     output_dir = os.path.join(os.path.dirname( __file__ ),"..","..","data","PSD_data")
     os.makedirs(output_dir, exist_ok=True)
     dist = os.path.join(output_dir, f"PSD_x50_{Decimal(x50):.1E}_RelSigmaV_{Decimal(resigma):.1E}.npy")
@@ -139,3 +140,9 @@ def full_psd(x50, resigma=0.2, minscale=None, maxscale=None, plot_psd=False):
        
     return dist
         
+if __name__ == '__main__':
+    x50 = 20  # /um
+    resigma = 0.2
+    minscale = 0.01
+    maxscale = 100
+    full_psd(x50, resigma, minscale=minscale, maxscale=maxscale, plot_psd=True)

@@ -32,16 +32,16 @@ def calc_function(conf_params):
     
 if __name__ == '__main__':
     generate_new_psd = True
-    pth = '/pfs/work7/workspace/scratch/px2030-MC_train'
+    # pth = '/pfs/work7/workspace/scratch/px2030-MC_train'
     # data_path = os.path.join(pth,"mix", "data")
     data_path = r"C:\Users\px2030\Code\PSD_opt\pypbe\data"
     
     if generate_new_psd:
         ## Input for generating psd-data
-        x50 = 2   # /mm
-        resigma = 0.15
-        minscale = 0.5
-        maxscale = 2
+        x50 = 20   # /um
+        resigma = 0.2
+        minscale = 0.01
+        maxscale = 100
         dist_path_1 = full_psd(x50, resigma, minscale=minscale, maxscale=maxscale, plot_psd=False)
         dist_path_5 = full_psd(x50*5, resigma, minscale=minscale, maxscale=maxscale, plot_psd=False)
         dist_path_10 = full_psd(x50*10, resigma, minscale=minscale, maxscale=maxscale, plot_psd=False)
@@ -52,9 +52,9 @@ if __name__ == '__main__':
         dist_path_10 = os.path.join(data_path, "PSD_data", conf.config['dist_scale_10'])
 
     ## define the range of corr_beta
-    var_corr_beta = np.array([1e-3])
+    var_corr_beta = np.array([1.0])
     ## define the range of alpha_prim 27x3
-    values = np.array([1.0])
+    values = np.array([1e-3,1e-1])
     a1, a2, a3 = np.meshgrid(values, values, values, indexing='ij')
     var_alpha_prim = np.column_stack((a1.flatten(), a2.flatten(), a3.flatten()))
     ## The case of all zero α is meaningless, that means no Agglomeration occurs
@@ -70,12 +70,12 @@ if __name__ == '__main__':
     var_alpha_prim = np.array(unique_alpha_prim)
 
     ## define the range of v(breakage function)
-    var_v = np.array([0.7])
+    var_v = np.array([1.5])
     # var_v = np.array([0.01])    ## define the range of P1, P2 for power law breakage rate
-    var_P1 = np.array([1e-3])
-    var_P2 = np.array([2.0])
-    var_P3 = np.array([1e-1])
-    var_P4 = np.array([0.5,2.0])
+    var_P1 = np.array([1e-2])
+    var_P2 = np.array([0.5])
+    var_P3 = np.array([1e-2])
+    var_P4 = np.array([2.0])
     
     ## define the range of particle size scale and minimal size
     dist_path = [dist_path_1] # [dist_path_1, dist_path_10]
@@ -111,6 +111,6 @@ if __name__ == '__main__':
     # pool.starmap(calc_function, func_list)                        
     # pool.close()
     # pool.join()        
-    with multiprocessing.Pool() as pool:
+    with multiprocessing.Pool(processes=1) as pool:
         pool.map(calc_function, func_list)                
                    

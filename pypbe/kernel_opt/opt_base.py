@@ -355,7 +355,7 @@ class OptBase():
                         result_dict = self.optimierer_ray(self.opt_params,exp_data_paths=exp_data_paths,
                                                                known_params=known_params)
             # Print the current actors (for debugging purposes) and shut down ray   
-            self.print_current_actors()
+            # self.print_current_actors()
             ray.shutdown()
             return result_dict
             

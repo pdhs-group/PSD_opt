@@ -13,16 +13,14 @@
     <script src="_static/js/html5shiv.min.js"></script>
   <![endif]-->
   
-        <script src="_static/jquery.js"></script>
-        <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
         <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+        <script src="_static/jquery.js"></script>
+        <script src="_static/underscore.js"></script>
+        <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
         <script src="_static/doctools.js"></script>
-        <script src="_static/sphinx_highlight.js"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
-    <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="opt_config module" href="opt_config.html" />
-    <link rel="prev" title="opt_algo module" href="opt_algo.html" /> 
+    <link rel="search" title="Search" href="search.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -45,32 +43,13 @@
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
-<ul class="current">
+<ul>
 <li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quick Start</a></li>
 <li class="toctree-l1"><a class="reference internal" href="attributes.html">Attributes of the dPBE Class</a></li>
 <li class="toctree-l1"><a class="reference internal" href="advanced_guide.html">Advanced Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="references.html">References</a></li>
 <li class="toctree-l1"><a class="reference internal" href="pop.html">pop module</a></li>
-<li class="toctree-l1 current"><a class="reference internal" href="modules.html">PSD_opt</a><ul class="current">
-<li class="toctree-l2"><a class="reference internal" href="func.html">func package</a></li>
-<li class="toctree-l2"><a class="reference internal" href="func_test.html">func_test package</a></li>
-<li class="toctree-l2"><a class="reference internal" href="opt_algo.html">opt_algo module</a></li>
-<li class="toctree-l2 current"><a class="current reference internal" href="#">opt_algo_multi module</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#opt_algo_multi.opt_algo_multi"><code class="docutils literal notranslate"><span class="pre">opt_algo_multi</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="#opt_algo_multi.opt_algo_multi.calc_delta"><code class="docutils literal notranslate"><span class="pre">opt_algo_multi.calc_delta()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#opt_algo_multi.opt_algo_multi.calc_delta_agg"><code class="docutils literal notranslate"><span class="pre">opt_algo_multi.calc_delta_agg()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="#opt_algo_multi.opt_algo_multi.calc_all_pop"><code class="docutils literal notranslate"><span class="pre">opt_algo_multi.calc_all_pop()</span></code></a></li>
-</ul>
-</li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="opt_config.html">opt_config module</a></li>
-<li class="toctree-l2"><a class="reference internal" href="opt_find.html">opt_find module</a></li>
-<li class="toctree-l2"><a class="reference internal" href="opt_main.html">opt_main module</a></li>
-<li class="toctree-l2"><a class="reference internal" href="pop.html">pop module</a></li>
-<li class="toctree-l2"><a class="reference internal" href="pop_MC.html">pop_MC module</a></li>
-</ul>
-</li>
+<li class="toctree-l1"><a class="reference internal" href="modules.html">PSD_opt</a></li>
 </ul>
 
         </div>
@@ -87,7 +66,6 @@
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
-          <li class="breadcrumb-item"><a href="modules.html">PSD_opt</a></li>
       <li class="breadcrumb-item active">opt_algo_multi module</li>
       <li class="wy-breadcrumbs-aside">
             <a href="_sources/opt_algo_multi.md.txt" rel="nofollow"> View page source</a>
@@ -98,81 +76,14 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section class="tex2jax_ignore mathjax_ignore" id="module-opt_algo_multi">
-<span id="opt-algo-multi-module"></span><h1>opt_algo_multi module<a class="headerlink" href="#module-opt_algo_multi" title="Permalink to this heading"></a></h1>
-<p>Created on Mon Dec 11 09:05:42 2023</p>
-<p>&#64;author: px2030</p>
-<dl class="py class">
-<dt class="sig sig-object py" id="opt_algo_multi.opt_algo_multi">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">opt_algo_multi.</span></span><span class="sig-name descname"><span class="pre">opt_algo_multi</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/opt_algo_multi.html#opt_algo_multi"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_algo_multi.opt_algo_multi" title="Permalink to this definition"></a></dt>
-<dd><p>Bases: <a class="reference internal" href="opt_algo.html#opt_algo.opt_algo" title="opt_algo.opt_algo"><code class="xref py py-class docutils literal notranslate"><span class="pre">opt_algo</span></code></a></p>
-<dl class="py method">
-<dt class="sig sig-object py" id="opt_algo_multi.opt_algo_multi.calc_delta">
-<span class="sig-name descname"><span class="pre">calc_delta</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">corr_beta</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_prim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_num</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exp_data_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/opt_algo_multi.html#opt_algo_multi.calc_delta"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_algo_multi.opt_algo_multi.calc_delta" title="Permalink to this definition"></a></dt>
-<dd><p>Calculate the difference (delta) of PSD.</p>
-<ul class="simple">
-<li><p>This method first calls <a class="reference internal" href="opt_algo.html#opt_algo.opt_algo.calc_pop" title="opt_algo.opt_algo.calc_pop"><code class="xref py py-meth docutils literal notranslate"><span class="pre">calc_pop()</span></code></a> to calculate the PBE under the current kernel.</p></li>
-<li><p>Then calls <a class="reference internal" href="opt_algo.html#opt_algo.opt_algo.calc_delta_tem" title="opt_algo.opt_algo.calc_delta_tem"><code class="xref py py-meth docutils literal notranslate"><span class="pre">calc_delta_tem()</span></code></a> to calculate delta corresponding to experimental data.</p></li>
-</ul>
-<section id="parameters">
-<h2>Parameters<a class="headerlink" href="#parameters" title="Permalink to this heading"></a></h2>
-<dl>
-<dt>corr_beta<span class="classifier"><cite>float</cite></span></dt><dd><p>Collision frequency correction factor for agglomeration in PBE.</p>
-</dd>
-<dt>alpha_prim<span class="classifier"><cite>array</cite></span></dt><dd><p>Collision efficiency for agglomeration in PBE.</p>
-</dd>
-<dt>scale<span class="classifier"><cite>int</cite>, optional. Default 1.</span></dt><dd><p>The actual return result is delta*scale. delta is absolute and always positive. 
-Setting scale to 1 is suitable for optimizers that look for minimum values, 
-and -1 is suitable for those that look for maximum values.</p>
-</dd>
-<dt>sample_num<span class="classifier"><cite>int</cite>, optional. Default 1.</span></dt><dd><p>Set how many sets of experimental data are used simultaneously for optimization.</p>
-</dd>
-<dt>exp_data_path<span class="classifier"><cite>str</cite></span></dt><dd><p>path for experimental data.</p>
-</dd>
-</dl>
-</section>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="opt_algo_multi.opt_algo_multi.calc_delta_agg">
-<span class="sig-name descname"><span class="pre">calc_delta_agg</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">corr_agg</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_num</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exp_data_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/opt_algo_multi.html#opt_algo_multi.calc_delta_agg"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_algo_multi.opt_algo_multi.calc_delta_agg" title="Permalink to this definition"></a></dt>
-<dd><p>Calculate the difference (delta) of PSD.</p>
-<ul class="simple">
-<li><p>The function is exactly the same as <a class="reference internal" href="#opt_algo_multi.opt_algo_multi.calc_delta" title="opt_algo_multi.opt_algo_multi.calc_delta"><code class="xref py py-meth docutils literal notranslate"><span class="pre">calc_delta()</span></code></a>, but receives corr_agg (agglomeration rate). Then calls <cite>~.return_syth_beta</cite> to compute the equivalent corr_beta and alpha_prim.</p></li>
-</ul>
-<section id="id1">
-<h2>Parameters<a class="headerlink" href="#id1" title="Permalink to this heading"></a></h2>
-<dl>
-<dt>corr_agg<span class="classifier"><cite>array</cite></span></dt><dd><p>Agglomeration rate in PBE.</p>
-</dd>
-<dt>scale<span class="classifier"><cite>int</cite>, optional. Default 1.</span></dt><dd><p>The actual return result is delta*scale. delta is absolute and always positive. 
-Setting scale to 1 is suitable for optimizers that look for minimum values, 
-and -1 is suitable for those that look for maximum values.</p>
-</dd>
-<dt>sample_num<span class="classifier"><cite>int</cite>, optional. Default 1.</span></dt><dd><p>Set how many sets of experimental data are used simultaneously for optimization.</p>
-</dd>
-<dt>exp_data_path<span class="classifier"><cite>str</cite></span></dt><dd><p>path for experimental data.</p>
-</dd>
-</dl>
-</section>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="opt_algo_multi.opt_algo_multi.calc_all_pop">
-<span class="sig-name descname"><span class="pre">calc_all_pop</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">corr_beta</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_prim</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">t_vec</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/opt_algo_multi.html#opt_algo_multi.calc_all_pop"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#opt_algo_multi.opt_algo_multi.calc_all_pop" title="Permalink to this definition"></a></dt>
-<dd></dd></dl>
-
-</dd></dl>
-
+  <section class="tex2jax_ignore mathjax_ignore" id="opt-algo-multi-module">
+<h1>opt_algo_multi module<a class="headerlink" href="#opt-algo-multi-module" title="Permalink to this heading"></a></h1>
 </section>
 
 
            </div>
           </div>
-          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="opt_algo.html" class="btn btn-neutral float-left" title="opt_algo module" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="opt_config.html" class="btn btn-neutral float-right" title="opt_config module" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
-    </div>
+          <footer>
 
   <hr/>
 

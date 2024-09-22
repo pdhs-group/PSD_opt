@@ -15,6 +15,32 @@ from ..utils.func import RK_Radau as RK
 ### ------ POPULATION CLASS DEFINITION ------ ###
 
 def init_pbe_params(self, dim, t_total, t_write, t_vec, disc, **attr):
+    """
+    Initialize all necessary settings and physical parameters of dPBE-solver 
+    
+    Note
+    ----
+    The solver for 3D PBE problem is not yet implemented.
+    
+    Parameters
+    ----------
+    dim : int
+        The dimensionality of the PBE problem (1 for 1D, 2 for 2D).
+    t_total : int, optional
+        The total process time in second. Defaults to 601.
+    t_write : int, optional
+        The frequency (per second) for writing output data. Defaults to 100.
+    t_vec : array-like, optional
+        A time vector directly specifying output time points for the simulation.
+    load_attr : bool, optional
+        If True, loads attributes from a configuration file. Defaults to True.
+    config_path : str, optional
+        The file path to the configuration file. If None, the default config path is used.
+    disc : str, optional
+        The discretization scheme to use for the PBE. Defaults to 'geo'.
+    **attr : dict, optional
+        Additional attributes for PBE initialization.
+    """
     
     # Check if given dimension and discretization is valid
     if not (dim in [1,2,3] and disc in ['geo','uni']):
@@ -27,12 +53,12 @@ def init_pbe_params(self, dim, t_total, t_write, t_vec, disc, **attr):
     self.dim = dim                        # Dimension (1=1D, 2=2D, 3=3D)
     self.disc = disc                      # 'geo': geometric grid, 'uni': uniform grid
     self.NS = 12                          # Grid parameter [-]
-    self.S = 2                            # Geometric grid ratio (V[i] = S*V[i-1])      
+    self.S = 2                            # Geometric grid ratio (V_e[i] = S*V_e[i-1])      
     self.t_total = t_total                       # total simulation time [second]
     self.t_write = t_write
     self.t_vec = t_vec
     self.solver = "ivp"                   # "ivp": use integrate.solve_ivp
-                                          # "radau": use RK.radau_ii_a  
+                                          # "radau": use RK.radau_ii_a, only for debug, not recommended  
     
     ## Parameters in agglomeration kernels
     self.COLEVAL = 1                      # Case for calculation of beta. 1 = Orthokinetic, 2 = Perikinetic
@@ -136,18 +162,31 @@ def init_pbe_params(self, dim, t_total, t_write, t_vec, disc, **attr):
     self.reset_params()
 
 def reset_params(self, reset_t=False):
-    ## reset t_vec
+    """
+    This method is used to update the time vector (`t_vec`) if a new time configuration is provided, 
+    or to recalculate key attributes related to particle concentrations (such as `V01`, `N01`, etc.) 
+    when the volume unit (`V_unit`) or other related parameters are modified.
+    
+    Parameters
+    ----------
+    reset_t : bool, optional
+        If True, the time vector (`t_vec`) is reset based on `t_total` and `t_write`. Defaults to False.
+    
+    """
+    # Reset the time vector if reset_t is True
     if reset_t:
         self.t_vec = np.arange(0, self.t_total, self.t_write, dtype=float)
+        
+    # Set the number of time steps based on the time vector
     if self.t_vec is not None:
         self.t_num = len(self.t_vec)
-    # else:
-    #     print("t_vec already exists, t_total and t_write settings will be discarded!")
-    ## reset psd-file path
+
+    # Reset PSD file paths
     self.DIST1 = os.path.join(self.DIST1_path,self.DIST1_name)
     self.DIST2 = os.path.join(self.DIST2_path,self.DIST2_name)
     self.DIST3 = os.path.join(self.DIST3_path,self.DIST3_name)     
     
+    # Recalculate physical constants and particle concentrations
     self.EPS = self.EPSR*self.EPS0
     
     self.cv_1 = self.c_mag_exp*self.Psi_c1_exp   # Volume concentration of NM1 particles [Vol-%] 
@@ -187,12 +226,30 @@ def full_init(self, calc_alpha=True):
 
 ## Calculate R, V and X matrices (radii, total and partial volumes and volume fractions)
 def calc_R(self):
-    """Initialize discrete calculation grid. 
+    """
+    Initialize the discrete calculation grid for particle radii, volumes, and volume fractions.
     
-    Creates the following class attributes: 
-        * ``pop.V``: Total Volume of each class 
-        * ``pop.R``: Radius of each class
-        * ``pop.Xi_vol``: Volume fraction material i of each class
+    This method calculates and initializes the radii (R), total volumes (V), and material 
+    volume fractions (Xi_vol) for each class of particles. The results are stored in the 
+    class attributes `self.V`, `self.R`, and `self.Xi_vol`.
+    
+    - For the 1D case, this method generates a grid for total volumes and radii.
+    - For the 2D case, this method generates a grid for combined volumes of two particle 
+      types (V1 and V3) and calculates the corresponding radii and volume fractions.
+    
+    Parameters
+    ----------
+    None
+    
+    Notes
+    -----
+    - For uniform (`uni`) grids, the total volumes are directly proportional to the 
+      particle class index.
+    - For geometric (`geo`) grids, the volume edges (`V_e`) are calculated first using 
+      parameters `NS` (number of grid points) and `S` (scaling factor). The actual grid 
+      nodes (`V`) are then calculated as the midpoints between these volume edges.
+    - Agglomeration criteria are also handled to prevent integration issues for large 
+      agglomerate sizes by limiting the agglomeration process at critical points.
     """
     # 1-D case
     if self.dim == 1:
@@ -201,22 +258,25 @@ def calc_R(self):
         self.V = np.zeros(self.NS)
         self.R = np.zeros(self.NS)
         
+        # Uniform grid: volumes are proportional to the class index
         if self.disc == 'uni':
             for i in range(len(self.V)): #range(0,self.NS):
                 self.V[i] = i*4*math.pi*self.R01**3/3
-            
+                
+        # Geometric grid: volumes are calculated as midpoints between volume edges (V_e)    
         if self.disc == 'geo':
             self.V_e = np.zeros(self.NS+1)
             self.V_e[0] = -4*math.pi*self.R01**3/3
             for i in range(self.NS):         
                 self.V_e[i+1] = self.S**(i)*4*math.pi*self.R01**3/3
-                self.V[i] = (self.V_e[i] + self.V_e[i+1]) / 2                    
-        # Initialize V, R and ratio matrices
+                self.V[i] = (self.V_e[i] + self.V_e[i+1]) / 2  
+                  
+        # Calculate radii and initialize volume fraction matrices
         self.R[1:] = (self.V[1:]*3/(4*math.pi))**(1/3)
         self.X1_vol = np.ones(self.NS) 
         self.X1_a = np.ones(self.NS) 
-        ## Large particle agglomeration may cause the integration to not converge. 
-        ## A Limit can be placed on the particle size.
+        
+        # Handle agglomeration criteria to limit agglomeration process
         aggl_crit_ids = self.aggl_crit + 1
         if (aggl_crit_ids > 0 and aggl_crit_ids < len(self.V)):
             self.aggl_crit_id = aggl_crit_ids 
@@ -226,16 +286,17 @@ def calc_R(self):
     # 2-D case
     elif self.dim == 2:
         
-        # Initialize V1-V2 
+        # Initialize volumes: V1 (NM1) and V3 (M)
         self.V1 = np.zeros(self.NS)
-        # self.V1[1] = 0
         self.V3 = np.copy(self.V1) 
         
+        # Uniform grid: volumes are proportional to the class index
         if self.disc == 'uni':
             for i in range(len(self.V1)): #range(0,self.NS):
                 self.V1[i] = i*4*math.pi*self.R01**3/3
                 self.V3[i] = i*4*math.pi*self.R03**3/3
-        
+                
+        # Geometric grid: volumes are calculated as midpoints between volume edges (V_e1 and V_e3)
         if self.disc == 'geo': 
             self.V_e1 = np.zeros(self.NS+1)
             self.V_e3 = np.zeros(self.NS+1)
@@ -250,7 +311,7 @@ def calc_R(self):
         A1 = 3*self.V1/self.R01
         A3 = 3*self.V3/self.R03
         
-        # Initialize V, R and ratio matrices
+        # Calculate radii and initialize volume fraction matrices
         self.V = np.zeros((self.NS,self.NS))
         self.R = np.copy(self.V)
         self.X1_vol = np.copy(self.V); self.X1_a=np.copy(self.V) 
@@ -260,8 +321,7 @@ def calc_R(self):
         self.V[:,0] = self.V1 
         self.V[0,:] = self.V3 
         
-        # Calculate remaining entries of V and other matrices
-        # range(1,X) excludes X itself -> self.NS+2
+        # Calculate the remaining entries of V, R, and other matrices
         for i in range(self.NS):
             for j in range(self.NS):
                 self.V[i,j] = self.V1[i]+self.V3[j]
@@ -276,8 +336,8 @@ def calc_R(self):
                     self.X3_vol[i,j] = self.V3[j]/self.V[i,j]
                     self.X1_a[i,j] = A1[i]/(A1[i]+A3[j])
                     self.X3_a[i,j] = A3[j]/(A1[i]+A3[j])
-        ## Large particle agglomeration may cause the integration to not converge. 
-        ## A Limit can be placed on the particle size.
+                    
+        # Set a limit on particle size for NM1 and M to avoid issues with large particle agglomeration
         aggl_crit_ids1 = self.aggl_crit + 1
         aggl_crit_ids2 = self.aggl_crit + 1
         self.aggl_crit_id = np.zeros(2, dtype=int)
@@ -289,68 +349,68 @@ def calc_R(self):
             self.aggl_crit_id[1] = aggl_crit_ids2 
         else: 
             self.aggl_crit_id[1] = (len(self.V3) -1)
-    # 3-D case                
-    elif self.dim == 3:
+    # # 3-D case                
+    # elif self.dim == 3:
         
-        # Initialize V1-V3 
-        self.V1 = np.zeros(self.NS+3)-1 
-        self.V1[1] = 0
-        self.V2 = np.copy(self.V1)
-        self.V3 = np.copy(self.V1) 
+    #     # Initialize V1-V3 
+    #     self.V1 = np.zeros(self.NS+3)-1 
+    #     self.V1[1] = 0
+    #     self.V2 = np.copy(self.V1)
+    #     self.V3 = np.copy(self.V1) 
         
-        for i in range(0,self.NS+1): 
-            # Geometric grid
-            if self.disc == 'geo': 
-                self.V1[i+2] = self.S**(i)*4*math.pi*self.R01**3/3
-                self.V2[i+2] = self.S**(i)*4*math.pi*self.R02**3/3
-                self.V3[i+2] = self.S**(i)*4*math.pi*self.R03**3/3
+    #     for i in range(0,self.NS+1): 
+    #         # Geometric grid
+    #         if self.disc == 'geo': 
+    #             self.V1[i+2] = self.S**(i)*4*math.pi*self.R01**3/3
+    #             self.V2[i+2] = self.S**(i)*4*math.pi*self.R02**3/3
+    #             self.V3[i+2] = self.S**(i)*4*math.pi*self.R03**3/3
             
-            # Uniform grid
-            elif self.disc == 'uni':
-                self.V1[i+2] = (i+1)*4*math.pi*self.R01**3/3
-                self.V2[i+2] = (i+1)*4*math.pi*self.R02**3/3
-                self.V3[i+2] = (i+1)*4*math.pi*self.R03**3/3
+    #         # Uniform grid
+    #         elif self.disc == 'uni':
+    #             self.V1[i+2] = (i+1)*4*math.pi*self.R01**3/3
+    #             self.V2[i+2] = (i+1)*4*math.pi*self.R02**3/3
+    #             self.V3[i+2] = (i+1)*4*math.pi*self.R03**3/3
         
-        A1 = 3*self.V1/self.R01
-        A2 = 3*self.V2/self.R02
-        A3 = 3*self.V3/self.R03
+    #     A1 = 3*self.V1/self.R01
+    #     A2 = 3*self.V2/self.R02
+    #     A3 = 3*self.V3/self.R03
         
-        # Initialize V, R and ratio matrices
-        self.V = np.zeros((self.NS+3,self.NS+3,self.NS+3))-1
-        self.R = np.copy(self.V)
-        self.X1_vol = np.copy(self.V); self.X1_a=np.copy(self.V) 
-        self.X2_vol = np.copy(self.V); self.X2_a=np.copy(self.V)
-        self.X3_vol = np.copy(self.V); self.X3_a=np.copy(self.V)
+    #     # Initialize V, R and ratio matrices
+    #     self.V = np.zeros((self.NS+3,self.NS+3,self.NS+3))-1
+    #     self.R = np.copy(self.V)
+    #     self.X1_vol = np.copy(self.V); self.X1_a=np.copy(self.V) 
+    #     self.X2_vol = np.copy(self.V); self.X2_a=np.copy(self.V)
+    #     self.X3_vol = np.copy(self.V); self.X3_a=np.copy(self.V)
         
-        # Write V1 and V3 in respective "column" of V
-        self.V[:,1,1] = self.V1
-        self.V[1,:,1] = self.V2 
-        self.V[1,1,:] = self.V3 
+    #     # Write V1 and V3 in respective "column" of V
+    #     self.V[:,1,1] = self.V1
+    #     self.V[1,:,1] = self.V2 
+    #     self.V[1,1,:] = self.V3 
         
-        # Calculate remaining entries of V and other matrices
-        # range(1,X) excludes X itself -> self.NS+3
-        for i in range(1,self.NS+3):
-            for j in range(1,self.NS+3):
-                for k in range(1,self.NS+3):
-                    self.V[i,j,k] = self.V1[i]+self.V2[j]+self.V3[k]
-                    self.R[i,j,k] = (self.V[i,j,k]*3/(4*math.pi))**(1/3)
-                    if i==1 and j==1 and k==1:
-                        self.X1_vol[i,j,k] = 0
-                        self.X2_vol[i,j,k] = 0
-                        self.X3_vol[i,j,k] = 0
-                        self.X1_a[i,j,k] = 0
-                        self.X2_a[i,j,k] = 0
-                        self.X3_a[i,j,k] = 0
-                    else:
-                        self.X1_vol[i,j,k] = self.V1[i]/self.V[i,j,k]
-                        self.X2_vol[i,j,k] = self.V2[j]/self.V[i,j,k]
-                        self.X3_vol[i,j,k] = self.V3[k]/self.V[i,j,k]
-                        self.X1_a[i,j,k] = A1[i]/(A1[i]+A2[j]+A3[k])
-                        self.X2_a[i,j,k] = A2[j]/(A1[i]+A2[j]+A3[k])
-                        self.X3_a[i,j,k] = A3[k]/(A1[i]+A2[j]+A3[k])
+    #     # Calculate remaining entries of V and other matrices
+    #     # range(1,X) excludes X itself -> self.NS+3
+    #     for i in range(1,self.NS+3):
+    #         for j in range(1,self.NS+3):
+    #             for k in range(1,self.NS+3):
+    #                 self.V[i,j,k] = self.V1[i]+self.V2[j]+self.V3[k]
+    #                 self.R[i,j,k] = (self.V[i,j,k]*3/(4*math.pi))**(1/3)
+    #                 if i==1 and j==1 and k==1:
+    #                     self.X1_vol[i,j,k] = 0
+    #                     self.X2_vol[i,j,k] = 0
+    #                     self.X3_vol[i,j,k] = 0
+    #                     self.X1_a[i,j,k] = 0
+    #                     self.X2_a[i,j,k] = 0
+    #                     self.X3_a[i,j,k] = 0
+    #                 else:
+    #                     self.X1_vol[i,j,k] = self.V1[i]/self.V[i,j,k]
+    #                     self.X2_vol[i,j,k] = self.V2[j]/self.V[i,j,k]
+    #                     self.X3_vol[i,j,k] = self.V3[k]/self.V[i,j,k]
+    #                     self.X1_a[i,j,k] = A1[i]/(A1[i]+A2[j]+A3[k])
+    #                     self.X2_a[i,j,k] = A2[j]/(A1[i]+A2[j]+A3[k])
+    #                     self.X3_a[i,j,k] = A3[k]/(A1[i]+A2[j]+A3[k])
 
 ## Initialize concentration matrix N
-def init_N(self, reset_N=True): 
+def init_N(self, reset_N=True, N01=None, N02=None, N03=None): 
     """Initialize discrete number concentration array. 
     
     Creates the following class attributes: 
@@ -361,11 +421,20 @@ def init_N(self, reset_N=True):
         self.cv_1 = self.c_mag_exp*self.Psi_c1_exp   # Volume concentration of NM1 particles [Vol-%] 
         self.cv_2 = self.c_mag_exp*self.Psi_c2_exp   # Volume concentration of NM2 particles [Vol-%] 
         self.V01 = self.cv_1*self.V_unit             # Total volume concentration of component 1 [unit/unit] - NM1
-        self.N01 = 3*self.V01/(4*math.pi*self.R01**3)     # Total number concentration of primary particles component 1 [1/m³] - NM1 (if no PSD)
         self.V02 = self.cv_2*self.V_unit         # Total volume concentration of component 2 [unit/unit] - NM2
-        self.N02 = 3*self.V02/(4*math.pi*self.R02**3)     # Total number concentration of primary particles component 2 [1/m³] - NM2 (if no PSD)
         self.V03 = self.c_mag_exp*self.V_unit        # Total volume concentration of component 3 [unit/unit] - M
-        self.N03 = 3*self.V03/(4*math.pi*self.R03**3)     # Total number concentration of primary particles component 1 [1/m³] - M (if no PSD) 
+        if N01 is None:
+            self.N01 = 3*self.V01/(4*math.pi*self.R01**3)     # Total number concentration of primary particles component 1 [1/m³] - NM1 (if no PSD)
+        else:
+            self.N01 = N01 * self.V_unit 
+        if N02 is None:
+            self.N02 = 3*self.V02/(4*math.pi*self.R02**3)     # Total number concentration of primary particles component 2 [1/m³] - NM2 (if no PSD)
+        else:
+            self.N02 = N02 * self.V_unit 
+        if N03 is None:
+            self.N03 = 3*self.V03/(4*math.pi*self.R03**3)     # Total number concentration of primary particles component 1 [1/m³] - M (if no PSD) 
+        else:
+            self.N03 = N03 * self.V_unit 
     # 1-D case
     if self.dim == 1:
         self.N = np.zeros((self.NS,self.t_num))
@@ -577,106 +646,106 @@ def calc_F_M(self):
                 self.F_M[idx] = beta_ai*alpha_ai*corr_size/self.V_unit
             
     # 3-D case. 
-    elif self.dim == 3:
-        if self.process_type == 'breakage':
-            return
-        if self.JIT_FM: 
-            self.F_M = jit.calc_F_M_3D(self.NS,self.disc,self.COLEVAL,self.CORR_BETA,
-                                       self.G,self.R,self.X1_vol,self.X2_vol,self.X3_vol,
-                                       self.EFFEVAL,self.alpha_prim,self.SIZEEVAL,
-                                       self.X_SEL,self.Y_SEL)/self.V_unit
+    # elif self.dim == 3:
+    #     if self.process_type == 'breakage':
+    #         return
+    #     if self.JIT_FM: 
+    #         self.F_M = jit.calc_F_M_3D(self.NS,self.disc,self.COLEVAL,self.CORR_BETA,
+    #                                    self.G,self.R,self.X1_vol,self.X2_vol,self.X3_vol,
+    #                                    self.EFFEVAL,self.alpha_prim,self.SIZEEVAL,
+    #                                    self.X_SEL,self.Y_SEL)/self.V_unit
         
-        else:
-            # Initialize F_M Matrix. NOTE: F_M is defined without the border around the calculation grid
-            # as e.g. N or V are (saving memory and calculations). 
-            # Thus, F_M is (NS+1)^6 instead of (NS+3)^6. As reference, V is (NS+3)^3.
-            self.F_M = np.zeros((self.NS+1,self.NS+1,self.NS+1,self.NS+1,self.NS+1,self.NS+1))
+    #     else:
+    #         # Initialize F_M Matrix. NOTE: F_M is defined without the border around the calculation grid
+    #         # as e.g. N or V are (saving memory and calculations). 
+    #         # Thus, F_M is (NS+1)^6 instead of (NS+3)^6. As reference, V is (NS+3)^3.
+    #         self.F_M = np.zeros((self.NS+1,self.NS+1,self.NS+1,self.NS+1,self.NS+1,self.NS+1))
             
-            # Go through all agglomeration partners 1 [a,b] and 2 [i,j]
-            # The current index tuple idx stores them as (a,b,i,j)
-            for idx, tmp in np.ndenumerate(self.F_M):
-                # # Indices [a,b,c]=[0,0,0] and [i,j,k]=[0,0,0] not allowed!
-                if idx[0]+idx[1]+idx[2]==0 or idx[3]+idx[4]+idx[5]==0:
-                    continue
+    #         # Go through all agglomeration partners 1 [a,b] and 2 [i,j]
+    #         # The current index tuple idx stores them as (a,b,i,j)
+    #         for idx, tmp in np.ndenumerate(self.F_M):
+    #             # # Indices [a,b,c]=[0,0,0] and [i,j,k]=[0,0,0] not allowed!
+    #             if idx[0]+idx[1]+idx[2]==0 or idx[3]+idx[4]+idx[5]==0:
+    #                 continue
                 
-                # Calculate the corresponding agglomeration efficiency
-                # Add one to indices to account for borders
-                a = idx[0]+1; b = idx[1]+1; c = idx[2]+1;
-                i = idx[3]+1; j = idx[4]+1; k = idx[5]+1;
+    #             # Calculate the corresponding agglomeration efficiency
+    #             # Add one to indices to account for borders
+    #             a = idx[0]+1; b = idx[1]+1; c = idx[2]+1;
+    #             i = idx[3]+1; j = idx[4]+1; k = idx[5]+1;
                 
-                # Calculate collision frequency beta depending on COLEVAL
-                if self.COLEVAL == 1:
-                    # Chin 1998 (shear induced flocculation in stirred tanks)
-                    # Optional reduction factor.
-                    # corr_beta=1;
-                    beta_ai = self.CORR_BETA*self.G*2.3*(self.R[a,b,c]+self.R[i,j,k])**3 # [m^3/s]
-                if self.COLEVAL == 2:
-                    # Tsouris 1995 Brownian diffusion as controlling mechanism
-                    # Optional reduction factor
-                    # corr_beta=1;
-                    beta_ai = self.CORR_BETA*2*self.KT*(self.R[a,b,c]+self.R[i,j,k])**2/(3*self.MU_W*(self.R[a,b,c]*self.R[i,j,k])) #[m^3/s]
-                if self.COLEVAL == 3:
-                    # Use a constant collision frequency given by CORR_BETA
-                    beta_ai = self.CORR_BETA
-                if self.COLEVAL == 4:
-                    # Sum-Kernal (for validation) scaled by CORR_BETA
-                    beta_ai = self.CORR_BETA*4*math.pi*(self.R[a,b,c]**3+self.R[i,j,k]**3)/3
+    #             # Calculate collision frequency beta depending on COLEVAL
+    #             if self.COLEVAL == 1:
+    #                 # Chin 1998 (shear induced flocculation in stirred tanks)
+    #                 # Optional reduction factor.
+    #                 # corr_beta=1;
+    #                 beta_ai = self.CORR_BETA*self.G*2.3*(self.R[a,b,c]+self.R[i,j,k])**3 # [m^3/s]
+    #             if self.COLEVAL == 2:
+    #                 # Tsouris 1995 Brownian diffusion as controlling mechanism
+    #                 # Optional reduction factor
+    #                 # corr_beta=1;
+    #                 beta_ai = self.CORR_BETA*2*self.KT*(self.R[a,b,c]+self.R[i,j,k])**2/(3*self.MU_W*(self.R[a,b,c]*self.R[i,j,k])) #[m^3/s]
+    #             if self.COLEVAL == 3:
+    #                 # Use a constant collision frequency given by CORR_BETA
+    #                 beta_ai = self.CORR_BETA
+    #             if self.COLEVAL == 4:
+    #                 # Sum-Kernal (for validation) scaled by CORR_BETA
+    #                 beta_ai = self.CORR_BETA*4*math.pi*(self.R[a,b,c]**3+self.R[i,j,k]**3)/3
                 
-                # Calculate probabilities, that particle 1 [a,b,c] is colliding as
-                # nonmagnetic 1 (NM1), nonmagnetic 2 (NM2) or magnetic (M). Repeat for
-                # particle 2 [i,j,k]. Use area weighted composition.
-                # Calculate probability vector for all combinations. 
-                # Indices: 
-                # 1) a:N1 <-> i:N1  -> X1[a,b,c]*X1[i,j,k]
-                # 2) a:N1 <-> i:N2  -> X1[a,b,c]*X2[i,j,k]
-                # 3) a:N1 <-> i:M   -> X1[a,b,c]*X3[i,j,k]
-                # 4) a:N2 <-> i:N1  -> X2[a,b,c]*X1[i,j,k] 
-                # 5) a:N2 <-> i:N2  -> X2[a,b,c]*X2[i,j,k]
-                # 6) a:N2 <-> i:M   -> X2[a,b,c]*X3[i,j,k]
-                # 7) a:M  <-> i:N1  -> X3[a,b,c]*X1[i,j,k]
-                # 8) a:M  <-> i:N2  -> X3[a,b,c]*X2[i,j,k]
-                # 9) a:M  <-> i:M   -> X3[a,b,c]*X3[i,j,k]
-                # Use volume fraction (May be changed to surface fraction)
-                X1 = self.X1_vol; X2 = self.X2_vol; X3 = self.X3_vol
+    #             # Calculate probabilities, that particle 1 [a,b,c] is colliding as
+    #             # nonmagnetic 1 (NM1), nonmagnetic 2 (NM2) or magnetic (M). Repeat for
+    #             # particle 2 [i,j,k]. Use area weighted composition.
+    #             # Calculate probability vector for all combinations. 
+    #             # Indices: 
+    #             # 1) a:N1 <-> i:N1  -> X1[a,b,c]*X1[i,j,k]
+    #             # 2) a:N1 <-> i:N2  -> X1[a,b,c]*X2[i,j,k]
+    #             # 3) a:N1 <-> i:M   -> X1[a,b,c]*X3[i,j,k]
+    #             # 4) a:N2 <-> i:N1  -> X2[a,b,c]*X1[i,j,k] 
+    #             # 5) a:N2 <-> i:N2  -> X2[a,b,c]*X2[i,j,k]
+    #             # 6) a:N2 <-> i:M   -> X2[a,b,c]*X3[i,j,k]
+    #             # 7) a:M  <-> i:N1  -> X3[a,b,c]*X1[i,j,k]
+    #             # 8) a:M  <-> i:N2  -> X3[a,b,c]*X2[i,j,k]
+    #             # 9) a:M  <-> i:M   -> X3[a,b,c]*X3[i,j,k]
+    #             # Use volume fraction (May be changed to surface fraction)
+    #             X1 = self.X1_vol; X2 = self.X2_vol; X3 = self.X3_vol
                 
-                p=np.array([X1[a,b,c]*X1[i,j,k],\
-                            X1[a,b,c]*X2[i,j,k],\
-                            X1[a,b,c]*X3[i,j,k],\
-                            X2[a,b,c]*X1[i,j,k],\
-                            X2[a,b,c]*X2[i,j,k],\
-                            X2[a,b,c]*X3[i,j,k],\
-                            X3[a,b,c]*X1[i,j,k],\
-                            X3[a,b,c]*X2[i,j,k],\
-                            X3[a,b,c]*X3[i,j,k]])
+    #             p=np.array([X1[a,b,c]*X1[i,j,k],\
+    #                         X1[a,b,c]*X2[i,j,k],\
+    #                         X1[a,b,c]*X3[i,j,k],\
+    #                         X2[a,b,c]*X1[i,j,k],\
+    #                         X2[a,b,c]*X2[i,j,k],\
+    #                         X2[a,b,c]*X3[i,j,k],\
+    #                         X3[a,b,c]*X1[i,j,k],\
+    #                         X3[a,b,c]*X2[i,j,k],\
+    #                         X3[a,b,c]*X3[i,j,k]])
                 
-                # Calculate collision effiecieny depending on EFFEVAL. 
-                # Case(1): "Correct" calculation for given indices. Accounts for size effects in int_fun
-                # Case(2): Reduced model. Calculation only based on primary particles
-                # Case(3): Alphas are pre-fed from ANN or other source.
-                if self.EFFEVAL == 1:
-                    # Not coded here
-                    alpha_ai = np.sum(p*self.alpha_prim)
-                if self.EFFEVAL == 2:
-                    alpha_ai = np.sum(p*self.alpha_prim)
+    #             # Calculate collision effiecieny depending on EFFEVAL. 
+    #             # Case(1): "Correct" calculation for given indices. Accounts for size effects in int_fun
+    #             # Case(2): Reduced model. Calculation only based on primary particles
+    #             # Case(3): Alphas are pre-fed from ANN or other source.
+    #             if self.EFFEVAL == 1:
+    #                 # Not coded here
+    #                 alpha_ai = np.sum(p*self.alpha_prim)
+    #             if self.EFFEVAL == 2:
+    #                 alpha_ai = np.sum(p*self.alpha_prim)
                 
-                # Calculate a correction factor to account for size dependency of alpha, depending on SIZEEVAL
-                # Calculate lam
-                if self.R[a,b,c]<=self.R[i,j,k]:
-                    lam = self.R[a,b,c]/self.R[i,j,k]
-                else:
-                    lam = self.R[i,j,k]/self.R[a,b,c]
+    #             # Calculate a correction factor to account for size dependency of alpha, depending on SIZEEVAL
+    #             # Calculate lam
+    #             if self.R[a,b,c]<=self.R[i,j,k]:
+    #                 lam = self.R[a,b,c]/self.R[i,j,k]
+    #             else:
+    #                 lam = self.R[i,j,k]/self.R[a,b,c]
                     
-                if self.SIZEEVAL == 1:
-                    # No size dependency of alpha
-                    corr_size = 1
-                if self.SIZEEVAL == 2:
-                    # Case 3: Soos2007 (developed from Selomuya 2003). Empirical Equation
-                    # with model parameters x and y. corr_size is lowered with lowered
-                    # value of lambda (numerator) and with increasing particles size (denominator)
-                    corr_size = np.exp(-self.X_SEL*(1-lam)**2)/((self.R[a,b,c]*self.R[i,j,k]/(np.min(np.array([self.R01,self.R02,self.R03]))**2))**self.Y_SEL)
+    #             if self.SIZEEVAL == 1:
+    #                 # No size dependency of alpha
+    #                 corr_size = 1
+    #             if self.SIZEEVAL == 2:
+    #                 # Case 3: Soos2007 (developed from Selomuya 2003). Empirical Equation
+    #                 # with model parameters x and y. corr_size is lowered with lowered
+    #                 # value of lambda (numerator) and with increasing particles size (denominator)
+    #                 corr_size = np.exp(-self.X_SEL*(1-lam)**2)/((self.R[a,b,c]*self.R[i,j,k]/(np.min(np.array([self.R01,self.R02,self.R03]))**2))**self.Y_SEL)
                 
-                # Store result
-                self.F_M[idx] = beta_ai*alpha_ai*corr_size/self.V_unit
+    #             # Store result
+    #             self.F_M[idx] = beta_ai*alpha_ai*corr_size/self.V_unit
 
 ## Calculate breakage rate matrix. 
 def calc_B_R(self):
@@ -685,8 +754,6 @@ def calc_B_R(self):
     Creates the following class attributes: 
         * ``pop.B_R``: (2D)Breakage rate for class ab. The result is stored in ``B_R[a,b]`` 
     """
-    ## In breakage is not allowed to define parameter of particle without volume
-    ## So B_R is (NS-1) instead (NS)
     # 1-D case
     if self.dim == 1:
         ## Note: The breakage rate of the smallest particle is 0. 
@@ -711,20 +778,16 @@ def calc_B_R(self):
         # Power Law Pandy and Spielmann --> See Jeldres2018 (28)
         # Scale particle volume using the average volume of all possible fragments produced
         elif self.BREAKRVAL == 3:
-            V_mean = self.V[1:].mean()
             for idx, tmp in np.ndenumerate(self.B_R):
                 a = idx[0]
                 if a != 0:
-                    self.B_R[a] = self.pl_P1*self.G*(self.V[a]/V_mean)**self.pl_P2    
-                    # self.B_R[a] = self.pl_P1*self.G*self.V[a]**self.pl_P2  
+                    self.B_R[a] = self.pl_P1*self.G*(self.V[a]/self.V1_mean)**self.pl_P2    
         # Hypothetical formula considering volume fraction
         elif self.BREAKRVAL == 4:
-            V_mean = self.V[1:].mean()
             for idx, tmp in np.ndenumerate(self.B_R):
                 a = idx[0]
                 if a != 0:
-                    self.B_R[a] = self.pl_P1*self.G*(self.V[a]/V_mean)**self.pl_P2   
-                    # self.B_R[a] = self.pl_P1*self.G*self.V[a]**self.pl_P2             
+                    self.B_R[a] = self.pl_P1*self.G*(self.V[a]/self.V1_mean)**self.pl_P2            
     # 2-D case            
     if self.dim == 2:
         self.B_R = np.zeros((self.NS, self.NS))
@@ -757,9 +820,7 @@ def calc_B_R(self):
         # Power Law Pandy and Spielmann --> See Jeldres2018 (28)
         # Scale particle volume using the average volume of all possible fragments produced
         elif self.BREAKRVAL == 3:
-            # V1_mean = self.V1[1:].mean()
-            # V3_mean = self.V3[1:].mean()
-            V_mean = self.V[self.V!=0].mean()
+            V_mean = (self.V3_mean + self.V1_mean) / 2
             for idx, tmp in np.ndenumerate(self.B_R):
                 a = idx[0]; b = idx[1]
                 if a == 0 and b == 0:
@@ -775,8 +836,6 @@ def calc_B_R(self):
                     # self.B_R[idx] = self.pl_P1 * self.G * self.V[a+1,b+1]**self.pl_P2
         # Hypothetical formula considering volume fraction
         elif self.BREAKRVAL == 4:
-            # V1_mean = self.V1[1:].mean()
-            # V3_mean = self.V3[1:].mean()
             for idx, tmp in np.ndenumerate(self.B_R):
                 a = idx[0]; b = idx[1]
                 if a == 0 and b == 0:
@@ -805,8 +864,6 @@ def calc_int_B_F(self):
     if self.BREAKFVAL == 4:
         if self.pl_v <= 0 or self.pl_v > 1:
             raise Exception("Value of pl_v is out of range (0,1] for simple Power law.")
-    ## In breakage is not allowed to define parameter of particle without volume
-    ## So int_B_F and intx_B_F is (NS-1)^2 instead (NS)^2
     # 1-D case
     if self.dim == 1:
         if self.disc == 'uni':
@@ -819,10 +876,6 @@ def calc_int_B_F(self):
                 if i != 0 and a <= i:
                     self.B_F[idx] = jit.breakage_func_1d(V[a],V[i],self.pl_v,self.pl_q,self.BREAKFVAL) * V[0]
         else:
-            ## Note: The breakage function of the smallest particle is 0. 
-            ##       And small particle can not break into large one. 
-            ## Note: Because particles with a volume of zero are skipped, 
-            ##       calculation with V requires (index+1)
             self.int_B_F = np.zeros((self.NS, self.NS))
             self.intx_B_F = np.zeros((self.NS, self.NS))
             if self.process_type == 'agglomeration':
@@ -832,8 +885,6 @@ def calc_int_B_F(self):
                 mc_bond = np.load(self.PTH_MC_BOND, allow_pickle=True)
                 self.int_B_F = mc_bond['int_B_F']
                 self.intx_B_F = mc_bond['intx_B_F']
-                # for i in range(2, self.NS):
-                #     self.intx_B_F[:,i] = mc_bond['intx_B_F'][:,0,i,0] * self.V[i]
             elif self.B_F_type == 'int_func':
                 ## Let the integration range associated with the breakage function start from zero 
                 ## to ensure mass conservation  
@@ -861,17 +912,6 @@ def calc_int_B_F(self):
         if self.B_F_type == 'MC_bond':
             mc_bond = np.load(self.PTH_MC_BOND, allow_pickle=True)
             self.int_B_F = mc_bond['int_B_F']
-            # for i in range (0, self.NS):
-            #     for j in range(0, self.NS):
-            #         if i < 2 and j < 2:
-            #             continue
-            #         elif i < 2 and j >=2:
-            #             self.inty_B_F[i,:,i,j] = mc_bond['inty_B_F'][i,:,i,j] * self.V3[j]
-            #         elif i >=2 and j < 2:
-            #             self.intx_B_F[:,j,i,j] = mc_bond['intx_B_F'][:,j,i,j] * self.V1[i]
-            #         else:
-            #             self.intx_B_F[:,:,i,j] = mc_bond['intx_B_F'][:,:,i,j] * self.V[i,j]
-            #             self.inty_B_F[:,:,i,j] = mc_bond['inty_B_F'][:,:,i,j] * self.V[i,j]
             self.intx_B_F = mc_bond['intx_B_F']
             self.inty_B_F = mc_bond['inty_B_F']
 
@@ -879,13 +919,10 @@ def calc_int_B_F(self):
             if self.JIT_BF:
                 self.int_B_F, self.intx_B_F, self.inty_B_F = jit.calc_int_B_F_2D_GL(
                     self.NS,self.V1,self.V3,self.V_e1,self.V_e3,self.BREAKFVAL,self.pl_v,self.pl_q)
-                # self.int_B_F, self.intx_B_F, self.inty_B_F = jit.calc_int_B_F_2D(
-                #     self.NS,self.V1,self.V3,self.V_e1,self.V_e3,self.BREAKFVAL,self.pl_v,self.pl_q)
             else:
                 self.int_B_F, self.intx_B_F,self.inty_B_F = jit.calc_int_B_F_2D_quad(
                     self.NS, self.V1, self.V3, self.V_e1, self.V_e3, self.BREAKFVAL, self.pl_v, self.pl_q)
-        elif self.B_F_type == 'ANN_MC':
-            
+        elif self.B_F_type == 'ANN_MC': 
             return
         
 
@@ -1081,16 +1118,10 @@ def solve_PBE(self, t_vec=None):
         t_max = self.t_vec[-1]
     else:
         t_max = t_vec[-1]
-    ## N_scale is used to increase/decrease the overall order of magnitude of a calculated value(N)
-    ## Reducing the magnitude of N can improve the stability of calculation
-    # tem_N_scale = np.ones_like(self.N)
+
     N = self.N
     # 1-D case
     if self.dim == 1:
-        # for i in range(1, self.NS):    
-        #     rel_V = self.V[i] / self.V[1] 
-        #     tem_N_scale[i,:] = 1 / (1 + self.N_scale * rel_V)
-        # N = self.N * tem_N_scale
         # Define right-hand-side function depending on discretization
         if self.disc == 'geo':
             rhs = jit.get_dNdt_1d_geo
@@ -1122,18 +1153,9 @@ def solve_PBE(self, t_vec=None):
                                     args = args,
                                     dt_first=0.1)
             y_evaluated, y_res_tem, t_res_tem, rate_res_tem, error_res_tem = ode_sys.solve_ode()
-            # eva_N_scale = tem_N_scale[:,:len(t_res_tem)]
             status = not ode_sys.dt_is_too_small  
-        # eva_N_scale = tem_N_scale[:,:len(t_vec)]
+
     elif self.dim == 2:
-        # V_min = min(self.V1[1],self.V3[1])
-        # for i in range(self.NS):    
-        #     for j in range(self.NS):
-        #         if i+j ==0:
-        #             continue
-        #         rel_V = self.V[i,j] / V_min
-        #         tem_N_scale[i,j,:] = 1 / (1 + self.N_scale * rel_V)
-        # N = self.N * tem_N_scale
         # Define right-hand-side function depending on discretization
         if self.disc == 'geo':
             rhs = jit.get_dNdt_2d_geo
@@ -1167,9 +1189,7 @@ def solve_PBE(self, t_vec=None):
             y_evaluated, y_res_tem, t_res_tem, rate_res_tem, error_res_tem = ode_sys.solve_ode()
             y_evaluated = y_evaluated.reshape((self.NS,self.NS,len(t_vec)))
             y_res_tem = y_res_tem.reshape((self.NS,self.NS,len(t_res_tem)))
-            # res_N_scale = tem_N_scale[:,:,:len(t_res_tem)]
             status = not ode_sys.dt_is_too_small
-        # eva_N_scale = tem_N_scale[:,:,:len(t_vec)]
 
     elif self.dim == 3:
         # Define right-hand-side function depending on discretization
