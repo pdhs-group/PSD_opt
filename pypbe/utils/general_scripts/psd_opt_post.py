@@ -212,7 +212,10 @@ def calc_save_PSD_delta(results, data_paths):
     return new_result
         
 def calc_ori_mse():
-    opt = OptBase()
+    # tmpdir = os.environ.get('TMP_PATH')
+    # data_path = os.path.join(tmpdir, "data")
+    data_path = r"C:\Users\px2030\Code\PSD_opt\pypbe\data"
+    opt = OptBase(data_path=data_path)
     
     var_corr_beta = np.array([1e-3,1e-2,1e-1])
     values = np.array([0.5, 1.0])
@@ -249,7 +252,7 @@ def calc_ori_mse():
                                     'pl_P4' : P4,
                                     }
                                 data_name = f"Sim_Mul_0.1_para_{corr_beta}_{alpha_prim[0]}_{alpha_prim[1]}_{alpha_prim[2]}_{v}_{P1}_{P2}_{P3}_{P4}.xlsx"
-                                exp_data_path = os.path.join('PSD_data', pbe_type, 'data', data_name)
+                                exp_data_path = os.path.join(data_path, data_name)
                                 exp_data_paths = [
                                     exp_data_path,
                                     exp_data_path.replace(".xlsx", "_NM.xlsx"),
@@ -639,20 +642,32 @@ if __name__ == '__main__':
     #     ]
     
     file_names = [
-        # 'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_50.npz',
+        'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_50.npz',
         'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_100.npz',
-        # 'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_200.npz',
+        'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_200.npz',
         'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_400.npz',
+        # 'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_4008co.npz',
+        # 'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_4004co.npz',
+        'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_4002co.npz',
+        'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_400 (2).npz',
         'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_800.npz',
-        # 'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_1600.npz',
+        'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_800 (2).npz',
+        'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_1600.npz',
+        'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_1600 (2).npz',
         ]
     labels = [
-        # 'iter_50',
+        'iter_50',
         'iter_100',
-        # 'iter_200',
+        'iter_200',
         'iter_400',
+        # 'iter_4008co',
+        # 'iter_4004co',
+        'iter_4002co',
+        'iter_400_PC',
         'iter_800',
-        # 'iter_1600',
+        'iter_800corr',
+        'iter_1600',
+        'iter_1600corr',
         ]
     
     # file_names = [
@@ -703,7 +718,7 @@ if __name__ == '__main__':
     visualize_diff_mean(results, labels)
     
     # kernel: corr_agg_0, corr_agg_1, corr_agg_2, pl_v, pl_P1, pl_P2, pl_P3, pl_P4
-    result_to_analyse = results[-1]
+    result_to_analyse = results[3]
     if pbe_type == 'agglomeration' or pbe_type == 'mix':
         corr_agg_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['corr_agg_0','corr_agg_1','corr_agg_2'])
     if pbe_type == 'breakage' or pbe_type == 'mix':

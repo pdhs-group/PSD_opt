@@ -65,7 +65,7 @@ config = {
         # - 'NSGA': Nondominated Sorting Genetic Algorithm (NSGA-III)
         # - 'QMC': Quasi Monte Carlo sampling
         
-        'n_iter': 400,
+        'n_iter': 800,
         # Number of iterations for the optimization process.
 
         'calc_init_N': False,
@@ -120,7 +120,7 @@ config = {
         'tune_storage_path': r'C:\Users\px2030\Code\Ray_Tune',  
         # Path to store Ray Tune optimization infomation.
     
-        'multi_jobs': False,  
+        'multi_jobs': True,  
         # Whether to run multiple optimization tasks (Tune jobs) concurrently. 
         # If True, multiple PSD datasets should be provided.
     
