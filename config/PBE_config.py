@@ -66,7 +66,7 @@ config = {
     "aggl_crit": 100,  
     # Critical particle size for agglomeration. Agglomeration will be limited to particles larger than this size.
 
-    "CORR_BETA": 1e-1,  
+    "CORR_BETA": 1,
     # Correction factor for the collision frequency kernel, controlling the rate of aggregation.
 
     'alpha_prim': np.array([1,1,1,1e-1]),  

@@ -80,7 +80,7 @@ if __name__ == '__main__':
                                     # 'pl_P3' : P3,
                                     # 'pl_P4' : P4,
                                     }
-                                known_params = None
+                                # known_params = None
                                 data_name = f"Sim_{noise_type}_{noise_strength}_para_{corr_beta}_{alpha_prim[0]}_{alpha_prim[1]}_{alpha_prim[2]}_{v}_{P1}_{P2}_{P3}_{P4}.xlsx"
                                 data_path_tem = os.path.join(data_path, data_name)
                                 data_path_tem = data_path_tem.replace(".xlsx", "_0.xlsx")

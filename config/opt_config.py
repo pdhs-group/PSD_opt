@@ -21,7 +21,7 @@ config = {
         # These values are used to initialize N in dPBE wenn calc_init_N is True.
         # Note: The first value in t_init must be zero.
         
-        't_vec' : np.arange(0, 3601, 100, dtype=float),
+        't_vec' : np.arange(0, 601, 10, dtype=float),
         # 't_vec' : np.array([0, 300, 600, 900, 1200, 1500, 2100, 2700]),
         # Time vector for the entire simulation, specifying the time points at which 
         # calculations are performed.
@@ -65,7 +65,12 @@ config = {
         # - 'NSGA': Nondominated Sorting Genetic Algorithm (NSGA-III)
         # - 'QMC': Quasi Monte Carlo sampling
         
-        'n_iter': 800,
+        'random_seed': 1,
+        # Seed for reproducible results, int or None. 
+        # This value will change global random states for numpy and torch on 
+        # initalization and loading from checkpoint.
+        
+        'n_iter': 10,
         # Number of iterations for the optimization process.
 
         'calc_init_N': False,
@@ -120,7 +125,7 @@ config = {
         'tune_storage_path': r'C:\Users\px2030\Code\Ray_Tune',  
         # Path to store Ray Tune optimization infomation.
     
-        'multi_jobs': True,  
+        'multi_jobs': False,  
         # Whether to run multiple optimization tasks (Tune jobs) concurrently. 
         # If True, multiple PSD datasets should be provided.
     

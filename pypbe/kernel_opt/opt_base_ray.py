@@ -268,17 +268,17 @@ def create_algo(self, batch=False):
 
     """
     if self.core.method == 'HEBO': 
-        search_alg = HEBOSearch(metric="loss", mode="min")
+        search_alg = HEBOSearch(metric="loss", mode="min", random_state_seed=self.core.random_seed)
     elif self.core.method == 'GP': 
-        search_alg = OptunaSearch(metric="loss", mode="min", sampler=GPSampler())
+        search_alg = OptunaSearch(metric="loss", mode="min", sampler=GPSampler(seed=self.core.random_seed))
     elif self.core.method == 'TPE': 
-        search_alg = OptunaSearch(metric="loss", mode="min", sampler=TPESampler())
+        search_alg = OptunaSearch(metric="loss", mode="min", sampler=TPESampler(seed=self.core.random_seed))
     elif self.core.method == 'Cmaes':    
-        search_alg = OptunaSearch(metric="loss", mode="min", sampler=CmaEsSampler())
+        search_alg = OptunaSearch(metric="loss", mode="min", sampler=CmaEsSampler(seed=self.core.random_seed))
     elif self.core.method == 'NSGA':    
-        search_alg = OptunaSearch(metric="loss", mode="min", sampler=NSGAIIISampler())
+        search_alg = OptunaSearch(metric="loss", mode="min", sampler=NSGAIIISampler(seed=self.core.random_seed))
     elif self.core.method == 'QMC':    
-        search_alg = OptunaSearch(metric="loss", mode="min", sampler=QMCSampler())
+        search_alg = OptunaSearch(metric="loss", mode="min", sampler=QMCSampler(scramble=True, seed=self.core.random_seed))
     # If no concurrency limit is set, return the search algorithm directly    
     if self.core.max_concurrent is None:
         return search_alg

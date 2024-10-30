@@ -235,14 +235,20 @@ class OptCore():
         """
         params = params_in.copy()
         
-        # If corr_agg is in the parameters, calculate CORR_BETA and alpha_prim
+        # If corr_agg is in the parameters, calculate CORR_BETA and alpha_prim if needed
         if "corr_agg" in params:
             corr_agg = params["corr_agg"]
-            CORR_BETA = self.return_syth_beta(corr_agg)
-            alpha_prim = corr_agg / CORR_BETA
-            
-            params["CORR_BETA"] = CORR_BETA
-            params["alpha_prim"] = alpha_prim
+            if "CORR_BETA" not in params:
+                CORR_BETA = self.return_syth_beta(corr_agg)
+                params["CORR_BETA"] = CORR_BETA
+            else:
+                CORR_BETA = params["CORR_BETA"]
+                print("Detected that CORR_BETA was entered as a known parameter")
+            if "alpha_prim" not in params:
+                alpha_prim = corr_agg / CORR_BETA
+                params["alpha_prim"] = alpha_prim
+            else:
+                print("Detected that alpha_prim was entered as a known parameter")
             
             # Remove corr_agg from the parameters
             del params["corr_agg"]

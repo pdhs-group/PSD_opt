@@ -93,6 +93,7 @@ class OptCoreRay(OptCore, tune.Trainable):
                     print(f"Warning: Known parameter '{key}' are set for optimization.")
                 transformed_params[key] = value
                 
+        print(f"The paramters actually entered calc_delta are {transformed_params}")
         # Calculate the loss (delta) using the transformed parameters
         loss = self.calc_delta(transformed_params, self.x_uni_exp, self.data_exp)
         end_time = time.time()
