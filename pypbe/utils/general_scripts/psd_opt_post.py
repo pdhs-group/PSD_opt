@@ -277,6 +277,8 @@ def correlation_analysis(result, plot=False):
     return pearson_corr
 
 def calc_save_PSD_delta(results, data_paths):
+    # tmpdir = os.environ.get('TMP_PATH')
+    # data_path = os.path.join(tmpdir, "data")
     data_path = r"C:\Users\px2030\Code\PSD_opt\pypbe\data"
     opt = OptBase(data_path=data_path)
     for i, result in enumerate(results):
@@ -448,7 +450,7 @@ def which_group(group_flag):
             ]
         labels = [
             'q3_KL',
-            'q3_MSE',
+            # 'q3_MSE',
             'q3_MAE',
             'q3_RMSE',
             'Q3_MSE',
@@ -898,9 +900,10 @@ if __name__ == '__main__':
     # diff_type = 'abs'
     diff_type = 'scaled'
     
+    my_pth = os.path.dirname( __file__ )
+    results_pth = os.path.join(my_pth, 'Parameter_study')
     remove_small_results = False
-    results_pth = 'Parameter_study'
-    calc_criteria = True
+    calc_criteria = False
     visualize_sampler_iter_flag = False
 
     # pbe_type = 'agglomeration'
@@ -954,7 +957,7 @@ if __name__ == '__main__':
     if visualize_sampler_iter_flag:
         results=visualize_sampler_iter()
         
-    # visualize_diff_mean(results, labels)
+    visualize_diff_mean(results, labels)
     ## kernel: corr_agg_0, corr_agg_1, corr_agg_2, pl_v, pl_P1, pl_P2, pl_P3, pl_P4
     # result_to_analyse = results[-1]
     # if pbe_type == 'agglomeration' or pbe_type == 'mix':

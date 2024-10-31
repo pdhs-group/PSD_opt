@@ -41,11 +41,14 @@ def transform_parameters_to_dict(X):
         params_list.append(params_dict)
     return params_list
 
-def evaluate_model(params, moment_flag):
+def evaluate_model(params):
     """
     Run the PBE model for a given set of parameters and return Moment M.
     """
-    opt = OptBase(multi_flag=False)
+    # tmpdir = os.environ.get('TMP_PATH')
+    # data_path = os.path.join(tmpdir, "data")
+    data_path = r"C:\Users\px2030\Code\PSD_opt\pypbe\data"
+    opt = OptBase(data_path=data_path, multi_flag=False)
     params_trans = params.copy()
     params_trans = opt.core.array_dict_transform(params_trans)
     params_checked = opt.core.check_corr_agg(params_trans)
@@ -156,15 +159,14 @@ if __name__ == '__main__':
     ## only for test
     # mu = evaluate_model(params_list[0], moment_flag)
     
-    moment_flag_list = [moment_flag] * len(params_list)
-    N_list = [N] * len(params_list)
-    moment_flag_list = [moment_flag] * len(params_list)
-    args_list = list(zip(params_list, moment_flag_list, N_list))
     pool = multiprocessing.Pool(processes=8)
     try:
-        results = pool.starmap(evaluate_model, args_list, moment_flag_list)
+        results = pool.map(evaluate_model, params_list)
     except KeyboardInterrupt:
         print("Caught KeyboardInterrupt, terminating workers")
+        pool.terminate()
+    except Exception as e:
+        print(f"An error occurred: {e}")
         pool.terminate()
     finally:          
         pool.close()
@@ -180,5 +182,5 @@ if __name__ == '__main__':
     Si = sobol.analyze(problem, Y_valid, calc_second_order=True, print_to_console=True)  
     
     # save the results
-    save_to_csv(Si, param_names)
+    save_to_csv(Si, param_names, N, moment_flag)
              
