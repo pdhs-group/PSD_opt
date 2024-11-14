@@ -191,11 +191,11 @@ def optimierer_ray(self, opt_params=None, exp_data_paths=None,known_params=None)
     # Set up the trainable function based on the multi_flag
     if not self.multi_flag:
         trainable = tune.with_parameters(OptCoreRay, core_params=self.core_params, pop_params=self.pop_params,
-                                         data_path=self.data_path,
+                                         data_path=self.data_path, exp_data_paths=exp_data_paths,
                                          x_uni_exp=x_uni_exp, data_exp=data_exp, known_params=known_params)
     else:
         trainable = tune.with_parameters(OptCoreMultiRay, core_params=self.core_params, pop_params=self.pop_params,
-                                         data_path=self.data_path,
+                                         data_path=self.data_path, exp_data_paths=exp_data_paths,
                                          x_uni_exp=x_uni_exp, data_exp=data_exp, known_params=known_params)    
     # Define the resources used for each trial using PlacementGroupFactory
     trainable_with_resources  = tune.with_resources(trainable, 
@@ -228,11 +228,12 @@ def optimierer_ray(self, opt_params=None, exp_data_paths=None,known_params=None)
     # Get the best result from the optimization
     opt_result = results.get_best_result(metric="loss", mode="min")
     opt_params = opt_result.config
+    opt_exp_data_paths = opt_result.metrics["exp_paths"]
     opt_score = opt_result.metrics["loss"]
     result_dict = {
         "opt_score": opt_score,
         "opt_params": opt_params,
-        "file_path": exp_data_paths
+        "file_path": opt_exp_data_paths
     }
 
     return result_dict

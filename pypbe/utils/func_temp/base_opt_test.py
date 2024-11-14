@@ -75,10 +75,17 @@ def normal_test():
     return result_dict
 
 def calc_delta_test(var_delta=False):
-    pop_params = conf.config['pop_params']
+    # pop_params = conf.config['pop_params']
+    pop_params = {'pl_v': 1.6372233629226685,
+     'pl_P1': 0.0106435922581415,
+     'pl_P2': 0.49002260278233983,
+     'pl_P3': 0.00020077684158093307,
+     'pl_P4': 1.6331881284713745,
+     'corr_agg': np.array([0.00068498, 0.00086928, 0.00011673])}
     if opt.core.calc_init_N:
         opt.core.set_init_N(exp_data_paths, 'mean')
-        
+    opt.core.init_attr(opt.core_params)
+    opt.core.init_pbe(opt.pop_params, opt.data_path) 
     if isinstance(exp_data_paths, list):
         x_uni_exp = []
         data_exp = []
@@ -113,7 +120,7 @@ if __name__ == '__main__':
     ## data is used, while algo determines the optimization process.
     opt = OptBase()
     
-    data_name = "Sim_Mul_0.1_para_1.0_0.001_0.001_0.1_1.5_0.01_0.5_0.01_2.0.xlsx"  
+    data_name = "Sim_Mul_0.1_para_1.0_0.001_0.001_0.001_1.0_0.0001_0.5_0.0001_0.5.xlsx"  
     exp_data_path = os.path.join(opt.data_path, data_name)
     exp_data_paths = [
         exp_data_path,
@@ -122,7 +129,7 @@ if __name__ == '__main__':
     ]
     
     known_params = {
-        'CORR_BETA' : 1.0,
+        # 'CORR_BETA' : 1.0,
         # 'alpha_prim' : [1e-3,1e-3,0.1],
         # 'pl_v' : v,
         # 'pl_P1' : P1,

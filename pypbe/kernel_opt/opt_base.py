@@ -335,7 +335,7 @@ class OptBase():
                             
                 exp_data_paths = join_paths(data_names)
             # Initialize ray for parallel computation
-            ray.init(log_to_driver=False, runtime_env={
+            ray.init(log_to_driver=True, runtime_env={
                 "env_vars": {"PYTHONPATH": os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))}})
             # ray.init(address=os.environ["ip_head"], log_to_driver=False, runtime_env={
             #     "env_vars": {"PYTHONPATH": os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))}})

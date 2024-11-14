@@ -11,6 +11,8 @@ import multiprocessing
 import pandas as pd
 from SALib.sample import saltelli
 from SALib.analyze import sobol
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.neighbors import KNeighborsRegressor
 sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),"../../.."))
 from pypbe.kernel_opt.opt_base import OptBase
 
@@ -149,38 +151,59 @@ if __name__ == '__main__':
     }
     
     # Set the number of sampling points
-    N = 1024  # Adjust this number based on available computational resources
+    N = 4  # Adjust this number based on available computational resources
     
     # Generate sampling points
     param_values = saltelli.sample(problem, N, calc_second_order=True)
     # Transform parameters to get a list of parameter dictionaries
-    params_list = transform_parameters_to_dict(param_values)
+    # params_list = transform_parameters_to_dict(param_values)
     
-    ## only for test
-    # mu = evaluate_model(params_list[0], moment_flag)
+    # ## only for test
+    # # mu = evaluate_model(params_list[0], moment_flag)
     
-    pool = multiprocessing.Pool(processes=8)
-    try:
-        results = pool.map(evaluate_model, params_list)
-    except KeyboardInterrupt:
-        print("Caught KeyboardInterrupt, terminating workers")
-        pool.terminate()
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        pool.terminate()
-    finally:          
-        pool.close()
-        pool.join()                        
-        results_arr = np.array(results)  
+    # pool = multiprocessing.Pool(processes=8)
+    # try:
+    #     results = pool.map(evaluate_model, params_list)
+    # except KeyboardInterrupt:
+    #     print("Caught KeyboardInterrupt, terminating workers")
+    #     pool.terminate()
+    # except Exception as e:
+    #     print(f"An error occurred: {e}")
+    #     pool.terminate()
+    # finally:          
+    #     pool.close()
+    #     pool.join()                        
+    #     results_arr = np.array(results)  
 
-    # Convert the results to an array format
-    Y = np.array(results)
-    valid_indices = ~np.isnan(Y)
-    Y_valid = Y[valid_indices]
+    # # Convert the results to an array format
+    # Y = np.array(results)
+    # nan_indices = np.isnan(Y)
+    # if np.any(nan_indices):
+    #     # 将有效（非NaN）的样本用于训练K近邻模型
+    #     valid_Y = Y[~nan_indices]
+    #     valid_params = param_values[~nan_indices]
+        
+    #     # 将包含NaN的样本分离出来作为测试集
+    #     invalid_params = param_values[nan_indices]
+        
+    #     # 使用K近邻模型来对缺失值进行插值
+    #     # 使用邻近的5个样本来插值，您可以根据需要调整n_neighbors的值
+    #     knn = KNeighborsRegressor(n_neighbors=5)
+    #     knn.fit(valid_params, valid_Y)
+        
+    #     # 使用K近邻模型对缺失值进行预测
+    #     Y[nan_indices] = knn.predict(invalid_params)
+        
+    #     # 将无效参数保存到CSV文件中
+    #     np.savetxt('invalid_params.csv', invalid_params, delimiter=',')
 
-    # Calculate Sobol' indices
-    Si = sobol.analyze(problem, Y_valid, calc_second_order=True, print_to_console=True)  
+    # ## Normalization
+    # min_max_scaler = MinMaxScaler()
+    # normalized_Y = min_max_scaler.fit_transform(Y)
+
+    # # Calculate Sobol' indices
+    # Si = sobol.analyze(problem, normalized_Y, calc_second_order=True, print_to_console=True)  
     
-    # save the results
-    save_to_csv(Si, param_names, N, moment_flag)
+    # # save the results
+    # save_to_csv(Si, param_names, N, moment_flag)
              

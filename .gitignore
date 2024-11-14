@@ -21,3 +21,4 @@ myenv
 docs/_build/
 
 *.html
+*.csv

@@ -70,7 +70,7 @@ config = {
         # This value will change global random states for numpy and torch on 
         # initalization and loading from checkpoint.
         
-        'n_iter': 10,
+        'n_iter': 20,
         # Number of iterations for the optimization process.
 
         'calc_init_N': False,
@@ -163,13 +163,13 @@ config = {
         'solver' : "ivp",
         
         "CORR_BETA": 1,
-        'alpha_prim': np.array([1e-3, 1e-3, 1e-1]),
+        'alpha_prim': np.array([0.00068498, 0.00086928, 0.00011673]),
         # 'alpha_prim': np.array([1]),
-        "pl_v": 1.5,
-        "pl_P1": 1e-2,
-        "pl_P2": 0.5,
-        "pl_P3": 1e-2,
-        "pl_P4": 2.0,
+        "pl_v": 1.6372233629226685,
+        "pl_P1": 0.0106435922581415,
+        "pl_P2": 0.49002260278233983,
+        "pl_P3": 0.00020077684158093307,
+        "pl_P4": 1.6331881284713745,
         },
     
     ## Parameters which should be optimized

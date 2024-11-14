@@ -29,7 +29,7 @@ class OptCoreRay(OptCore, tune.Trainable):
         # Initialize tune.Trainable to prepare the class as a Ray Tune actor
         tune.Trainable.__init__(self, *args, **kwargs)
         
-    def setup(self, config, core_params, pop_params, data_path, x_uni_exp, data_exp, known_params):
+    def setup(self, config, core_params, pop_params, data_path, exp_data_paths, x_uni_exp, data_exp, known_params):
         """
         Set up the environment for the optimization task.
         
@@ -62,6 +62,7 @@ class OptCoreRay(OptCore, tune.Trainable):
         self.known_params = known_params
         self.x_uni_exp = x_uni_exp
         self.data_exp = data_exp
+        self.exp_data_paths = exp_data_paths
         self.reuse_num=0
         self.actor_wait=False
     
@@ -105,12 +106,12 @@ class OptCoreRay(OptCore, tune.Trainable):
         # and discarded, leading to a large number of ineffective operations and impacting system performance.
         if execution_time < 2 and self.actor_wait:
             time.sleep(2 - execution_time)
-        return {"loss": loss, "reuse_num": self.reuse_num}
+        return {"loss": loss, "reuse_num": self.reuse_num, "exp_paths": self.exp_data_paths}
     def save_checkpoint(self, checkpoint_dir):
         """
         Save the checkpoint. This method is required by Ray Tune but is not used in this implementation.
         """
-        return None
+        pass
     def load_checkpoint(self, checkpoint_path):
         """
         Load a checkpoint. This method is required by Ray Tune but is not used in this implementation.
