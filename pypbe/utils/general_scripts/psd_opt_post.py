@@ -277,6 +277,8 @@ def correlation_analysis(result, plot=False):
     mse = np.array(result[:,0], dtype=float)
     # Calculate the Pearson correlation coefficient
     pearson_corr, _ = pearsonr(mse, mean_diff_kernels)
+    m=0
+    b=0
     if plot:
         fig=plt.figure()   
         ax=fig.add_subplot(1,1,1)
@@ -291,7 +293,7 @@ def correlation_analysis(result, plot=False):
                                clr='r',mrk='')
         ax.grid('minor')
         plt.tight_layout() 
-    return pearson_corr
+    return pearson_corr,m,b
 
 def calc_save_PSD_delta(results, data_paths):
     # tmpdir = os.environ.get('TMP_PATH')
@@ -492,6 +494,13 @@ def which_group(group_flag):
             'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_200.npz',
             'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400.npz',
             'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_800.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_1600.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_2400.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_3200.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_4000.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_4800.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_5000.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_6400.npz',
             ]
         labels = [
             'iter_50',
@@ -499,6 +508,13 @@ def which_group(group_flag):
             'iter_200',
             'iter_400',
             'iter_800',
+            'iter_1600',
+            'iter_2400',
+            'iter_3200',
+            'iter_4000',
+            'iter_4800',
+            'iter_5000',
+            # 'iter_6400',
             ]
     elif group_flag == "sampler400":
         file_names = [
@@ -659,6 +675,40 @@ def which_group(group_flag):
             'iter_1600',
             'iter_3200',
             ]
+
+    elif group_flag == "no_noise_Cmaes":
+        file_names = [
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_50no_noise.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_100no_noise.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_200no_noise.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400no_noise.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_800no_noise.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_1600no_noise.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_2400no_noise.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_3000no_noise.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_3200no_noise.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_4000no_noise.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_4500no_noise.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_5000no_noise.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_5600no_noise.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_6400no_noise.npz',
+            ]
+        labels = [
+            'iter_50',
+            'iter_100',
+            'iter_200',
+            'iter_400',
+            'iter_800',
+            'iter_1600',
+            'iter_2400',
+            # 'iter_3000',
+            'iter_3200',
+            'iter_4000',
+            'iter_4500',
+            'iter_5000',
+            # 'iter_5600',
+            # 'iter_6400',
+            ] 
         
     elif group_flag == "wight":    
         file_names = [
@@ -712,7 +762,6 @@ def which_group(group_flag):
             'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_400v.npz',
             'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_800v.npz',
             'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_1600v.npz',
-            # 'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_1600P1P3.npz',
             ]
         labels = [
             'iter_50',
@@ -721,7 +770,39 @@ def which_group(group_flag):
             'iter_400',
             'iter_800',
             'iter_1600',
-            # 'iter_1600',
+            ]
+     
+    elif group_flag == "v_Cmaes":
+        file_names = [
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_50v.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_100v.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_200v.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400v.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_800v.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_1600v.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_2400v.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_3200v.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_4000v.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_4500v.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_5000v.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_5600v.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_6400v.npz',
+
+            ]
+        labels = [
+            'iter_50',
+            'iter_100',
+            'iter_200',
+            'iter_400',
+            'iter_800',
+            'iter_1600',
+            'iter_2400',
+            # 'iter_3200',
+            'iter_4000',
+            # 'iter_4500',
+            'iter_5000',
+            # 'iter_5600',
+            # 'iter_6400',
             ]
         
     elif group_flag == "HEBOseed":
@@ -765,6 +846,69 @@ def which_group(group_flag):
             '32',
             '64',
             '128',
+            ]
+    elif group_flag == "Cmaesseed":
+        file_names = [
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400seed2.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400seed4.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400seed8.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400seed16.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400seed32.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400seed64.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400seed128.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400seed256.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400seed512.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400seed1024.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400seed2048.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400seed4096.npz',
+            ]
+        labels = [
+            '1',
+            '2',
+            # '4',
+            '8',
+            '16',
+            '32',
+            # '64',
+            '128',
+            '256',
+            '512',
+            # '1024',
+            '2048',
+            '4096',
+            ]
+    elif group_flag == "Cmaesseed4096":
+        file_names = [
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_50seed4096.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_100seed4096.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_200seed4096.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400seed4096.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_800seed4096.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_1600seed4096.npz',
+            ]
+        labels = [
+            'iter_50',
+            'iter_100',
+            'iter_200',
+            'iter_400',
+            'iter_800',
+            'iter_1600',
+            ]
+    elif group_flag == "_test":
+        file_names = [
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_50.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_50_20241125_125014.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_50_20241124_142740.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_TPE_wight_1_iter_50.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_TPE_wight_1_iter_50_20241125_112019.npz',
+            ]
+        labels = [
+            'Cmaes',
+            'Cmaes',
+            # 'Cmaes',
+            # 'TPE',
+            # 'TPE',
             ]
     return file_names, labels
         
@@ -1092,14 +1236,15 @@ if __name__ == '__main__':
     remove_small_results = False
     calc_criteria = False
     visualize_sampler_iter_flag = False
-    export_in_origin = False
+    export_in_origin = True
 
     # pbe_type = 'agglomeration'
     # pbe_type = 'breakage'
     pbe_type = 'mix'
+    # pbe_type = 'test'
     
     # group_flag = "iter"
-    group_flag = "iter_Cmaes"
+    # group_flag = "iter_Cmaes"
     # group_flag = "sampler400"
     # group_flag = "sampler800"
     # group_flag = "sampler400rand"
@@ -1108,11 +1253,16 @@ if __name__ == '__main__':
     # group_flag = "target800"
     # group_flag = "no_multi"
     # group_flag = "no_noise"
+    # group_flag = "no_noise_Cmaes"
     # group_flag = "wight"
     # group_flag = "P1P3"
     # group_flag = "v"
+    group_flag = "v_Cmaes"
     # group_flag = "HEBOseed"
     # group_flag = "GPseed"
+    # group_flag = "Cmaesseed"
+    # group_flag = "Cmaesseed4096"
+    # group_flag = "_test"
     
     # results_mse = calc_ori_mse()
     
@@ -1154,7 +1304,7 @@ if __name__ == '__main__':
         
     visualize_diff_mean(results, labels)
     # # kernel: corr_agg_0, corr_agg_1, corr_agg_2, pl_v, pl_P1, pl_P2, pl_P3, pl_P4
-    # result_to_analyse = results[1]
+    result_to_analyse = results[-3]
     # if pbe_type == 'agglomeration' or pbe_type == 'mix':
     #     corr_agg_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['corr_agg_0','corr_agg_1','corr_agg_2'])
     # if pbe_type == 'breakage' or pbe_type == 'mix':
@@ -1163,8 +1313,8 @@ if __name__ == '__main__':
     #     pl_P24_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P2','pl_P4'])
     
     visualize_diff_mean_radar(results, labels)
-    pearson_corrs = visualize_correlation(results, labels)
-    # correlation_analysis(result_to_analyse,plot=True)
+    # pearson_corrs = visualize_correlation(results, labels)
+    pearson_corrs,m,b = correlation_analysis(result_to_analyse,plot=True)
     # visualize_diff_kernel_mse(result_to_analyse)
     
     # variable_to_analyse = result_to_analyse[1]

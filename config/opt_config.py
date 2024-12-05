@@ -70,7 +70,7 @@ config = {
         # This value will change global random states for numpy and torch on 
         # initalization and loading from checkpoint.
         
-        'n_iter': 20,
+        'n_iter': 200,
         # Number of iterations for the optimization process.
 
         'calc_init_N': False,
@@ -132,7 +132,7 @@ config = {
         'num_jobs': 3,  
         # Number of parallel optimization jobs to run.
     
-        'cpus_per_trail': 4,  
+        'cpus_per_trail': 2,  
         # Number of CPU cores allocated to each optimization trial.
     
         'max_concurrent': 8,  
