@@ -113,10 +113,15 @@ if __name__ == '__main__':
     else:
         result_name =  f'{delta_flag}_{method}_wight_{weight_2d}_iter_{n_iter}'
         
-    np.savez(f'{result_name}.npz', 
-          results=result, 
+    file_path = f'{result_name}.npz'
+    if os.path.exists(file_path):
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        file_path = f'{result_name}_{timestamp}.npz'
+
+    np.savez(file_path,
+          results=result,
           time=elapsed_time
           )
-    
+
     
     

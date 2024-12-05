@@ -4,6 +4,7 @@ data-processing-related calculations during optimization
 """
 import numpy as np
 from sklearn.neighbors import KernelDensity
+from scipy.interpolate import interp1d
 from ..utils.func.func_read_exp import write_read_exp
 
 def read_exp(self, exp_data_path, t_vec):  
@@ -25,7 +26,7 @@ def read_exp(self, exp_data_path, t_vec):
     """
     # Instantiate the write_read_exp class to handle reading and writing PSD data,
     # and initialize the time format for the experimental data
-    exp_data = write_read_exp(exp_data_path, read=True, sheet_name=self.sheet_name)
+    exp_data = write_read_exp(exp_data_path, read=True, sheet_name=self.sheet_name, exp_data=self.exp_data)
     
     # Extract the experimental data corresponding to the given time vector
     df = exp_data.get_exp_data(t_vec)
@@ -96,21 +97,20 @@ def get_all_synth_data(self, exp_data_path):
             
     return x_uni_exp, data_exp
 
+## test only for 1d batch exp data
 def get_all_exp_data(self, exp_data_path):
-    # TODO
-    # The specific format of the data needs to be adapted
-    if self.sample_num == 1:
-        x_uni_exp, q3_exp = self.read_exp(exp_data_path, self.t_vec[self.delta_t_start_step:]) 
-        data_exp = q3_exp
-    else:
-        x_uni_exp = []
-        data_exp = []
-        for i in range (0, self.sample_num):
-            exp_data_path = self.traverse_path(i, exp_data_path)
-            x_uni_exp_tem, q3_exp = self.read_exp(exp_data_path, self.t_vec[self.delta_t_start_step:])
-            x_uni_exp.append(x_uni_exp_tem)
-            data_exp.append(q3_exp)
-    return x_uni_exp, data_exp
+    self.p.calc_R()
+    x_uni = self.p.calc_x_uni()
+    Q3_init_exp, x_uni_exp = self.read_exp(exp_data_path, self.t_vec[self.delta_t_start_step:]) 
+    len_t = x_uni_exp.shape[1]
+    Q3_init_mod = np.zeros((len(x_uni), len_t))
+    for i in range(len_t):
+        inter_grid = interp1d(x_uni_exp[:, i], Q3_init_exp, kind='linear', fill_value="extrapolate")
+        Q3_init_mod_tem = inter_grid(x_uni)
+        Q3_init_mod_tem = Q3_init_mod_tem / Q3_init_mod_tem.max()
+        Q3_init_mod[:, i] = Q3_init_mod_tem
+    Q3_init_mod[np.where(Q3_init_mod < 0)] = 0.0
+    return x_uni, Q3_init_mod
 
 def function_noise(self, ori_data):
     """

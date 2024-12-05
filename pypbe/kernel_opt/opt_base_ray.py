@@ -143,9 +143,6 @@ def optimierer_ray(self, opt_params=None, exp_data_paths=None,known_params=None)
             - "opt_params": The optimized parameters from the search space.
             - "file_path": The path(s) to the experimental data used for optimization.
     """
-    # Initialize the number concentration N if required
-    if self.core.calc_init_N:
-        self.core.set_init_N(exp_data_paths, init_flag='mean')
     # Prepare experimental data (either for 1D or 2D)
     if isinstance(exp_data_paths, list):
         # When set to multi, the exp_data_paths entered here is a list containing one 2d data name and two 1d data names.
@@ -218,7 +215,7 @@ def optimierer_ray(self, opt_params=None, exp_data_paths=None,known_params=None)
         run_config=train.RunConfig(
         storage_path =self.core.tune_storage_path,
         name = data_name,
-        verbose = 1, # verbose=0: no trial info, 1: basic info, 2: detailed info
+        verbose = 0, # verbose=0: no trial info, 1: basic info, 2: detailed info
         stop={"training_iteration": 1},
         )
     )
