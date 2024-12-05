@@ -26,7 +26,7 @@ def create_1d_pop(self, t_vec, disc='geo'):
     self.p_NM = DPBESolver(dim=1,disc=disc, t_vec=t_vec, load_attr=False)
     self.p_M = DPBESolver(dim=1,disc=disc, t_vec=t_vec, load_attr=False)
         
-def calc_pop(self, pop, params=None, t_vec=None):
+def calc_pop(self, pop, params=None, t_vec=None, init_N=None):
     """
     Configure and calculate the PBE.
 
@@ -52,6 +52,10 @@ def calc_pop(self, pop, params=None, t_vec=None):
     if not self.calc_init_N:
         pop.full_init(calc_alpha=False)
     else:
+        if init_N is None:
+            raise Exception("initial N is not provided")
+        pop.calc_R()
+        pop.N = init_N
         pop.calc_F_M()
         pop.calc_B_R()
         pop.calc_int_B_F()
@@ -253,16 +257,17 @@ def set_init_N(self, exp_data_paths, init_flag):
     """
     if self.dim ==1:
         self.p.calc_R()
-        self.set_init_N_1D(self.p, exp_data_paths, init_flag)
+        self.init_N = self.set_init_N_1D(self.p, exp_data_paths, init_flag)
     elif self.dim == 2:
         self.calc_all_R()
-        self.set_init_N_1D(self.p_NM, exp_data_paths[1], init_flag)
-        self.set_init_N_1D(self.p_M, exp_data_paths[2], init_flag)
+        self.init_N_NM = self.set_init_N_1D(self.p_NM, exp_data_paths[1], init_flag)
+        self.init_N_M = self.set_init_N_1D(self.p_M, exp_data_paths[2], init_flag)
         self.p.N = np.zeros((self.p.NS, self.p.NS, len(self.p.t_vec)))
         # Set the number concentration for NM and M populations at the initial time step
         # This assumes the system initially contains only pure materials, so no mixed particles exist
         self.p.N[1:, 1, 0] = self.p_NM.N[1:, 0]
         self.p.N[1, 1:, 0] = self.p_M.N[1:, 0]
+        self.init_N_2D = self.p.N.copy()
 
 def set_init_N_1D(self, pop, exp_data_path, init_flag):
     """
@@ -287,46 +292,50 @@ def set_init_N_1D(self, pop, exp_data_path, init_flag):
     -------
     None
     """
-    x_uni = pop.calc_x_uni(pop)
-    # If only one sample exists, initialize N based on the first few time points
-    if self.sample_num == 1:
-        # Exclude the zero point and extrapolate the initial conditions
-        x_uni_exp, sumN_uni_init_sets = self.read_exp(exp_data_path, self.t_init[1:])
-    else:
-        # For multiple samples, average the initial data values
-        exp_data_path=self.traverse_path(0, exp_data_path)
-        x_uni_exp, sumN_uni_tem = self.read_exp(exp_data_path, self.t_init[1:])
-        sumN_uni_all_samples = np.zeros((len(x_uni_exp), len(self.t_init[1:]), self.sample_num))
-        sumN_uni_all_samples[:, :, 0] = sumN_uni_tem
-        # Loop through remaining samples and average the data sets
-        for i in range(1, self.sample_num):
-            exp_data_path=self.traverse_path(i, exp_data_path)
-            _, sumN_uni_tem = self.read_exp(exp_data_path, self.t_init[1:])
-            sumN_uni_all_samples[:, :, i] = sumN_uni_tem
-        sumN_uni_init_sets = sumN_uni_all_samples.mean(axis=2)
-        
-    sumN_uni_init = np.zeros(len(x_uni))
-    
-    # Initialize based on interpolation of the time points    
-    if init_flag == 'int':
-        for idx in range(len(x_uni_exp)):
-            interp_time = interp1d(self.t_init[1:], sumN_uni_init_sets[idx, :], kind='linear', fill_value="extrapolate")
-            sumN_uni_init[idx] = interp_time(0.0)
-    # Initialize based on the mean of the initial data sets
-    elif init_flag == 'mean':
-        sumN_uni_init = sumN_uni_init_sets.mean(axis=1)
-    # Interpolate the experimental data onto the dPBE grid 
-    inter_grid = interp1d(x_uni_exp, sumN_uni_init, kind='linear', fill_value="extrapolate")
-    sumN_uni_init = inter_grid(x_uni)
-    
-    ## TODO
-    ## Q3_init = Q3_init / Q3.max() # Normalize Q3 to ensure that its maximum value is 1 
-    ## calculate sumN_uni_init based on Q3_init
+    x_uni = pop.calc_x_uni()
+    if not self.exp_data:
+        # If only one sample exists, initialize N based on the first few time points
+        if self.sample_num == 1:
+            # Exclude the zero point and extrapolate the initial conditions
+            x_uni_exp, sumN_uni_init_sets = self.read_exp(exp_data_path, self.t_init[1:])
+        else:
+            # For multiple samples, average the initial data values
+            exp_data_path=self.traverse_path(0, exp_data_path)
+            x_uni_exp, sumN_uni_tem = self.read_exp(exp_data_path, self.t_init[1:])
+            sumN_uni_all_samples = np.zeros((len(x_uni_exp), len(self.t_init[1:]), self.sample_num))
+            sumN_uni_all_samples[:, :, 0] = sumN_uni_tem
+            # Loop through remaining samples and average the data sets
+            for i in range(1, self.sample_num):
+                exp_data_path=self.traverse_path(i, exp_data_path)
+                _, sumN_uni_tem = self.read_exp(exp_data_path, self.t_init[1:])
+                sumN_uni_all_samples[:, :, i] = sumN_uni_tem
+            sumN_uni_init_sets = sumN_uni_all_samples.mean(axis=2)
             
-    pop.N = np.zeros((pop.NS, len(pop.t_vec)))
-    pop.N[:, 0]= sumN_uni_init
+        sumN_uni_init = np.zeros(len(x_uni))
+        
+        # Initialize based on interpolation of the time points    
+        if init_flag == 'int':
+            for idx in range(len(x_uni_exp)):
+                interp_time = interp1d(self.t_init[1:], sumN_uni_init_sets[idx, :], kind='linear', fill_value="extrapolate")
+                sumN_uni_init[idx] = interp_time(0.0)
+        # Initialize based on the mean of the initial data sets
+        elif init_flag == 'mean':
+            sumN_uni_init = sumN_uni_init_sets.mean(axis=1)
+        # Interpolate the experimental data onto the dPBE grid 
+        inter_grid = interp1d(x_uni_exp, sumN_uni_init, kind='linear', fill_value="extrapolate")
+        sumN_uni_init = inter_grid(x_uni)
+    else:
+        Q3_init_exp, x_uni_exp = self.read_exp(exp_data_path, self.t_init[1:])
+        inter_grid = interp1d(x_uni_exp.flatten(), Q3_init_exp, kind='linear', fill_value="extrapolate")
+        Q3_init_mod = inter_grid(x_uni)
+        Q3_init_mod[np.where(Q3_init_mod < 0)] = 0.0
+        Q3_init_mod = Q3_init_mod / Q3_init_mod.max()
+        sumN_uni_init = np.zeros(x_uni.shape)
+        sumN_uni_init[1:] = np.diff(Q3_init_mod) * self.p.V01 *1e18 / (np.pi * x_uni[1:]**3 /6)
+    
+    N_init = np.zeros((pop.NS, len(pop.t_vec)))
+    N_init[:, 0]= sumN_uni_init
     # Set very small N values to zero
     thr = 1e-5
-    pop.N[pop.N < (thr * pop.N[1:, 0].max())]=0   
-    # Scale N by the volume unit
-    pop.N[:, 0] *= pop.V_unit
+    N_init[N_init < (thr * N_init[1:, 0].max())]=0   
+    return N_init

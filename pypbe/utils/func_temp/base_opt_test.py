@@ -29,63 +29,36 @@ def normal_test():
     elapsed_time = end_time - start_time
     print(f"The execution of optimierer takes：{elapsed_time} seconds")
     
-    # fig=plt.figure()    
-    # axq3=fig.add_subplot(1,2,1)
-    # axQ3=fig.add_subplot(1,2,2)
-    # fig_NM=plt.figure()    
-    # axq3_NM=fig_NM.add_subplot(1,2,1)
-    # axQ3_NM=fig_NM.add_subplot(1,2,2)
-    # fig_M=plt.figure()    
-    # axq3_M=fig_M.add_subplot(1,2,1)
-    # axQ3_M=fig_M.add_subplot(1,2,2)
+    ## Calculate PBE with exp-data and parameter from optimization
+    opt.core.set_init_N(exp_data_paths, 'mean')
+    opt.core.calc_pop(opt.core.p, result_dict["opt_params"], opt.core.t_vec, opt.core.init_N)
+    x_uni, Q3 = return_pop_distribution()
     
-    # ## Calculate PBE direkt with psd-data and original parameter
-    # pop_params = conf.config['pop_params']
-    # param_str = data_name.split('para_')[-1]
-    # param_str = param_str.rsplit('.', 1)[0] 
-    # params = param_str.split('_')
-    # converted_params = [float(param) if '.' in param or 'e' in param.lower() else int(param) for param in params]
-    # pop_params['CORR_BETA'] = converted_params[0]
-    # pop_params['alpha_prim'] = np.array(converted_params[1:4])
-    # pop_params['pl_v'] = converted_params[4]
-    # pop_params['pl_P1'] = converted_params[5]
-    # pop_params['pl_P2'] = converted_params[6]
-    # pop_params['pl_P3'] = converted_params[7]
-    # pop_params['pl_P4'] = converted_params[8]
-    # # opt.core.set_init_pop_para(pop_params)
-    # # opt.core.calc_init_N = False
-    # # opt.core.set_comp_para('r0_001', 'r0_001',R01_0_scl=R01_0_scl,R03_0_scl=R03_0_scl,
-    # #                         dist_path_NM=dist_path_1,dist_path_M=dist_path_2)
-    # opt.core.calc_all_pop(pop_params)
-    # opt.core.p.visualize_distribution(axq3=axq3, axQ3=axQ3, fig=fig, clr='b', lbl='ori', smoothing=True)
-    # opt.core.p_NM.visualize_distribution(axq3=axq3_NM, axQ3=axQ3_NM, fig=fig_NM, clr='b', lbl='ori', smoothing=True)
-    # opt.core.p_M.visualize_distribution(axq3=axq3_M, axQ3=axQ3_M, fig=fig_M, clr='b', lbl='ori', smoothing=True)
-    # ## Calculate PBE with exp-data and parameter from optimization
-    # # opt.core.set_init_pop_para(opt_values)
-    # # opt.core.calc_init_N = True
-    # # opt.core.set_comp_para(R_NM=R_NM, R_M=R_M,R01_0_scl=R01_0_scl,R03_0_scl=R03_0_scl)
-    # # opt.core.set_init_N(opt.core.sample_num, exp_data_paths, 'mean')
-    # opt.core.calc_all_pop(result_dict["opt_params"])
-    # # opt.core.calc_pop(opt.core.p, result_dict["opt_params"])
-    # opt.core.p.visualize_distribution(axq3=axq3, axQ3=axQ3, fig=fig, clr='r', lbl='opt', smoothing=True)
-    # opt.core.p_NM.visualize_distribution(axq3=axq3_NM, axQ3=axQ3_NM, fig=fig_NM, clr='r', lbl='opt', smoothing=True)
-    # opt.core.p_M.visualize_distribution(axq3=axq3_M, axQ3=axQ3_M, fig=fig_M, clr='r', lbl='opt', smoothing=True) 
-    # opt.core.p.visualize_distribution_animation(smoothing=True)
+    return  x_uni, Q3 , result_dict
+
+def return_pop_distribution():
+    # Berechne x_uni
+    x_uni = opt.core.p.calc_x_uni()
     
-    return result_dict
+    # Erstelle eine Liste der Verteilungen für die ersten 12 Zeitschritte
+    Q3 = [np.array(opt.core.p.return_distribution(t=i, flag='Q3')).reshape(len(x_uni)) for i in range(len(opt.core.t_vec))]
+    
+    # Zusammenfügen zu einer (52, 12) Matrix
+    Q3_matrix = np.column_stack(Q3)
+    
+    return x_uni, Q3_matrix
+
 
 def calc_delta_test(var_delta=False):
     # pop_params = conf.config['pop_params']
-    pop_params = {'pl_v': 1.6372233629226685,
-     'pl_P1': 0.0106435922581415,
-     'pl_P2': 0.49002260278233983,
-     'pl_P3': 0.00020077684158093307,
-     'pl_P4': 1.6331881284713745,
-     'corr_agg': np.array([0.00068498, 0.00086928, 0.00011673])}
-    if opt.core.calc_init_N:
-        opt.core.set_init_N(exp_data_paths, 'mean')
+    pop_params = {'pl_v': 0.012150989218049626,
+     'pl_P1': 2.4030393550212942e-06,
+     'pl_P2': 0.7962978267023504,
+     'corr_agg': np.array([0.00074662])}
     opt.core.init_attr(opt.core_params)
     opt.core.init_pbe(opt.pop_params, opt.data_path) 
+    if opt.core.calc_init_N:
+        opt.core.set_init_N(exp_data_paths, 'mean')
     if isinstance(exp_data_paths, list):
         x_uni_exp = []
         data_exp = []
@@ -112,21 +85,25 @@ def calc_delta_test(var_delta=False):
         return delta_arr
     else:
         delta = opt.core.calc_delta(pop_params, x_uni_exp, data_exp)
-        return delta
+        x_uni, Q3 = return_pop_distribution()
+        return x_uni, Q3, delta
 
 if __name__ == '__main__':
     ## Instantiate OptBase.
     ## The OptBase class determines how the experimental 
     ## data is used, while algo determines the optimization process.
     opt = OptBase()
+    multi_flag = opt.multi_flag
     
-    data_name = "Sim_Mul_0.1_para_1.0_0.001_0.001_0.001_1.0_0.0001_0.5_0.0001_0.5.xlsx"  
-    exp_data_path = os.path.join(opt.data_path, data_name)
-    exp_data_paths = [
-        exp_data_path,
-        exp_data_path.replace(".xlsx", "_NM.xlsx"),
-        exp_data_path.replace(".xlsx", "_M.xlsx")
-    ]
+    data_name = "Mean_data_Q3_600.xlsx"
+    
+    exp_data_paths = os.path.join(opt.data_path, data_name)
+    if multi_flag:
+        exp_data_paths = [
+            exp_data_paths,
+            exp_data_paths.replace(".xlsx", "_NM.xlsx"),
+            exp_data_paths.replace(".xlsx", "_M.xlsx")
+        ]
     
     known_params = {
         # 'CORR_BETA' : 1.0,
@@ -139,6 +116,6 @@ if __name__ == '__main__':
         }
     
     # Run an optimization and generate graphs of the results
-    result_dict = normal_test()
+    # x_uni, Q3 , result_dict = normal_test()
     
-    # delta = calc_delta_test(var_delta=False)
+    x_uni_test, Q3_test , delta = calc_delta_test(var_delta=False)

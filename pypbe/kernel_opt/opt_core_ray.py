@@ -58,6 +58,10 @@ class OptCoreRay(OptCore, tune.Trainable):
         self.init_attr(core_params)
         self.init_pbe(pop_params, data_path)
         
+        # Initialize the number concentration N if required
+        if self.calc_init_N:
+            self.set_init_N(exp_data_paths, init_flag='mean')
+            
         # Store experimental data and known parameters
         self.known_params = known_params
         self.x_uni_exp = x_uni_exp
@@ -94,7 +98,7 @@ class OptCoreRay(OptCore, tune.Trainable):
                     print(f"Warning: Known parameter '{key}' are set for optimization.")
                 transformed_params[key] = value
                 
-        print(f"The paramters actually entered calc_delta are {transformed_params}")
+        # print(f"The paramters actually entered calc_delta are {transformed_params}")
         # Calculate the loss (delta) using the transformed parameters
         loss = self.calc_delta(transformed_params, self.x_uni_exp, self.data_exp)
         end_time = time.time()

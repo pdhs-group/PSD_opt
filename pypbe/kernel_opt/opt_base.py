@@ -126,7 +126,7 @@ class OptBase():
 
         """
         # Initialize the optimization core based on dimensionality and multi_flag
-        if self.dim == 1:
+        if self.dim == 1 and self.multi_flag:
             # If the dimension is 1, the multi algorithm is not applicable
             print("The multi algorithm does not support 1-D pop!")
             self.multi_flag = False
