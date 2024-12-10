@@ -124,7 +124,7 @@ def re_calc_distribution(self, x_uni, q3=None, sum_uni=None, flag='all'):
         return tuple(outputs[f.strip()] for f in flags if f.strip() in outputs)
     
 ## Return particle size distribution on fixed grid 
-def return_distribution(self, comp='all', t=0, N=None, flag='all'):
+def return_distribution(self, comp='all', t=0, N=None, flag='all', rel_q=False):
     """
     Returns the results of Volume-based PSD(Particle density distribution) of a time step.
     
@@ -150,6 +150,9 @@ def return_distribution(self, comp='all', t=0, N=None, flag='all'):
     
     """
     def unique_with_tolerance(V, tol=1e-3):
+        ## When using `uni_grid`, it was found that some particles with the same volume are 
+        ## treated as having different volumes due to floating-point precision issues. 
+        ## Therefore, `np.isclose` needs to be used for comparing floating-point numbers.
         V_sorted = np.sort(V)
         V_unique = [V_sorted[0]]
         
@@ -162,8 +165,10 @@ def return_distribution(self, comp='all', t=0, N=None, flag='all'):
         N = self.N
     
     # Extract unique values that are NOT -1 (border)
-    v_uni = np.setdiff1d(self.V,[-1])
-    # v_uni = unique_with_tolerance(v_uni)
+    if self.disc == 'geo':
+        v_uni = np.setdiff1d(self.V,[-1])
+    else:
+        v_uni = unique_with_tolerance(v_uni)
     q3 = np.zeros(len(v_uni))
     x_uni = np.zeros(len(v_uni))
     sumvol_uni = np.zeros(len(v_uni))
@@ -202,11 +207,14 @@ def return_distribution(self, comp='all', t=0, N=None, flag='all'):
         # Retrieve x10, x50 and x90 through interpolation
         x_10=np.interp(0.1, Q3, x_uni)
         x_50=np.interp(0.5, Q3, x_uni)
-        x_90=np.interp(0.9, Q3, x_uni)   
+        x_90=np.interp(0.9, Q3, x_uni)
     else:
         print('Case for comp not coded yet. Exiting')
         return
-    
+    if rel_q:
+        max_q3 = max(q3)
+        if max_q3 != 0:
+            q3 = q3/max_q3
     outputs = {
     'x_uni': x_uni,
     'q3': q3,
@@ -223,7 +231,7 @@ def return_distribution(self, comp='all', t=0, N=None, flag='all'):
         flags = flag.split(',')
         return tuple(outputs[f.strip()] for f in flags if f.strip() in outputs)
 
-def return_num_distribution(self, comp='all', t=0, N=None, flag='all'):
+def return_num_distribution(self, comp='all', t=0, N=None, flag='all', rel_q=False):
     """
     Returns the results of Number-based PSD(Particle density distribution) of a time step.
     
@@ -248,13 +256,26 @@ def return_num_distribution(self, comp='all', t=0, N=None, flag='all'):
         - 'all': Returns all the above data
     
     """
+    def unique_with_tolerance(V, tol=1e-3):
+        ## When using `uni_grid`, it was found that some particles with the same volume are 
+        ## treated as having different volumes due to floating-point precision issues. 
+        ## Therefore, `np.isclose` needs to be used for comparing floating-point numbers.
+        V_sorted = np.sort(V)
+        V_unique = [V_sorted[0]]
+        
+        for V_val in V_sorted[1:]:
+            if not np.isclose(V_val, V_unique[-1], atol=tol*V_sorted[0], rtol=0):
+                V_unique.append(V_val)
+        return np.array(V_unique)
     # If no N is provided use the one from the class instance
     if N is None:
         N = self.N
     
-    # Extract unique values that are NOT -1(border)
-    # At the same time, v_uni will be rearranged according to size.
-    v_uni = np.setdiff1d(self.V,[-1])
+    # Extract unique values that are NOT -1 (border)
+    if self.disc == 'geo':
+        v_uni = np.setdiff1d(self.V,[-1])
+    else:
+        v_uni = unique_with_tolerance(v_uni)
 
     q0 = np.zeros(len(v_uni))
     x_uni = np.zeros(len(v_uni))
@@ -296,7 +317,11 @@ def return_num_distribution(self, comp='all', t=0, N=None, flag='all'):
     else:
         print('Case for comp not coded yet. Exiting')
         return
-
+    if rel_q:
+        max_q0 = max(q0)
+        if max_q0 != 0:
+            q0 = q0/max_q0
+            
     outputs = {
     'x_uni': x_uni,
     'q0': q0,

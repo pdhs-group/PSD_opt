@@ -1137,6 +1137,8 @@ def solve_PBE(self, t_vec=None):
                                                     [0, t_max], 
                                                     N[:,0], t_eval=t_vec,
                                                     args=args,
+                                                    ## If `rtol` is set too small, it may cause the results to diverge, 
+                                                    ## leading to the termination of the calculation.
                                                     method='Radau',first_step=0.1,rtol=1e-1)
                     
                     # Reshape and save result to N and t_vec
@@ -1171,6 +1173,8 @@ def solve_PBE(self, t_vec=None):
                                                     [0, t_max], 
                                                     np.reshape(N[:,:,0],-1), t_eval=t_vec,
                                                     args=args,
+                                                    ## If `rtol` is set too small, it may cause the results to diverge, 
+                                                    ## leading to the termination of the calculation.
                                                     method='Radau',first_step=0.1,rtol=1e-1)
                     
                     # Reshape and save result to N and t_vec
@@ -1202,6 +1206,8 @@ def solve_PBE(self, t_vec=None):
                                        [0, t_max], 
                                        np.reshape(self.N[:,:,:,0],-1), t_eval=t_vec,
                                        args=(self.V,self.V1,self.V2,self.V3,self.F_M,self.NS,self.THR_DN),
+                                       ## If `rtol` is set too small, it may cause the results to diverge, 
+                                       ## leading to the termination of the calculation.
                                        method='Radau',first_step=0.1,rtol=1e-1)
         
         # Reshape and save result to N and t_vec
