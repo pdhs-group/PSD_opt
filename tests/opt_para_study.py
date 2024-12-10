@@ -20,6 +20,7 @@ if __name__ == '__main__':
     multi_flag = opt.multi_flag
     
     weight_2d = opt.core.weight_2d
+    add_noise = opt.core.add_noise
     noise_type = opt.core.noise_type
     noise_strength = opt.core.noise_strength
     delta_flag = opt.core.delta_flag
@@ -75,18 +76,22 @@ if __name__ == '__main__':
                                     # 'CORR_BETA' : corr_beta,
                                     # 'alpha_prim' : alpha_prim,
                                     # 'pl_v' : v,
-                                    # 'pl_P1' : P1,
+                                    'pl_P1' : P1,
                                     # 'pl_P2' : P2,
-                                    # 'pl_P3' : P3,
+                                    'pl_P3' : P3,
                                     # 'pl_P4' : P4,
                                     }
-                                known_params = None
-                                data_name = f"Sim_{noise_type}_{noise_strength}_para_{corr_beta}_{alpha_prim[0]}_{alpha_prim[1]}_{alpha_prim[2]}_{v}_{P1}_{P2}_{P3}_{P4}.xlsx"
+                                # known_params = None
+                                if add_noise:
+                                    prefix = f"Sim_{noise_type}_{noise_strength}_para"
+                                else:
+                                    prefix = "Sim_para"
+                                data_name = f"{prefix}_{corr_beta}_{alpha_prim[0]}_{alpha_prim[1]}_{alpha_prim[2]}_{v}_{P1}_{P2}_{P3}_{P4}.xlsx"
                                 data_path_tem = os.path.join(data_path, data_name)
                                 data_path_tem = data_path_tem.replace(".xlsx", "_0.xlsx")
                                 if not os.path.exists(data_path_tem):
                                     continue
-                                data_names_list.append(data_name) 
+                                data_names_list.append(data_name)
                                 known_params_list.append(known_params)
     if multi_flag:
         data_names_list_tem= []
@@ -108,10 +113,15 @@ if __name__ == '__main__':
     else:
         result_name =  f'{delta_flag}_{method}_wight_{weight_2d}_iter_{n_iter}'
         
-    np.savez(f'{result_name}.npz', 
-          results=result, 
+    file_path = f'{result_name}.npz'
+    if os.path.exists(file_path):
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        file_path = f'{result_name}_{timestamp}.npz'
+
+    np.savez(file_path,
+          results=result,
           time=elapsed_time
           )
-    
+
     
     

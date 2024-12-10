@@ -36,7 +36,7 @@ class OptBase():
         Initializes the class with configuration and data paths.
     """
     
-    def __init__(self, config_path=None, data_path=None):
+    def __init__(self, config_path=None, data_path=None, multi_flag=None):
         """
         Initializes the OptBase class with configuration and data paths.
         
@@ -62,7 +62,10 @@ class OptBase():
         config = self.check_config_path(config_path)
         self.core_params = config['algo_params']
         self.pop_params = config['pop_params']
-        self.multi_flag = config['multi_flag']
+        if multi_flag is None:
+            self.multi_flag = config['multi_flag']
+        else:
+            self.multi_flag = multi_flag
         self.opt_params = config['opt_params']
         self.dim = self.core_params.get('dim', None)
         # Set the data path, use default if not provided
@@ -123,7 +126,7 @@ class OptBase():
 
         """
         # Initialize the optimization core based on dimensionality and multi_flag
-        if self.dim == 1:
+        if self.dim == 1 and self.multi_flag:
             # If the dimension is 1, the multi algorithm is not applicable
             print("The multi algorithm does not support 1-D pop!")
             self.multi_flag = False
@@ -198,10 +201,10 @@ class OptBase():
                     if self.core.sample_num != 1:
                         # Traverse the file paths for multiple samples
                         exp_data_paths = self.core.traverse_path(i, exp_data_paths)
-                        # Write data for each dimension to separate files
-                        self.write_new_data(self.core.p, exp_data_paths[0])
-                        self.write_new_data(self.core.p_NM, exp_data_paths[1])
-                        self.write_new_data(self.core.p_M, exp_data_paths[2])
+                    # Write data for each dimension to separate files
+                    self.write_new_data(self.core.p, exp_data_paths[0])
+                    self.write_new_data(self.core.p_NM, exp_data_paths[1])
+                    self.write_new_data(self.core.p_M, exp_data_paths[2])
             else:
                 return
     def write_new_data(self, pop, exp_data_path):
@@ -310,6 +313,8 @@ class OptBase():
                 return os.path.join(self.data_path, names)
             
             exp_data_paths = []
+            if isinstance(known_params, dict) and not known_params:
+                known_params = None
             # Handle multi-flag (whether auxiliary 1D data is used for 2D-PBE)
             if self.multi_flag:
                 # If the first element of data_names is a list, we are dealing with multiple datasets
@@ -330,7 +335,7 @@ class OptBase():
                             
                 exp_data_paths = join_paths(data_names)
             # Initialize ray for parallel computation
-            ray.init(log_to_driver=False, runtime_env={
+            ray.init(log_to_driver=True, runtime_env={
                 "env_vars": {"PYTHONPATH": os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))}})
             # ray.init(address=os.environ["ip_head"], log_to_driver=False, runtime_env={
             #     "env_vars": {"PYTHONPATH": os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))}})

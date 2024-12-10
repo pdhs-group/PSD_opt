@@ -95,6 +95,10 @@ class OptCore():
         # Set the initial population parameters and component parameters
         self.set_init_pop_para(pop_params)
         self.set_comp_para(data_path)
+        self.p.reset_params()
+        if self.dim == 2:
+            self.p_NM.reset_params()
+            self.p_M.reset_params()
         
     def calc_delta(self, params_in, x_uni_exp, data_exp):
         """
@@ -122,7 +126,7 @@ class OptCore():
         params = self.check_corr_agg(params_in)
         
         # Run the PBE calculations using the provided parameters
-        self.calc_pop(self.p, params, self.t_vec)
+        self.calc_pop(self.p, params, self.t_vec, init_N=self.init_N)
         
         # If the PBE calculation is successful, calculate the delta
         if self.p.calc_status:
@@ -181,12 +185,9 @@ class OptCore():
                     q3_mod[:, idt] = pop.return_distribution(t=idt+self.delta_t_start_step, flag='q3')[0]
                 Q3 = self.calc_Q3(x_uni_exp, q3_mod[:, idt]) 
                 q3_mod[:, idt] = q3_mod[:, idt] / Q3.max() 
-                
-            # Insert a zero at the beginning of the distribution
-            q3_mod = np.insert(q3_mod, 0, 0.0, axis=0)
             # Calculate the delta for each cost function type, if is defined.
             for flag, cost_func_type in self.delta_flag:
-                data_mod = self.re_calc_distribution(x_uni_exp, q3=q3_mod, flag=flag)[0]
+                data_mod = pop.re_calc_distribution(x_uni_exp, q3=q3_mod, flag=flag)[0]
                 delta = self.cost_fun(data_exp, data_mod, cost_func_type, flag)
                 delta_sum += delta 
                 
@@ -208,7 +209,7 @@ class OptCore():
                     q3_mod[:, idt] = q3_mod[:, idt] / Q3.max()
                 # Calculate delta for each cost function type, if is defined.    
                 for flag, cost_func_type in self.delta_flag:
-                    data_mod = self.re_calc_distribution(x_uni_exp[i], q3=q3_mod, flag=flag)[0]
+                    data_mod = pop.re_calc_distribution(x_uni_exp[i], q3=q3_mod, flag=flag)[0]
                     delta = self.cost_fun(data_exp[i], data_mod, cost_func_type, flag)
                     delta_sum += delta 
                     
@@ -235,14 +236,20 @@ class OptCore():
         """
         params = params_in.copy()
         
-        # If corr_agg is in the parameters, calculate CORR_BETA and alpha_prim
+        # If corr_agg is in the parameters, calculate CORR_BETA and alpha_prim if needed
         if "corr_agg" in params:
             corr_agg = params["corr_agg"]
-            CORR_BETA = self.return_syth_beta(corr_agg)
-            alpha_prim = corr_agg / CORR_BETA
-            
-            params["CORR_BETA"] = CORR_BETA
-            params["alpha_prim"] = alpha_prim
+            if "CORR_BETA" not in params:
+                CORR_BETA = self.return_syth_beta(corr_agg)
+                params["CORR_BETA"] = CORR_BETA
+            else:
+                CORR_BETA = params["CORR_BETA"]
+                print("Detected that CORR_BETA was entered as a known parameter")
+            if "alpha_prim" not in params:
+                alpha_prim = corr_agg / CORR_BETA
+                params["alpha_prim"] = alpha_prim
+            else:
+                print("Detected that alpha_prim was entered as a known parameter")
             
             # Remove corr_agg from the parameters
             del params["corr_agg"]

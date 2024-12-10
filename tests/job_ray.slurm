@@ -1,8 +1,8 @@
 #!/bin/bash
 # shellcheck disable=SC2206
 
-#SBATCH --job-name=ANN_test
-#SBATCH --output=res_test.txt
+#SBATCH --job-name=Opt_ray
+#SBATCH --output=res_ray.txt
 #SBATCH --nodes=2
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=80
@@ -11,7 +11,7 @@
 #SBATCH --constraint=BEEOND
 
 module purge
-module load jupyter/tensorflow/2023-10-10
+module load devel/python/3.11.7_intel_2021.4.0
 
 export TMP_PATH="/mnt/odfs/${SLURM_JOB_ID}/stripe_1"
 tar -C $TMP_PATH -xzf $(ws_find MC_train)/mix_data_shear.tar.gz

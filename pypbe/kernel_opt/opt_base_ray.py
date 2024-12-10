@@ -143,9 +143,6 @@ def optimierer_ray(self, opt_params=None, exp_data_paths=None,known_params=None)
             - "opt_params": The optimized parameters from the search space.
             - "file_path": The path(s) to the experimental data used for optimization.
     """
-    # Initialize the number concentration N if required
-    if self.core.calc_init_N:
-        self.core.set_init_N(exp_data_paths, init_flag='mean')
     # Prepare experimental data (either for 1D or 2D)
     if isinstance(exp_data_paths, list):
         # When set to multi, the exp_data_paths entered here is a list containing one 2d data name and two 1d data names.
@@ -191,11 +188,11 @@ def optimierer_ray(self, opt_params=None, exp_data_paths=None,known_params=None)
     # Set up the trainable function based on the multi_flag
     if not self.multi_flag:
         trainable = tune.with_parameters(OptCoreRay, core_params=self.core_params, pop_params=self.pop_params,
-                                         data_path=self.data_path,
+                                         data_path=self.data_path, exp_data_paths=exp_data_paths,
                                          x_uni_exp=x_uni_exp, data_exp=data_exp, known_params=known_params)
     else:
         trainable = tune.with_parameters(OptCoreMultiRay, core_params=self.core_params, pop_params=self.pop_params,
-                                         data_path=self.data_path,
+                                         data_path=self.data_path, exp_data_paths=exp_data_paths,
                                          x_uni_exp=x_uni_exp, data_exp=data_exp, known_params=known_params)    
     # Define the resources used for each trial using PlacementGroupFactory
     trainable_with_resources  = tune.with_resources(trainable, 
@@ -218,7 +215,7 @@ def optimierer_ray(self, opt_params=None, exp_data_paths=None,known_params=None)
         run_config=train.RunConfig(
         storage_path =self.core.tune_storage_path,
         name = data_name,
-        verbose = 1, # verbose=0: no trial info, 1: basic info, 2: detailed info
+        verbose = 0, # verbose=0: no trial info, 1: basic info, 2: detailed info
         stop={"training_iteration": 1},
         )
     )
@@ -228,11 +225,12 @@ def optimierer_ray(self, opt_params=None, exp_data_paths=None,known_params=None)
     # Get the best result from the optimization
     opt_result = results.get_best_result(metric="loss", mode="min")
     opt_params = opt_result.config
+    opt_exp_data_paths = opt_result.metrics["exp_paths"]
     opt_score = opt_result.metrics["loss"]
     result_dict = {
         "opt_score": opt_score,
         "opt_params": opt_params,
-        "file_path": exp_data_paths
+        "file_path": opt_exp_data_paths
     }
 
     return result_dict
@@ -268,17 +266,17 @@ def create_algo(self, batch=False):
 
     """
     if self.core.method == 'HEBO': 
-        search_alg = HEBOSearch(metric="loss", mode="min")
+        search_alg = HEBOSearch(metric="loss", mode="min", random_state_seed=self.core.random_seed)
     elif self.core.method == 'GP': 
-        search_alg = OptunaSearch(metric="loss", mode="min", sampler=GPSampler())
+        search_alg = OptunaSearch(metric="loss", mode="min", sampler=GPSampler(seed=self.core.random_seed))
     elif self.core.method == 'TPE': 
-        search_alg = OptunaSearch(metric="loss", mode="min", sampler=TPESampler())
+        search_alg = OptunaSearch(metric="loss", mode="min", sampler=TPESampler(seed=self.core.random_seed))
     elif self.core.method == 'Cmaes':    
-        search_alg = OptunaSearch(metric="loss", mode="min", sampler=CmaEsSampler())
+        search_alg = OptunaSearch(metric="loss", mode="min", sampler=CmaEsSampler(seed=self.core.random_seed))
     elif self.core.method == 'NSGA':    
-        search_alg = OptunaSearch(metric="loss", mode="min", sampler=NSGAIIISampler())
+        search_alg = OptunaSearch(metric="loss", mode="min", sampler=NSGAIIISampler(seed=self.core.random_seed))
     elif self.core.method == 'QMC':    
-        search_alg = OptunaSearch(metric="loss", mode="min", sampler=QMCSampler())
+        search_alg = OptunaSearch(metric="loss", mode="min", sampler=QMCSampler(scramble=True, seed=self.core.random_seed))
     # If no concurrency limit is set, return the search algorithm directly    
     if self.core.max_concurrent is None:
         return search_alg

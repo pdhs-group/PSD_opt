@@ -13,7 +13,7 @@ from scipy.interpolate import interp1d
 
 class write_read_exp():
     
-    def __init__(self, path_exp_data = None, read = False, sheet_name=None):
+    def __init__(self, path_exp_data = None, read = False, sheet_name=None, exp_data=False):
         
         if read:
             # read the original data
@@ -22,7 +22,10 @@ class write_read_exp():
                 self.exp_data = pd.read_excel(path_exp_data)
             else:
                 self.exp_data = pd.read_excel(path_exp_data, sheet_name=sheet_name)
-            self.exp_data = self.exp_data.set_index('Circular Equivalent Diameter')
+            if not exp_data:
+                self.exp_data = self.exp_data.set_index('Circular Equivalent Diameter')
+            else:
+                self.exp_data = self.exp_data.set_index('Q(x)')
                     
             # Parse time in Format %H:%M:%S and convert to minutes
             self.exp_data.columns = [self.convert_time_to_seconds(col) for col in self.exp_data.columns]

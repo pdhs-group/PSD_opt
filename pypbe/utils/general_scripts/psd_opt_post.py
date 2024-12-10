@@ -10,6 +10,7 @@ sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),"../../.."))
 import config.opt_config as conf
 from pypbe.kernel_opt.opt_base import OptBase
 import numpy as np
+import pandas as pd
 import copy
 from sklearn.linear_model import LinearRegression
 ## For plots
@@ -37,12 +38,14 @@ def calc_diff(result):
             for i in range(tem_opt_kernel.shape[1]):
                 opt_kernels[f"{kernel}_{i}"] = tem_opt_kernel[:,i]
                 ori_kernels[f"{kernel}_{i}"] = tem_ori_kernel[:,i]
+                max_search, min_search = get_search_range(f"{kernel}_{i}")
                 diff = abs(tem_opt_kernel[:,i] - tem_ori_kernel[:,i])
                 if diff_type == 'rel':
                     rel_diff = np.where(tem_ori_kernel[:,i] != 0, diff / (tem_ori_kernel[:,i]+epsilon), diff)
                     diff = rel_diff
                 elif diff_type == 'scaled':
-                    scaled_diff = diff / max(tem_ori_kernel[:,i])
+                    # scaled_diff = diff / (max_search - min_search)
+                    scaled_diff = diff / (max(tem_ori_kernel[:,i]) - min(tem_ori_kernel[:,i]))
                     diff = scaled_diff
                 diff_kernels[f"{kernel}_{i}"] = diff
         else:
@@ -50,15 +53,112 @@ def calc_diff(result):
             ## so that it remains in the same format as diff_kernels
             opt_kernels[kernel] = tem_opt_kernel
             ori_kernels[kernel] = tem_ori_kernel
+            max_search, min_search = get_search_range(kernel)
             diff = abs(tem_opt_kernel - tem_ori_kernel)
             if diff_type=='rel':
                 rel_diff = np.where(tem_ori_kernel != 0, diff / (tem_ori_kernel+epsilon), diff)
                 diff = rel_diff
             elif diff_type == 'scaled':
-                scaled_diff = diff / max(tem_ori_kernel)
+                # scaled_diff = diff / (max_search - min_search)
+                scaled_diff = diff / (max(tem_ori_kernel) - min(tem_ori_kernel))
+                scaled_diff
                 diff = scaled_diff
             diff_kernels[kernel] = diff
     return diff_kernels, opt_kernels, ori_kernels 
+
+def visualize_sampler_iter():
+    def plot_metric_vs_iterations(iterations, metric_means, metric_stds, samplers, ylabel, title):
+        # 绘制每个采样器的曲线和方差范围
+        for i, sampler in enumerate(samplers):
+            mean_values = metric_means[i]
+            std_values = metric_stds[i]
+            
+            # 绘制平均值曲线
+            plt.plot(iterations, mean_values, label=sampler)
+            
+            # 绘制方差范围的半透明区域
+            plt.fill_between(
+                iterations,
+                mean_values - std_values,
+                mean_values + std_values,
+                alpha=0.2
+            )
+    
+        plt.xlabel("Iterations")
+        plt.ylabel(ylabel)
+        plt.title(title)
+        plt.legend(title="Samplers")
+        plt.grid(True)
+        plt.show()
+    samplers = ['HEBO', 'GP', 'NSGA', 'QMC', 'TPE', 'Cmaes']
+    iterations = [50, 100, 200, 400, 800] 
+    file_names = [
+    f"multi_[(\'q3\', \'MSE\')]_{sampler}_wight_1_iter_{iter_count}.npz"
+    for sampler in samplers
+    for iter_count in iterations
+    ]
+    data_paths = [os.path.join(results_pth, pbe_type, file_name) for file_name in file_names]
+    results, elapsed_time = read_results(data_paths)
+    
+    num_results = len(results)
+    diff_mean_kernels = np.zeros(num_results)
+    diff_std_kernels = np.zeros(num_results)
+    pearson_corrs = np.zeros(num_results)
+    
+    diff_mean_mse = np.zeros(num_results)
+    diff_std_mse = np.zeros(num_results)
+
+    for i, result in enumerate(results):
+        diff_kernels, _, _ = calc_diff(result)
+        all_elements_kernels = np.concatenate(list(diff_kernels.values()))
+        diff_mean_kernels[i] = np.mean(all_elements_kernels)
+        diff_std_kernels[i] = np.std(all_elements_kernels)
+        all_elements_mse = result[:, 0]
+        diff_mean_mse[i] = np.mean(all_elements_mse)
+        diff_std_mse[i] = np.std(all_elements_mse)
+        pearson_corrs[i] = correlation_analysis(result)
+        
+    num_samplers = len(samplers)
+    num_iterations = len(iterations)
+    diff_mean_mse = diff_mean_mse.reshape(num_samplers, num_iterations)
+    diff_std_mse = diff_std_mse.reshape(num_samplers, num_iterations)
+    diff_mean_kernels = diff_mean_kernels.reshape(num_samplers, num_iterations)
+    diff_std_kernels = diff_std_kernels.reshape(num_samplers, num_iterations)
+    # 绘制平均 MSE
+    plot_metric_vs_iterations(
+        iterations=iterations,
+        metric_means=diff_mean_mse,
+        metric_stds=diff_std_mse,
+        samplers=samplers,
+        ylabel="Mean MSE",
+        title="Mean MSE vs Iterations"
+    )
+    
+    # # 绘制平均 Kernels
+    # plot_metric_vs_iterations(
+    #     iterations=iterations,
+    #     metric_means=diff_mean_kernels,
+    #     metric_stds=diff_std_kernels,
+    #     samplers=samplers,
+    #     ylabel="Mean Kernels",
+    #     title="Mean Kernels vs Iterations"
+    # )
+    # 构建DataFrame，包含所有数据
+    data = {
+        "Sampler": np.repeat(samplers, num_iterations),
+        "Iterations": iterations * num_samplers,
+        "Mean_Kernels": diff_mean_kernels.flatten(),
+        "Std_Kernels": diff_std_kernels.flatten(),
+        "Mean_MSE": diff_mean_mse.flatten(),
+        "Std_MSE": diff_std_mse.flatten(),
+    }
+    
+    df = pd.DataFrame(data)
+    
+    # 保存为CSV文件
+    df.to_csv("results_for_origin.csv", index=False)
+    
+    return pearson_corrs
     
 def visualize_diff_mean(results, labels):
     num_results = len(results)
@@ -74,11 +174,11 @@ def visualize_diff_mean(results, labels):
         diff_kernels, _, _ = calc_diff(result)
         all_elements_kernels = np.concatenate(list(diff_kernels.values()))
         diff_mean_kernels[i] = np.mean(all_elements_kernels)
-        diff_std_kernels[i] = np.std(all_elements_kernels)
+        diff_std_kernels[i] = np.std(all_elements_kernels) / np.sqrt(len(all_elements_kernels))
         diff_var_kernels[i] = np.var(all_elements_kernels)
         all_elements_mse = result[:, 0]
         diff_mean_mse[i] = np.mean(all_elements_mse)
-        diff_std_mse[i] = np.std(all_elements_mse)
+        diff_std_mse[i] = np.std(all_elements_mse)  / np.sqrt(len(all_elements_mse))
         diff_var_mse[i] = np.var(all_elements_mse)
     
     x_pos = np.arange(len(labels))
@@ -109,11 +209,11 @@ def visualize_diff_mean(results, labels):
     all_lims.extend(diff_mean_mse - diff_std_mse)
     all_lims.extend(diff_mean_mse + diff_std_mse)
     ## Slightly shift the upper or lower limit
-    min_lim=min(all_lims)-2.5
+    min_lim=min(all_lims)
     max_lim=max(all_lims)+0.1
 
     y2lim = [min_lim, max_lim]
-    scale_y2 = max(diff_std_mse / diff_std_kernels)
+    scale_y2 = min(diff_std_mse / diff_std_kernels)
     y1lim = [min_lim/scale_y2, max_lim/scale_y2] 
     ax1.set_ylim(y1lim)
     ax2.set_ylim(y2lim)
@@ -177,6 +277,8 @@ def correlation_analysis(result, plot=False):
     mse = np.array(result[:,0], dtype=float)
     # Calculate the Pearson correlation coefficient
     pearson_corr, _ = pearsonr(mse, mean_diff_kernels)
+    m=0
+    b=0
     if plot:
         fig=plt.figure()   
         ax=fig.add_subplot(1,1,1)
@@ -191,28 +293,43 @@ def correlation_analysis(result, plot=False):
                                clr='r',mrk='')
         ax.grid('minor')
         plt.tight_layout() 
-    return pearson_corr
+    return pearson_corr,m,b
 
 def calc_save_PSD_delta(results, data_paths):
-    opt = OptBase()
+    # tmpdir = os.environ.get('TMP_PATH')
+    # data_path = os.path.join(tmpdir, "data")
+    data_path = r"C:\Users\px2030\Code\PSD_opt\pypbe\data"
+    opt = OptBase(data_path=data_path)
     for i, result in enumerate(results):
         func_list = []
-        opt_kernels = result[:,1]
         # delta = np.zeros(len(result))
         # path = np.empty(len(result),dtype=str)
-        for j, variable in enumerate(result):
-            variable = result[j]
-            exp_data_paths = initial_pop(opt, variable, pbe_type)
-            func_list.append((opt_kernels[j], exp_data_paths))
-            # delta[j], path[j] = opt.calc_PSD_delta(opt_kernels[j], exp_data_paths)
-        pool = multiprocessing.Pool(processes=24)
-        delta = pool.starmap(opt.calc_PSD_delta, func_list)
-        new_result = np.column_stack((result, delta))
-        np.savez(data_paths[i], results=new_result)
-    return new_result
+        for j, _ in enumerate(result):
+            if i==1 and j == 0:
+                variable = result[j]
+                file_names = [os.path.basename(file_path) for file_path in variable[3]]
+                exp_data_paths = [os.path.join(data_path, file_name) for file_name in file_names]
+                func_list.append((variable[1], exp_data_paths))
+                delta, path = opt.calc_PSD_delta(variable[1], exp_data_paths)
+                return delta,opt
+        # pool = multiprocessing.Pool(processes=8)
+        # try:
+        #     delta = pool.starmap(opt.calc_PSD_delta, func_list)
+        # except KeyboardInterrupt:
+        #     print("Caught KeyboardInterrupt, terminating workers")
+        #     pool.terminate()
+        # finally:
+        #     pool.close()
+        #     pool.join() 
+        # new_result = np.column_stack((result, delta))
+        # np.savez(data_paths[i], results=new_result)
+    # return new_result
         
 def calc_ori_mse():
-    opt = OptBase()
+    # tmpdir = os.environ.get('TMP_PATH')
+    # data_path = os.path.join(tmpdir, "data")
+    data_path = r"C:\Users\px2030\Code\PSD_opt\pypbe\data"
+    opt = OptBase(data_path=data_path)
     
     var_corr_beta = np.array([1e-3,1e-2,1e-1])
     values = np.array([0.5, 1.0])
@@ -249,7 +366,7 @@ def calc_ori_mse():
                                     'pl_P4' : P4,
                                     }
                                 data_name = f"Sim_Mul_0.1_para_{corr_beta}_{alpha_prim[0]}_{alpha_prim[1]}_{alpha_prim[2]}_{v}_{P1}_{P2}_{P3}_{P4}.xlsx"
-                                exp_data_path = os.path.join('PSD_data', pbe_type, 'data', data_name)
+                                exp_data_path = os.path.join(data_path, data_name)
                                 exp_data_paths = [
                                     exp_data_path,
                                     exp_data_path.replace(".xlsx", "_NM.xlsx"),
@@ -285,10 +402,523 @@ def do_remove_small_results(results):
                 
     return results
 
+def write_origin_data(results, labels, group_flag):
+    # 初始化summary数据
+    summary_data = {
+        "sheet name": labels,
+    }
+    
+    # 获取所有key作为列名
+    sample_result = results[0]
+    diff_kernels, _, _ = calc_diff(sample_result)
+    keys = list(diff_kernels.keys())
+    
+    # 初始化diff_kernels keys的平均值列
+    for key in keys:
+        summary_data[key] = []
+    
+    # 添加MSE，MSE_error，Kernels，Kernels_error列
+    summary_data["MSE"] = []
+    summary_data["MSE_error"] = []
+    summary_data["Kernels"] = []
+    summary_data["Kernels_error"] = []
+    
+    # 创建一个 Excel writer
+    with pd.ExcelWriter(f"post_{group_flag}.xlsx") as writer:
+        # 遍历每个result，处理每个sheet
+        for i, result in enumerate(results):
+            # 从result计算出需要保存的数据
+            diff_kernels, _, _ = calc_diff(result)
+            all_elements_mse = result[:, 0]
+            
+            # 计算diff_kernels每个key的平均值并添加到summary
+            for key in keys:
+                mean_value = np.mean(diff_kernels[key])
+                summary_data[key].append(mean_value)
+            
+            # 计算MSE平均值和标准误差
+            mse_mean = np.mean(all_elements_mse)
+            mse_error = np.std(all_elements_mse) / np.sqrt(len(all_elements_mse))
+            summary_data["MSE"].append(mse_mean)
+            summary_data["MSE_error"].append(mse_error)
+            
+            # 计算diff_kernels所有key的总平均值和标准误差
+            all_kernels = np.concatenate(list(diff_kernels.values()))
+            kernels_mean = np.mean(all_kernels)
+            kernels_error = np.std(all_kernels) / np.sqrt(len(all_kernels))
+            summary_data["Kernels"].append(kernels_mean)
+            summary_data["Kernels_error"].append(kernels_error)
+            
+            # 将diff_kernels和MSE数据转换为DataFrame写入sheet
+            df = pd.DataFrame(diff_kernels)
+            df["MSE"] = all_elements_mse
+            sheet_name = labels[i]
+            df.to_excel(writer, sheet_name=sheet_name, index=False)
+        
+        # 将summary数据写入summary sheet
+        summary_df = pd.DataFrame(summary_data)
+        summary_df.to_excel(writer, sheet_name="summary", index=False)
+        
+def which_group(group_flag):
+    if group_flag == "iter":    
+        file_names = [
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_50.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_100.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_200.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_400.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_800.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_1000.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_1200.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_1600.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_2400.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_3200.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_6400.npz',
+            ]
+        labels = [
+            'iter_50',
+            'iter_100',
+            'iter_200',
+            'iter_400',
+            'iter_800',
+            'iter_1000',
+            'iter_1200',
+            'iter_1600',
+            'iter_2400',
+            'iter_3200',
+            'iter_6400',
+            ]
+    if group_flag == "iter_Cmaes":    
+        file_names = [
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_50.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_100.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_200.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_800.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_1600.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_2400.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_3200.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_4000.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_4800.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_5000.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_6400.npz',
+            ]
+        labels = [
+            'iter_50',
+            'iter_100',
+            'iter_200',
+            'iter_400',
+            'iter_800',
+            'iter_1600',
+            'iter_2400',
+            'iter_3200',
+            'iter_4000',
+            'iter_4800',
+            'iter_5000',
+            # 'iter_6400',
+            ]
+    elif group_flag == "sampler400":
+        file_names = [
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_400.npz',
+            'multi_[(\'q3\', \'MSE\')]_GP_wight_1_iter_400.npz',
+            'multi_[(\'q3\', \'MSE\')]_NSGA_wight_1_iter_400.npz',
+            'multi_[(\'q3\', \'MSE\')]_QMC_wight_1_iter_400.npz',
+            'multi_[(\'q3\', \'MSE\')]_TPE_wight_1_iter_400.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400.npz',
+            ]
+        labels = [
+            'HEBO',
+            'GP',
+            'NSGA',
+            'QMC',
+            'TPS',
+            'Cmaes',
+            ]
+    elif group_flag == "sampler800":
+        file_names = [
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_800.npz',
+            'multi_[(\'q3\', \'MSE\')]_GP_wight_1_iter_800.npz',
+            'multi_[(\'q3\', \'MSE\')]_NSGA_wight_1_iter_800.npz',
+            'multi_[(\'q3\', \'MSE\')]_QMC_wight_1_iter_800.npz',
+            'multi_[(\'q3\', \'MSE\')]_TPE_wight_1_iter_800.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_800.npz',
+            ]
+        labels = [
+            'HEBO',
+            'GP',
+            'NSGA',
+            'QMC',
+            'TPS',
+            'Cmaes',
+            ]   
+    elif group_flag == "sampler400rand":
+        file_names = [
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_400random.npz',
+            'multi_[(\'q3\', \'MSE\')]_GP_wight_1_iter_400random.npz',
+            'multi_[(\'q3\', \'MSE\')]_NSGA_wight_1_iter_400random.npz',
+            'multi_[(\'q3\', \'MSE\')]_QMC_wight_1_iter_400random.npz',
+            'multi_[(\'q3\', \'MSE\')]_TPE_wight_1_iter_400random.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400random.npz',
+            ]
+        labels = [
+            'HEBO',
+            'GP',
+            'NSGA',
+            'QMC',
+            'TPS',
+            'Cmaes',
+            ]
+    elif group_flag == "sampler800rand":
+        file_names = [
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_800randomt.npz',
+            'multi_[(\'q3\', \'MSE\')]_GP_wight_1_iter_800randomt.npz',
+            'multi_[(\'q3\', \'MSE\')]_NSGA_wight_1_iter_800randomt.npz',
+            'multi_[(\'q3\', \'MSE\')]_QMC_wight_1_iter_800randomt.npz',
+            'multi_[(\'q3\', \'MSE\')]_TPE_wight_1_iter_800randomt.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_800randomt.npz',
+            ]
+        labels = [
+            'HEBO',
+            'GP',
+            'NSGA',
+            'QMC',
+            'TPS',
+            'Cmaes',
+            ] 
+    elif group_flag == "target400":
+        file_names = [
+            'multi_[(\'q3\', \'KL\')]_HEBO_wight_1_iter_400.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_400.npz',
+            'multi_[(\'q3\', \'MAE\')]_HEBO_wight_1_iter_400.npz',
+            'multi_[(\'q3\', \'RMSE\')]_HEBO_wight_1_iter_400.npz',
+            'multi_[(\'QQ3\', \'MSE\')]_HEBO_wight_1_iter_400.npz',
+            'multi_[(\'QQ3\', \'MAE\')]_HEBO_wight_1_iter_400.npz',
+            'multi_[(\'QQ3\', \'RMSE\')]_HEBO_wight_1_iter_400.npz',
+            'multi_[(\'x_50\', \'MSE\')]_HEBO_wight_1_iter_400.npz',
+            'multi_[(\'x_50\', \'MAE\')]_HEBO_wight_1_iter_400.npz',
+            'multi_[(\'x_50\', \'RMSE\')]_HEBO_wight_1_iter_400.npz',
+            # 'multi_[(\'q3\', \'MSE\'), (\'Q3\', \'MSE\'), (\'x_50\', \'MSE\')]_BO_wight_1_iter_400.npz',
+            ]
+        labels = [
+            'q3_KL',
+            'q3_MSE',
+            'q3_MAE',
+            'q3_RMSE',
+            'QQ3_MSE',
+            'QQ3_MAE',
+            'QQ3_RMSE',
+            'x_50_MSE',
+            'x_50_MAE',
+            'x_50_RMSE',
+            # 'q3_MSE_Q3_MSE_x_50_MSE',
+            ]
+    elif group_flag == "target800":
+        file_names = [
+            'multi_[(\'q3\', \'KL\')]_HEBO_wight_1_iter_800.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_800.npz',
+            'multi_[(\'q3\', \'MAE\')]_HEBO_wight_1_iter_800.npz',
+            'multi_[(\'q3\', \'RMSE\')]_HEBO_wight_1_iter_800.npz',
+            'multi_[(\'QQ3\', \'MSE\')]_HEBO_wight_1_iter_800.npz',
+            'multi_[(\'QQ3\', \'MAE\')]_HEBO_wight_1_iter_800.npz',
+            'multi_[(\'QQ3\', \'RMSE\')]_HEBO_wight_1_iter_800.npz',
+            'multi_[(\'x_50\', \'MSE\')]_HEBO_wight_1_iter_800.npz',
+            'multi_[(\'x_50\', \'MAE\')]_HEBO_wight_1_iter_800.npz',
+            'multi_[(\'x_50\', \'RMSE\')]_HEBO_wight_1_iter_800.npz',
+            # 'multi_[(\'q3\', \'MSE\'), (\'Q3\', \'MSE\'), (\'x_50\', \'MSE\')]_BO_wight_1_iter_400.npz',
+            ]
+        labels = [
+            'q3_KL',
+            'q3_MSE',
+            'q3_MAE',
+            'q3_RMSE',
+            'QQ3_MSE',
+            'QQ3_MAE',
+            'QQ3_RMSE',
+            'x_50_MSE',
+            'x_50_MAE',
+            'x_50_RMSE',
+            # 'q3_MSE_Q3_MSE_x_50_MSE',
+            ]
+    elif group_flag == "no_multi":
+        file_names = [
+            '[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_50.npz',
+            '[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_100.npz',
+            '[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_200.npz',
+            '[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_400.npz',
+            '[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_800.npz',
+            '[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_1600.npz',
+            ]
+        labels = [
+            'iter_50',
+            'iter_100',
+            'iter_200',
+            'iter_400',
+            'iter_800',
+            'iter_1600',
+            ]
+        
+    elif group_flag == "no_noise":
+        file_names = [
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_50no_noise.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_100no_noise.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_200no_noise.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_400no_noise.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_800no_noise.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_1600no_noise.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_3200no_noise.npz',
+            ]
+        labels = [
+            'iter_50',
+            'iter_100',
+            'iter_200',
+            'iter_400',
+            'iter_800',
+            'iter_1600',
+            'iter_3200',
+            ]
+
+    elif group_flag == "no_noise_Cmaes":
+        file_names = [
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_50no_noise.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_100no_noise.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_200no_noise.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400no_noise.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_800no_noise.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_1600no_noise.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_2400no_noise.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_3000no_noise.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_3200no_noise.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_4000no_noise.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_4500no_noise.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_5000no_noise.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_5600no_noise.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_6400no_noise.npz',
+            ]
+        labels = [
+            'iter_50',
+            'iter_100',
+            'iter_200',
+            'iter_400',
+            'iter_800',
+            'iter_1600',
+            'iter_2400',
+            # 'iter_3000',
+            'iter_3200',
+            'iter_4000',
+            'iter_4500',
+            'iter_5000',
+            # 'iter_5600',
+            # 'iter_6400',
+            ] 
+        
+    elif group_flag == "wight":    
+        file_names = [
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_400.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_2_iter_400.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_2_iter_400.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_3_iter_400.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_4_iter_400.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_5_iter_400.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_6_iter_400.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_7_iter_400.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_8_iter_400.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_9_iter_400.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_10_iter_400.npz',
+            ]
+        labels = [
+            'wight_1',
+            'wight_2',
+            'wight_2',
+            'wight_3',
+            'wight_4',
+            'wight_5',
+            'wight_6',
+            'wight_7',
+            'wight_8',
+            'wight_9',
+            'wight_10',
+            ]
+    elif group_flag == "P1P3":
+        file_names = [
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_50P1P3.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_100P1P3.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_200P1P3.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_400P1P3.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_800P1P3.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_1600P1P3.npz',
+            ]
+        labels = [
+            'iter_50',
+            'iter_100',
+            'iter_200',
+            'iter_400',
+            'iter_800',
+            # 'iter_1600',
+            ]
+    elif group_flag == "v":
+        file_names = [
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_50v.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_100v.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_200v.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_400v.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_800v.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_1600v.npz',
+            ]
+        labels = [
+            'iter_50',
+            'iter_100',
+            'iter_200',
+            'iter_400',
+            'iter_800',
+            'iter_1600',
+            ]
+     
+    elif group_flag == "v_Cmaes":
+        file_names = [
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_50v.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_100v.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_200v.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400v.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_800v.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_1600v.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_2400v.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_3200v.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_4000v.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_4500v.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_5000v.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_5600v.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_6400v.npz',
+
+            ]
+        labels = [
+            'iter_50',
+            'iter_100',
+            'iter_200',
+            'iter_400',
+            'iter_800',
+            'iter_1600',
+            'iter_2400',
+            # 'iter_3200',
+            'iter_4000',
+            # 'iter_4500',
+            'iter_5000',
+            # 'iter_5600',
+            # 'iter_6400',
+            ]
+        
+    elif group_flag == "HEBOseed":
+        file_names = [
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_400.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_400seed2.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_400seed4.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_400seed8.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_400seed16.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_400seed32.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_400seed64.npz',
+            'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_400seed128.npz',
+            ]
+        labels = [
+            '1',
+            '2',
+            '4',
+            '8',
+            '16',
+            '32',
+            '64',
+            '128',
+            ]
+    elif group_flag == "GPseed":
+        file_names = [
+            'multi_[(\'q3\', \'MSE\')]_GP_wight_1_iter_400.npz',
+            'multi_[(\'q3\', \'MSE\')]_GP_wight_1_iter_400seed2.npz',
+            'multi_[(\'q3\', \'MSE\')]_GP_wight_1_iter_400seed4.npz',
+            'multi_[(\'q3\', \'MSE\')]_GP_wight_1_iter_400seed8.npz',
+            'multi_[(\'q3\', \'MSE\')]_GP_wight_1_iter_400seed16.npz',
+            'multi_[(\'q3\', \'MSE\')]_GP_wight_1_iter_400seed32.npz',
+            'multi_[(\'q3\', \'MSE\')]_GP_wight_1_iter_400seed64.npz',
+            'multi_[(\'q3\', \'MSE\')]_GP_wight_1_iter_400seed128.npz',
+            ]
+        labels = [
+            '1',
+            '2',
+            '4',
+            '8',
+            '16',
+            '32',
+            '64',
+            '128',
+            ]
+    elif group_flag == "Cmaesseed":
+        file_names = [
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400seed2.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400seed4.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400seed8.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400seed16.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400seed32.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400seed64.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400seed128.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400seed256.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400seed512.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400seed1024.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400seed2048.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400seed4096.npz',
+            ]
+        labels = [
+            '1',
+            '2',
+            # '4',
+            '8',
+            '16',
+            '32',
+            # '64',
+            '128',
+            '256',
+            '512',
+            # '1024',
+            '2048',
+            '4096',
+            ]
+    elif group_flag == "Cmaesseed4096":
+        file_names = [
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_50seed4096.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_100seed4096.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_200seed4096.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400seed4096.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_800seed4096.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_1600seed4096.npz',
+            ]
+        labels = [
+            'iter_50',
+            'iter_100',
+            'iter_200',
+            'iter_400',
+            'iter_800',
+            'iter_1600',
+            ]
+    elif group_flag == "_test":
+        file_names = [
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_50.npz',
+            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_50_20241125_125014.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_50_20241124_142740.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_TPE_wight_1_iter_50.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_TPE_wight_1_iter_50_20241125_112019.npz',
+            ]
+        labels = [
+            'Cmaes',
+            'Cmaes',
+            # 'Cmaes',
+            # 'TPE',
+            # 'TPE',
+            ]
+    return file_names, labels
+        
 
 #%% PRE-POCESSING
 def read_results(data_paths):
-    ori_mse_path = os.path.join(results_pth, pbe_type, 'ori_mse.npz')
+    if group_flag == "no_multi":
+        ori_mse_path = os.path.join(results_pth, pbe_type, 'no_multi_ori_mse.npz')
+    else:
+        ori_mse_path = os.path.join(results_pth, pbe_type, 'ori_mse.npz')
     ori_mse = np.load(ori_mse_path,allow_pickle=True)['results']
     ori_mse_tem = np.empty(ori_mse.shape, dtype=object)
     ori_mse_tem[:,0] = ori_mse[:,0]
@@ -304,7 +934,7 @@ def read_results(data_paths):
             tem_time = data['time']
         else:
             tem_time = 0
-        results_tem = np.empty((len(results), 3), dtype=object)
+        results_tem = np.empty((len(results), 4), dtype=object)
         if results.ndim == 1:
             for i in range(results.shape[0]):
                 # results_tem[i, 0] = results[i, 0]['opt_score']
@@ -313,6 +943,7 @@ def read_results(data_paths):
                 results_tem[i, 0] = results[i]['opt_score']
                 results_tem[i, 1] = results[i]['opt_params']
                 filename = results[i]['file_path'] 
+                results_tem[i, 3] = filename
                 if isinstance(filename, list):
                     data_name = filename[0]
                 else:
@@ -320,11 +951,13 @@ def read_results(data_paths):
                 results_tem[i, 2] = get_kernels_form_data_name(data_name)
         else:
             for i in range(results.shape[0]):
-                results_tem[i, 0] = results[i,3]
+                results_tem[i, 0] = results[i,-2]
                 results_tem[i, 1] = results[i,1]
                 results_tem[i, 2] = results[i,2]
-        ## convert absolute mse into relative mse     
-        results_tem = calc_rel_mse(results_tem, ori_mse_tem) 
+                results_tem[i, 3] = results[i,3]
+        ## convert absolute mse into relative mse   
+        if not group_flag == "no_noise":
+            results_tem = calc_rel_mse(results_tem, ori_mse_tem)
         # For comparison, CORR_BETA and alpha_prim in the original parameters are merged into corr_agg
         # ori_kernels = results_tem[:,2]
         # if 'CORR_BETA' in ori_kernels[0] and 'alpha_prim' in ori_kernels[0]:
@@ -373,6 +1006,27 @@ def compare_dicts(dict1, dict2):
             if val1 != val2: 
                 return False
     return True
+
+def get_search_range(kernel):
+    # 获取kernel对应的子字典
+    param_info = conf.config["opt_params"][kernel]
+    
+    # 检查子字典是否存在
+    if not param_info:
+        raise ValueError(f"Key '{kernel}' not found in 'opt_params'.")
+    
+    # 获取bounds和log_scale
+    bounds = param_info['bounds']
+    log_scale = param_info['log_scale']
+    
+    # 如果log_scale为True，转换为10的次幂
+    if log_scale:
+        min_val, max_val = 10 ** bounds[0], 10 ** bounds[1]
+    else:
+        min_val, max_val = bounds
+    
+    # 返回最大值和最小值
+    return max(max_val, min_val), min(max_val, min_val)
 #%% VISUALIZE KERNEL DIFFERENCE
 #%%%VISUALZE IN RADAR
 def visualize_diff_mean_radar(results, data_labels):
@@ -510,27 +1164,11 @@ def visualize_diff_kernel_value(result, eval_kernels, log_axis=False):
     return diff_kernels
     
 #%% RETURN PSD IN FRAME/ANIMATION
-def initial_pop(opt, variable, pbe_type):
-    pop_params = opt.core.check_corr_agg(variable[2])
-    b = pop_params['CORR_BETA']
-    a = pop_params['alpha_prim']
-    v = pop_params['pl_v']
-    p1 = pop_params['pl_P1']
-    p2 = pop_params['pl_P2']
-    p3 = pop_params['pl_P3']
-    p4 = pop_params['pl_P4']
-    data_name = f"Sim_Mul_0.1_para_{b}_{a[0]}_{a[1]}_{a[2]}_{v}_{p1}_{p2}_{p3}_{p4}.xlsx" 
-    exp_data_path = os.path.join('PSD_data', pbe_type, 'data', data_name)
-    exp_data_paths = [
-        exp_data_path,
-        exp_data_path.replace(".xlsx", "_NM.xlsx"),
-        exp_data_path.replace(".xlsx", "_M.xlsx")
-    ]
-    return exp_data_paths
-
 def visualize_PSD(variable, pbe_type, one_frame):
-    opt = OptBase()
-    exp_data_paths= initial_pop(opt, variable, pbe_type)
+    data_path = r"C:\Users\px2030\Code\PSD_opt\pypbe\data"
+    opt = OptBase(data_path=data_path)
+    file_names = [os.path.basename(file_path) for file_path in variable[3]]
+    exp_data_paths = [os.path.join(data_path, file_name) for file_name in file_names]
     if one_frame:
         return_one_frame(variable, opt, exp_data_paths)
     else:
@@ -586,74 +1224,49 @@ def return_one_frame(variable, opt, exp_data_paths):
     fig_M.savefig('PSD_M', dpi=150)
 #%% MAIN FUNCTION
 if __name__ == '__main__': 
+    ## 对于不是使用MSE或者不同权重计算的数据，需要让calc_criteria为True运行以下，重新计算MSE
+    ## npz数据会被重新生成，格式会有所更改，然后就可以直接使用了，对应地读取和修改已经在
+    ## 读入文件的方函数中写好了
     # diff_type = 'rel'
     # diff_type = 'abs'
     diff_type = 'scaled'
     
+    my_pth = os.path.dirname( __file__ )
+    results_pth = os.path.join(my_pth, 'Parameter_study')
     remove_small_results = False
-    results_pth = 'Parameter_study'
     calc_criteria = False
+    visualize_sampler_iter_flag = False
+    export_in_origin = True
 
     # pbe_type = 'agglomeration'
     # pbe_type = 'breakage'
     pbe_type = 'mix'
+    # pbe_type = 'test'
+    
+    # group_flag = "iter"
+    # group_flag = "iter_Cmaes"
+    # group_flag = "sampler400"
+    # group_flag = "sampler800"
+    # group_flag = "sampler400rand"
+    # group_flag = "sampler800rand"
+    # group_flag = "target400"
+    # group_flag = "target800"
+    # group_flag = "no_multi"
+    # group_flag = "no_noise"
+    # group_flag = "no_noise_Cmaes"
+    # group_flag = "wight"
+    # group_flag = "P1P3"
+    # group_flag = "v"
+    group_flag = "v_Cmaes"
+    # group_flag = "HEBOseed"
+    # group_flag = "GPseed"
+    # group_flag = "Cmaesseed"
+    # group_flag = "Cmaesseed4096"
+    # group_flag = "_test"
     
     # results_mse = calc_ori_mse()
-    # file_names = [
-    #     'multi_[(\'q3\', \'KL\')]_HEBO_wight_1_iter_400.npz',
-    #     'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_400.npz',
-    #     'multi_[(\'q3\', \'MAE\')]_HEBO_wight_1_iter_400.npz',
-    #     'multi_[(\'q3\', \'RMSE\')]_HEBO_wight_1_iter_400.npz',
-    #     'multi_[(\'QQ3\', \'KL\')]_HEBO_wight_1_iter_400.npz',
-    #     'multi_[(\'QQ3\', \'MSE\')]_HEBO_wight_1_iter_400.npz',
-    #     'multi_[(\'QQ3\', \'MAE\')]_HEBO_wight_1_iter_400.npz',
-    #     'multi_[(\'QQ3\', \'RMSE\')]_HEBO_wight_1_iter_400.npz',
-    #     'multi_[(\'x_50\', \'MSE\')]_HEBO_wight_1_iter_400.npz',
-    #     # 'multi_[(\'q3\', \'MSE\'), (\'Q3\', \'MSE\'), (\'x_50\', \'MSE\')]_BO_wight_1_iter_400.npz',
-    #     ]
-    # labels = [
-    #     'q3_KL',
-    #     'q3_MSE',
-    #     'q3_MAE',
-    #     'q3_RMSE',
-    #     'Q3_KL',
-    #     'Q3_MSE',
-    #     'Q3_MAE',
-    #     'Q3_RMSE',
-    #     'x_50_MSE',
-    #     # 'q3_MSE_Q3_MSE_x_50_MSE',
-    #     ]
-    # file_names = [
-    #     'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_400.npz',
-    #     'multi_[(\'q3\', \'MSE\')]_HEBO_wight_2_iter_400.npz',
-    #     'multi_[(\'q3\', \'MSE\')]_HEBO_wight_3_iter_400.npz',
-    #     'multi_[(\'q3\', \'MSE\')]_HEBO_wight_5_iter_400.npz',
-    #     'multi_[(\'q3\', \'MSE\')]_HEBO_wight_10_iter_400.npz',
-    #     ]
-    # labels = [
-    #     'wight_1',
-    #     'wight_2',
-    #     'wight_3',
-    #     'wight_5',
-    #     'wight_10',
-    #     ]
     
-    file_names = [
-        # 'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_50.npz',
-        'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_100.npz',
-        # 'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_200.npz',
-        'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_400.npz',
-        'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_800.npz',
-        # 'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_1600.npz',
-        ]
-    labels = [
-        # 'iter_50',
-        'iter_100',
-        # 'iter_200',
-        'iter_400',
-        'iter_800',
-        # 'iter_1600',
-        ]
+    file_names, labels = which_group(group_flag=group_flag)
     
     # file_names = [
     #     '[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_50.npz',
@@ -669,23 +1282,6 @@ if __name__ == '__main__':
     #     'iter_400',
     #     'iter_800',
     #     ]
-        
-    # file_names = [
-    #     'multi_[(\'q3\', \'MSE\')]_GP_wight_1_iter_400.npz',
-    #     'multi_[(\'q3\', \'MSE\')]_NSGA_wight_1_iter_400.npz',
-    #     'multi_[(\'q3\', \'MSE\')]_QMC_wight_1_iter_400.npz',
-    #     'multi_[(\'q3\', \'MSE\')]_TPS_wight_1_iter_400.npz',
-    #     'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400.npz',
-    #     'multi_[(\'q3\', \'MSE\')]_HEBO_wight_1_iter_400.npz',
-    #     ]
-    # labels = [
-    #     'GP',
-    #     'NSGA',
-    #     'QMC',
-    #     'TPS',
-    #     'Cmaes',
-    #     'HEBO',
-    #     ]
     
     data_paths = [os.path.join(results_pth, pbe_type, file_name) for file_name in file_names]
     # 'results' saves the results of all reading files. 
@@ -695,31 +1291,36 @@ if __name__ == '__main__':
     results, elapsed_time = read_results(data_paths)
     
     if calc_criteria:
-        results = calc_save_PSD_delta(results, data_paths)
+        delta,opt = calc_save_PSD_delta(results, data_paths)
     if remove_small_results:
         results = do_remove_small_results(results)
+    if export_in_origin:
+        write_origin_data(results, labels, group_flag)
     
     pt.plot_init(scl_a4=1,figsze=[6.4*2,4.8*2],lnewdth=0.8,mrksze=5,use_locale=True,scl=2)
-    visualize_diff_mean(results, labels)
     
-    # kernel: corr_agg_0, corr_agg_1, corr_agg_2, pl_v, pl_P1, pl_P2, pl_P3, pl_P4
-    result_to_analyse = results[-1]
-    if pbe_type == 'agglomeration' or pbe_type == 'mix':
-        corr_agg_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['corr_agg_0','corr_agg_1','corr_agg_2'])
-    if pbe_type == 'breakage' or pbe_type == 'mix':
-        pl_v_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_v'])
-        pl_P13_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P1','pl_P3'], log_axis=False)
-        pl_P24_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P2','pl_P4'])
+    if visualize_sampler_iter_flag:
+        pearson_corrs = visualize_sampler_iter()
+        
+    visualize_diff_mean(results, labels)
+    # # kernel: corr_agg_0, corr_agg_1, corr_agg_2, pl_v, pl_P1, pl_P2, pl_P3, pl_P4
+    result_to_analyse = results[-3]
+    # if pbe_type == 'agglomeration' or pbe_type == 'mix':
+    #     corr_agg_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['corr_agg_0','corr_agg_1','corr_agg_2'])
+    # if pbe_type == 'breakage' or pbe_type == 'mix':
+    #     pl_v_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_v'])
+    #     pl_P13_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P1','pl_P3'], log_axis=False)
+    #     pl_P24_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['pl_P2','pl_P4'])
     
     visualize_diff_mean_radar(results, labels)
-    pearson_corrs = visualize_correlation(results, labels)
-    correlation_analysis(result_to_analyse,plot=True)
+    # pearson_corrs = visualize_correlation(results, labels)
+    pearson_corrs,m,b = correlation_analysis(result_to_analyse,plot=True)
     # visualize_diff_kernel_mse(result_to_analyse)
     
-    variable_to_analyse = result_to_analyse[2]
-    one_frame = False
-    # calc_init = False
-    t_return = -1
-    fps = 5
+    # variable_to_analyse = result_to_analyse[1]
+    # one_frame = False
+    # # calc_init = False
+    # t_return = -1
+    # fps = 5
     # visualize_PSD(variable_to_analyse, pbe_type, one_frame)
 

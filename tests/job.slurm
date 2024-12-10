@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=Opt_mix
+#SBATCH --job-name=Opt
 #SBATCH --output=res.txt
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
@@ -9,7 +9,7 @@
 #SBATCH --mem=40000mb
 
 module purge
-module load jupyter/tensorflow/2023-10-10
+module load devel/python/3.11.7_intel_2021.4.0
 export TMP_PATH=$TMPDIR
 
 tar -C $TMPDIR/ -xzf $(ws_find MC_train)/mix_data_shear2.tar.gz
