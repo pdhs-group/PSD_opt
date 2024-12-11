@@ -58,12 +58,10 @@ class DPBESolver():
         dpbe_mag_sep.init_mag_sep_params(self)
         
         # Load the configuration file, if available
-        if config_path is None:
+        if config_path is None and load_attr:
             config_path = os.path.join(self.pth, "..","..","config","PBE_config.py")
-            config_name = "PBE_config"
-        if not os.path.exists(config_path):
-            print (f"Warning: Config file not found at: {config_path}.")
-        elif load_attr:
+
+        if load_attr:
             config_name = os.path.splitext(os.path.basename(config_path))[0]
             self.load_attributes(config_name, config_path)
 
@@ -87,6 +85,8 @@ class DPBESolver():
         Exception
             If the length of `alpha_prim` does not match the expected dimensionality.
         """
+        if not os.path.exists(config_path):
+            raise FileNotFoundError(f"Warning: Config file not found at: {config_path}.")
         # Dynamically load the configuration file
         spec = importlib.util.spec_from_file_location(config_name, config_path)
         conf = importlib.util.module_from_spec(spec)
@@ -101,7 +101,8 @@ class DPBESolver():
                 setattr(self, key, value)
                 
         # Reset parameters, including time-related attributes
-        self.reset_params(reset_t=True)
+        reset_t = self.t_vec is None
+        self.reset_params(reset_t=reset_t)
     
 # Function to bind all methods from a module to a class    
 def bind_methods_from_module(cls, module_name):

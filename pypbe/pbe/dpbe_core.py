@@ -7,7 +7,7 @@ import numpy as np
 import math
 import scipy.integrate as integrate
 ## jit function
-from  ..utils.func import jit_pop as jit
+from  ..utils.func import jit_rhs, jit_kernel_agg, jit_kernel_break
 from ..utils.func.static_method import interpolate_psd
 ## For math
 from ..utils.func import RK_Radau as RK
@@ -198,7 +198,7 @@ def reset_params(self, reset_t=False):
     self.V03 = self.c_mag_exp*self.V_unit        # Total volume concentration of component 3 [unit/unit] - M
     self.N03 = 3*self.V03/(4*math.pi*self.R03**3)     # Total number concentration of primary particles component 1 [1/m³] - M (if no PSD) 
     
-def full_init(self, calc_alpha=True):
+def full_init(self, calc_alpha=True, init_N=True):
     """Fully initialize a population instance.
     
     This method calls     
@@ -217,7 +217,7 @@ def full_init(self, calc_alpha=True):
     
     self.calc_R()
     # self.calc_R_new()
-    self.init_N() 
+    if init_N: self.init_N() 
     
     if calc_alpha: self.calc_alpha_prim()
     self.calc_F_M()
@@ -564,7 +564,7 @@ def calc_F_M(self):
         if self.process_type == 'breakage':
             return
         if self.JIT_FM:
-            self.F_M = jit.calc_F_M_2D(self.NS,self.disc,self.COLEVAL,self.CORR_BETA,
+            self.F_M = jit_kernel_agg.calc_F_M_2D(self.NS,self.disc,self.COLEVAL,self.CORR_BETA,
                                        self.G,self.R,self.X1_vol,self.X3_vol,
                                        self.EFFEVAL,self.alpha_prim,self.SIZEEVAL,
                                        self.X_SEL,self.Y_SEL)/self.V_unit
@@ -874,7 +874,7 @@ def calc_int_B_F(self):
             for idx, tep in np.ndenumerate(self.B_F):
                 a = idx[0]; i = idx[1]
                 if i != 0 and a <= i:
-                    self.B_F[idx] = jit.breakage_func_1d(V[a],V[i],self.pl_v,self.pl_q,self.BREAKFVAL) * V[0]
+                    self.B_F[idx] = jit_kernel_break.breakage_func_1d(V[a],V[i],self.pl_v,self.pl_q,self.BREAKFVAL) * V[0]
         else:
             self.int_B_F = np.zeros((self.NS, self.NS))
             self.intx_B_F = np.zeros((self.NS, self.NS))
@@ -895,11 +895,11 @@ def calc_int_B_F(self):
                     if i != 0 and a <= i:
                         args = (self.V[i],self.pl_v,self.pl_q,self.BREAKFVAL)
                         if a == i:
-                            self.int_B_F[idx],err = integrate.quad(jit.breakage_func_1d,V_e_tem[a],self.V[a],args=args)
-                            self.intx_B_F[idx],err = integrate.quad(jit.breakage_func_1d_vol,V_e_tem[a],self.V[a],args=args)
+                            self.int_B_F[idx],err = integrate.quad(jit_kernel_break.breakage_func_1d,V_e_tem[a],self.V[a],args=args)
+                            self.intx_B_F[idx],err = integrate.quad(jit_kernel_break.breakage_func_1d_vol,V_e_tem[a],self.V[a],args=args)
                         else:
-                            self.int_B_F[idx],err = integrate.quad(jit.breakage_func_1d,V_e_tem[a],V_e_tem[a+1],args=args)
-                            self.intx_B_F[idx],err = integrate.quad(jit.breakage_func_1d_vol,V_e_tem[a],V_e_tem[a+1],args=args)
+                            self.int_B_F[idx],err = integrate.quad(jit_kernel_break.breakage_func_1d,V_e_tem[a],V_e_tem[a+1],args=args)
+                            self.intx_B_F[idx],err = integrate.quad(jit_kernel_break.breakage_func_1d_vol,V_e_tem[a],V_e_tem[a+1],args=args)
                 
     # 2-D case
     elif self.dim == 2:
@@ -917,10 +917,10 @@ def calc_int_B_F(self):
 
         elif self.B_F_type == 'int_func':
             if self.JIT_BF:
-                self.int_B_F, self.intx_B_F, self.inty_B_F = jit.calc_int_B_F_2D_GL(
+                self.int_B_F, self.intx_B_F, self.inty_B_F = jit_kernel_break.calc_int_B_F_2D_GL(
                     self.NS,self.V1,self.V3,self.V_e1,self.V_e3,self.BREAKFVAL,self.pl_v,self.pl_q)
             else:
-                self.int_B_F, self.intx_B_F,self.inty_B_F = jit.calc_int_B_F_2D_quad(
+                self.int_B_F, self.intx_B_F,self.inty_B_F = jit_kernel_break.calc_int_B_F_2D_quad(
                     self.NS, self.V1, self.V3, self.V_e1, self.V_e3, self.BREAKFVAL, self.pl_v, self.pl_q)
         elif self.B_F_type == 'ANN_MC': 
             return
@@ -1124,11 +1124,11 @@ def solve_PBE(self, t_vec=None):
     if self.dim == 1:
         # Define right-hand-side function depending on discretization
         if self.disc == 'geo':
-            rhs = jit.get_dNdt_1d_geo
+            rhs = jit_rhs.get_dNdt_1d_geo
             args=(self.NS,self.V,self.V_e,self.F_M,self.B_R,self.int_B_F,
                   self.intx_B_F,self.process_type,self.aggl_crit_id)
         elif self.disc == 'uni':
-            rhs = jit.get_dNdt_1d_uni                
+            rhs = jit_rhs.get_dNdt_1d_uni                
             args=(self.V,self.B_R,self.B_F,self.F_M,self.NS,self.aggl_crit_id,self.process_type)
         if self.solver == "ivp":    
             with np.errstate(divide='raise', over='raise',invalid='raise'):
@@ -1160,11 +1160,11 @@ def solve_PBE(self, t_vec=None):
     elif self.dim == 2:
         # Define right-hand-side function depending on discretization
         if self.disc == 'geo':
-            rhs = jit.get_dNdt_2d_geo
+            rhs = jit_rhs.get_dNdt_2d_geo
             args=(self.NS,self.V,self.V_e1,self.V_e3,self.F_M,self.B_R,self.int_B_F,
                   self.intx_B_F,self.inty_B_F,self.process_type,self.aggl_crit_id)
         elif self.disc == 'uni':
-            rhs = jit.get_dNdt_2d_uni   
+            rhs = jit_rhs.get_dNdt_2d_uni   
             args=(self.V,self.V1,self.V3,self.F_M,self.NS,self.THR_DN)
         if self.solver == "ivp":  
             with np.errstate(divide='raise', over='raise',invalid='raise'):
@@ -1198,9 +1198,9 @@ def solve_PBE(self, t_vec=None):
     elif self.dim == 3:
         # Define right-hand-side function depending on discretization
         if self.disc == 'geo':
-            rhs = jit.get_dNdt_3d_geo
+            rhs = jit_rhs.get_dNdt_3d_geo
         elif self.disc == 'uni':
-            rhs = jit.get_dNdt_3d_uni   
+            rhs = jit_rhs.get_dNdt_3d_uni   
             
         self.RES = integrate.solve_ivp(rhs, 
                                        [0, t_max], 
