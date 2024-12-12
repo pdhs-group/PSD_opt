@@ -97,7 +97,7 @@ class DPBESolver():
         for key, value in config.items():
             if value is not None:
                 if key == "alpha_prim" and len(value) != self.dim**2:
-                    raise Exception(f"The length of the array alpha_prim needs to be {self.pbe.dim**2}.")
+                    raise Exception(f"The length of the array alpha_prim needs to be {self.dim**2}.")
                 setattr(self, key, value)
                 
         # Reset parameters, including time-related attributes
