@@ -4,21 +4,26 @@ Created on Thu Jan  4 14:53:00 2024
 
 @author: px2030
 """
-import sys
+# import sys
 import os
+import runpy
+from pathlib import Path
 import ray
-sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),".."))
-from pypbe.kernel_opt.opt_base import OptBase
-from pypbe.utils.general_scripts.generate_psd import full_psd
-import config.opt_config as conf
+from optframework.kernel_opt.opt_base import OptBase
+from optframework.utils.general_scripts.generate_psd import full_psd
 
 if __name__ == '__main__':
     generate_new_psd = True
     generate_synth_data = True
-    run_opt = True
+    run_opt = False
     run_calc_delta = False
     
-    pop_params = conf.config['pop_params']
+    ## Get config data
+    pth = Path(os.path.dirname(__file__)).resolve()
+    conf_pth = os.path.join(pth, "config", "opt_config_all_test.py")
+    conf = runpy.run_path(conf_pth)
+    
+    pop_params = conf['config']['pop_params']
     b = pop_params['CORR_BETA']
     a = pop_params['alpha_prim']
     v = pop_params['pl_v']
@@ -36,8 +41,7 @@ if __name__ == '__main__':
         dist_path_5 = full_psd(x50*5, resigma, minscale=minscale, maxscale=maxscale, plot_psd=False)
         dist_path_10 = full_psd(x50*10, resigma, minscale=minscale, maxscale=maxscale, plot_psd=False)
         print(f'New psd data has been created and saved in path {dist_path_1}')
-
-    opt = OptBase()
+    opt = OptBase(config_path=conf_pth)
     noise_type = opt.core.noise_type
     noise_strength = opt.core.noise_strength
     add_info = f"_para_{b}_{a[0]}_{a[1]}_{a[2]}_{v}_{p1}_{p2}_{p3}_{p4}"
