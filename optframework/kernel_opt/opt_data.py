@@ -5,7 +5,7 @@ data-processing-related calculations during optimization
 import numpy as np
 from sklearn.neighbors import KernelDensity
 from scipy.interpolate import interp1d
-from ..utils.func.func_read_exp import write_read_exp
+from optframework.utils.func.func_read_exp import write_read_exp
 
 def read_exp(self, exp_data_path, t_vec):  
     """
@@ -67,8 +67,7 @@ def get_all_synth_data(self, exp_data_path):
         # Convert number-based PSD to volume-based PSD
         vol_uni = np.tile((1/6)*np.pi*x_uni_exp**3, (self.num_t_steps-self.delta_t_start_step, 1)).T
         sumvol_uni_exp = sumN_uni_exp * vol_uni
-        sumvol_uni_exp = np.insert(sumvol_uni_exp, 0, 0.0, axis=0)
-        x_uni_exp = np.insert(x_uni_exp, 0, 0.0)
+        
         
         # Recalculate the distribution
         for flag, _ in self.delta_flag:

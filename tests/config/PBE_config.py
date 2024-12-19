@@ -9,16 +9,16 @@ config = {
 
     # "R01": 8.677468940430804e-07,
     # "R03": 8.677468940430804e-07,
-    "R01": 8.116913897613351e-07,  
+    "R01": 2.9e-7,  
     # Radius of primary NM1 particles (in meters).
 
-    "R03": 8.116913897613351e-07,  
+    "R03": 2.9e-7,  
     # Radius of primary M particles (in meters).
 
-    "t_total": 3601,  
+    "t_total": 1801,  
     # Total simulation time in seconds.
 
-    "t_write": 100,  
+    "t_write": 300,  
     # Interval (in time steps) for writing output data (e.g., simulation results).
 
     "process_type": "mix",  
@@ -30,7 +30,7 @@ config = {
     "solver": "ivp",  
     # Numerical solver used to integrate the PBE.
 
-    "V_unit": 1,  
+    "V_unit": 1e-12,  
     # Volume unit used for normalization of N (particle number concentration). 
     # Setting a smaller value generally does not affect the relative relationships between N (i.e., the PSD),
     # but helps reduce the stiffness of matrices during calculations, leading to faster solver convergence.
@@ -66,10 +66,10 @@ config = {
     "aggl_crit": 100,  
     # Critical particle size for agglomeration. Agglomeration will be limited to particles larger than this size.
 
-    "CORR_BETA": 1,
+    "CORR_BETA": 1e-2,
     # Correction factor for the collision frequency kernel, controlling the rate of aggregation.
 
-    'alpha_prim': np.array([1,1,1,1e-1]),  
+    'alpha_prim': np.array([1,1,1,1]),  
     # 'alpha_prim': np.array([1]),
     # Factors for collision efficiency.
     # The length of the alpha_prim array must be the square of the dpbe's dimensionality (dim^2).
@@ -82,7 +82,7 @@ config = {
     # Flag that determines which model to use for calculating the fragment distribution function.
     # Can be checked in dpbe_core.py's `calc_int_B_F`.
 
-    "pl_v": 1.0,  
+    "pl_v": 2.0,  
     # Parameter in fragment distribution function.
 
     "V1_mean": 1e-15,
@@ -92,9 +92,10 @@ config = {
     # Mean volume of M particles (in cubic meters).
     
     "pl_P1": 1e-2,  
-    "pl_P2": 0.5,  
+    "pl_P2": 1,  
     "pl_P3": 1e-2,  
-    "pl_P4": 0.5,  
+    "pl_P4": 1,  
     # Parameters for breakage rate kernel.
+    "G": 80,
 
 }

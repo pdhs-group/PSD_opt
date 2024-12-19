@@ -5,12 +5,11 @@ Created on Wed Dec 11 15:01:34 2024
 @author: px2030
 """
 import os ,sys
-sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),"../.."))
 import numpy as np
 import math
 import scipy.integrate as integrate
-from pypbe.pbe import DPBESolver
-import pypbe.utils.func.jit_extruder as jit_rhs
+from optframework.pbe import DPBESolver
+import optframework.utils.func.jit_extruder as jit_rhs
 
 class ExtruderPBESolver():
     def __init__(self, dim, NC, t_total=601, t_write=100, t_vec=None, 

@@ -3,12 +3,11 @@
 Calculate the difference between the PSD of the simulation results and the experimental data.
 """
 import os ,sys
-sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),"../.."))
 import numpy as np
 from ray import tune
 from scipy.stats import entropy
 from sklearn.metrics import mean_squared_error, mean_absolute_error
-from pypbe.pbe.dpbe_base import DPBESolver, bind_methods_from_module, unbind_methods_from_class
+from optframework.pbe.dpbe_base import DPBESolver, bind_methods_from_module, unbind_methods_from_class
 
 class OptCore():
     """
@@ -35,6 +34,10 @@ class OptCore():
         self.calc_init_N = False
         self.set_init_pop_para_flag = False
         self.set_comp_para_flag = False
+        self.init_N_NM = None
+        self.init_N_M = None
+        self.init_N_2D = None
+        
  
     def init_attr(self, core_params):
         """
@@ -371,10 +374,10 @@ class OptCore():
         print(notice)
 
 # Bind methods from other modules into this class
-bind_methods_from_module(OptCore, 'pypbe.kernel_opt.opt_algo_bo')
-bind_methods_from_module(OptCore, 'pypbe.kernel_opt.opt_data')
-bind_methods_from_module(OptCore, 'pypbe.kernel_opt.opt_pbe')
-bind_methods_from_module(OptCore, 'pypbe.pbe.dpbe_post')
+bind_methods_from_module(OptCore, 'optframework.kernel_opt.opt_algo_bo')
+bind_methods_from_module(OptCore, 'optframework.kernel_opt.opt_data')
+bind_methods_from_module(OptCore, 'optframework.kernel_opt.opt_pbe')
+bind_methods_from_module(OptCore, 'optframework.pbe.dpbe_post')
 methods_to_remove = ['calc_v_uni','calc_x_uni', 'return_distribution', 'return_num_distribution',
                      'return_N_t','calc_mom_t']
 unbind_methods_from_class(OptCore, methods_to_remove)

@@ -58,7 +58,6 @@ config = {
          
         'method': 'Cmaes',
         # Optimization method to use. Options include:
-        # - 'HEBO': Heteroscedastic Evolutionary Bayesian Optimization
         # - 'GP': Gaussian Process-based Bayesian Optimization
         # - 'TPE': Tree-structured Parzen Estimator
         # - 'Cmaes': Covariance Matrix Adaptation Evolution Strategy (CMA-ES)

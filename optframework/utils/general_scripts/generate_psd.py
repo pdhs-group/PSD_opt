@@ -5,6 +5,7 @@ Created on Fri Apr 16 09:03:36 2021
 @author: xy0264
 """
 import numpy as np
+from pathlib import Path
 from scipy.stats import norm,lognorm
 
 def generate_psd_normal(x50,sigma,exp_name=None,xmin=None,xmax=None):
@@ -131,7 +132,7 @@ def full_psd(x50, resigma=0.2, minscale=None, maxscale=None, plot_psd=False, out
         ax.legend(['Density distribution q','Sum distribution Q'])
     # Generate full3 filestring
     if output_dir is None:
-        output_dir = os.path.join(os.path.dirname( __file__ ),"..","..","data","PSD_data")
+        output_dir = os.path.join(Path(os.getcwd()).resolve(),"data","PSD_data")
     os.makedirs(output_dir, exist_ok=True)
     dist = os.path.join(output_dir, f"PSD_x50_{Decimal(x50):.1E}_RelSigmaV_{Decimal(resigma):.1E}.npy")
     

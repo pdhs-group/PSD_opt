@@ -2,15 +2,16 @@
 
 import numpy as np
 import os
-import importlib.util
+import runpy
+from pathlib import Path
 import warnings
 import pandas as pd
 import ray
 # from ..pbe.dpbe_base import DPBESolver
 from .opt_core import OptCore
 from .opt_core_multi import OptCoreMulti
-from ..utils.func.func_read_exp import write_read_exp
-from pypbe.pbe.dpbe_base import bind_methods_from_module
+from optframework.utils.func.func_read_exp import write_read_exp
+from optframework.pbe.dpbe_base import bind_methods_from_module
 ## For plots
 # import matplotlib.pyplot as plt
 # from ..utils.plotter import plotter as pt        
@@ -28,7 +29,7 @@ class OptBase():
     This class uses the `bind_methods_from_module` function to dynamically bind methods from external
     modules. Some methods in this class are not explicitly defined here, but instead are imported from
     other files. To fully understand or modify those methods, please refer to the corresponding external
-    files, such as `pypbe.kernel_opt.opt_base_ray`, from which methods are bound to this class.
+    files, such as `optframework.kernel_opt.opt_base_ray`, from which methods are bound to this class.
     
     Methods
     -------
@@ -53,11 +54,8 @@ class OptBase():
             If the requirements file for ray is not found.
         """
         # Get the current script directory and the requirements file path
-        self.pth = os.path.dirname( __file__ )
-        self.requirements_path = os.path.abspath(os.path.join(self.pth, "..","..", "requirements_ray.txt"))
-        if not os.path.exists(self.requirements_path):
-            ## Raise an exception if the requirements file for ray is not found
-            raise Exception(f"Warning: Requirements file for ray not found at: {self.requirements_path}.")
+        # self.pth = os.path.dirname( __file__ )
+        self.work_dir = Path(os.getcwd()).resolve()
         # Load the configuration file
         config = self.check_config_path(config_path)
         self.core_params = config['algo_params']
@@ -71,7 +69,7 @@ class OptBase():
         # Set the data path, use default if not provided
         if data_path is None:
             print('Data path is not found or is None, default path will be used.')
-            self.data_path = os.path.join(self.pth, "..", "data")
+            self.data_path = os.path.join(self.work_dir, "data")
         else:
             self.data_path = data_path
         os.makedirs(self.data_path, exist_ok=True)
@@ -102,18 +100,16 @@ class OptBase():
         # Check if the configuration file exists and load it
         if config_path is None:
             # Use the default configuration file path if none is provided
-            config_path = os.path.join(self.pth, "..","..","config","opt_config.py")
-            config_name = "opt_config"
+            # config_path = os.path.join(self.pth, "..","..","config","opt_config.py")
+            # config_name = "opt_config"
+            config_path = os.path.join(self.work_dir,"config","opt_config.py")
         if not os.path.exists(config_path):
             # Raise an exception if the config file is not found
             raise Exception(f"Warning: Config file not found at: {config_path}.")
         else:
             # Load the configuration from the specified file
-            config_name = os.path.splitext(os.path.basename(config_path))[0]
-            spec = importlib.util.spec_from_file_location(config_name, config_path)
-            conf = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(conf)
-            config = conf.config
+            conf = runpy.run_path(config_path)
+            config = conf['config']
             return config
         
     def init_opt_core(self):
@@ -415,4 +411,4 @@ ulated delta by comparing the
         delta = self.core.calc_delta(params, x_uni_exp, data_exp)
         return delta, exp_data_path_ori
 # Bind methods from another module into this class    
-bind_methods_from_module(OptBase, 'pypbe.kernel_opt.opt_base_ray')        
+bind_methods_from_module(OptBase, 'optframework.kernel_opt.opt_base_ray')        

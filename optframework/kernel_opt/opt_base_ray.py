@@ -265,9 +265,9 @@ def create_algo(self, batch=False):
         The search algorithm instance to be used for optimization.
 
     """
-    if self.core.method == 'HEBO': 
-        search_alg = HEBOSearch(metric="loss", mode="min", random_state_seed=self.core.random_seed)
-    elif self.core.method == 'GP': 
+    # if self.core.method == 'HEBO': 
+    #     search_alg = HEBOSearch(metric="loss", mode="min", random_state_seed=self.core.random_seed)
+    if self.core.method == 'GP': 
         search_alg = OptunaSearch(metric="loss", mode="min", sampler=GPSampler(seed=self.core.random_seed))
     elif self.core.method == 'TPE': 
         search_alg = OptunaSearch(metric="loss", mode="min", sampler=TPESampler(seed=self.core.random_seed))
@@ -277,6 +277,8 @@ def create_algo(self, batch=False):
         search_alg = OptunaSearch(metric="loss", mode="min", sampler=NSGAIIISampler(seed=self.core.random_seed))
     elif self.core.method == 'QMC':    
         search_alg = OptunaSearch(metric="loss", mode="min", sampler=QMCSampler(scramble=True, seed=self.core.random_seed))
+    else:
+        raise ValueError(f"Unsupported sampler detected: {self.core.method}")
     # If no concurrency limit is set, return the search algorithm directly    
     if self.core.max_concurrent is None:
         return search_alg
