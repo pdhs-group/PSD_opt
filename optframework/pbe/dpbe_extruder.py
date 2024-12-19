@@ -5,6 +5,7 @@ Created on Wed Dec 11 15:01:34 2024
 @author: px2030
 """
 import os ,sys
+from pathlib import Path
 import numpy as np
 import math
 import scipy.integrate as integrate
@@ -14,7 +15,7 @@ import optframework.utils.func.jit_extruder as jit_rhs
 class ExtruderPBESolver():
     def __init__(self, dim, NC, t_total=601, t_write=100, t_vec=None, 
                  load_attr=True, disc='geo', **attr):
-        self.pth = os.path.dirname( __file__ )
+        self.work_dir = Path(os.getcwd()).resolve()
         # Geometric parameters for extruder
         self.NC = NC
         self.screwspeed = 2                         # Screwspeed [1/s]
@@ -56,7 +57,7 @@ class ExtruderPBESolver():
         ## For N in Extruder, the order of dimension is like [NC, NS..., t]     
         if config_paths is None:
             config_paths = [
-                os.path.join(self.pth, "..", "..", "config", f"Extruder{i}_config.py")
+                os.path.join(self.work_dir, "config", f"Extruder{i}_config.py")
                 for i in range(self.NC)
             ]
 
@@ -67,9 +68,11 @@ class ExtruderPBESolver():
             if same_pbe and i > 0:
                 pass
             else:
+                if not os.path.exists(config_path):
+                    raise FileNotFoundError(f"Warning: Config file not found at: {config_path}.")
+                print(f"The dPBE-Extruder simulation is using config file at : {config_path}")
                 config_path = config_paths[0] if same_pbe else config_paths[i]
-                config_name = os.path.splitext(os.path.basename(config_path))[0]
-                self.p.load_attributes(config_name, config_path)
+                self.p.load_attributes(config_path)
                 self.p.full_init(calc_alpha=False)
             if i == 0:
                 ## Initialize the first dPBE to get the array dimensions

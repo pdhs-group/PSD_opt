@@ -7,15 +7,14 @@ Created on Thu Jan  4 14:53:00 2024
 import sys
 import os
 import ray
-sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),"../../.."))
-from pypbe.kernel_opt.opt_base import OptBase
+from optframework.kernel_opt.opt_base import OptBase
 import config.opt_config as conf
 import numpy as np
 import pandas as pd
 import time
 ## For plots
 import matplotlib.pyplot as plt
-import pypbe.utils.plotter.plotter as pt  
+import optframework.utils.plotter.plotter as pt  
 
 def normal_test():
     start_time = time.time()
@@ -29,9 +28,9 @@ def normal_test():
     elapsed_time = end_time - start_time
     print(f"The execution of optimierer takes：{elapsed_time} seconds")
     
-    ## Calculate PBE with exp-data and parameter from optimization
+    ## Calculate PBE with synth-data and parameter from optimization in 2D
     opt.core.set_init_N(exp_data_paths, 'mean')
-    opt.core.calc_pop(opt.core.p, result_dict["opt_params"], opt.core.t_vec, opt.core.init_N)
+    opt.core.calc_all_pop(result_dict["opt_params"], opt.core.t_vec)
     x_uni, Q3 = return_pop_distribution()
     
     return  x_uni, Q3 , result_dict
@@ -51,10 +50,13 @@ def return_pop_distribution():
 
 def calc_delta_test(var_delta=False):
     # pop_params = conf.config['pop_params']
-    pop_params = {'pl_v': 0.012150989218049626,
-     'pl_P1': 2.4030393550212942e-06,
-     'pl_P2': 0.7962978267023504,
-     'corr_agg': np.array([0.00074662])}
+    pop_params = {"pl_v": 2,
+            "pl_P1": 1e-2,
+            "pl_P2": 1,
+            "pl_P3": 1e-2,
+            "pl_P4": 1,
+            "G": 80,
+     'corr_agg': np.array([1e-2,1e-2,1e-2])}
     opt.core.init_attr(opt.core_params)
     opt.core.init_pbe(opt.pop_params, opt.data_path) 
     if opt.core.calc_init_N:
@@ -95,7 +97,7 @@ if __name__ == '__main__':
     opt = OptBase()
     multi_flag = opt.multi_flag
     
-    data_name = "Mean_data_Q3_600.xlsx"
+    data_name = "Sim_Mul_0.1_para_1_0.01_0.01_0.01_2_0.01_1_0.01_1.xlsx"
     
     exp_data_paths = os.path.join(opt.data_path, data_name)
     if multi_flag:
@@ -116,6 +118,6 @@ if __name__ == '__main__':
         }
     
     # Run an optimization and generate graphs of the results
-    # x_uni, Q3 , result_dict = normal_test()
+    x_uni, Q3 , result_dict = normal_test()
     
-    x_uni_test, Q3_test , delta = calc_delta_test(var_delta=False)
+    # x_uni_test, Q3_test , delta = calc_delta_test(var_delta=False)

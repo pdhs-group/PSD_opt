@@ -63,6 +63,13 @@ class DPBESolver():
 
         if load_attr:
             self.load_attributes(config_path)
+        self.check_params()
+        
+    def check_params(self):
+        """
+        Check the validity of dPBE parameters.
+        """
+        pass
 
     def load_attributes(self, config_path):
         """
@@ -86,6 +93,7 @@ class DPBESolver():
         """
         if not os.path.exists(config_path):
             raise FileNotFoundError(f"Warning: Config file not found at: {config_path}.")
+        print(f"The dPBE is using config file at : {config_path}." )
         # Dynamically load the configuration file
         conf = runpy.run_path(config_path)
         config = conf['config']

@@ -263,12 +263,15 @@ def set_init_N(self, exp_data_paths, init_flag):
     """
     if self.dim ==1:
         self.p.calc_R()
+        self.p.N = np.zeros((self.p.NS, len(self.p.t_vec)))
         self.init_N = self.set_init_N_1D(self.p, exp_data_paths, init_flag)
     elif self.dim == 2:
         self.calc_all_R()
         self.init_N_NM = self.set_init_N_1D(self.p_NM, exp_data_paths[1], init_flag)
         self.init_N_M = self.set_init_N_1D(self.p_M, exp_data_paths[2], init_flag)
         self.p.N = np.zeros((self.p.NS, self.p.NS, len(self.p.t_vec)))
+        self.p_NM.N = np.zeros((self.p.NS, len(self.p.t_vec)))
+        self.p_M.N = np.zeros((self.p.NS, len(self.p.t_vec)))
         # Set the number concentration for NM and M populations at the initial time step
         # This assumes the system initially contains only pure materials, so no mixed particles exist
         self.p.N[1:, 1, 0] = self.p_NM.N[1:, 0]

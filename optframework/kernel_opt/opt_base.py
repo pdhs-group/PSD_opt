@@ -77,6 +77,15 @@ class OptBase():
         self.init_opt_core()
         # Initialize t_vec for file generation
         self.idt_vec = [np.where(self.core.t_all == t_time)[0][0] for t_time in self.core.t_vec]
+        self.check_params()
+        
+    def check_core_params(self):
+        """
+        Check the validity of optimization core parameters.
+        """
+        ### verbose, delta_flag, method, noise_type, t_vec, t_init...
+        pass
+        
         
     def check_config_path(self, config_path):
         """
@@ -110,6 +119,7 @@ class OptBase():
             # Load the configuration from the specified file
             conf = runpy.run_path(config_path)
             config = conf['config']
+            print(f"The Optimization and dPBE are using config file at : {config_path}")
             return config
         
     def init_opt_core(self):
@@ -331,7 +341,7 @@ class OptBase():
                             
                 exp_data_paths = join_paths(data_names)
             # Initialize ray for parallel computation
-            ray.init(log_to_driver=True, runtime_env={
+            ray.init(log_to_driver=False, runtime_env={
                 "env_vars": {"PYTHONPATH": os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))}})
             # ray.init(address=os.environ["ip_head"], log_to_driver=False, runtime_env={
             #     "env_vars": {"PYTHONPATH": os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))}})

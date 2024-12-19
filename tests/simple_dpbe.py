@@ -5,13 +5,12 @@ Created on Wed Apr 17 08:57:57 2024
 @author: px2030
 """
 import sys, os
-sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),".."))
 import numpy as np
-from pypbe.pbe import DPBESolver
+from optframework.pbe import DPBESolver
 ## for plotter
 import matplotlib.pyplot as plt
-import pypbe.kernel_opt.opt_core as core
-import pypbe.utils.plotter.plotter as pt
+import optframework.kernel_opt.opt_core as core
+import optframework.utils.plotter.plotter as pt
 from matplotlib.animation import FuncAnimation
 
 def visualize_distribution(t_frame=-1, axq3=None,fig=None, clr='b', q3lbl='q3'):
@@ -23,13 +22,14 @@ def visualize_distribution(t_frame=-1, axq3=None,fig=None, clr='b', q3lbl='q3'):
         q3 = np.insert(q3, 0, 0.0)
     
     axq3, fig = pt.plot_data(x_uni, q3, fig=fig, ax=axq3,
-                           xlbl='Agglomeration size $x_\mathrm{A}$ / $-$',
+                           xlbl=r'Agglomeration size $x_\mathrm{A}$ / $-$',
                            ylbl='number distribution of agglomerates $q3$ / $-$',
                            lbl=q3lbl,clr=clr,mrk='o')
     
     axq3.grid('minor')
     axq3.set_xscale('log')
     plt.tight_layout()  
+    plt.show()
 
 def animation_distribution(t_vec, fps=10):
     def update(frame):
@@ -50,7 +50,7 @@ def animation_distribution(t_vec, fps=10):
     fig, axq3 = plt.subplots()
     clr = 'b'  
     t_frame = np.arange(1, len(t_vec))
-    axq3.set_xlabel('Agglomeration size $x_\mathrm{A}$ / $-$')
+    axq3.set_xlabel(r'Agglomeration size $x_\mathrm{A}$ / $-$')
     axq3.set_ylabel('number distribution of agglomerates $q3$ / $-$')
     axq3.grid('minor')
     axq3.set_xscale('log')
@@ -78,6 +78,7 @@ def visualize_convergence():
     rate.grid('minor')
     error_norm.grid('minor')
     plt.tight_layout()  
+    plt.show()
   
 def visualize_N():
     fig=plt.figure()    
