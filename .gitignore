@@ -22,3 +22,5 @@ docs/_build/
 
 *.html
 *.csv
+poetry.lock
+/tests/config/Ray_Tune
