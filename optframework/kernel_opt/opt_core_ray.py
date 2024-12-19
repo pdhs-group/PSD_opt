@@ -61,6 +61,10 @@ class OptCoreRay(OptCore, tune.Trainable):
         # Initialize the number concentration N if required
         if self.calc_init_N:
             self.set_init_N(exp_data_paths, init_flag='mean')
+        else:
+            self.init_N_NM = None
+            self.init_N_M = None
+            self.init_N_2D = None
             
         # Store experimental data and known parameters
         self.known_params = known_params

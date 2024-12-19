@@ -22,5 +22,8 @@ docs/_build/
 
 *.html
 *.csv
-poetry.lock
+/config/all_test/Ray_Tune
 /tests/config/Ray_Tune
+tests/distribution_animation.gif
+poetry.lock
+/dist

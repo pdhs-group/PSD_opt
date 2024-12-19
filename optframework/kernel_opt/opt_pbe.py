@@ -5,7 +5,7 @@ PBE-related calculations during optimization
 import os
 import numpy as np
 from scipy.interpolate import interp1d
-from ..pbe.dpbe_base import DPBESolver
+from optframework.pbe import DPBESolver
 
 def create_1d_pop(self, t_vec, disc='geo'):
     """
@@ -193,8 +193,10 @@ def set_comp_para(self, data_path):
     self.p.USE_PSD = self.USE_PSD
     # If PSD is used, load PSD data from the provided file paths
     if self.p.USE_PSD:
-        dist_path_R01 = os.path.join(data_path, 'PSD_data', self.PSD_R01)
-        dist_path_R03 = os.path.join(data_path, 'PSD_data', self.PSD_R03)
+        DIST1_path = os.path.join(data_path, 'PSD_data')
+        DIST3_path = os.path.join(data_path, 'PSD_data')
+        dist_path_R01 = os.path.join(DIST1_path, self.PSD_R01)
+        dist_path_R03 = os.path.join(DIST3_path, self.PSD_R03)
         # Raise exceptions if the PSD data files for NM or M particles are missing
         if not os.path.exists(dist_path_R01):
             raise Exception(f"initial PSD data in path: {dist_path_R01} not found!")
@@ -204,8 +206,10 @@ def set_comp_para(self, data_path):
         psd_dict_R01 = np.load(dist_path_R01,allow_pickle=True).item()
         psd_dict_R03 = np.load(dist_path_R03,allow_pickle=True).item()
         # Set PSD paths and radii for NM and M particles
-        self.p.DIST1 = dist_path_R01
-        self.p.DIST3 = dist_path_R03
+        self.p.DIST1_path = DIST1_path
+        self.p.DIST3_path = DIST3_path
+        self.p.DIST1_name = self.PSD_R01
+        self.p.DIST3_name = self.PSD_R03
         self.p.R01 = psd_dict_R01[self.R01_0] * self.R01_0_scl
         self.p.R03 = psd_dict_R03[self.R03_0] * self.R03_0_scl
     else:
@@ -217,11 +221,13 @@ def set_comp_para(self, data_path):
         self.p_NM.USE_PSD = self.p_M.USE_PSD = self.p.USE_PSD
         # parameter for particle component 1 - NM
         self.p_NM.R01 = self.p.R01
-        self.p_NM.DIST1 = self.p.DIST1
+        self.p_NM.DIST1_path = DIST1_path
+        self.p_NM.DIST1_name = self.PSD_R01
         
         # parameter for particle component 2 - M
         self.p_M.R01 = self.p.R03
-        self.p_M.DIST1 = self.p.DIST3
+        self.p_M.DIST1_path = DIST3_path
+        self.p_M.DIST1_name = self.PSD_R03
     self.set_comp_para_flag = True
     
 def calc_all_R(self):

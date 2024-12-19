@@ -5,15 +5,15 @@ Created on Thu Jul 18 09:53:09 2024
 @author: Administrator
 """
 
-import os ,sys
-sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),"../.."))
-import importlib
+import os
+import runpy
 import inspect
+import importlib
 # import importlib.util
-import pypbe.pbe.dpbe_core as dpbe_core
-import pypbe.pbe.dpbe_visualization as dpbe_visualization
-import pypbe.pbe.dpbe_post as dpbe_post
-import pypbe.pbe.dpbe_mag_sep as dpbe_mag_sep
+import optframework.pbe.dpbe_core as dpbe_core
+import optframework.pbe.dpbe_visualization as dpbe_visualization
+import optframework.pbe.dpbe_post as dpbe_post
+import optframework.pbe.dpbe_mag_sep as dpbe_mag_sep
         
 class DPBESolver():
     """
@@ -59,13 +59,12 @@ class DPBESolver():
         
         # Load the configuration file, if available
         if config_path is None and load_attr:
-            config_path = os.path.join(self.pth, "..","..","config","PBE_config.py")
+            config_path = os.path.join(self.work_dir,"config","PBE_config.py")
 
         if load_attr:
-            config_name = os.path.splitext(os.path.basename(config_path))[0]
-            self.load_attributes(config_name, config_path)
+            self.load_attributes(config_path)
 
-    def load_attributes(self, config_name, config_path):
+    def load_attributes(self, config_path):
         """
         Load attributes dynamically from a configuration file.
         
@@ -88,10 +87,8 @@ class DPBESolver():
         if not os.path.exists(config_path):
             raise FileNotFoundError(f"Warning: Config file not found at: {config_path}.")
         # Dynamically load the configuration file
-        spec = importlib.util.spec_from_file_location(config_name, config_path)
-        conf = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(conf)
-        config = conf.config
+        conf = runpy.run_path(config_path)
+        config = conf['config']
         
         # Assign attributes from the configuration file to the DPBESolver instance
         for key, value in config.items():
@@ -163,7 +160,7 @@ def unbind_methods_from_class(cls, methods_to_remove):
             delattr(cls, method_name)  
             
 # Bind methods from different PBE-related modules to DPBESolver            
-bind_methods_from_module(DPBESolver, 'pypbe.pbe.dpbe_core')
-bind_methods_from_module(DPBESolver, 'pypbe.pbe.dpbe_visualization')
-bind_methods_from_module(DPBESolver, 'pypbe.pbe.dpbe_post')
-bind_methods_from_module(DPBESolver, 'pypbe.pbe.dpbe_mag_sep')
+bind_methods_from_module(DPBESolver, 'optframework.pbe.dpbe_core')
+bind_methods_from_module(DPBESolver, 'optframework.pbe.dpbe_visualization')
+bind_methods_from_module(DPBESolver, 'optframework.pbe.dpbe_post')
+bind_methods_from_module(DPBESolver, 'optframework.pbe.dpbe_mag_sep')

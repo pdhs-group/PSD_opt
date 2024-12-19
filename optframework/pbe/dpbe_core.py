@@ -3,14 +3,15 @@
 ### ------ IMPORTS ------ ###
 ## General
 import os
+from pathlib import Path
 import numpy as np
 import math
 import scipy.integrate as integrate
 ## jit function
-from  ..utils.func import jit_rhs, jit_kernel_agg, jit_kernel_break
-from ..utils.func.static_method import interpolate_psd
+from  optframework.utils.func import jit_rhs, jit_kernel_agg, jit_kernel_break
+from  optframework.utils.func.static_method import interpolate_psd
 ## For math
-from ..utils.func import RK_Radau as RK
+from  optframework.utils.func import RK_Radau as RK
 
 ### ------ POPULATION CLASS DEFINITION ------ ###
 
@@ -47,7 +48,8 @@ def init_pbe_params(self, dim, t_total, t_write, t_vec, disc, **attr):
         print('Given dimension and/or discretization are not valid. Exiting..')
         
     # BASELINE PATH
-    self.pth = os.path.dirname( __file__ )
+    # self.work_dir = os.path.dirname( __file__ )
+    self.work_dir = Path(os.getcwd()).resolve()
     
     ## Simulation parameters
     self.dim = dim                        # Dimension (1=1D, 2=2D, 3=3D)
@@ -87,7 +89,7 @@ def init_pbe_params(self, dim, t_total, t_write, t_vec, disc, **attr):
     self.B_F_type = 'int_func'            # 'int_func': calculate B_F with breakage function
                                           # 'MC_bond': Obtain B_F directly from the result of MC_bond
                                           # 'ANN_MC': Calculate MC results using ANN model and convert to B_F
-    self.PTH_MC_BOND = os.path.join(self.pth,'bond_break','int_B_F.npz')
+    self.work_dir_MC_BOND = os.path.join(self.work_dir,'bond_break','int_B_F.npz')
     
     ## MATERIAL parameters:
     # NOTE: component 3 is defined as the magnetic component (both in 2D and 3D case)
@@ -95,12 +97,15 @@ def init_pbe_params(self, dim, t_total, t_write, t_vec, disc, **attr):
     self.R02 = 2.9e-7                     # Radius primary particle component 2 [m] - NM2
     self.R03 = 2.9e-7                     # Radius primary particle component 3 [m] - M3
     self.USE_PSD = True                   # Define wheter or not the PSD should be initializes (False = monodisperse primary particles)
-    self.DIST1_path = os.path.join(self.pth,'..','data','PSD_data')
-    self.DIST2_path = os.path.join(self.pth,'..','data','PSD_data')
-    self.DIST3_path = os.path.join(self.pth,'..','data','PSD_data')
+    
+    # Set default initial PSD file paths
+    self.DIST1_path = os.path.join(self.work_dir,'..','data','PSD_data')
+    self.DIST2_path = os.path.join(self.work_dir,'..','data','PSD_data')
+    self.DIST3_path = os.path.join(self.work_dir,'..','data','PSD_data')
     self.DIST1_name = 'PSD_x50_1.0E-6_r01_2.9E-7.npy'
     self.DIST2_name = 'PSD_x50_1.0E-6_r01_2.9E-7.npy'
-    self.DIST3_name = 'PSD_x50_1.0E-6_r01_2.9E-7.npy'
+    self.DIST3_name = 'PSD_x50_1.0E-6_r01_2.9E-7.npy' 
+    
     self.V_unit = 1                  # The unit volume used to calculate the total particle concentration. 
                                         # It is essentially a parameter used to scale the variabel.
                                         
@@ -179,13 +184,11 @@ def reset_params(self, reset_t=False):
         
     # Set the number of time steps based on the time vector
     if self.t_vec is not None:
-        self.t_num = len(self.t_vec)
-
-    # Reset PSD file paths
+        self.t_num = len(self.t_vec)  
+        
     self.DIST1 = os.path.join(self.DIST1_path,self.DIST1_name)
     self.DIST2 = os.path.join(self.DIST2_path,self.DIST2_name)
-    self.DIST3 = os.path.join(self.DIST3_path,self.DIST3_name)     
-    
+    self.DIST3 = os.path.join(self.DIST3_path,self.DIST3_name)  
     # Recalculate physical constants and particle concentrations
     self.EPS = self.EPSR*self.EPS0
     
@@ -882,7 +885,7 @@ def calc_int_B_F(self):
                 return
             
             if self.B_F_type == 'MC_bond':
-                mc_bond = np.load(self.PTH_MC_BOND, allow_pickle=True)
+                mc_bond = np.load(self.work_dir_MC_BOND, allow_pickle=True)
                 self.int_B_F = mc_bond['int_B_F']
                 self.intx_B_F = mc_bond['intx_B_F']
             elif self.B_F_type == 'int_func':
@@ -910,7 +913,7 @@ def calc_int_B_F(self):
             return
         
         if self.B_F_type == 'MC_bond':
-            mc_bond = np.load(self.PTH_MC_BOND, allow_pickle=True)
+            mc_bond = np.load(self.work_dir_MC_BOND, allow_pickle=True)
             self.int_B_F = mc_bond['int_B_F']
             self.intx_B_F = mc_bond['intx_B_F']
             self.inty_B_F = mc_bond['inty_B_F']
