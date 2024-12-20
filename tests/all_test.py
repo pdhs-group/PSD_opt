@@ -15,7 +15,7 @@ from optframework.utils.general_scripts.generate_psd import full_psd
 if __name__ == '__main__':
     generate_new_psd = True
     generate_synth_data = True
-    run_opt = False
+    run_opt = True
     run_calc_delta = False
     
     ## Get config data

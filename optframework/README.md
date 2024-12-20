@@ -2,9 +2,11 @@
 
 ### Folder Contents
 
-- **bond_break**: Contains the original module class for `bond_break` and its ANN training class (still under development).
-- **data**: Stores the default path for the PSD data used by `kernel_opt` for optimization. If another path is manually specified, the specified path will be used.
-  - **Note**: The `data` folder typically needs a subfolder named `PSD_data`. This subfolder contains the PSD data used to determine the initial conditions for the dPBE. You can generate this data using the script located at `PSD_opt\pypbe\utils\general_scripts\generate_psd.py`.
 - **kernel_opt**: Contains classes related to the optimization framework.
-- **pbe**: Contains classes for the dPBE solver.
-- **utils**: Contains additional classes, functions, and scripts used for calculations or data processing.
+- **pbe**: Contains classes for the dPBE and dPBE-Extruder solver.
+- **utils**: Contains additional functions and scripts used for calculations or data processing.
+  - **func**: Includes general mathematical computation functions, functions for reading and writing PSD datasets, and functions for the detailed calculations of the dPBE partial differential equation (most of which are accelerated using JIT pre-compilation).
+  - **func_temp**: Contains scripts primarily used for debugging or as backups, most of which are not actively maintained.
+  - **general_scripts**: Mainly consists of scripts for post-processing dPBE or optimization results, as well as scripts for generating initial condition PSDs.
+  - **plotter**: Provides functions for quickly generating plots, contributed by Frank Rhein.
+
