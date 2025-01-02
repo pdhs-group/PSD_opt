@@ -7,15 +7,12 @@ Validate discrete PBE with analytical solutions for various cases
 # %% IMPORTS
 import matplotlib.pyplot as plt
 from matplotlib.ticker import ScalarFormatter, FuncFormatter
-import sys, os
-sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),".."))
 import numpy as np
 import math
-import pypbe.utils.plotter.plotter as pt
-from pypbe.utils.plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
-
-from pypbe.pbe.dpbe_base import DPBESolver as pop_disc
-from pypbe.pbe.mcpbe import population_MC as pop_mc 
+import optframework.utils.plotter.plotter as pt
+from optframework.utils.plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
+from optframework.pbe.dpbe_base import DPBESolver as pop_disc
+from optframework.pbe.mcpbe import population_MC as pop_mc 
 
 #%% CASES
 def calculate_case(CASE, PBE=True, MC=False):

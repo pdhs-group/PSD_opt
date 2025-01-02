@@ -1,10 +1,10 @@
 import numpy as np
 
 config = {
-    "NS": 20,  
+    "NS": 10,  
     # Number of size classes for discretizing particle populations (grid points).
 
-    "S": 2,  
+    "S": 4,  
     # Geometric ratio used to define the spacing in the size grid for 'geo' discretization. 
 
     # "R01": 8.677468940430804e-07,
@@ -63,8 +63,8 @@ config = {
     "CORR_BETA": 1,
     # Correction factor for the collision frequency kernel, controlling the rate of aggregation.
 
-    # 'alpha_prim': np.array([1,1,1,1e-1]),  
-    'alpha_prim': np.array([1]),
+    'alpha_prim': np.array([1,1,1,1]),  
+    # 'alpha_prim': np.array([1]),
     # Factors for collision efficiency.
     # The length of the alpha_prim array must be the square of the dpbe's dimensionality (dim^2).
 

@@ -38,6 +38,11 @@ config = {
     "USE_PSD": True,  
     # Flag indicating whether a particle size distribution (PSD) should be used. If True, 
     # the solver will use the provided PSD files to initialize N.
+    # If False, N will be initialized in a quasi-monodisperse form based on process_type:
+    # - For process_type="agglomeration", the initial state assumes only the smallest particles (primary particles) are present.
+    # - For process_type="breakage", the initial state assumes only the largest particles are present.
+    # - For process_type="mix", the initial state assumes both the smallest and largest particles are present.
+    # Specific configurations can be found in the init_N() function.
 
     "DIST1_path": None,  
     # File path to the PSD data for NM1 particles. If None, default location(pypbe/data/PSD_data) will be used.

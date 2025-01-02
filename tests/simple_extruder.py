@@ -10,7 +10,7 @@ import numpy as np
 from optframework.pbe import ExtruderPBESolver
 
 if __name__ == "__main__":
-    dim = 1
+    dim = 2
     NC = 3
     t_total = 601
     t_write = 100

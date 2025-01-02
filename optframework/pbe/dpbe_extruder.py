@@ -11,6 +11,7 @@ import math
 import scipy.integrate as integrate
 from optframework.pbe import DPBESolver
 import optframework.utils.func.jit_extruder as jit_rhs
+import optframework.utils.func.func_math as func_math
 
 class ExtruderPBESolver():
     def __init__(self, dim, NC, t_total=601, t_write=100, t_vec=None, 
@@ -31,10 +32,16 @@ class ExtruderPBESolver():
         self.disc = disc
         self.p = DPBESolver(dim, t_total, t_write, t_vec, False, None, disc, **attr)
         ## 1d-dPBE parameter/attribute names required for calculating Extruder
-        self.extruder_attrs = [
-        "N", "V", "V_e", "F_M", "B_R",
-        "int_B_F", "intx_B_F", "process_type", "aggl_crit_id"
-        ]
+        if dim == 1:
+            self.extruder_attrs = [
+            "N", "V", "V_e", "F_M", "B_R",
+            "int_B_F", "intx_B_F", "process_type", "aggl_crit_id"
+            ]
+        elif dim == 2:
+            self.extruder_attrs = [
+            "N", "V", "V_e1", "V_e3", "F_M", "B_R",
+            "int_B_F", "intx_B_F", "inty_B_F", "process_type", "aggl_crit_id"
+            ]
         # Reset the time vector if t_vec is None
         if t_vec is None:
             self.t_vec = np.arange(0, t_total, t_write, dtype=float)
@@ -91,7 +98,8 @@ class ExtruderPBESolver():
             if isinstance(value, np.ndarray):
                 shape = value.shape
                 new_shape = (self.NC, *shape) if attr != "N" else (self.NC+1, *shape)
-                setattr(self, attr, np.zeros(new_shape))
+                dtype = value.dtype
+                setattr(self, attr, np.zeros(new_shape, dtype=dtype))
             ## For attributes with other type(bool, string...)
             else:
                 setattr(self, attr, [None] * (self.NC + 1 if attr == "N" else self.NC))
@@ -109,6 +117,8 @@ class ExtruderPBESolver():
                     target_attr[comp_idx, ...] = source_attr
             else:
                 target_attr[comp_idx] = source_attr
+            if attr == "aggl_crit_id": 
+                target_attr = func_math.ensure_integer_array(target_attr)
             
     def solve_extruder(self, t_vec=None):
         if t_vec is None:
@@ -140,7 +150,32 @@ class ExtruderPBESolver():
                 except (FloatingPointError, ValueError) as e:
                     print(f"Exception encountered: {e}")
                     y_evaluated = -np.ones((self.NC+1,self.NS,len(t_vec)))
-                    status = False    
+                    status = False  
+                    
+        if self.dim == 2:
+            # Define right-hand-side function depending on discretization
+            if self.disc == 'geo':
+                rhs = jit_rhs.get_dNdt_2d_geo_extruder
+                args=(self.NS,self.V,self.V_e1,self.V_e3,self.F_M,self.B_R,self.int_B_F,
+                      self.intx_B_F,self.inty_B_F,self.process_type,self.aggl_crit_id, self.NC, self.V_flow)
+            with np.errstate(divide='raise', over='raise',invalid='raise'):
+                try:
+                    self.RES = integrate.solve_ivp(rhs, 
+                                                    [0, t_max], 
+                                                    np.reshape(self.N[:,:,:,0],-1), t_eval=t_vec,
+                                                    args=args,
+                                                    ## If `rtol` is set too small, it may cause the results to diverge, 
+                                                    ## leading to the termination of the calculation.
+                                                    method=self.int_method,first_step=0.1,rtol=1e-1)
+                    
+                    # Reshape and save result to N and t_vec
+                    t_vec = self.RES.t
+                    y_evaluated = self.RES.y.reshape((self.NC+1,self.NS,self.NS,len(t_vec)))
+                    status = True if self.RES.status == 0 else False
+                except (FloatingPointError, ValueError) as e:
+                    print(f"Exception encountered: {e}")
+                    y_evaluated = -np.ones((self.NC+1,self.NS,self.NS,len(t_vec)))
+                    status = False  
                     
         # Monitor whether integration are completed  
         self.t_vec = t_vec 
