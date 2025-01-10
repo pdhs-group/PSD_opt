@@ -12,6 +12,8 @@ from optframework.pbe import DPBESolver, ExtruderPBESolver
 import optframework.utils.plotter.plotter as pt
 from optframework.utils.plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
 
+MIN = 1e-20
+
 class PBEValidation():
     def __init__(self, dim, grid, NS, S, kernel, process,
                  c=1, x=2e-6, beta0=1e-16, t=None, NC=3, Extruder=False):
@@ -24,8 +26,7 @@ class PBEValidation():
             self.p = DPBESolver(dim=dim, t_vec=t, load_attr=False,f=grid)
         else:
             self.p = ExtruderPBESolver(dim=dim, NC=NC, t_vec=t, load_attr=False,disc=grid)
-        self.init_pbe_params(NS, S, dim, kernel, process)
-        self.choose_case()
+        self.init_pbe(NS, S, dim, kernel, process)
         
         ## parameters for Monte-Carlo-PBESolver
         ## MC-Solver not yet coded
@@ -169,7 +170,7 @@ class PBEValidation():
                     for k in range(2):
                         for l in range(2):
                             self.mu_as[k,l,:] = np.ones(t.shape)*self.c  
-    def init_plot(default = False, size = 'half', extra = False, mrksize = 5):
+    def init_plot(self, default = False, size = 'half', extra = False, mrksize = 5):
         
         if size == 'full':
             pt.plot_init(scl_a4=1, page_lnewdth_cm=13.858, figsze=[12.8,4.8*(4/3)],lnewdth=0.8,
@@ -196,13 +197,21 @@ class PBEValidation():
                                       i=1, j=1, t_mod=self.p.t_vec[1:], label='(c)',labelpos='se', rel=REL, alpha = ALPHA)
             
     def add_new_moments(self, NS=None, S=None, ALPHA=0.7, REL=True):
+        if self.p.process_type == "breakage":
+            print(
+                "Breakage process does not support modifying NS or S in validation. "
+                "The initial conditions of the breakage process are directly tied to NS and S. "
+                "Modifying them is equivalent to changing the initial conditions.\n"
+                "add_new_moments() function will be skipped."
+            )
+            return
         NS = self.p.NS if NS is None else NS
         S = self.p.S if S is None else S
-        self.init_pbe(self, NS, S, self.p.dim, self.kernel, self.p.process_type)
+        self.init_pbe(NS, S, self.p.dim, self.kernel, self.p.process_type)
         self.calculate_pbe()
-        self.ax1, self.fig1 = self.add_moment_t(self.fig1, self.ax1, i=0, j=0, rel=REL, alpha = ALPHA)
-        self.ax2, self.fig2 = self.add_moment_t(self.fig2, self.ax2, i=1, j=0, rel=REL, alpha = ALPHA)
-        self.ax4, self.fig4 = self.add_moment_t(self.fig4, self.ax4, i=2, j=0, rel=REL, alpha = ALPHA)
+        self.ax1, self.fig1 = self.add_moment_t(fig=self.fig1, ax=self.ax1, i=0, j=0, rel=REL, alpha = ALPHA)
+        self.ax2, self.fig2 = self.add_moment_t(fig=self.fig2, ax=self.ax2, i=1, j=0, rel=REL, alpha = ALPHA)
+        self.ax4, self.fig4 = self.add_moment_t(fig=self.fig4, ax=self.ax4, i=2, j=0, rel=REL, alpha = ALPHA)
         if self.p.dim == 2:
             self.ax3, self.fig3 = self.add_moment_t(self.mu_pbe2[:,:,1:], self.fig3, self.ax3, i=1, j=1, t_mod=self.p.t_vec[1:], rel=REL, alpha = ALPHA)
           
@@ -225,7 +234,7 @@ class PBEValidation():
             ylbl = 'Moment $\mu_{' + f'{i}{j}' + '}$ / '+'$m^{3\cdot'+str(i+j)+'}$'
             
         if mu_as is not None:
-            if rel: mu_as[i,j,:] = mu_as[i,j,:]/mu_as[i,j,0]
+            if rel: mu_as[i,j,:] = mu_as[i,j,:]/(mu_as[i,j,0] + MIN)
             ax, fig = pt.plot_data(tp,mu_as[i,j,:], fig=fig, ax=ax,
                                    xlbl='Agglomeration time $t_\mathrm{A}$ / $s$',
                                    ylbl=ylbl, alpha=alpha,
@@ -234,8 +243,8 @@ class PBEValidation():
         if mu_mc is not None:
             if rel: 
                 if std_mu_mc is not None:
-                    std_mu_mc[i,j,:] = std_mu_mc[i,j,:]/mu_mc[i,j,0]
-                mu_mc[i,j,:] = mu_mc[i,j,:]/mu_mc[i,j,0]
+                    std_mu_mc[i,j,:] = std_mu_mc[i,j,:]/(mu_mc[i,j,0] + MIN)
+                mu_mc[i,j,:] = mu_mc[i,j,:]/(mu_mc[i,j,0] + MIN)
             
             if std_mu_mc is not None:
                 ax, fig = pt.plot_data(tp,mu_mc[i,j,:], err=std_mu_mc[i,j,:], fig=fig, ax=ax,
@@ -288,10 +297,13 @@ class PBEValidation():
         
         ax.grid('minor')
         plt.tight_layout()   
+        # plt.show()
         
         return ax, fig
     
-    def add_moment_t(self, mu, fig, ax, i=0, j=0, lbl=None, t_mod=None, rel=False, alpha=1):
+    def add_moment_t(self, mu=None, fig=None, ax=None, i=0, j=0, lbl=None, t_mod=None, rel=False, alpha=1):
+        if fig is None or ax is None:
+            raise ValueError("Both 'fig' and 'ax' must be provided. Please supply them using 'plot_all_moments' or 'plot_moment_t'.")
         mu = self.mu_pbe if mu is None else mu
         tp = self.p.t_vec if t_mod is None else t_mod
             
@@ -301,5 +313,11 @@ class PBEValidation():
         if rel: mu[i,j,:] = mu[i,j,:]/mu[i,j,0]
         ax, fig = pt.plot_data(tp,mu[i,j,:], fig=fig, ax=ax, alpha=alpha,
                                lbl=lbl,clr=c_KIT_green,mrk='v', mrkedgecolor='k')
-        
+        # plt.show()
         return ax, fig
+    
+    def show_plot(self):
+        if self.fig1 is not None and self.ax1 is not None:
+            plt.show()
+        else:
+            raise ValueError("No plot has been initialized to display.")

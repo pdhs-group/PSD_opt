@@ -438,6 +438,9 @@ def init_N(self, reset_N=True, N01=None, N02=None, N03=None):
             self.N03 = 3*self.V03/(4*math.pi*self.R03**3)     # Total number concentration of primary particles component 1 [1/m³] - M (if no PSD) 
         else:
             self.N03 = N03 * self.V_unit 
+            
+    if self.t_vec is not None:
+        self.t_num = len(self.t_vec) 
     # 1-D case
     if self.dim == 1:
         self.N = np.zeros((self.NS,self.t_num))
@@ -927,10 +930,6 @@ def calc_int_B_F(self):
                     self.NS, self.V1, self.V3, self.V_e1, self.V_e3, self.BREAKFVAL, self.pl_v, self.pl_q)
         elif self.B_F_type == 'ANN_MC': 
             return
-        
-
-        
-
         
 ## Calculate alphas of primary particles
 def calc_alpha_prim(self):

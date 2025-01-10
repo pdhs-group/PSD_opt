@@ -10,8 +10,12 @@ config = {
     # "R01": 8.677468940430804e-07,
     # "R03": 8.677468940430804e-07,
     "R01": 2.9e-7,  
-    # Radius of primary NM1 particles (in meters).
-
+    # Radius of primary NM1 particles (in meters) for uni-grid.
+    # In a geometric grid, volumes are calculated as midpoints between volume edges (V_e).
+    # Therefore, when using a geo-grid, the specified value here corresponds to the radius
+    # of the left edge of the grid, V_e[1]. The actual primary particle size is given by 
+    # V_e[1] * (1 + S) / 2, where S is the geometric spacing factor.
+    
     "R03": 2.9e-7,  
     # Radius of primary M particles (in meters).
 

@@ -141,6 +141,7 @@ config = {
         },
     
     ## PBE parameters
+    ## For a detailed explanation of the PBE parameters, please refer to the `PBE_config.py` file.
     'pop_params': {
         'NS' : 10,
         'S' : 4,

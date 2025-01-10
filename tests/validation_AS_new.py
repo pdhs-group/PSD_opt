@@ -516,7 +516,7 @@ if __name__ == "__main__":
     ### General parameters
     t = np.arange(0, 5, 0.25, dtype=float)     # Time array [s]
     c = 1                # Volume concentration [-]
-    x = 2e-1                  # Particle diameter [m]
+    x = 2e-1            # Particle diameter [m]
     n0 = 3*c/(4*math.pi*(x/2)**3)   # Total number concentration of primary particles
     
     ### PBE Parameters

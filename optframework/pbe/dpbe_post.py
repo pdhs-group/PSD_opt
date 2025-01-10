@@ -5,6 +5,7 @@ Created on Thu Jul 18 11:11:33 2024
 @author: Administrator
 """
 import numpy as np
+import math
 from ..utils.func.func_math import float_in_list, float_equal, isZero
 
 def init_post_params(self):
@@ -362,7 +363,7 @@ def return_N_t(self,t=None):
         else:
             return np.sum(self.N[:,:,:,t])
 
-# Calculate distribution moments mu(i,j,t)
+# Calculate distribution moments related to particle volume mu(i,j,t)
 def calc_mom_t(self):
     mu = np.zeros((3,3,len(self.t_vec)))
     
@@ -385,6 +386,32 @@ def calc_mom_t(self):
                         mu[i,j,t] = np.sum((self.X1_vol*self.V)**i*(self.X3_vol*self.V)**j*self.N[:,:,:,t])
                     
     return mu
+
+# Calculate distribution moments related to particle radii mu_r(i,j,t)
+def calc_mom_r_t(self):
+    mu_r = np.zeros((3,3,len(self.t_vec)))
+    
+    # Time loop
+    for t in range(len(self.t_vec)):
+        for i in range(3):
+            if self.dim == 1:
+                self.N[0,:] = 0.0
+                mu_r[i,0,t] = np.sum(self.R**i*self.N[:,t])
+                
+            # The following only applies for 2D and 3D case
+            # Moment between component 1 and 3
+            else:
+                R1 = (self.X1_vol*self.V(4*math.pi))**(1/3)
+                R3 = (self.X3_vol*self.V(4*math.pi))**(1/3)
+                for j in range(3):
+                    if self.dim == 2:
+                        self.N[0,0,:] = 0.0
+                        mu_r[i,j,t] = np.sum((R1)**i*(R3)**j*self.N[:,:,t])
+                    if self.dim == 3:
+                        self.N[0,0,0,:] = 0.0
+                        mu_r[i,j,t] = np.sum((R1)**i*(R3)**j*self.N[:,:,:,t])
+                    
+    return mu_r
 
 ## Save Variables to file:
 def save_vars(self,file):
