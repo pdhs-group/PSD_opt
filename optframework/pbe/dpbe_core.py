@@ -765,98 +765,14 @@ def calc_B_R(self):
         ## Note: The breakage rate of the smallest particle is 0. 
         ## Note: Because particles with a volume of zero are skipped, 
         ##       calculation with V requires (index+1)
-        self.B_R = np.zeros(self.NS)
         if self.process_type == 'agglomeration':
             return
-        # Size independent breakage rate --> See Leong2023 (10)
-        # only for validation with analytical results
-        if self.BREAKRVAL == 1:
-            self.B_R[1:] = 1
-            
-        # Size dependent breakage rate --> See Leong2023 (10)
-        # only for validation with analytical results
-        elif self.BREAKRVAL == 2:
-            for idx, tmp in np.ndenumerate(self.B_R):
-                a = idx[0]
-                if a != 0:
-                    self.B_R[a] = self.V[a]
-                    
-        # Power Law Pandy and Spielmann --> See Jeldres2018 (28)
-        # Scale particle volume using the average volume of all possible fragments produced
-        elif self.BREAKRVAL == 3:
-            for idx, tmp in np.ndenumerate(self.B_R):
-                a = idx[0]
-                if a != 0:
-                    self.B_R[a] = self.pl_P1*self.G*(self.V[a]/self.V1_mean)**self.pl_P2    
-        # Hypothetical formula considering volume fraction
-        elif self.BREAKRVAL == 4:
-            for idx, tmp in np.ndenumerate(self.B_R):
-                a = idx[0]
-                if a != 0:
-                    self.B_R[a] = self.pl_P1*self.G*(self.V[a]/self.V1_mean)**self.pl_P2            
+        self.B_R = jit_kernel_break.breakage_rate_1d(self.V, self.V1_mean, self.G, self.pl_P1, self.pl_P2, self.BREAKRVAL)          
     # 2-D case            
     if self.dim == 2:
-        self.B_R = np.zeros((self.NS, self.NS))
         if self.process_type == 'agglomeration':
             return
-        # Size independent breakage rate --> See Leong2023 (10)
-        # only for validation with analytical results
-        if self.BREAKRVAL == 1:
-            self.B_R[:,:] = 1
-            self.B_R[0,0] = 0
-            
-        # Size dependent breakage rate --> See Leong2023 (10)
-        elif self.BREAKRVAL == 2:
-            for idx, tmp in np.ndenumerate(self.B_R):
-                a = idx[0]; b = idx[1]
-                ## Note: Because of the conditional restrictions of breakage on the boundary, 
-                ##       1d calculation needs to be performed on the boundary.
-                if a == 0 and b == 0:
-                    continue
-                elif a == 0:
-                    self.B_R[idx] = self.V3[b]
-                elif b == 0:
-                    self.B_R[idx] = self.V1[a]
-                else:
-                    if self.BREAKFVAL == 1:
-                        self.B_R[idx] = self.V1[a]*self.V3[b]
-                    elif self.BREAKFVAL == 2:
-                        self.B_R[idx] = self.V1[a] + self.V3[b]
-                        
-        # Power Law Pandy and Spielmann --> See Jeldres2018 (28)
-        # Scale particle volume using the average volume of all possible fragments produced
-        elif self.BREAKRVAL == 3:
-            V_mean = (self.V3_mean + self.V1_mean) / 2
-            for idx, tmp in np.ndenumerate(self.B_R):
-                a = idx[0]; b = idx[1]
-                if a == 0 and b == 0:
-                    continue
-                elif a == 0:
-                    self.B_R[idx] = self.pl_P1 * self.G * (self.V3[b]/self.V3_mean)**self.pl_P2
-                    # self.B_R[idx] = self.pl_P1 * self.G * self.V3[b]**self.pl_P2
-                elif b == 0:
-                    self.B_R[idx] = self.pl_P1 * self.G * (self.V1[a]/self.V1_mean)**self.pl_P2
-                    # self.B_R[idx] = self.pl_P1 * self.G * self.V1[a]**self.pl_P2
-                else:
-                    self.B_R[idx] = self.pl_P1 * self.G * (self.V[a+1,b+1]/V_mean)**self.pl_P2
-                    # self.B_R[idx] = self.pl_P1 * self.G * self.V[a+1,b+1]**self.pl_P2
-        # Hypothetical formula considering volume fraction
-        elif self.BREAKRVAL == 4:
-            for idx, tmp in np.ndenumerate(self.B_R):
-                a = idx[0]; b = idx[1]
-                if a == 0 and b == 0:
-                    continue
-                elif a == 0: 
-                    self.B_R[idx] = self.pl_P3 * self.G * (self.V3[b]/self.V3_mean)**self.pl_P4
-                    # self.B_R[idx] = self.pl_P3 * self.G * (self.V3[b])**self.pl_P4
-                elif b == 0:
-                    self.B_R[idx] = self.pl_P1 * self.G * (self.V1[a]/self.V1_mean)**self.pl_P2
-                    # self.B_R[idx] = self.pl_P1 * self.G * (self.V1[a])**self.pl_P2
-                else:
-                    self.B_R[idx] = self.pl_P1 * self.G * (self.V1[a]/self.V1_mean)**self.pl_P2 + \
-                                      self.pl_P3 * self.G * (self.V3[b]/self.V3_mean)**self.pl_P4
-                    # self.B_R[idx] = self.pl_P1 * self.G * (self.V1[a])**self.pl_P2 + \
-                                      # self.pl_P3 * self.G * (self.V3[b])**self.pl_P4
+        self.B_R = jit_kernel_break.breakage_rate_2d(self.V, self.V1, self.V3, self.V1_mean, self.V3_mean, self.G, self.pl_P1, self.pl_P2, self.pl_P3, self.pl_P4, self.BREAKRVAL, self.BREAKFVAL)
                     
 ## Calculate integrated breakage function matrix.         
 def calc_int_B_F(self):
@@ -900,12 +816,13 @@ def calc_int_B_F(self):
                     a = idx[0]; i = idx[1]
                     if i != 0 and a <= i:
                         args = (self.V[i],self.pl_v,self.pl_q,self.BREAKFVAL)
+                        argsk = (self.V[i],self.pl_v,self.pl_q,self.BREAKFVAL,1)
                         if a == i:
                             self.int_B_F[idx],err = integrate.quad(jit_kernel_break.breakage_func_1d,V_e_tem[a],self.V[a],args=args)
-                            self.intx_B_F[idx],err = integrate.quad(jit_kernel_break.breakage_func_1d_vol,V_e_tem[a],self.V[a],args=args)
+                            self.intx_B_F[idx],err = integrate.quad(jit_kernel_break.breakage_func_1d_xk,V_e_tem[a],self.V[a],args=argsk)
                         else:
                             self.int_B_F[idx],err = integrate.quad(jit_kernel_break.breakage_func_1d,V_e_tem[a],V_e_tem[a+1],args=args)
-                            self.intx_B_F[idx],err = integrate.quad(jit_kernel_break.breakage_func_1d_vol,V_e_tem[a],V_e_tem[a+1],args=args)
+                            self.intx_B_F[idx],err = integrate.quad(jit_kernel_break.breakage_func_1d_xk,V_e_tem[a],V_e_tem[a+1],args=argsk)
                 
     # 2-D case
     elif self.dim == 2:
@@ -1228,4 +1145,4 @@ def solve_PBE(self, t_vec=None):
         self.t_res_tem = t_res_tem
         self.rate_res_tem = rate_res_tem
         self.error_res_tem = error_res_tem
-    
+

@@ -5,6 +5,8 @@ Solving multi-component population balance equations for agglomerating systems v
 """
 ### ------ IMPORTS ------ ###
 ## General
+import os
+import runpy
 import numpy as np
 import math
 import sys
@@ -12,6 +14,12 @@ from numba import jit
 from scipy.stats import norm, weibull_min
 import time
 import copy
+from pathlib import Path
+from scipy.integrate import quad, dblquad
+from scipy.interpolate import interp1d, RegularGridInterpolator
+
+import optframework.utils.func.jit_kernel_agg as kernel_agg
+import optframework.utils.func.jit_kernel_break as kernel_break
 
 ## For plots
 import matplotlib.pyplot as plt
@@ -21,12 +29,13 @@ from ..utils.plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
 ### ------ POPULATION CLASS DEFINITION ------ ###
 class population_MC():
     
-    def __init__(self, dim=2, verbose=False):
+    def __init__(self, dim=2, verbose=False, load_attr=True, config_path=None):
         
         ## System parameters        
         self.c = np.full(dim,0.1e-2)              # Concentration array of components 
         self.x = np.full(dim,1e-6)                # (Mean) equivalent diameter of primary particles for each component
         self.x2 = np.full(dim,1e-6)               # (Mean) equivalent diameter of primary particles for each component (bi-modal case)
+        self.dim = dim
                  
         self.G = 1                                # Mean shear rate
         self.tA = 500                             # Agglomeration time [s]
@@ -45,18 +54,18 @@ class population_MC():
         self.SIG2 = None
         
         ## Calculation of beta
-        # BETACALC = 3: -- Random selection, beta = beta0
-        # BETACALC = 1: -- Size selection, orthokinetic beta
-        # BETACALC = 4: -- Size selection, beta from sum kernel 
-        self.BETACALC = 3
+        # COLEVAL = 3: -- Random selection, beta = beta0
+        # COLEVAL = 1: -- Size selection, orthokinetic beta
+        # COLEVAL = 4: -- Size selection, beta from sum kernel 
+        self.COLEVAL = 1
         self.beta0 = 2.3e-18                   
 
         ## Calculation of alpha 
         # ALPHACALC = 1: -- Constant alpha0
         # ALPHACALC = 2: -- Calculation of alpha via collision case model
-        self.ALPHACALC = 1
+        self.ALPHACALC = 2
         self.alpha0 = 1.0
-        self.alpha_prim = np.ones((dim,dim))
+        self.alpha_mmc = np.ones((dim,dim))
         
         ## Size correction of alpha
         # SIZEEVAL = 1: -- No correction
@@ -65,11 +74,71 @@ class population_MC():
         self.X_SEL = 0.1                 # Size dependency parameter for Selomulya2003 / Soos2006 
         self.Y_SEL = 0.1                 # Size dependency parameter for Selomulya2003 / Soos2006
         
+        self.BREAKRVAL = 3                    # Case for calculation breakage rate. 1 = constant, 2 = size dependent
+        self.BREAKFVAL = 3                    # Case for calculation breakage function. 1 = conservation of Hypervolume, 2 = conservation of 0 Moments 
+        self.process_type = "breakage"    # "agglomeration": only calculate agglomeration, "breakage": only calculate breakage, "mix": calculate both agglomeration and breakage
+        self.pl_v = 4                         # number of fragments in product function of power law
+                                              # or (v+1)/v: number of fragments in simple power law  
+        self.pl_q = 1                         # parameter describes the breakage type(in product function of power law) 
+        self.pl_P1 = 1e-6                     # 1. parameter in power law for breakage rate  1d/2d
+        self.pl_P2 = 0.5                      # 2. parameter in power law for breakage rate  1d/2d
+        self.pl_P3 = 1e-6                     # 3. parameter in power law for breakage rate  2d
+        self.pl_P4 = 0.5                      # 4. parameter in power law for breakage rate  2d
+        self.V1_mean = 4.37*1e-14
+        self.V3_mean = 4.37*1e-14
+        
         ## Print more information if VERBOSE is True
         self.VERBOSE = verbose
         
+        self.work_dir = Path(os.getcwd()).resolve()
+        # Load the configuration file, if available
+        if config_path is None and load_attr:
+            config_path = os.path.join(self.work_dir,"config","MCPBE_config.py")
+
+        if load_attr:
+            self.load_attributes(config_path)
         self.init_calc()
-    
+        
+    def load_attributes(self, config_path):
+        """
+        Load attributes dynamically from a configuration file.
+        
+        This method dynamically loads attributes from a specified Python configuration file 
+        and assigns them to the DPBESolver instance. It checks for certain key attributes like 
+        `alpha_prim` to ensure they match the PBE's dimensionality.
+        
+        Parameters
+        ----------
+        config_name : str
+            The name of the configuration file (without the extension).
+        config_path : str
+            The file path to the configuration file.
+        
+        Raises
+        ------
+        Exception
+            If the length of `alpha_prim` does not match the expected dimensionality.
+        """
+        if not os.path.exists(config_path):
+            raise FileNotFoundError(f"Warning: Config file not found at: {config_path}.")
+        print(f"The dPBE is using config file at : {config_path}." )
+        # Dynamically load the configuration file
+        conf = runpy.run_path(config_path)
+        config = conf['config']
+        
+        # Assign attributes from the configuration file to the DPBESolver instance
+        for key, value in config.items():
+            if value is not None:
+                setattr(self, key, value)
+                if key == "alpha_prim": 
+                    if len(value) != self.dim**2:
+                        raise Exception(f"The length of the array alpha_prim needs to be {self.dim**2}.")
+                    else:
+                        for idx, value in enumerate(self.alpha_prim):
+                            i = idx // self.dim  # Row index
+                            j = idx % self.dim   # Column index
+                            self.alpha_mmc[i, j] = value
+                
     def init_calc(self):
         
         # Check dimension of all relevant parameters:
@@ -77,8 +146,8 @@ class population_MC():
             print('Provided inputs are not consistend in their dimensions. Exiting..')
             sys.exit()
             
-        # Extract number of components from concentration array c
-        self.dim = len(self.c)
+        # # Extract number of components from concentration array c
+        # self.dim = len(self.c)
         
         self.v = self.x**3*math.pi/6            # Array of (mean) volume primary particles (each component)
         self.v2 = self.x2**3*math.pi/6          # Array of (mean) volume primary particles (bi-modal case)
@@ -153,7 +222,6 @@ class population_MC():
         self.V = np.delete(self.V, self.V[-1,:]==0, axis=1)
     
         self.a_tot = len(self.V[-1,:])               # Final total number of primary particles in control volume
-
         # IDX contains indices of initially present (primary) particles
         # Can be used to retrace which agglomerates contain which particles
         #self.IDX = [np.array([i],dtype=object) for i in range(len(self.V[-1,:]))]
@@ -168,8 +236,15 @@ class population_MC():
         self.t=[0]
         
         # Initialize beta array
-        if self.BETACALC == 1 or self.BETACALC == 4:
-            self.betaarray = calc_betaarray_jit(self.BETACALC, self.a_tot, self.G, self.X, self.beta0, self.V)
+        if self.COLEVAL != 3:
+            self.betaarray = calc_betaarray_jit(self.COLEVAL, self.a_tot, self.G, self.X, self.beta0, self.V)
+        
+        if self.BREAKRVAL != 1:
+            self.break_rate = np.zeros(self.a_tot)
+            self.calc_break_rate()
+        if self.BREAKFVAL != 1 or self.BREAKFVAL != 2:
+            self.calc_break_func()
+        # self.
         
         # Save arrays
         self.t_save = np.linspace(0,self.tA,self.savesteps)
@@ -215,63 +290,29 @@ class population_MC():
         # Iteration counter and initial time
         count = 0
         t0 = time.time()
+        elapsed_time = 0.0
+        
+        dtd_agg = self.calc_inter_event_time_agg()
+        dtd_break = self.calc_inter_event_time_break()
+        timer_agg = dtd_agg
+        timer_break = dtd_break
         
         while self.t[-1] <= self.tA and count < maxiter:
-        
-            ## Simplified case for random choice of collision partners (constant kernel) 
-            if self.BETACALC == 3:
+            if timer_agg < timer_break:
+                self.calc_one_agg()
+                ## Calculation of inter event time
+                elapsed_time = timer_agg
+                dtd_agg = self.calc_inter_event_time_agg()                             # Class method
+                timer_agg += dtd_agg
+                #dt = calc_inter_event_time_array(self.Vc,self.a_tot,self.betaarray)  # JIT-compiled
+            else:
+                self.calc_one_break()
+                elapsed_time = timer_break
+                dtd_break = self.calc_inter_event_time_break()
+                timer_break += dtd_break
                 
-                self.beta = self.beta0
-                idx1, idx2 = self.select_random()
-                self.betaarray=0                
-            
-            ## Calculation of beta array containing all collisions
-            ## Probability-weighted choice of two collision partners
-            elif self.BETACALC == 1 or self.BETACALC == 4:
-                
-                # select = self.select_size()                    # Class method
-                select = select_size_jit(self.betaarray[0,:])    # JIT-compiled select
-                self.beta = self.betaarray[0,select]
-                idx1 = int(self.betaarray[1,select])
-                idx2 = int(self.betaarray[2,select])
-                
-            ## Calculation of alpha
-            if self.ALPHACALC == 1:            
-                self.alpha = self.alpha0 
-            elif self.ALPHACALC == 2:
-                self.alpha = self.calc_alpha_ccm(idx1,idx2)
-            
-            ## Size-correction
-            if self.SIZEEVAL == 2:
-                lam = min([self.X[idx1]/self.X[idx2],self.X[idx2]/self.X[idx1]])
-                alpha_corr = np.exp(-self.X_SEL*(1-lam)**2) / ((self.V[-1,idx1]*self.V[-1,idx2]/(np.mean(self.V0[-1,:])**2))**self.Y_SEL)
-                self.alpha *= alpha_corr
-
-            # Check if agglomeration occurs (if random number e[0,1] is smaller than alpha)
-            if self.alpha > np.random.rand():
-                ## Modification of V, X and IDX at idx1. 
-                self.V[:,idx1] = self.V[:,idx1] + self.V[:,idx2]
-                self.X[idx1] = (6*(self.V[self.dim,idx1])/math.pi)**(1/3)  
-                
-                #self.IDX[idx1] = np.append(self.IDX[idx1],self.IDX[idx2])
-                self.IDX[idx1] += self.IDX[idx2]
-                
-                ## Deletion of agglomerate at idx 2
-                self.V = np.delete(self.V, idx2, axis=1)   
-                self.X = np.delete(self.X, idx2)  
-                #self.IDX = np.delete(self.IDX, idx2) 
-                del self.IDX[idx2]
-                self.a_tot -= 1 
-                
-                ## New calculation of beta array
-                self.betaarray = calc_betaarray_jit(self.BETACALC, self.a_tot, self.G, self.X, self.beta0, self.V)
-            
-            ## Calculation of inter event time
-            dt = self.calc_inter_event_time()                                    # Class method
-            #dt = calc_inter_event_time_array(self.Vc,self.a_tot,self.betaarray)  # JIT-compiled
-            
             ## Add current timestep               
-            self.t=np.append(self.t,self.t[-1]+dt)
+            self.t=np.append(self.t,elapsed_time)
 
             ## When total amount of particles is less than half of its original value 
             ## --> duplicate all agglomerates and double control volume
@@ -317,12 +358,16 @@ class population_MC():
             print(f'## The calculation took {int(self.MACHINE_TIME)}s ##')
         
     # Random choice of two agglomeration partners. Return indices.
-    def select_random(self):
-        idx1 = np.random.randint(self.a_tot)
-        idx2 = np.random.randint(self.a_tot)
+    def select_two_random(self):
+        idx1 = self.select_one_random()
+        idx2 = self.select_one_random()
         while idx1 == idx2:
-            idx2 = np.random.randint(self.a_tot)
+            idx2 = self.select_one_random()
         return idx1, idx2
+    
+    def select_one_random(self):
+        idx = np.random.randint(self.a_tot)
+        return idx
     
     # Beta-weighted selection (requires beta array)
     def select_size(self): 
@@ -330,12 +375,23 @@ class population_MC():
                                 p=self.betaarray[0,:]/np.sum(self.betaarray[0,:]))       
     
     # Calculation of inter-event-time          
-    def calc_inter_event_time(self):
+    def calc_inter_event_time_agg(self):
         #Berechnung der inter-event-time nach Briesen (2008) mit konstantem/berechneten/ausgewähtem beta
-        if self.BETACALC == 3 :
+        if self.COLEVAL == 3 :
             dtd=2*self.Vc/(self.beta0*self.a_tot**2)
         
-        elif self.BETACALC == 1 or self.BETACALC == 4: 
+        else: 
+            # Use mean value of all betas
+            dtd=2*self.Vc/(self.a_tot**2*np.mean(self.betaarray[0,:]))
+          
+        return dtd   
+    # Calculation of inter-event-time          
+    def calc_inter_event_time_break(self):
+        #Berechnung der inter-event-time nach Briesen (2008) mit konstantem/berechneten/ausgewähtem beta
+        if self.COLEVAL == 3 :
+            dtd=2*self.Vc/(self.beta0*self.a_tot**2)
+        
+        else: 
             # Use mean value of all betas
             dtd=2*self.Vc/(self.a_tot**2*np.mean(self.betaarray[0,:]))
           
@@ -347,7 +403,7 @@ class population_MC():
         for i in range(self.dim):
             for j in range(self.dim):
                 P[i,j] = (self.V[i,idx1]/self.V[-1,idx1])*(self.V[j,idx2]/self.V[-1,idx2])
-        return np.sum(P*self.alpha_prim)
+        return np.sum(P*self.alpha_mmc)
         
     # Calculate distribution moments mu(i,j,t)
     def calc_mom_t(self):
@@ -537,53 +593,246 @@ class population_MC():
         
         else:
             return x_uni, q3, Q3, x_10, x_50, x_90
+    def calc_one_agg(self):
+        ## Simplified case for random choice of collision partners (constant kernel) 
+        if self.COLEVAL == 3:
+            
+            self.beta = self.beta0
+            idx1, idx2 = self.select_two_random()
+            self.betaarray=0                
+        
+        ## Calculation of beta array containing all collisions
+        ## Probability-weighted choice of two collision partners
+        else:
+            # select = self.select_size()                    # Class method
+            select = select_size_jit(self.betaarray[0,:])    # JIT-compiled select
+            self.beta = self.betaarray[0,select]
+            idx1 = int(self.betaarray[1,select])
+            idx2 = int(self.betaarray[2,select])
+            
+        ## Calculation of alpha
+        if self.ALPHACALC == 1:            
+            self.alpha = self.alpha0 
+        elif self.ALPHACALC == 2:
+            self.alpha = self.calc_alpha_ccm(idx1,idx2)
+        
+        ## Size-correction
+        if self.SIZEEVAL == 2:
+            lam = min([self.X[idx1]/self.X[idx2],self.X[idx2]/self.X[idx1]])
+            alpha_corr = np.exp(-self.X_SEL*(1-lam)**2) / ((self.V[-1,idx1]*self.V[-1,idx2]/(np.mean(self.V0[-1,:])**2))**self.Y_SEL)
+            self.alpha *= alpha_corr
+
+        # Check if agglomeration occurs (if random number e[0,1] is smaller than alpha)
+        if self.alpha > np.random.rand():
+            ## Modification of V, X and IDX at idx1. 
+            self.V[:,idx1] = self.V[:,idx1] + self.V[:,idx2]
+            self.X[idx1] = (6*(self.V[self.dim,idx1])/math.pi)**(1/3)  
+            
+            #self.IDX[idx1] = np.append(self.IDX[idx1],self.IDX[idx2])
+            self.IDX[idx1] += self.IDX[idx2]
+            
+            ## Deletion of agglomerate at idx 2
+            self.V = np.delete(self.V, idx2, axis=1)   
+            self.X = np.delete(self.X, idx2)  
+            #self.IDX = np.delete(self.IDX, idx2) 
+            del self.IDX[idx2]
+            self.a_tot -= 1 
+            
+            ## New calculation of beta array
+            self.betaarray = calc_betaarray_jit(self.COLEVAL, self.a_tot, self.G, self.X, self.beta0, self.V)
     
+    def calc_one_break(self):
+        ## Simplified case for random choice of collision partners (constant kernel) 
+        if self.BREAKRVAL == 1:
+            # self.break_rate_select = 1.0
+            idx = self.select_one_random()
+        else:
+            idx = select_size_jit(self.break_rate)
+            # self.break_rate_select = self.break_rate[idx]
+        
+        particle_to_break = self.V[:, idx].reshape(-1,1)
+        
+        # Ensure frag_num is an integer
+        frag_num_floor = int(np.floor(self.frag_num))  
+        frag_num_ceil = int(np.ceil(self.frag_num)) 
+        
+        if frag_num_floor <= 1:
+            raise ValueError("The expected number of fragments is less than or equal to 1. \
+                             \n Please check the parameters or calculation of the fragment equation.")
+        if frag_num_floor == frag_num_ceil:
+            frag_num_int  = frag_num_floor
+        else:
+            ## Guaranteed mathematical expectation of particles generated by 
+            ## all breakage events is self.frag_num
+            delta = self.frag_num - frag_num_floor
+            if np.random.random() < delta:
+                frag_num_int = frag_num_ceil
+            else:
+                frag_num_int = frag_num_floor
+        ## To generate n fragments, you need to break them n-1 times, 
+        ## and the last fragment left is the last one.
+        for i in range(frag_num_int - 1):
+            frag, X = self.produce_one_frag(particle_to_break)
+            self.V = np.concatenate((self.V, frag), axis=1)
+            self.X = np.concatenate((self.X, X), axis=0)
+            particle_to_break -= frag
+            
+        self.V = np.concatenate((self.V, particle_to_break), axis=1)
+        X = (6*(particle_to_break[-1])/math.pi)**(1/3)  
+        self.X = np.concatenate((self.X, X), axis=0)
+        
+        if self.BREAKRVAL != 1:
+            self.break_rate = np.zeros_like(self.a_tot)
+            self.calc_break_rate()
+        
+    def produce_one_frag(self, particle_to_break):
+        if self.BREAKFVAL != 1 or self.BREAKFVAL != 2: 
+            if self.dim == 1:
+                random_value = np.random.random()
+                frag = random_value * particle_to_break
+            elif self.dim == 2:
+                random_value1 = np.random.random()
+                random_value3 = np.random.random()
+                frag_x1 = random_value1 * particle_to_break[0]
+                frag_x3 = random_value3 * particle_to_break[1]
+                frag = np.array([frag_x1, frag_x3, frag_x1+frag_x3])
+             
+        if self.dim == 1:
+            if self.CDF_method == "disc":
+                frag_idx = select_size_jit(self.break_func)
+                frag = self.rel_frag[frag_idx] * particle_to_break
+            elif self.CDF_method == "conti":
+                random_value = np.random.random()
+                rel_frag = self.cdf_interp(random_value)
+                frag = rel_frag * particle_to_break
+            # save the fragment
+        elif self.dim == 2:
+            frag_idx = select_size_jit(self.break_func)
+            i, j = np.unravel_index(frag_idx, self.rel_frag1.shape)
+            frag_x1 = particle_to_break[0] * self.rel_frag1[i, j]
+            frag_x3 = particle_to_break[1] * self.rel_frag3[i, j]
+            frag = np.array([frag_x1, frag_x3, frag_x1+frag_x3])
+        X = (6*(frag[-1])/math.pi)**(1/3)  
+        return frag, X
+        
+    def calc_break_rate(self):
+        ## Calculate the expected number of particles generated based on the break function
+        if self.BREAKFVAL == 1:
+            self.frag_num = 4
+        elif self.BREAKFVAL == 2:
+            self.frag_num = 2
+        elif self.BREAKFVAL == 3:
+            self.frag_num = self.pl_v
+        elif self.BREAKFVAL == 4:
+            self.frag_num = (self.pl_v + 1) / self.pl_v
+            
+        if self.dim == 1:
+            self.break_rate = kernel_break.breakage_rate_1d(self.V[-1,:], 
+                                                            self.V1_mean, self.pl_P1, self.pl_P2, 
+                                                            self.G, self.BREAKRVAL)
+            ## The 2D fragmentation functionality is currently experimental 
+            ## and in some cases the number of fragments generated is different.
+            if self.BREAKFVAL == 5:
+                self.frag_num = (self.pl_v + 2) / self.pl_v
+        elif self.dim == 2:
+            self.break_rate = kernel_break.breakage_rate_2d_flat(self.V[-1,:],
+                                                            self.V[0,:], self.V[1,:], self.V1_mean,    
+                                                            self.V3_mean, self.G, self.pl_P1, self.pl_P2, 
+                                                            self.pl_P3, self.pl_P4, self.BREAKRVAL, self.BREAKFVAL)
+            if self.BREAKFVAL == 5:
+                self.frag_num = (2*self.pl_v+1)*(self.pl_v+2)/(2*self.pl_v*(self.pl_v+1))
+    def calc_break_func(self, num_points=1000):
+        if self.dim == 1:
+            self.rel_frag = np.linspace(0, 1, num_points)
+            self.break_func = np.zeros(num_points)
+            if self.CDF_method == "disc":
+                for i in range (num_points):
+                    self.break_func[i] = kernel_break.breakage_func_1d(self.rel_frag[i], 1.0, self.pl_v, self.pl_q, self.BREAKFVAL)
+                
+            elif self.CDF_method == "conti":
+                args = (1.0, self.pl_v, self.pl_q, self.BREAKFVAL)
+                func = kernel_break.breakage_func_1d
+                cdf_values = np.array([quad(func, 0.0, x, args=args)[0] for x in self.rel_frag])
+                ## normalize the break function
+                cdf_values /= cdf_values[-1]
+                self.cdf_interp = interp1d(cdf_values, self.rel_frag, kind="linear", bounds_error=False, 
+                                           fill_value=(0.0, 1.0))
+        elif self.dim == 2:
+            rel_frag1_tem = np.linspace(0, 1, num_points)
+            rel_frag3_tem = np.linspace(0, 1, num_points)
+            self.rel_frag1, self.rel_frag3 = np.meshgrid(rel_frag1_tem, rel_frag3_tem)
+            self.break_func = np.zeros((num_points,num_points))
+            if self.CDF_method == "disc":
+                for i in range(num_points):
+                    for j in range(num_points):
+                        self.break_func[i, j] = kernel_break.breakage_func_2d(self.rel_frag3[i,j], self.rel_frag1[i,j], 
+                                                                        1.0, 1.0, self.pl_v, self.pl_q, self.BREAKFVAL)
+                self.break_func = self.break_func.ravel() 
+                
+            elif self.CDF_method == "conti":
+                
+                raise ValueError("The continuous CDF method for the two-dimensional case has not yet been coded!")
+                
+                # args = (1.0, 1.0, self.v, self.q, self.BREAKFVAL)
+                # func = kernel_break.breakage_func_1d
+                # cdf = np.zeros_like(self.rel_frag1)
+                # for i in range(len(rel_frag1_tem)):
+                #     for j in range(len(rel_frag3_tem)):
+                #         cdf[i, j] = dblquad(func, 0.0, rel_frag1_tem[i], 0.0, rel_frag3_tem[j])[0]
+                # cdf /= cdf[-1, -1]
+                # self.cdf_interp = RegularGridInterpolator((rel_frag1_tem, rel_frag3_tem), 
+                #                                           cdf, bounds_error=False, fill_value=None)
+            
+                  
     def check_dim_consistency(self):
         check = np.array([len(self.x),len(self.PGV),len(self.SIG),
-                          self.alpha_prim.shape[0],self.alpha_prim.shape[1]])
+                          self.alpha_mmc.shape[0],self.alpha_mmc.shape[1]])
         return len(check[check==len(self.c)]) == len(check)
 
 ## JIT-compiled calculation of beta array 
 @jit(nopython=True)
-def calc_betaarray_jit(BETACALC, a, G, X, beta0, V):            
-    ## There are a*(a-1) possible collisions, however all are counted twice (e.g [1,0]=[0,1])
-    num = int(a*(a-1)/2)
-    ## Beta array is defined as follows: 
-    # Columns: Collision pairs
-    # Line 0: Beta value
-    # Line 1: Index partner 1
-    # Line 2: Index partner 2
+def calc_betaarray_jit(COLEVAL, a, G, X, beta0, V):
+    """
+    Calculate the beta array for Monte Carlo using calc_beta.
+    Parameters:
+        COLEVAL : int - Type of beta calculation model.
+        a : int - Total number of particles.
+        G : float - Shear rate or other related parameter.
+        X : array - Particle size array.
+        beta0 : float - Base collision frequency constant.
+        V : array - Particle volume array.
+    Returns:
+        beta : array - Beta array formatted for Monte Carlo.
+    """
+    num = int(a * (a - 1) / 2)  # Total number of unique collision pairs.
     beta = np.zeros((3, num))
     cnt = 0
-    
-    # Orthokinetic kernel
-    if BETACALC == 1:
-        for i in range(a):
-            for j in range(i):
-                beta[0,cnt] = beta0*G*2.3*((3*V[-1,i]/(4*np.pi))**(1/3)+(3*V[-1,j]/(4*np.pi))**(1/3))**3
-                beta[1,cnt] = i
-                beta[2,cnt] = j
-                cnt += 1  
-                
-    # Sum-kernel
-    if BETACALC == 4:
-        for i in range(a):
-            for j in range(i):
-                beta[0,cnt] = beta0*(V[-1,i]+V[-1,j])
-                beta[1,cnt] = i
-                beta[2,cnt] = j
-                cnt += 1        
-                
+    for i in range(a):
+        for j in range(i):
+            # Calculate beta using calc_beta
+            beta_ai = kernel_agg.calc_beta(COLEVAL, beta0, G, X/2, i, j)
+            
+            # Store results in beta array
+            beta[0, cnt] = beta_ai
+            beta[1, cnt] = i
+            beta[2, cnt] = j
+            cnt += 1
+
     return beta
 
+## JIT-compiled calculation of beta array 
 @jit(nopython=True)
-def calc_alpha_ccm_jit(V, alpha_prim, idx1, idx2):
+def calc_b_r_jit_1d(BREAKRVAL, a, G, V, V1_mean, pl_P1, pl_P2):
+    pass
+
+@jit(nopython=True)
+def calc_alpha_ccm_jit(V, alpha_mmc, idx1, idx2):
     dim = len(V[:,0])
     P = np.zeros((dim,dim))
     for i in range(dim):
         for j in range(dim):
             P[i,j] = (V[i,idx1]/V[-1,idx1])*(V[j,idx2]/V[-1,idx2])
-    return np.sum(P*alpha_prim)
+    return np.sum(P*alpha_mmc)
 
 ## JIT-compiled calculation of inter-event-time   
 @jit(nopython=True)       
@@ -591,8 +840,8 @@ def calc_inter_event_time_array(Vc,a_tot,betaarray):
     return 2*Vc/(a_tot**2*np.mean(betaarray[0,:]))
 
 @jit(nopython=True)
-def select_size_jit(betaarray):
-    return np.arange(len(betaarray))[np.searchsorted(np.cumsum(betaarray/np.sum(betaarray)),
+def select_size_jit(array):
+    return np.arange(len(array))[np.searchsorted(np.cumsum(array/np.sum(array)),
                                                      np.random.random(), side="right")]
     
             

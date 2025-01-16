@@ -4,8 +4,6 @@ compreated on Wed Decomp 11 11:44:12 2024
 
 @author: px2030
 """
-import sys, os
-sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),"../../.."))
 import numpy as np
 import math
 from numba import jit, njit, float64, int64

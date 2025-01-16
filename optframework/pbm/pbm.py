@@ -21,17 +21,17 @@ def calc_gqmom_nodes_weights(moments, n_add, method="Gaussian", nu=1):
     # calculate regular recurrence coefficients
     a_reg, b_reg = calc_qmom_recurrence(moments, n)
     
-    if method == "Gaussian":
+    if method == "gaussian":
         a, b = calc_gqmom_recurrence_real(a_reg, b_reg, n_add, nu)
-    elif method == "Gamma":
+    elif method == "gamma":
         a, b = calc_gqmom_recurrence_realplus(moments, a_reg, b_reg, n_add, ndf_type="gamma")
-    elif method == "Lognormal":
+    elif method == "lognormal":
         a, b = calc_gqmom_recurrence_realplus(moments, a_reg, b_reg, n_add, ndf_type="lognormal")
-    elif method == "Beta":
+    elif method == "beta":
         a, b = calc_gqmom_recurrence_beta(a_reg, b_reg, n_add)
     else:
         raise ValueError("The input method for GQMOM is not available. \
-                         \n Supported methods are: Gaussian, Gamma, Lognormal, and Beta.")
+                         \n Supported methods are: gaussian, gamma, lognormal, and beta.")
     
     return recurrence_jacobi_nodes_weights(a, b)
 

@@ -9,6 +9,48 @@ import math
 from numba import jit, njit, float64, int64
 
 @jit(nopython=True)
+def calc_F_M_1D(NS, COLEVAL, CORR_BETA, G, R, alpha_prim, EFFEVAL, SIZEEVAL, X_SEL, Y_SEL):
+    # To avoid mass leakage at the boundary in CAT, boundary cells are not directly involved in the calculation. 
+    # So there is no need to define the corresponding F_M at boundary. F_M is (NS-1)^2 instead (NS)^2
+    F_M = np.zeros((NS-1, NS-1))
+    
+    # Go through all agglomeration partners 1 [a] and 2 [i]
+    # The current index tuple idx stores them as (a, i)
+    for idx, tmp in np.ndenumerate(F_M):
+        # Indices [a]=[0] and [i]=[0] not allowed!
+        if idx[0] == 0 or idx[1] == 0:
+            continue
+        
+        # Calculate the corresponding agglomeration efficiency
+        # Add one to indices to account for borders
+        a, i = idx[0], idx[1]
+        beta = calc_beta(COLEVAL, CORR_BETA, G, R, a, i)
+                        
+        # Calculate collision efficiency depending on EFFEVAL. 
+        if EFFEVAL == 1:
+            alpha = alpha_prim
+        elif EFFEVAL == 2:
+            alpha = alpha_prim
+        
+        # Calculate a correction factor to account for size dependency of alpha, depending on SIZEEVAL
+        if R[a] <= R[i]:
+            lam = R[a] / R[i]
+        else:
+            lam = R[i] / R[a]
+            
+        if SIZEEVAL == 1:
+            # No size dependency of alpha
+            corr_size = 1
+        elif SIZEEVAL == 2:
+            # Case 3: Soos2007 (developed from Selomuya 2003). Empirical Equation
+            corr_size = np.exp(-X_SEL * (1 - lam) ** 2) / ((R[a] * R[i] / (R[1] ** 2)) ** Y_SEL)
+        
+        # Store result
+        F_M[idx] = beta * alpha * corr_size
+
+    return F_M
+            
+@jit(nopython=True)
 def calc_F_M_2D(NS,disc,COLEVAL,CORR_BETA,G,R,X1,X3,EFFEVAL,alpha_prim,SIZEEVAL,X_SEL,Y_SEL):
     # To avoid mass leakage at the boundary in CAT, boundary cells are not directly involved in the calculation. 
     # So there is no need to define the corresponding F_M at boundary. F_M is (NS-1)^4 instead (NS)^4
@@ -23,25 +65,8 @@ def calc_F_M_2D(NS,disc,COLEVAL,CORR_BETA,G,R,X1,X3,EFFEVAL,alpha_prim,SIZEEVAL,
         
         # Calculate the corresponding agglomeration efficiency
         # Add one to indices to account for borders
-        a = idx[0]; b = idx[1]; i = idx[2]; j = idx[3]
-        
-        # Calculate collision frequency beta depending on COLEVAL
-        if COLEVAL == 1:
-            # Chin 1998 (shear induced flocculation in stirred tanks)
-            # Optional reduction factor.
-            # corr_beta=1;
-            beta_ai = CORR_BETA*G*2.3*(R[a,b]+R[i,j])**3 # [m^3/s]
-        if COLEVAL == 2:
-            # Tsouris 1995 Brownian diffusion as controlling mechanism
-            # Optional reduction factor
-            # corr_beta=1;
-            beta_ai = CORR_BETA*2*1.38*(10**-23)*293*(R[a,b]+R[i,j])**2/(3*(10**-3)*(R[a,b]*R[i,j])) #[m^3/s]  | KT= 1.38*(10**-23)*293 | MU_W=10**-3
-        if COLEVAL == 3:
-            # Use a constant collision frequency given by CORR_BETA
-            beta_ai = CORR_BETA
-        if COLEVAL == 4:
-            # Sum-Kernal (for validation) scaled by CORR_BETA
-            beta_ai = CORR_BETA*4*math.pi*(R[a,b]**3+R[i,j]**3)/3
+        a, b, i, j = idx[0], idx[1], idx[2], idx[3]
+        beta = calc_beta(COLEVAL, CORR_BETA, G, R, (a, b), (i, j))
         
         # Calculate probabilities, that particle 1 [a,b] is colliding as
         # nonmagnetic 1 (NM1) or magnetic (M). Repeat for
@@ -63,9 +88,9 @@ def calc_F_M_2D(NS,disc,COLEVAL,CORR_BETA,G,R,X1,X3,EFFEVAL,alpha_prim,SIZEEVAL,
         # Case(3): Alphas are pre-fed from ANN or other source.
         if EFFEVAL == 1:
             # Not coded here
-            alpha_ai = np.sum(p*alpha_prim)
+            alpha = np.sum(p*alpha_prim)
         if EFFEVAL == 2 or EFFEVAL == 3:
-            alpha_ai = np.sum(p*alpha_prim)
+            alpha = np.sum(p*alpha_prim)
         
         # Calculate a correction factor to account for size dependency of alpha, depending on SIZEEVAL
         # Calculate lam
@@ -84,9 +109,9 @@ def calc_F_M_2D(NS,disc,COLEVAL,CORR_BETA,G,R,X1,X3,EFFEVAL,alpha_prim,SIZEEVAL,
             corr_size = np.exp(-X_SEL*(1-lam)**2)/((R[a,b]*R[i,j]/(np.min(np.array([R[2,1],R[1,2]]))**2))**Y_SEL)
         
         # Store result
-        # alpha[idx] = alpha_ai
-        # beta[idx] = beta_ai
-        F_M[idx] = beta_ai*alpha_ai*corr_size
+        # alpha[idx] = alpha
+        # beta[idx] = beta
+        F_M[idx] = beta*alpha*corr_size
 
     return F_M
                 
@@ -115,18 +140,18 @@ def calc_F_M_3D(NS,disc,COLEVAL,CORR_BETA,G,R,X1,X2,X3,EFFEVAL,alpha_prim,SIZEEV
             # Chin 1998 (shear induced flocculation in stirred tanks)
             # Optional reduction factor.
             # corr_beta=1;
-            beta_ai = CORR_BETA*G*2.3*(R[a,b,c]+R[i,j,k])**3 # [m^3/s]
+            beta = CORR_BETA*G*2.3*(R[a,b,c]+R[i,j,k])**3 # [m^3/s]
         if COLEVAL == 2:
             # Tsouris 1995 Brownian diffusion as controlling mechanism
             # Optional reduction factor
             # corr_beta=1;
-            beta_ai = CORR_BETA*2*1.38*(10**-23)*293*(R[a,b,c]+R[i,j,k])**2/(3*(10**-3)*(R[a,b,c]*R[i,j,k])) # [m^3/s] | KT= 1.38*(10**-23)*293 | MU_W=10**-3
+            beta = CORR_BETA*2*1.38*(10**-23)*293*(R[a,b,c]+R[i,j,k])**2/(3*(10**-3)*(R[a,b,c]*R[i,j,k])) # [m^3/s] | KT= 1.38*(10**-23)*293 | MU_W=10**-3
         if COLEVAL == 3:
             # Use a constant collision frequency given by CORR_BETA
-            beta_ai = CORR_BETA
+            beta = CORR_BETA
         if COLEVAL == 4:
             # Sum-Kernal (for validation) scaled by CORR_BETA
-            beta_ai = CORR_BETA*4*math.pi*(R[a,b,c]**3+R[i,j,k]**3)/3
+            beta = CORR_BETA*4*math.pi*(R[a,b,c]**3+R[i,j,k]**3)/3
         
         # Calculate probabilities, that particle 1 [a,b,c] is colliding as
         # nonmagnetic 1 (NM1), nonmagnetic 2 (NM2) or magnetic (M). Repeat for
@@ -158,9 +183,9 @@ def calc_F_M_3D(NS,disc,COLEVAL,CORR_BETA,G,R,X1,X2,X3,EFFEVAL,alpha_prim,SIZEEV
         # Case(3): Alphas are pre-fed from ANN or other source.
         if EFFEVAL == 1:
             # Not coded here
-            alpha_ai = np.sum(p*alpha_prim)
+            alpha = np.sum(p*alpha_prim)
         if EFFEVAL == 2 or EFFEVAL == 3:
-            alpha_ai = np.sum(p*alpha_prim)
+            alpha = np.sum(p*alpha_prim)
         
         # Calculate a correction factor to account for size dependency of alpha, depending on SIZEEVAL
         # Calculate lam
@@ -179,6 +204,45 @@ def calc_F_M_3D(NS,disc,COLEVAL,CORR_BETA,G,R,X1,X2,X3,EFFEVAL,alpha_prim,SIZEEV
             corr_size = np.exp(-X_SEL*(1-lam)**2)/((R[a,b,c]*R[i,j,k]/(np.min(np.array([R[2,1,1],R[1,2,1],R[1,1,2]]))**2))**Y_SEL)
         
         # Store result
-        F_M[idx] = beta_ai*alpha_ai*corr_size
+        F_M[idx] = beta*alpha*corr_size
     
     return F_M
+
+@jit(nopython=True)
+def calc_beta(COLEVAL, CORR_BETA, G, R, idx1, idx2):
+    """
+    Calculate beta based on collision model with flexible support for 1D or 2D R arrays.
+    Parameters:
+        COLEVAL : int - Collision model evaluation type.
+        CORR_BETA : float - Correction factor for beta.
+        G : float - Shear rate or related parameter.
+        R : array - Particle radius/size array. Can be 1D or 2D.
+        idx1, idx2 : int - Indices of the two colliding particles.
+    Returns:
+        beta : float - Collision frequency.
+    """
+    # Handle 1D case for Monte Carlo: R[idx] directly corresponds to size
+    if R.ndim == 1:
+        r1, r2 = R[idx1], R[idx2]
+    # Handle 2D case for traditional methods: R[a, b] represents grid-based sizes
+    elif R.ndim == 2:
+        r1, r2 = R[idx1[0], idx1[1]], R[idx2[0], idx2[1]]
+    else:
+        raise ValueError("R array must be 1D or 2D.")
+
+    # Collision frequency calculation based on COLEVAL
+    if COLEVAL == 1:
+        beta = CORR_BETA * G * 2.3 * (r1 + r2) ** 3
+    elif COLEVAL == 2:
+        beta = CORR_BETA * 2 * 1.38e-23 * 293 * (r1 + r2) ** 2 / (3e-3 * (r1 * r2))
+    elif COLEVAL == 3:
+        beta = CORR_BETA
+    elif COLEVAL == 4:
+        beta = CORR_BETA * 4 * math.pi * (r1 ** 3 + r2 ** 3) / 3
+    else:
+        beta = 0.0  # Default case if COLEVAL is invalid.
+    return beta
+
+
+
+
