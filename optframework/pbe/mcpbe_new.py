@@ -29,7 +29,7 @@ from ..utils.plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
 ### ------ POPULATION CLASS DEFINITION ------ ###
 class population_MC():
     
-    def __init__(self, dim=2, verbose=False, load_attr=True, config_path=None):
+    def __init__(self, dim=2, verbose=False, load_attr=True, config_path=None, init=True):
         
         ## System parameters        
         self.c = np.full(dim,0.1e-2)              # Concentration array of components 
@@ -58,7 +58,7 @@ class population_MC():
         # COLEVAL = 1: -- Size selection, orthokinetic beta
         # COLEVAL = 4: -- Size selection, beta from sum kernel 
         self.COLEVAL = 1
-        self.beta0 = 2.3e-18                   
+        self.CORR_BETA = 2.3e-18                   
 
         ## Calculation of alpha 
         # ALPHACALC = 1: -- Constant alpha0
@@ -97,7 +97,9 @@ class population_MC():
 
         if load_attr:
             self.load_attributes(config_path)
-        self.init_calc()
+            
+        if init:
+            self.init_calc()
         
     def load_attributes(self, config_path):
         """
@@ -121,7 +123,7 @@ class population_MC():
         """
         if not os.path.exists(config_path):
             raise FileNotFoundError(f"Warning: Config file not found at: {config_path}.")
-        print(f"The dPBE is using config file at : {config_path}." )
+        print(f"The MC-PBE is using config file at : {config_path}." )
         # Dynamically load the configuration file
         conf = runpy.run_path(config_path)
         config = conf['config']
@@ -134,10 +136,7 @@ class population_MC():
                     if len(value) != self.dim**2:
                         raise Exception(f"The length of the array alpha_prim needs to be {self.dim**2}.")
                     else:
-                        for idx, value in enumerate(self.alpha_prim):
-                            i = idx // self.dim  # Row index
-                            j = idx % self.dim   # Column index
-                            self.alpha_mmc[i, j] = value
+                        self.alpha_mc = np.reshape(self.alpha_prim,(self.dim,self.dim))
                 
     def init_calc(self):
         
@@ -179,7 +178,6 @@ class population_MC():
         
         # Loop through all components
         for i in range (self.dim):
-                
             ## Monodisperse 
             if self.PGV[i] == 'mono':
                 self.V[i,cnt:cnt+self.a[i]] = np.full(self.a[i],self.v[i])
@@ -237,7 +235,8 @@ class population_MC():
         
         # Initialize beta array
         if self.COLEVAL != 3:
-            self.betaarray = calc_betaarray_jit(self.COLEVAL, self.a_tot, self.G, self.X, self.beta0, self.V)
+            self.betaarray = calc_betaarray_jit(self.COLEVAL, self.a_tot, self.G, 
+                                                self.X, self.CORR_BETA, self.V, self.Vc)
         
         if self.BREAKRVAL != 1:
             self.break_rate = np.zeros(self.a_tot)
@@ -297,6 +296,19 @@ class population_MC():
         timer_agg = dtd_agg
         timer_break = dtd_break
         
+        if dtd_agg >= self.tA:
+            print ("------------------ \n"
+                f"Warning: The initial time step of agglomeration dt_agg = {dtd_agg} s "
+                f"is longer than the total simulation duration tA = {self.tA}. "
+                "Please try extending the total simulation duration or adjusting the parameters."
+                "\n------------------")
+            raise ValueError()
+        if dtd_break >= self.tA:
+            print ("------------------ \n"
+                f"Warning: The initial time step of breakage dt_break = {dtd_break} s is longer"
+                f"than the total simulation duration tA = {self.tA}. "
+                "Please try extending the total simulation duration or adjusting the parameters."
+                "\n------------------")
         while self.t[-1] <= self.tA and count < maxiter:
             if timer_agg < timer_break:
                 self.calc_one_agg()
@@ -378,7 +390,7 @@ class population_MC():
     def calc_inter_event_time_agg(self):
         #Berechnung der inter-event-time nach Briesen (2008) mit konstantem/berechneten/ausgewähtem beta
         if self.COLEVAL == 3 :
-            dtd=2*self.Vc/(self.beta0*self.a_tot**2)
+            dtd=2*self.Vc/(self.CORR_BETA*self.a_tot**2)
         
         else: 
             # Use mean value of all betas
@@ -388,12 +400,12 @@ class population_MC():
     # Calculation of inter-event-time          
     def calc_inter_event_time_break(self):
         #Berechnung der inter-event-time nach Briesen (2008) mit konstantem/berechneten/ausgewähtem beta
-        if self.COLEVAL == 3 :
-            dtd=2*self.Vc/(self.beta0*self.a_tot**2)
+        if self.BREAKRVAL == 1 :
+            dtd=1.0/(self.a_tot)
         
         else: 
             # Use mean value of all betas
-            dtd=2*self.Vc/(self.a_tot**2*np.mean(self.betaarray[0,:]))
+            dtd=1.0/(self.a_tot*np.mean(self.break_rate))
           
         return dtd   
     
@@ -597,7 +609,7 @@ class population_MC():
         ## Simplified case for random choice of collision partners (constant kernel) 
         if self.COLEVAL == 3:
             
-            self.beta = self.beta0
+            self.beta = self.CORR_BETA
             idx1, idx2 = self.select_two_random()
             self.betaarray=0                
         
@@ -639,7 +651,8 @@ class population_MC():
             self.a_tot -= 1 
             
             ## New calculation of beta array
-            self.betaarray = calc_betaarray_jit(self.COLEVAL, self.a_tot, self.G, self.X, self.beta0, self.V)
+            self.betaarray = calc_betaarray_jit(self.COLEVAL, self.a_tot, self.G, 
+                                                self.X, self.CORR_BETA, self.V, self.Vc)
     
     def calc_one_break(self):
         ## Simplified case for random choice of collision partners (constant kernel) 
@@ -791,7 +804,7 @@ class population_MC():
 
 ## JIT-compiled calculation of beta array 
 @jit(nopython=True)
-def calc_betaarray_jit(COLEVAL, a, G, X, beta0, V):
+def calc_betaarray_jit(COLEVAL, a, G, X, beta0, V, V_c):
     """
     Calculate the beta array for Monte Carlo using calc_beta.
     Parameters:
@@ -811,7 +824,6 @@ def calc_betaarray_jit(COLEVAL, a, G, X, beta0, V):
         for j in range(i):
             # Calculate beta using calc_beta
             beta_ai = kernel_agg.calc_beta(COLEVAL, beta0, G, X/2, i, j)
-            
             # Store results in beta array
             beta[0, cnt] = beta_ai
             beta[1, cnt] = i

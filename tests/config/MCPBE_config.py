@@ -1,23 +1,32 @@
 import numpy as np
 
 config = {
-    # "R01": 8.677468940430804e-07,
-    # "R03": 8.677468940430804e-07,
-    "R01": 2.9e-7,  
-    # Radius of primary NM1 particles (in meters) for uni-grid.
-    # In a geometric grid, volumes are calculated as midpoints between volume edges (V_e).
-    # Therefore, when using a geo-grid, the specified value here corresponds to the radius
-    # of the left edge of the grid, V_e[1]. The actual primary particle size is given by 
-    # V_e[1] * (1 + S) / 2, where S is the geometric spacing factor.
     
-    "R03": 2.9e-7,  
-    # Radius of primary M particles (in meters).
-
-    "t_total": 1801,  
-    # Total simulation time in seconds.
-
-    "t_write": 300,  
-    # Interval (in time steps) for writing output data (e.g., simulation results).
+    "tA": 100,
+    # Agglomeration time [s]
+    
+    "savesteps": 11,
+    # Numer of equally spaced, saved timesteps [-]
+    
+    "a0": 1e2,
+    # Total amount of particles in control volume (initially)
+    
+    "c": np.array([0.5,0.5]), 
+    # Volume concentration array of components [m3/m3]
+    ## The Volume concentration of components specifies the proportion of the two primary particles 
+    ## in the initial total amount a_0. 
+    ## It affects/scales also the control volume to calculate the PBE!
+    
+    "x": np.array([1e-6, 1e-6]),
+    # (Mean) equivalent diameter of primary particles for each component
+    
+    "PGV": np.array(['mono','mono']),
+    # PGV defines which initial particle size distribution is assumed for each component
+    # 'mono': Monodisperse at x = x[i]
+    # 'norm': Normal distribution at x_mean = x[i] with sigma defined in SIG 
+    # 'weibull': Weibull Distribution
+    
+    "VERBOSE": True,
 
     "process_type": "mix",  
     # Type of process being simulated.
@@ -26,11 +35,6 @@ config = {
     # "mix": both agglomeration and breakage
 
     "CDF_method": "disc",  
-
-    "V_unit": 1e-12,  
-    # Volume unit used for normalization of N (particle number concentration). 
-    # Setting a smaller value generally does not affect the relative relationships between N (i.e., the PSD),
-    # but helps reduce the stiffness of matrices during calculations, leading to faster solver convergence.
 
     "USE_PSD": True,  
     # Flag indicating whether a particle size distribution (PSD) should be used. If True, 
@@ -53,7 +57,7 @@ config = {
     "DIST3_name": "PSD_x50_2.0E-5_RelSigmaV_2.0E-1.npy",  
     # Name of the file containing the PSD for M particles.
 
-    "COLEVAL": 1,  
+    "COLEVAL": 4,  
     # Flag that determines which model to use for calculating collision frequency.
     # Can be checked in dpbe_core.py's `calc_F_M`.
 
@@ -65,9 +69,6 @@ config = {
     # Flag that determines whether to account for damping effects due to particle volume growth 
     # during aggregation. This is handled in dpbe_core.py's `calc_F_M`.
     
-    "aggl_crit": 100,  
-    # Critical particle size for agglomeration. Agglomeration will be limited to particles larger than this size.
-
     "CORR_BETA": 1e-2,
     # Correction factor for the collision frequency kernel, controlling the rate of aggregation.
 
@@ -87,10 +88,10 @@ config = {
     "pl_v": 1.0,  
     # Parameter in fragment distribution function.
 
-    "V1_mean": 1e-5,
+    "V1_mean": 1e-15,
     # Mean volume of NM1 particles (in cubic meters).
 
-    "V3_mean": 1e-5,  
+    "V3_mean": 1e-15,  
     # Mean volume of M particles (in cubic meters).
     
     "pl_P1": 1e-2,  
