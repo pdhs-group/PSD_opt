@@ -760,6 +760,7 @@ def calc_B_R(self):
     Creates the following class attributes: 
         * ``pop.B_R``: (2D)Breakage rate for class ab. The result is stored in ``B_R[a,b]`` 
     """
+    self.B_R = np.zeros_like(self.V)
     # 1-D case
     if self.dim == 1:
         ## Note: The breakage rate of the smallest particle is 0. 

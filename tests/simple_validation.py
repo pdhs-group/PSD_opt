@@ -4,22 +4,23 @@ Created on Fri Jan  3 11:02:26 2025
 
 @author: px2030
 """
-
+import numpy as np
 from optframework.pbe.validation import PBEValidation
 
 if __name__ == "__main__":
     dim = 1
     grid = "geo"
-    NS1 = 20
-    NS2 = 30
-    S1 = 2
+    NS1 = 10
+    NS2 = 15
+    S1 = 4
     # S2 = 2
     kernel = "const"
     process = "breakage"
+    t = np.arange(0, 1, 0.05, dtype=float)
     
-    v = PBEValidation(dim, grid, NS1, S1, kernel, process)
+    v = PBEValidation(dim, grid, NS1, S1, kernel, process, t=t, c=1e-2, x=2e-3, beta0=5e-3)
     v.calculate_case()
-    v.init_plot(size = 'half', extra = True, mrksize=4)
+    v.init_plot(size = 'half', extra = True, mrksize=6)
     v.plot_all_moments()
     v.add_new_moments(NS=NS2)
     v.show_plot()

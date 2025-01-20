@@ -251,7 +251,7 @@ def calculate_case(CASE, PBE=True, MC=False):
     elif CASE == '2D_sum_mono':
         ### POPULATION BALANCE
         if PBE:
-            p = pop_disc(2, disc=grid, load_attr=False)
+            p = pop_disc(2, disc=grid, t_vec=t, load_attr=False)
         
             p.NS = NS  
             p.process_type = process_type
@@ -514,7 +514,7 @@ if __name__ == "__main__":
     CASE = '2D_sum_mono'
     
     ### General parameters
-    t = np.arange(0, 5, 0.25, dtype=float)     # Time array [s]
+    t = np.arange(0, 100, 5, dtype=float)     # Time array [s]
     c = 1                # Volume concentration [-]
     x = 2e-1            # Particle diameter [m]
     n0 = 3*c/(4*math.pi*(x/2)**3)   # Total number concentration of primary particles
@@ -522,12 +522,12 @@ if __name__ == "__main__":
     ### PBE Parameters
     grid = 'geo'
     S = 4
-    NS = 15
-    # NS2 = 15
+    NS = 10
+    NS2 = None
     #NS2 = 50
     process_type = "breakage"
     
-    beta0 = 1e-16                  # Collision frequency parameter [m^3/s]
+    beta0 = 1e-3                 # Collision frequency parameter [m^3/s]
     v0 = 4*math.pi*(x/2)**3/3*(1+S)/2
     alpha_pbe = np.array([1,1,1,1])
     
@@ -538,7 +538,7 @@ if __name__ == "__main__":
     alpha_mc = np.reshape(alpha_pbe,(2,2))
     
 
-    mu_as, mu_pbe, mu_mc, std_mu_mc, p, m, mu_mc_reps, m_save  = calculate_case(CASE,MC=False)
+    mu_as, mu_pbe, mu_mc, std_mu_mc, p, m, mu_mc_reps, m_save  = calculate_case(CASE,MC=True)
     
     #%% PLOTS
     # pt.close()

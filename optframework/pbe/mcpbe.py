@@ -54,7 +54,7 @@ class population_MC():
         ## Calculation of alpha 
         # ALPHACALC = 1: -- Constant alpha0
         # ALPHACALC = 2: -- Calculation of alpha via collision case model
-        self.ALPHACALC = 1
+        self.ALPHACALC = 2
         self.alpha0 = 1.0
         self.alpha_prim = np.ones((dim,dim))
         

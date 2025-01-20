@@ -207,8 +207,10 @@ class PBMSolver:
             x, NDF = self.create_ndf(distribution="lognormal", x_range=(0, 1e-12), mean=5e-13, sigma=1e-10)
         elif NDF_shape == "beta":
             x, NDF = self.create_ndf(distribution="beta", x_range=(0, 1), a=2, b=2)
+        elif NDF_shape == "mono":
+            x, NDF = self.create_ndf(distribution="mono", x_range=(0, 1e-12), size=5e-13)
         n = self.n_order
-        NDF *= 1e6
+        NDF *= 1e12
         # x_normal = x / x[-1]
         # NDF_normal = NDF / x[-1]
         moments = np.array([np.trapz(NDF * (x ** k), x) for k in range(2*n)])
@@ -337,7 +339,14 @@ class PBMSolver:
             if not (0 <= x_range[0] < x_range[1] <= 1):
                 raise ValueError("Beta distribution requires x_range in [0, 1].")
             ndf = stats.beta.pdf(x, a, b)
-
+        elif distribution == "mono":
+            # size = kwargs.get("size", (x_range[1]-x_range[0])/2 )
+            # ndf = np.zeros_like(x)
+            # closest_idx = np.argmin(np.abs(x - size))
+            # ndf[closest_idx] = 1.0
+            mean = kwargs.get("size", (x_range[1]-x_range[0])/2 )
+            std_dev = (x_range[1]-x_range[0]) / points
+            ndf = (1 / (std_dev * np.sqrt(2 * np.pi))) * np.exp(-0.5 * ((x - mean) / std_dev) ** 2)  
         else:
             raise ValueError("Unsupported distribution type. Choose from 'normal', 'gamma', 'lognormal', 'beta'.")
 

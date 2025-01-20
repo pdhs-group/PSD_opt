@@ -27,7 +27,7 @@ from ..utils.plotter import plotter as pt
 from ..utils.plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
 
 ### ------ POPULATION CLASS DEFINITION ------ ###
-class population_MC():
+class MCPBESolver():
     
     def __init__(self, dim=2, verbose=False, load_attr=True, config_path=None, init=True):
         
@@ -61,9 +61,9 @@ class population_MC():
         self.CORR_BETA = 2.3e-18                   
 
         ## Calculation of alpha 
-        # ALPHACALC = 1: -- Constant alpha0
-        # ALPHACALC = 2: -- Calculation of alpha via collision case model
-        self.ALPHACALC = 2
+        # SIZEEVAL = 1: -- Constant alpha0
+        # SIZEEVAL = 2: -- Calculation of alpha via collision case model
+        self.SIZEEVAL = 2
         self.alpha0 = 1.0
         self.alpha_mmc = np.ones((dim,dim))
         
@@ -89,6 +89,9 @@ class population_MC():
         
         ## Print more information if VERBOSE is True
         self.VERBOSE = verbose
+        
+        self.CDF_method = "disc"
+        self.USE_PSD = False
         
         self.work_dir = Path(os.getcwd()).resolve()
         # Load the configuration file, if available
@@ -237,13 +240,32 @@ class population_MC():
         if self.COLEVAL != 3:
             self.betaarray = calc_betaarray_jit(self.COLEVAL, self.a_tot, self.G, 
                                                 self.X, self.CORR_BETA, self.V, self.Vc)
-        
+            
+        ## Calculate the expected number of particles generated based on the break function
+        if self.BREAKFVAL == 1:
+            self.frag_num = 4
+        elif self.BREAKFVAL == 2:
+            self.frag_num = 2
+        elif self.BREAKFVAL == 3:
+            self.frag_num = self.pl_v
+        elif self.BREAKFVAL == 4:
+            self.frag_num = (self.pl_v + 1) / self.pl_v
+            
         if self.BREAKRVAL != 1:
             self.break_rate = np.zeros(self.a_tot)
             self.calc_break_rate()
         if self.BREAKFVAL != 1 or self.BREAKFVAL != 2:
             self.calc_break_func()
-        # self.
+            
+        if self.process_type == "agglomeration":
+            self.process_agg = True
+            self.process_break = False
+        elif self.process_type == "breakage":
+            self.process_agg = False
+            self.process_break = True
+        elif self.process_type == "mix":
+            self.process_agg = True
+            self.process_break = True
         
         # Save arrays
         self.t_save = np.linspace(0,self.tA,self.savesteps)
@@ -254,7 +276,7 @@ class population_MC():
         self.V0_save = [self.V0]
         self.IDX_save = [copy.deepcopy(self.IDX)]
 
-        self.step=1    
+        self.step=1
     
     # Solve MC N times
     def solve_MC_N(self, N=5, maxiter=1e8):
@@ -291,37 +313,53 @@ class population_MC():
         t0 = time.time()
         elapsed_time = 0.0
         
-        dtd_agg = self.calc_inter_event_time_agg()
-        dtd_break = self.calc_inter_event_time_break()
-        timer_agg = dtd_agg
-        timer_break = dtd_break
+        if self.process_agg:
+            dtd_agg = self.calc_inter_event_time_agg()
+            timer_agg = dtd_agg
+        if self.process_break:
+            dtd_break = self.calc_inter_event_time_break()
+            timer_break = dtd_break
         
-        if dtd_agg >= self.tA:
+        if self.process_agg and dtd_agg >= self.tA:
             print ("------------------ \n"
                 f"Warning: The initial time step of agglomeration dt_agg = {dtd_agg} s "
                 f"is longer than the total simulation duration tA = {self.tA}. "
                 "Please try extending the total simulation duration or adjusting the parameters."
                 "\n------------------")
             raise ValueError()
-        if dtd_break >= self.tA:
+        if self.process_break and dtd_break >= self.tA:
             print ("------------------ \n"
                 f"Warning: The initial time step of breakage dt_break = {dtd_break} s is longer"
                 f"than the total simulation duration tA = {self.tA}. "
                 "Please try extending the total simulation duration or adjusting the parameters."
                 "\n------------------")
+            
         while self.t[-1] <= self.tA and count < maxiter:
-            if timer_agg < timer_break:
+            if self.process_type == "agglomeration":
                 self.calc_one_agg()
                 ## Calculation of inter event time
                 elapsed_time = timer_agg
                 dtd_agg = self.calc_inter_event_time_agg()                             # Class method
                 timer_agg += dtd_agg
                 #dt = calc_inter_event_time_array(self.Vc,self.a_tot,self.betaarray)  # JIT-compiled
-            else:
+            elif self.process_type == "breakage":
                 self.calc_one_break()
                 elapsed_time = timer_break
                 dtd_break = self.calc_inter_event_time_break()
                 timer_break += dtd_break
+            elif self.process_type == "mix":
+                if timer_agg < timer_break:
+                    self.calc_one_agg()
+                    ## Calculation of inter event time
+                    elapsed_time = timer_agg
+                    dtd_agg = self.calc_inter_event_time_agg()                             # Class method
+                    timer_agg += dtd_agg
+                    #dt = calc_inter_event_time_array(self.Vc,self.a_tot,self.betaarray)  # JIT-compiled
+                else:
+                    self.calc_one_break()
+                    elapsed_time = timer_break
+                    dtd_break = self.calc_inter_event_time_break()
+                    timer_break += dtd_break
                 
             ## Add current timestep               
             self.t=np.append(self.t,elapsed_time)
@@ -623,9 +661,9 @@ class population_MC():
             idx2 = int(self.betaarray[2,select])
             
         ## Calculation of alpha
-        if self.ALPHACALC == 1:            
+        if self.SIZEEVAL == 1:            
             self.alpha = self.alpha0 
-        elif self.ALPHACALC == 2:
+        elif self.SIZEEVAL == 2:
             self.alpha = self.calc_alpha_ccm(idx1,idx2)
         
         ## Size-correction
@@ -664,6 +702,10 @@ class population_MC():
             # self.break_rate_select = self.break_rate[idx]
         
         particle_to_break = self.V[:, idx].reshape(-1,1)
+        ## Delete broken particles
+        self.V = np.delete(self.V, idx, axis=1) 
+        self.X = np.delete(self.X, idx)  
+        
         
         # Ensure frag_num is an integer
         frag_num_floor = int(np.floor(self.frag_num))  
@@ -689,7 +731,7 @@ class population_MC():
             self.V = np.concatenate((self.V, frag), axis=1)
             self.X = np.concatenate((self.X, X), axis=0)
             particle_to_break -= frag
-            
+        
         self.V = np.concatenate((self.V, particle_to_break), axis=1)
         X = (6*(particle_to_break[-1])/math.pi)**(1/3)  
         self.X = np.concatenate((self.X, X), axis=0)
@@ -699,7 +741,8 @@ class population_MC():
             self.calc_break_rate()
         
     def produce_one_frag(self, particle_to_break):
-        if self.BREAKFVAL != 1 or self.BREAKFVAL != 2: 
+        
+        if self.BREAKFVAL == 1 or self.BREAKFVAL == 2: 
             if self.dim == 1:
                 random_value = np.random.random()
                 frag = random_value * particle_to_break
@@ -709,36 +752,26 @@ class population_MC():
                 frag_x1 = random_value1 * particle_to_break[0]
                 frag_x3 = random_value3 * particle_to_break[1]
                 frag = np.array([frag_x1, frag_x3, frag_x1+frag_x3])
-             
-        if self.dim == 1:
-            if self.CDF_method == "disc":
+        else:     
+            if self.dim == 1:
+                if self.CDF_method == "disc":
+                    frag_idx = select_size_jit(self.break_func)
+                    frag = self.rel_frag[frag_idx] * particle_to_break
+                elif self.CDF_method == "conti":
+                    random_value = np.random.random()
+                    rel_frag = self.cdf_interp(random_value)
+                    frag = rel_frag * particle_to_break
+                
+            elif self.dim == 2:
                 frag_idx = select_size_jit(self.break_func)
-                frag = self.rel_frag[frag_idx] * particle_to_break
-            elif self.CDF_method == "conti":
-                random_value = np.random.random()
-                rel_frag = self.cdf_interp(random_value)
-                frag = rel_frag * particle_to_break
-            # save the fragment
-        elif self.dim == 2:
-            frag_idx = select_size_jit(self.break_func)
-            i, j = np.unravel_index(frag_idx, self.rel_frag1.shape)
-            frag_x1 = particle_to_break[0] * self.rel_frag1[i, j]
-            frag_x3 = particle_to_break[1] * self.rel_frag3[i, j]
-            frag = np.array([frag_x1, frag_x3, frag_x1+frag_x3])
+                i, j = np.unravel_index(frag_idx, self.rel_frag1.shape)
+                frag_x1 = particle_to_break[0] * self.rel_frag1[i, j]
+                frag_x3 = particle_to_break[1] * self.rel_frag3[i, j]
+                frag = np.array([frag_x1, frag_x3, frag_x1+frag_x3])
         X = (6*(frag[-1])/math.pi)**(1/3)  
         return frag, X
         
     def calc_break_rate(self):
-        ## Calculate the expected number of particles generated based on the break function
-        if self.BREAKFVAL == 1:
-            self.frag_num = 4
-        elif self.BREAKFVAL == 2:
-            self.frag_num = 2
-        elif self.BREAKFVAL == 3:
-            self.frag_num = self.pl_v
-        elif self.BREAKFVAL == 4:
-            self.frag_num = (self.pl_v + 1) / self.pl_v
-            
         if self.dim == 1:
             self.break_rate = kernel_break.breakage_rate_1d(self.V[-1,:], 
                                                             self.V1_mean, self.pl_P1, self.pl_P2, 

@@ -6,9 +6,12 @@ Created on Thu Jan  2 08:53:21 2025
 """
 import numpy as np
 import math
+import copy
 import matplotlib.pyplot as plt
 from matplotlib.ticker import ScalarFormatter
 from optframework.pbe import DPBESolver, ExtruderPBESolver
+from optframework.pbe import MCPBESolver
+from optframework.pbm import PBMSolver
 import optframework.utils.plotter.plotter as pt
 from optframework.utils.plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
 
@@ -16,37 +19,105 @@ MIN = 1e-20
 
 class PBEValidation():
     def __init__(self, dim, grid, NS, S, kernel, process,
-                 c=1, x=2e-6, beta0=1e-16, t=None, NC=3, Extruder=False):
+                 c=1, x=2e-6, beta0=1e-2, t=None, NC=3, Extruder=False):
         self.x = x
         self.beta0 = beta0
         self.kernel = kernel
+        self.Extruder = Extruder
+        self.NC = NC
         self.c = c
         self.n0 = 3*c/(4*math.pi*(x/2)**3)
-        if not Extruder:
-            self.p = DPBESolver(dim=dim, t_vec=t, load_attr=False,f=grid)
-        else:
-            self.p = ExtruderPBESolver(dim=dim, NC=NC, t_vec=t, load_attr=False,disc=grid)
-        self.init_pbe(NS, S, dim, kernel, process)
+        
+        self.init_pbe(NS, S, dim, t, grid, process)
+        self.init_mcpbe(dim, t, process)
         
         ## parameters for Monte-Carlo-PBESolver
-        ## MC-Solver not yet coded
-        self.N_MC = 5
-    def init_pbe(self, NS, S, dim, kernel, process):
+
+    def init_pbe(self, NS, S, dim, t, grid, process):
+        if not self.Extruder:
+            self.p = DPBESolver(dim=dim, t_vec=t, load_attr=False,f=grid)
+        else:
+            self.p = ExtruderPBESolver(dim=dim, NC=self.NC, t_vec=t, load_attr=False,disc=grid)
         self.p.NS = NS
         self.p.S = S
         self.p.R01, self.p.R03 = self.x/2, self.x/2
         self.p.USE_PSD = False
         self.p.alpha_prim = np.ones(dim**2)
+        self.p.G = 1.0
         self.p.process_type = process
         self.p.calc_R()
         
-    def init_mu(self, t):
+        if dim == 1:
+            self.v0 = self.p.V[1]
+            self.vn = self.p.V[-1]
+        elif dim == 2:
+            self.v0 = (self.p.V1[1] + self.p.V1[1]) /2
+            self.vn = (self.p.V1[-1] + self.p.V1[-1]) /2
+        self.x0 = (6*self.v0/math.pi)**(1/3)
+        self.xn = (6*self.vn/math.pi)**(1/3)
+    
+    def init_mcpbe(self, dim, t, process):
+        ## The number of times to repeat the MC-PBE
+        self.N_MC = 5
+        self.p_mc = MCPBESolver(dim=dim, verbose=True, load_attr=False, init=False)
+        self.p_mc.a0 = 400
+        self.p_mc.CDF_method = "disc"
+        self.p_mc.USE_PSD = False
+        self.p.G = 1.0
+        self.p_mc.process_type = process
+        self.p_mc.c = np.full(dim, self.n0*self.v0)   
+        if process == "agglomeration":
+            self.p_mc.x = np.full(dim, self.x0)
+        elif process == "breakage":
+            self.p_mc.x = np.full(dim, self.xn)
+        self.p_mc.PGV = np.full(dim, "mono")
+        self.p_mc.alpha_prim = np.ones(dim**2)
+        # self.p_mc.x2 = np.full(dim,self.x)
+        # if t is not None:
+        #     self.p_mc.tA = t[-1]
+        #     self.p_mc.savesteps = len(t)
+            
+    def init_pbm(self, dim, t):
+        self.p_mom = PBMSolver(dim, t_vec=t, load_attr=False)
+        self.n_order = 5                          # Order of the moments [-]
+        self.n_add = 10                          # Number of additional nodes [-] 
+        self.GQMOM = False
+        self.GQMOM_method = "gaussian"
+        self.process_type = "breakage"
+        
+    def init_mu(self):
+        if self.p.t_vec is None:
+            if self.kernel == "const":
+                self.p.t_vec = np.arange(0, 5, 0.25, dtype=float)
+            elif self.kernel == "sum":
+                self.p.t_vec = np.arange(0, 100, 10, dtype=float)
+        t = self.p.t_vec
+        self.p_mc.tA = t[-1]
+        self.p_mc.savesteps = len(t)
+        
         self.mu_as = np.zeros((3,3,len(t)))
         self.mu_pbe = np.zeros((3,3,len(t)))
         self.mu_mc = np.zeros((3,3,len(t)))  
         ## std_mu_mc is used for Monte-Carlo-PBESolver
         self.std_mu_mc = np.zeros((3,3,len(t)))
-        
+    
+    def set_kernel_params(self, solver):
+        if self.kernel == "const":
+            solver.COLEVAL = 3                          
+            solver.EFFEVAL = 2  
+            solver.SIZEEVAL = 1
+            solver.CORR_BETA = self.beta0
+            
+            solver.BREAKFVAL = 2
+            solver.BREAKRVAL = 1
+        elif self.kernel == "sum":
+            solver.COLEVAL = 4                          
+            solver.EFFEVAL = 2  
+            solver.SIZEEVAL = 1
+            solver.CORR_BETA = self.beta0 / self.v0
+            solver.BREAKFVAL = 2
+            solver.BREAKRVAL = 2
+            
     def calculate_pbe(self):
         self.p.init_N(reset_N=True, N01=self.n0, N03=self.n0)
         self.p.calc_F_M()
@@ -55,24 +126,24 @@ class PBEValidation():
         self.p.solve_PBE()
         self.mu_pbe = self.p.calc_mom_t()
         
-    def calculate_case(self):
+    def calculate_mc_pbe(self):
+        mu_tmp = []
+        mc_save = []
+        for i in range(self.N_MC):
+            self.p_mc.init_calc()
+            p_mc_tem = copy.deepcopy(self.p_mc)
+            p_mc_tem.solve_MC()
+            mu_tmp.append(p_mc_tem.calc_mom_t())
+            mc_save.append(p_mc_tem)
+        self.mu_mc = np.mean(mu_tmp, axis=0)
+        if self.N_MC > 1: self.std_mu_mc = np.std(mu_tmp,ddof=1,axis=0)
+    
+    def calculate_as_pbe(self, t=None):
+        t = self.p.t_vec if t is None else t
+        
         if self.kernel == "const":
-            if self.p.t_vec is None:
-                self.p.t_vec = np.arange(0, 5, 0.25, dtype=float)
-            self.init_mu(self.p.t_vec)
-            
-            self.p.COLEVAL = 3                          
-            self.p.EFFEVAL = 2  
-            self.p.SIZEEVAL = 1
-            self.p.CORR_BETA = self.beta0
-            
-            self.p.BREAKFVAL = 2
-            self.p.BREAKRVAL = 1
-            self.calculate_pbe()
-            
-            t = self.p.t_vec
             if self.p.dim == 1:
-                # v0 = self.p.V[1]
+                # self.v0 = self.p.V[1]
                 if self.p.process_type == "agglomeration":
                     self.mu_as[0,0,:] = 2*self.n0/(2+self.beta0*self.n0*t)
                     self.mu_as[1,0,:] = np.ones(t.shape)*self.c 
@@ -96,34 +167,16 @@ class PBEValidation():
                         for l in range(2):
                             self.mu_as[k,l,:] = (self.p.V1[-1])**k*(self.p.V3[-1])**l*np.exp((2/((k+1)*(l+1))-1)*t)
                 else:
-                    print("not yet coded")
+                    print("Analytical solution for breakage case in 1-d not yet coded!")
                     
-        elif self.kernel == "sum":
-            if self.p.t_vec is None:
-                self.p.t_vec = np.arange(0, 100, 10, dtype=float)
-            self.init_mu(self.p.t_vec)
-            self.p.COLEVAL = 4                          
-            self.p.EFFEVAL = 2  
-            self.p.SIZEEVAL = 1
-            if self.p.dim == 1:
-               v0 = self.p.V[1]
-            elif self.p.dim == 2:
-               v10 = self.p.V1[1]
-               v30 = self.p.V3[1]
-               v0 = (v10 + v30) /2
-            self.p.CORR_BETA = self.beta0 / v0
-            self.p.BREAKFVAL = 2
-            self.p.BREAKRVAL = 2
-            self.calculate_pbe()
-            
-            t = self.p.t_vec
+        elif self.kernel == "sum":        
             if self.p.dim == 1:
                 if self.p.process_type == "agglomeration":
                     ### ANALYTICAL SOLUTION FROM KUMAR DISSERTATION A.11
-                    self.mu_as[0,0,:] = self.n0*np.exp(-self.beta0*self.n0*t) # without v0, therfore p.CORR_BETA also divided by v0
+                    self.mu_as[0,0,:] = self.n0*np.exp(-self.beta0*self.n0*t) # without self.v0, therfore p.CORR_BETA also divided by self.v0
                     self.mu_as[1,0,:] = np.ones(t.shape)*self.c
                     phi = 1-np.exp(-self.beta0*self.n0*t)
-                    self.mu_as[2,0,:] = self.c*(v0+self.c*(2-phi)*phi/(self.n0*(1-phi)**2)) 
+                    self.mu_as[2,0,:] = self.c*(self.v0+self.c*(2-phi)*phi/(self.n0*(1-phi)**2)) 
                 elif self.p.process_type == "breakage":
                     if self.p.disc == 'uni':
                         V = self.p.V
@@ -152,12 +205,12 @@ class PBEValidation():
                 if self.p.process_type == "agglomeration":
                     ### ANALYTICAL SOLUTION FROM KUMAR DISSERTATION A.11
                     n0_tot = 2*self.n0
-                    self.mu_as[0,0,:] = n0_tot*np.exp(-self.beta0*n0_tot*t) # without v0, therfore p.CORR_BETA also divided by v0
+                    self.mu_as[0,0,:] = n0_tot*np.exp(-self.beta0*n0_tot*t) # without self.v0, therfore p.CORR_BETA also divided by self.v0
                     self.mu_as[1,0,:] = np.ones(t.shape)*self.c
                     self.mu_as[0,1,:] = np.ones(t.shape)*self.c
                     phi = 1-np.exp(-self.beta0*n0_tot*t)        
                     self.mu_as[1,1,:] = self.c**2*(2-phi)*phi/(n0_tot*(1-phi)**2)
-                    self.mu_as[2,0,:] = self.c*(v0+self.c*(2-phi)*phi/(n0_tot*(1-phi)**2)) 
+                    self.mu_as[2,0,:] = self.c*(self.v0+self.c*(2-phi)*phi/(n0_tot*(1-phi)**2)) 
                 elif self.p.process_type == "breakage":
                     ### See Leong-Table 1.
                     self.mu_as[0,1,:] =self. p.V1[-1]
@@ -169,7 +222,18 @@ class PBEValidation():
                 else:
                     for k in range(2):
                         for l in range(2):
-                            self.mu_as[k,l,:] = np.ones(t.shape)*self.c  
+                            self.mu_as[k,l,:] = np.ones(t.shape)*self.c
+                        
+    def calculate_case(self):
+        self.init_mu()
+        
+        self.set_kernel_params(self.p)
+        self.set_kernel_params(self.p_mc)
+        
+        self.calculate_pbe()
+        self.calculate_mc_pbe()
+        self.calculate_as_pbe()
+              
     def init_plot(self, default = False, size = 'half', extra = False, mrksize = 5):
         
         if size == 'full':
@@ -182,8 +246,8 @@ class PBEValidation():
             pt.plot_init(scl_a4=2, page_lnewdth_cm=13.858, figsze=[6.4,4.8*(4/3)],lnewdth=0.8,
                          mrksze=mrksize,use_locale=True, fontsize=9, labelfontsize=9, tickfontsize=8)
             if extra:
-                pt.plot_init(scl_a4=2, page_lnewdth_cm=18.486, figsze=[6.4*(18.486/13.858),4.8*(4/3)],lnewdth=0.8,
-                         mrksze=mrksize,use_locale=True, fontsize=9, labelfontsize=9, tickfontsize=8)
+                pt.plot_init(scl_a4=2, page_lnewdth_cm=18.486*2, figsze=[6.4*(18.486/13.858),4.8*(4/3)],lnewdth=0.8,
+                         mrksze=mrksize*2,use_locale=True, fontsize=9*2, labelfontsize=9*2, tickfontsize=8*2)
         if default:
                 pt.plot_init(scl_a4=2, page_lnewdth_cm=13.858, figsze=[6.4,4.8*(4/3)],lnewdth=0.8,
                          mrksze=mrksize,use_locale=True, fontsize=9, labelfontsize=9, tickfontsize=8)
@@ -207,13 +271,14 @@ class PBEValidation():
             return
         NS = self.p.NS if NS is None else NS
         S = self.p.S if S is None else S
-        self.init_pbe(NS, S, self.p.dim, self.kernel, self.p.process_type)
+        self.init_pbe(NS, S, self.p.dim, self.p.t_vec, self.p.disc, self.p.process_type)
+        self.set_kernel_params(self.p)
         self.calculate_pbe()
         self.ax1, self.fig1 = self.add_moment_t(fig=self.fig1, ax=self.ax1, i=0, j=0, rel=REL, alpha = ALPHA)
         self.ax2, self.fig2 = self.add_moment_t(fig=self.fig2, ax=self.ax2, i=1, j=0, rel=REL, alpha = ALPHA)
         self.ax4, self.fig4 = self.add_moment_t(fig=self.fig4, ax=self.ax4, i=2, j=0, rel=REL, alpha = ALPHA)
         if self.p.dim == 2:
-            self.ax3, self.fig3 = self.add_moment_t(self.mu_pbe2[:,:,1:], self.fig3, self.ax3, i=1, j=1, t_mod=self.p.t_vec[1:], rel=REL, alpha = ALPHA)
+            self.ax3, self.fig3 = self.add_moment_t(self.mu_pbe[:,:,1:], self.fig3, self.ax3, i=1, j=1, t_mod=self.p.t_vec[1:], rel=REL, alpha = ALPHA)
           
     def plot_moment_t(self, mu_as=None, mu_pbe=None, mu_mc=None, std_mu_mc=None, t_mod=None, i=0, j=0, fig=None, ax=None, label=None,
                       labelpos='sw', rel=False, alpha=1):
@@ -318,6 +383,7 @@ class PBEValidation():
     
     def show_plot(self):
         if self.fig1 is not None and self.ax1 is not None:
+            plt.figure(dpi=300)
             plt.show()
         else:
             raise ValueError("No plot has been initialized to display.")
