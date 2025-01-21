@@ -497,6 +497,7 @@ def calc_F_M(self):
     """
     # 1-D case
     if self.dim == 1:
+        self.alpha_prim = self.alpha_prim.item() if isinstance(self.alpha_prim, np.ndarray) else self.alpha_prim
         # To avoid mass leakage at the boundary in CAT, boundary cells are not directly involved in the calculation. 
         # So there is no need to define the corresponding F_M at boundary. F_M is (NS-1)^2 instead (NS)^2
         self.F_M = np.zeros((self.NS-1,self.NS-1))

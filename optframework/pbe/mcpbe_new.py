@@ -71,8 +71,8 @@ class MCPBESolver():
         # SIZEEVAL = 1: -- No correction
         # SIZEEVAL = 2: -- Selomulya model
         self.SIZEEVAL = 1
-        self.X_SEL = 0.1                 # Size dependency parameter for Selomulya2003 / Soos2006 
-        self.Y_SEL = 0.1                 # Size dependency parameter for Selomulya2003 / Soos2006
+        self.X_SEL = 0.310601                 # Size dependency parameter for Selomulya2003 / Soos2006 
+        self.Y_SEL = 1.06168                 # Size dependency parameter for Selomulya2003 / Soos2006
         
         self.BREAKRVAL = 3                    # Case for calculation breakage rate. 1 = constant, 2 = size dependent
         self.BREAKFVAL = 3                    # Case for calculation breakage function. 1 = conservation of Hypervolume, 2 = conservation of 0 Moments 

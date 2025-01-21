@@ -28,12 +28,15 @@ class PBMSolver:
         self.t_total = t_total                       # total simulation time [second]
         self.t_write = t_write
         self.t_vec = t_vec
-        self.n_order = 5                          # Order of the moments [-]
+        self.n_order = 5                          # n_order*2 is the order of the moments [-]
         self.n_add = 10                          # Number of additional nodes [-] 
         self.GQMOM = False
         self.GQMOM_method = "gaussian"
         self.nu = 1                           # Exponent for the correction in gaussian-GQMOM
 
+        self.atol_min  = 1e-16
+        self.atol_scale = 1e-6
+        self.rtol = 1e-6
         ## Parameters in agglomeration kernels
         self.COLEVAL = 1                      # Case for calculation of beta. 1 = Orthokinetic, 2 = Perikinetic
         self.EFFEVAL = 2                      # Case for calculation of alpha. 1 = Full calculation, 2 = Reduced model (only based on primary particle interactions)
@@ -96,6 +99,7 @@ class PBMSolver:
         if load_attr:
             self.load_attributes(config_path)
         self.check_params()
+        self.reset_params()
         
     def check_params(self):
         """
@@ -232,25 +236,43 @@ class PBMSolver:
         self.plot_moments_comparison(moments, moments_QMOM, moments_GQMOM)
         
         return moments, moments_QMOM, moments_GQMOM
-    def init_moments(self, NDF_shape="normal"):
+    def init_moments(self, NDF_shape="normal", N0=1.0, x_range=(0,1), 
+                     mean=0.5, std_dev=0.1, shape=2, scale=1,
+                     sigma=1, a=2, b=2, size=0.5):
         if self.USE_PSD:
             return
         else:
+            ## Generate NDF with integral (number of particles) equal to 1
             if NDF_shape == "normal":
-                x, NDF = self.create_ndf(distribution="normal", x_range=(0, 1e-12), mean=5e-13, std_dev=2e-13)
+                x, NDF = self.create_ndf(distribution="normal", x_range=x_range, mean=mean, std_dev=std_dev)
             elif NDF_shape == "gamma":
-                x, NDF = self.create_ndf(distribution="gamma", x_range=(0, 1), shape=2, scale=1)
+                x, NDF = self.create_ndf(distribution="gamma", x_range=x_range, shape=shape, scale=scale)
             elif NDF_shape == "lognormal":
-                x, NDF = self.create_ndf(distribution="lognormal", x_range=(0, 1e-12), mean=5e-13, sigma=1)
+                x, NDF = self.create_ndf(distribution="lognormal", x_range=x_range, mean=mean, sigma=sigma)
             elif NDF_shape == "beta":
-                x, NDF = self.create_ndf(distribution="beta", x_range=(0, 1), a=2, b=2)
-            # NDF *= 1e6
-            self.x_max = x[-1]
-            self.moments = np.zeros((self.n_order*2,self.t_num))
-            self.moments[:,0] = np.array([np.trapz(NDF * (x ** k), x) for k in range(2*self.n_order)])
-            self.moments_norm = np.copy(self.moments)
-            self.moments_norm_factor = np.array([self.x_max**k for k in range(self.n_order*2)])
-            self.moments_norm[:,0] = self.moments[:,0] / self.moments_norm_factor
+                x, NDF = self.create_ndf(distribution="beta", x_range=x_range, a=a, b=b)
+            elif NDF_shape == "mono":
+                x, NDF = self.create_ndf(distribution="mono", x_range=x_range, size=size)
+
+        self.x_max = x[-1]
+        # self.x_max = 1.0
+        self.moments = np.zeros((self.n_order*2,self.t_num))
+        ## If the NDF peak is very close to the boundary, 
+        ## the integral over the domain may not be 1, 
+        ## so a scaling is performed to ensure that the integral is 1.
+        moment0 = np.trapz(NDF, x)
+        NDF /= moment0
+        ## Corrected particle count
+        NDF *= N0 * self.V_unit
+        self.moments[:,0] = np.array([np.trapz(NDF * (x ** k), x) for k in range(2*self.n_order)])
+        
+        self.moments_norm = np.copy(self.moments)
+        self.moments_norm_factor = np.array([self.x_max**k for k in range(self.n_order*2)])
+        self.moments_norm[:,0] = self.moments[:,0] / self.moments_norm_factor
+        
+        ## Sets the integration tolerance associated with the initial moments
+        self.atolarray = np.maximum(self.atol_min, self.atol_scale * np.abs(self.moments_norm[:,0]))
+        self.rtolarray = np.full_like(self.moments_norm[:,0], self.rtol)
             
         self.m = 2*self.n_order
     def solve_PBM(self, t_vec=None):
@@ -261,11 +283,12 @@ class PBMSolver:
             t_max = t_vec[-1]
             
         if self.dim == 1:
+            self.alpha_prim = self.alpha_prim.item() if isinstance(self.alpha_prim, np.ndarray) else self.alpha_prim
             rhs = jit_pbm_rhs.get_dMdt_1d
             args = (self.x_max, self.GQMOM, self.GQMOM_method, 
                     self.moments_norm_factor, self.n_add, self.nu, 
                     self.COLEVAL, self.CORR_BETA, self.G, 
-                    self.alpha_prim, self.EFFEVAL, self.SIZEEVAL, 
+                    self.alpha_prim, self.EFFEVAL, self.SIZEEVAL, self.V_unit,
                     self.X_SEL, self.Y_SEL, self.V1_mean, 
                     self.pl_P1, self.pl_P2, self.BREAKRVAL, 
                     self.pl_v, self.pl_q, self.BREAKFVAL, self.process_type)
@@ -278,7 +301,8 @@ class PBMSolver:
                                                     args=args,
                                                     ## If `rtol` is set too small, it may cause the results to diverge, 
                                                     ## leading to the termination of the calculation.
-                                                    method='Radau',first_step=1e-3,rtol=1e-1)
+                                                    method='RK45',first_step=1e-3,
+                                                    atol=self.atolarray, rtol=self.rtolarray)
                     
                     # Reshape and save result to N and t_vec
                     t_vec = self.RES.t
@@ -291,7 +315,7 @@ class PBMSolver:
         # Monitor whether integration are completed  
         self.t_vec = t_vec 
         # self.N = y_evaluated / eva_N_scale
-        self.moments = y_evaluated 
+        self.moments = y_evaluated * self.moments_norm_factor[:, np.newaxis]
         self.calc_status = status   
         if not self.calc_status:
             print('Warning: The integral failed to converge!')
@@ -340,12 +364,15 @@ class PBMSolver:
                 raise ValueError("Beta distribution requires x_range in [0, 1].")
             ndf = stats.beta.pdf(x, a, b)
         elif distribution == "mono":
-            # size = kwargs.get("size", (x_range[1]-x_range[0])/2 )
-            # ndf = np.zeros_like(x)
+            # size = kwargs.get("size", (x_range[1] - x_range[0]) / 2)
+            # ndf = np.zeros_like(x) 
+            # ## Set the value of ndf to ensure trapz(ndf, x) = 1
             # closest_idx = np.argmin(np.abs(x - size))
-            # ndf[closest_idx] = 1.0
+            # dx = x[1] - x[0]
+            # ndf[closest_idx] = 1 / dx
+            
             mean = kwargs.get("size", (x_range[1]-x_range[0])/2 )
-            std_dev = (x_range[1]-x_range[0]) / points
+            std_dev = (x_range[1]-x_range[0]) / 1000
             ndf = (1 / (std_dev * np.sqrt(2 * np.pi))) * np.exp(-0.5 * ((x - mean) / std_dev) ** 2)  
         else:
             raise ValueError("Unsupported distribution type. Choose from 'normal', 'gamma', 'lognormal', 'beta'.")

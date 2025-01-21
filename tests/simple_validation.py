@@ -11,14 +11,14 @@ if __name__ == "__main__":
     dim = 1
     grid = "geo"
     NS1 = 10
-    NS2 = 15
+    NS2 = None
     S1 = 4
     # S2 = 2
     kernel = "const"
     process = "breakage"
     t = np.arange(0, 1, 0.05, dtype=float)
     
-    v = PBEValidation(dim, grid, NS1, S1, kernel, process, t=t, c=1e-2, x=2e-3, beta0=5e-3)
+    v = PBEValidation(dim, grid, NS1, S1, kernel, process, t=t, c=1e-2, x=2e-2, beta0=1e-11)
     v.calculate_case()
     v.init_plot(size = 'half', extra = True, mrksize=6)
     v.plot_all_moments()

@@ -47,7 +47,7 @@ def filter_negative_nodes(xi, wi, threshold=1e-7):
 def get_dMdt_1d(t, moments_normal, x_max, GQMOM, GQMOM_method, 
                 moments_norm_factor, n_add, nu, 
                 COLEVAL, CORR_BETA, G, alpha_prim, EFFEVAL, 
-                SIZEEVAL, X_SEL, Y_SEL, 
+                SIZEEVAL, V_unit, X_SEL, Y_SEL, 
                 V1_mean, pl_P1, pl_P2, BREAKRVAL, 
                 v, q, BREAKFVAL, type_flag):
     dMdt = np.zeros(moments_normal.shape)
@@ -66,52 +66,60 @@ def get_dMdt_1d(t, moments_normal, x_max, GQMOM, GQMOM_method,
         xi, wi = filter_negative_nodes(xi, wi)
         n += n_add
     
+    ## In order to calculate the contribution of each kernel,
+    ## the coordinates need to be restored to their original values.
     xi *= x_max
+    
     ## 因为PBE中的计算考虑了零点，所以这里对于PBM使用的时候坐标会发生一定偏移
     V = np.zeros(n+1)
     R = np.zeros(n+1)
     V[1:] = xi
     R[1:] = (V[1:]*3/(4*math.pi))**(1/3)
+    
+    if type_flag == "agglomeration" or type_flag == "mix":
+        F_M_tem = kernel_agg.calc_F_M_1D(n+2, COLEVAL, CORR_BETA, G, R, 
+                                     alpha_prim, EFFEVAL, SIZEEVAL, X_SEL, Y_SEL)
+        F_M = F_M_tem[1:,1:] / V_unit
+        
+    if type_flag == "breakage" or type_flag == "mix":
+        B_R_tem = np.zeros(n+1)
+        B_F_intxk = np.zeros((m, n))
+        B_R_tem = kernel_break.breakage_rate_1d(V, V1_mean, pl_P1, pl_P2, G, BREAKRVAL)
+        B_R = B_R_tem[1:]
 
-    F_M_tem = kernel_agg.calc_F_M_1D(n+2, COLEVAL, CORR_BETA, G, R, 
-                                 alpha_prim, EFFEVAL, SIZEEVAL, X_SEL, Y_SEL)
-    F_M = F_M_tem[1:,1:]
-    B_R_tem = np.zeros(n+1)
-    B_F_intxk = np.zeros((m, n))
-    B_R_tem = kernel_break.breakage_rate_1d(B_R_tem, V, V1_mean, pl_P1, pl_P2, G, BREAKRVAL)
-    B_R = B_R_tem[1:]
-
-    xs1 = np.array([-9.681602395076260859e-01,
-                -8.360311073266357695e-01,
-                -6.133714327005903577e-01,
-                -3.242534234038089158e-01,
-                0.000000000000000000e+00,
-                3.242534234038089158e-01,
-                6.133714327005903577e-01,
-                8.360311073266357695e-01,
-                9.681602395076260859e-01,])
-    ws1 = np.array([8.127438836157471758e-02,
-                1.806481606948571184e-01,
-                2.606106964029356599e-01,
-                3.123470770400028074e-01,
-                3.302393550012596712e-01,
-                3.123470770400028074e-01,
-                2.606106964029356599e-01,
-                1.806481606948571184e-01,
-                8.127438836157471758e-02])
-    for k in range(m):
-        for i in range(n):
-            argsk = (V[i+1],v,q,BREAKFVAL,k)
-            func = kernel_break.breakage_func_1d_xk
-            B_F_intxk[k, i] = kernel_break.gauss_legendre(func, 0.0, V[i+1], xs1, ws1, args=argsk)
+        xs1 = np.array([-9.681602395076260859e-01,
+                    -8.360311073266357695e-01,
+                    -6.133714327005903577e-01,
+                    -3.242534234038089158e-01,
+                    0.000000000000000000e+00,
+                    3.242534234038089158e-01,
+                    6.133714327005903577e-01,
+                    8.360311073266357695e-01,
+                    9.681602395076260859e-01,])
+        ws1 = np.array([8.127438836157471758e-02,
+                    1.806481606948571184e-01,
+                    2.606106964029356599e-01,
+                    3.123470770400028074e-01,
+                    3.302393550012596712e-01,
+                    3.123470770400028074e-01,
+                    2.606106964029356599e-01,
+                    1.806481606948571184e-01,
+                    8.127438836157471758e-02])
+        for k in range(m):
+            for i in range(n):
+                argsk = (V[i+1],v,q,BREAKFVAL,k)
+                func = kernel_break.breakage_func_1d_xk
+                B_F_intxk[k, i] = kernel_break.gauss_legendre(func, 0.0, V[i+1], xs1, ws1, args=argsk)
     
     for k in range(m):
         dMdt_agg_ij = 0.0
         dMdt_break_i = 0.0
         for i in range(n):
-            for j in range(n):
-                dMdt_agg_ij += 0.5 * wi[i]*wi[j]*F_M[i, j]*((xi[i]+xi[j])**k-xi[i]**k-xi[j]**k)
-            dMdt_break_i += wi[i] * B_R[i] * B_F_intxk[k, i] - wi[i] * xi[i]**k * B_R[i]
+            if type_flag == "agglomeration" or type_flag == "mix":
+                for j in range(n):
+                    dMdt_agg_ij += 0.5 * wi[i]*wi[j]*F_M[i, j]*((xi[i]+xi[j])**k-xi[i]**k-xi[j]**k)
+            if type_flag == "breakage" or type_flag == "mix":
+                dMdt_break_i += wi[i] * B_R[i] * B_F_intxk[k, i] - wi[i] * xi[i]**k * B_R[i]
         dMdt[k] = dMdt_agg_ij + dMdt_break_i
     dMdt_norm = dMdt / moments_norm_factor
     

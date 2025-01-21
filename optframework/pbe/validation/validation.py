@@ -30,6 +30,7 @@ class PBEValidation():
         
         self.init_pbe(NS, S, dim, t, grid, process)
         self.init_mcpbe(dim, t, process)
+        self.init_pbm(dim, t, process)
         
         ## parameters for Monte-Carlo-PBESolver
 
@@ -46,6 +47,7 @@ class PBEValidation():
         self.p.G = 1.0
         self.p.process_type = process
         self.p.calc_R()
+        self.p.init_N(reset_N=True, N01=self.n0, N03=self.n0)
         
         if dim == 1:
             self.v0 = self.p.V[1]
@@ -77,13 +79,24 @@ class PBEValidation():
         #     self.p_mc.tA = t[-1]
         #     self.p_mc.savesteps = len(t)
             
-    def init_pbm(self, dim, t):
-        self.p_mom = PBMSolver(dim, t_vec=t, load_attr=False)
-        self.n_order = 5                          # Order of the moments [-]
-        self.n_add = 10                          # Number of additional nodes [-] 
-        self.GQMOM = False
-        self.GQMOM_method = "gaussian"
-        self.process_type = "breakage"
+    def init_pbm(self, dim, t, process):
+        if dim == 1:
+            self.p_mom = PBMSolver(dim, t_vec=t, load_attr=False)
+            self.p_mom.n_order = 3                          # Order of the moments [-]
+            self.p_mom.n_add = 3                          # Number of additional nodes [-] 
+            self.p_mom.GQMOM = True
+            self.p_mom.GQMOM_method = "gamma"
+            self.p_mom.USE_PSD = False
+            self.p_mom.process_type = process
+            self.p_mom.G = 1.0
+            self.p_mom.alpha_prim = np.ones(dim**2)
+            self.p_mom.V_unit = 1
+            x_range = (0.0, self.p.V[-1])
+            if process == "agglomeration":
+                size = self.p.V[1]
+            elif process == "breakage":
+                size = self.p.V[-1]
+            self.p_mom.init_moments(NDF_shape="mono",N0=self.n0, x_range=x_range,size=size)
         
     def init_mu(self):
         if self.p.t_vec is None:
@@ -98,6 +111,7 @@ class PBEValidation():
         self.mu_as = np.zeros((3,3,len(t)))
         self.mu_pbe = np.zeros((3,3,len(t)))
         self.mu_mc = np.zeros((3,3,len(t)))  
+        self.mu_pbm = np.zeros((3,3,len(t)))  
         ## std_mu_mc is used for Monte-Carlo-PBESolver
         self.std_mu_mc = np.zeros((3,3,len(t)))
     
@@ -119,12 +133,12 @@ class PBEValidation():
             solver.BREAKRVAL = 2
             
     def calculate_pbe(self):
-        self.p.init_N(reset_N=True, N01=self.n0, N03=self.n0)
         self.p.calc_F_M()
         self.p.calc_B_R()
         self.p.calc_int_B_F()
         self.p.solve_PBE()
         self.mu_pbe = self.p.calc_mom_t()
+        
         
     def calculate_mc_pbe(self):
         mu_tmp = []
@@ -137,6 +151,10 @@ class PBEValidation():
             mc_save.append(p_mc_tem)
         self.mu_mc = np.mean(mu_tmp, axis=0)
         if self.N_MC > 1: self.std_mu_mc = np.std(mu_tmp,ddof=1,axis=0)
+    
+    def calculate_pbm(self):
+        self.p_mom.solve_PBM()
+        self.mu_pbm[:,0,:] = self.p_mom.moments[:3,:]
     
     def calculate_as_pbe(self, t=None):
         t = self.p.t_vec if t is None else t
@@ -229,9 +247,11 @@ class PBEValidation():
         
         self.set_kernel_params(self.p)
         self.set_kernel_params(self.p_mc)
+        self.set_kernel_params(self.p_mom)
         
         self.calculate_pbe()
-        self.calculate_mc_pbe()
+        # self.calculate_mc_pbe()
+        self.calculate_pbm()
         self.calculate_as_pbe()
               
     def init_plot(self, default = False, size = 'half', extra = False, mrksize = 5):
@@ -329,6 +349,14 @@ class PBEValidation():
                                    ylbl=ylbl, lbl='dPBE, $N_{\mathrm{S}}='+str(self.p.NS)+'$',
                                    clr=c_KIT_green,mrk='^', alpha=alpha, mrkedgecolor='k')
         
+        ## add moments from QMOM
+        mu_pbm = self.mu_pbm
+        if rel:
+            mu_pbm[i,j,:] = mu_pbm[i,j,:]/(mu_pbm[i,j,0] + MIN)
+        ax, fig = pt.plot_data(tp,mu_pbm[i,j,:], fig=fig, ax=ax,
+                               xlbl='Agglomeration time $t_\mathrm{A}$ / $s$',
+                               ylbl=ylbl, lbl='PBM, $M_{\mathrm{order}}='+str(self.p_mom.n_order*2)+'$',
+                               clr=c_KIT_blue,mrk='o', alpha=alpha, mrkedgecolor='k')
         # if std_mu_mc is not None:
         #     ax.errorbar(tp,mu_mc[i,j,:],yerr=std_mu_mc[i,j,:],fmt='none',color=c_KIT_red,
         #                 capsize=plt.rcParams['lines.markersize']-2,alpha=alpha,zorder=0, mec ='k')

@@ -18,20 +18,20 @@ config = {
     "R03": 2.9e-7,  
     # Radius of primary M particles (in meters).
 
-    "t_total": 101,  
+    "t_total": 100,  
     # Total simulation time in seconds.
 
-    "t_write": 10,  
-    # Interval (in time steps) for writing output data (e.g., simulation results).
+    "t_write": 5,  
+    # Interval in seconds for writing output data (e.g., simulation results).
 
-    "process_type": "mix",  
+    "process_type": "agglomeration",  
     # Type of process being simulated.
     # "agglomeration": pure agglomeration
     # "breakage": pure breakage
     # "mix": both agglomeration and breakage
 
 
-    "V_unit": 1e-12,  
+    "V_unit": 1,  
     # Volume unit used for normalization of N (particle number concentration). 
     # Setting a smaller value generally does not affect the relative relationships between N (i.e., the PSD),
     # but helps reduce the stiffness of matrices during calculations, leading to faster solver convergence.
@@ -57,11 +57,11 @@ config = {
     "DIST3_name": "PSD_x50_2.0E-5_RelSigmaV_2.0E-1.npy",  
     # Name of the file containing the PSD for M particles.
 
-    "COLEVAL": 1,  
+    "COLEVAL": 4,  
     # Flag that determines which model to use for calculating collision frequency.
     # Can be checked in dpbe_core.py's `calc_F_M`.
 
-    "EFFEVAL": 1,  
+    "EFFEVAL": 2,  
     # Flag that determines which model to use for calculating collision efficiency.
     # Can be checked in dpbe_core.py's `calc_F_M`.
 
@@ -77,11 +77,11 @@ config = {
     # Factors for collision efficiency.
     # The length of the alpha_prim array must be the square of the dpbe's dimensionality (dim^2).
 
-    "BREAKRVAL": 4,  
+    "BREAKRVAL": 2,  
     # Flag that determines which model to use for calculating breakage rate.
     # Can be checked in dpbe_core.py's `calc_B_R`.
 
-    "BREAKFVAL": 5,  
+    "BREAKFVAL": 2,  
     # Flag that determines which model to use for calculating the fragment distribution function.
     # Can be checked in dpbe_core.py's `calc_int_B_F`.
 
