@@ -1,7 +1,7 @@
 import numpy as np
 
 config = {
-    "n_order": 3,                          # Order of the moments [-]
+    "n_order": 2,                          # Order of the moments [-]
     "n_add": 3,                          # Number of additional nodes [-] 
     "GQMOM": True,
     "GQMOM_method": "gamma",

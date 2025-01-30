@@ -77,7 +77,7 @@ class OptBase():
         self.init_opt_core()
         # Initialize t_vec for file generation
         self.idt_vec = [np.where(self.core.t_all == t_time)[0][0] for t_time in self.core.t_vec]
-        self.check_params()
+        self.check_core_params()
         
     def check_core_params(self):
         """

@@ -5,6 +5,7 @@ Created on Wed Apr 17 08:57:57 2024
 @author: px2030
 """
 import sys, os
+import time
 import numpy as np
 from optframework.pbe import DPBESolver
 ## for plotter
@@ -103,7 +104,10 @@ if __name__ == "__main__":
     dim=2
     p = DPBESolver(dim=dim)
     smoothing = True
+    t_start = time.time()
     p.full_init(calc_alpha=False)
+    t = time.time() - t_start
+    print(f"initilization takes {t} second")
     t_vec = p.t_vec
     ## solve the PBE
     p.solve_PBE()

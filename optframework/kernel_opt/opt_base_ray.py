@@ -215,7 +215,7 @@ def optimierer_ray(self, opt_params=None, exp_data_paths=None,known_params=None)
         run_config=train.RunConfig(
         storage_path =self.core.tune_storage_path,
         name = data_name,
-        verbose = self.verbose, # verbose=0: no trial info, 1: basic info, 2: detailed info
+        verbose = self.core.verbose, # verbose=0: no trial info, 1: basic info, 2: detailed info
         stop={"training_iteration": 1},
         )
     )

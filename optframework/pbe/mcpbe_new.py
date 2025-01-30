@@ -174,48 +174,57 @@ class MCPBESolver():
         # LINE no. i = partial volume component i
         # Final LINE = total volume of particle / agglomerate    
         
-        # Initialize V 
-        # self.V = np.zeros((self.dim+1,np.sum(self.a)))
-        self.V = np.zeros((self.dim+1,np.sum([self.a,self.a2])))
-        cnt = 0
-        
-        # Loop through all components
-        for i in range (self.dim):
-            ## Monodisperse 
-            if self.PGV[i] == 'mono':
-                self.V[i,cnt:cnt+self.a[i]] = np.full(self.a[i],self.v[i])
-            ## Normal Distribution
-            elif self.PGV[i] == 'norm':
-                self.V[i,cnt:cnt+self.a[i]] = norm.rvs(loc=self.v[i], 
-                                                       scale=self.SIG[i]*self.v[i], size=self.a[i])
-            ## Weibull Distribution
-            elif self.PGV[i] == 'weibull':
-                self.V[i,cnt:cnt+self.a[i]] = weibull_min.rvs(2, loc=self.SIG[i]*self.v[i],
-                                                              scale=self.v[i], size=self.a[i])
-            else:
-                print(f'Provided PGV "{self.PGV[i]}" is invalid')
-                
-            cnt += self.a[i]
+        if self.dim == 2 and self.process_type == "breakage" and self.PGV[0] == 'mono':
+            ## The initial mono-disperse condition for 2D breakage is an aggregate consisting 
+            ## of two main particles (here the largest particles).
+            a_tem = (np.sum(self.a)/2).astype(int)  
+            self.V = np.zeros((self.dim+1,a_tem))
+            for i in range(self.dim):
+                self.V[i, :] = np.full(a_tem, self.v[i])
             
-            ## Bi-Modal
-            if self.PGV2 is not None:
-                
-                if self.PGV2[i] == 'mono':
-                    self.V[i,cnt:cnt+self.a2[i]] = np.full(self.a2[i],self.v2[i])
+        # Initialize V for pure agglomeration or mix case or (breakage in 1d):
+        else:
+            # self.V = np.zeros((self.dim+1,np.sum(self.a)))
+            self.V = np.zeros((self.dim+1,np.sum([self.a,self.a2])))
+            cnt = 0
+            
+            # Loop through all components
+            for i in range (self.dim):
+                ## Monodisperse 
+                if self.PGV[i] == 'mono':
+                    self.V[i,cnt:cnt+self.a[i]] = np.full(self.a[i],self.v[i])
                 ## Normal Distribution
-                elif self.PGV2[i] == 'norm':
-                    self.V[i,cnt:cnt+self.a2[i]] = norm.rvs(loc=self.v2[i], 
-                                                           scale=self.SIG2[i]*self.v2[i], 
-                                                           size=self.a2[i])
+                elif self.PGV[i] == 'norm':
+                    self.V[i,cnt:cnt+self.a[i]] = norm.rvs(loc=self.v[i], 
+                                                           scale=self.SIG[i]*self.v[i], size=self.a[i])
                 ## Weibull Distribution
-                elif self.PGV2[i] == 'weibull':
-                    self.V[i,cnt:cnt+self.a2[i]] = weibull_min.rvs(2, loc=self.SIG2[i]*self.v2[i],
-                                                                  scale=self.v2[i], size=self.a2[i])
+                elif self.PGV[i] == 'weibull':
+                    self.V[i,cnt:cnt+self.a[i]] = weibull_min.rvs(2, loc=self.SIG[i]*self.v[i],
+                                                                  scale=self.v[i], size=self.a[i])
                 else:
                     print(f'Provided PGV "{self.PGV[i]}" is invalid')
+                    
+                cnt += self.a[i]
                 
-                cnt += self.a2[i]
-        
+                ## Bi-Modal
+                if self.PGV2 is not None:
+                    
+                    if self.PGV2[i] == 'mono':
+                        self.V[i,cnt:cnt+self.a2[i]] = np.full(self.a2[i],self.v2[i])
+                    ## Normal Distribution
+                    elif self.PGV2[i] == 'norm':
+                        self.V[i,cnt:cnt+self.a2[i]] = norm.rvs(loc=self.v2[i], 
+                                                               scale=self.SIG2[i]*self.v2[i], 
+                                                               size=self.a2[i])
+                    ## Weibull Distribution
+                    elif self.PGV2[i] == 'weibull':
+                        self.V[i,cnt:cnt+self.a2[i]] = weibull_min.rvs(2, loc=self.SIG2[i]*self.v2[i],
+                                                                      scale=self.v2[i], size=self.a2[i])
+                    else:
+                        print(f'Provided PGV "{self.PGV[i]}" is invalid')
+                    
+                    cnt += self.a2[i]
+            
         # Last row: total volume
         self.V[-1,:] = np.sum(self.V[:self.dim,:], axis=0)
         
@@ -579,7 +588,6 @@ class MCPBESolver():
     
     ## Visualize Moments
     def visualize_mom_t(self, i=0, j=0, fig=None, ax=None, clr=c_KIT_green, lbl='MC'):
-        
         if fig is None or ax is None:
             fig=plt.figure()    
             ax=fig.add_subplot(1,1,1)   
@@ -731,6 +739,7 @@ class MCPBESolver():
             self.V = np.concatenate((self.V, frag), axis=1)
             self.X = np.concatenate((self.X, X), axis=0)
             particle_to_break -= frag
+            self.a_tot += 1
         
         self.V = np.concatenate((self.V, particle_to_break), axis=1)
         X = (6*(particle_to_break[-1])/math.pi)**(1/3)  
@@ -740,8 +749,7 @@ class MCPBESolver():
             self.break_rate = np.zeros_like(self.a_tot)
             self.calc_break_rate()
         
-    def produce_one_frag(self, particle_to_break):
-        
+    def produce_one_frag(self, particle_to_break):   
         if self.BREAKFVAL == 1 or self.BREAKFVAL == 2: 
             if self.dim == 1:
                 random_value = np.random.random()
@@ -836,7 +844,7 @@ class MCPBESolver():
         return len(check[check==len(self.c)]) == len(check)
 
 ## JIT-compiled calculation of beta array 
-@jit(nopython=True)
+# @jit(nopython=True)
 def calc_betaarray_jit(COLEVAL, a, G, X, beta0, V, V_c):
     """
     Calculate the beta array for Monte Carlo using calc_beta.

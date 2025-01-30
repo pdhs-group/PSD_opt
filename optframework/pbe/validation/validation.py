@@ -19,7 +19,8 @@ MIN = 1e-20
 
 class PBEValidation():
     def __init__(self, dim, grid, NS, S, kernel, process,
-                 c=1, x=2e-6, beta0=1e-2, t=None, NC=3, Extruder=False):
+                 c=1, x=2e-6, beta0=1e-2, t=None, NC=3, Extruder=False,
+                 mom_n_order=3, mom_n_add=3):
         self.x = x
         self.beta0 = beta0
         self.kernel = kernel
@@ -27,12 +28,11 @@ class PBEValidation():
         self.NC = NC
         self.c = c
         self.n0 = 3*c/(4*math.pi*(x/2)**3)
+        self.mom_order = 2*mom_n_order
         
         self.init_pbe(NS, S, dim, t, grid, process)
         self.init_mcpbe(dim, t, process)
-        self.init_pbm(dim, t, process)
-        
-        ## parameters for Monte-Carlo-PBESolver
+        self.init_pbm(dim, t, process, mom_n_order, mom_n_add)
 
     def init_pbe(self, NS, S, dim, t, grid, process):
         if not self.Extruder:
@@ -53,8 +53,10 @@ class PBEValidation():
             self.v0 = self.p.V[1]
             self.vn = self.p.V[-1]
         elif dim == 2:
-            self.v0 = (self.p.V1[1] + self.p.V1[1]) /2
-            self.vn = (self.p.V1[-1] + self.p.V1[-1]) /2
+            self.v0 = (self.p.V1[1] + self.p.V3[1]) /2
+            ## We use the biggest particle for breakage in 2d
+            self.vn = (self.p.V1[-1] + self.p.V3[-1]) / 2
+            # self.vn = self.p.V[-1,-1]
         self.x0 = (6*self.v0/math.pi)**(1/3)
         self.xn = (6*self.vn/math.pi)**(1/3)
     
@@ -67,10 +69,11 @@ class PBEValidation():
         self.p_mc.USE_PSD = False
         self.p.G = 1.0
         self.p_mc.process_type = process
-        self.p_mc.c = np.full(dim, self.n0*self.v0)   
         if process == "agglomeration":
+            self.p_mc.c = np.full(dim, self.n0*self.v0)   
             self.p_mc.x = np.full(dim, self.x0)
         elif process == "breakage":
+            self.p_mc.c = np.full(dim, self.n0*self.vn)  
             self.p_mc.x = np.full(dim, self.xn)
         self.p_mc.PGV = np.full(dim, "mono")
         self.p_mc.alpha_prim = np.ones(dim**2)
@@ -79,11 +82,11 @@ class PBEValidation():
         #     self.p_mc.tA = t[-1]
         #     self.p_mc.savesteps = len(t)
             
-    def init_pbm(self, dim, t, process):
+    def init_pbm(self, dim, t, process, mom_n_order, mom_n_add):
         if dim == 1:
             self.p_mom = PBMSolver(dim, t_vec=t, load_attr=False)
-            self.p_mom.n_order = 3                          # Order of the moments [-]
-            self.p_mom.n_add = 3                          # Number of additional nodes [-] 
+            self.p_mom.n_order = mom_n_order                          # Number of the simple nodes [-]
+            self.p_mom.n_add = mom_n_add                          # Number of additional nodes [-] 
             self.p_mom.GQMOM = True
             self.p_mom.GQMOM_method = "gamma"
             self.p_mom.USE_PSD = False
@@ -122,15 +125,15 @@ class PBEValidation():
             solver.SIZEEVAL = 1
             solver.CORR_BETA = self.beta0
             
-            solver.BREAKFVAL = 2
             solver.BREAKRVAL = 1
+            solver.BREAKFVAL = 2
         elif self.kernel == "sum":
             solver.COLEVAL = 4                          
             solver.EFFEVAL = 2  
             solver.SIZEEVAL = 1
             solver.CORR_BETA = self.beta0 / self.v0
-            solver.BREAKFVAL = 2
             solver.BREAKRVAL = 2
+            solver.BREAKFVAL = 2
             
     def calculate_pbe(self):
         self.p.calc_F_M()
@@ -242,16 +245,18 @@ class PBEValidation():
                         for l in range(2):
                             self.mu_as[k,l,:] = np.ones(t.shape)*self.c
                         
-    def calculate_case(self):
+    def calculate_case(self, calc_pbe=True, calc_mc=True, calc_pbm=True):
         self.init_mu()
         
-        self.set_kernel_params(self.p)
-        self.set_kernel_params(self.p_mc)
-        self.set_kernel_params(self.p_mom)
-        
-        self.calculate_pbe()
-        # self.calculate_mc_pbe()
-        self.calculate_pbm()
+        if calc_pbe:
+            self.set_kernel_params(self.p)
+            self.calculate_pbe()
+        if calc_mc:
+            self.set_kernel_params(self.p_mc)
+            self.calculate_mc_pbe()
+        if calc_pbm and self.p.dim == 1:
+            self.set_kernel_params(self.p_mom)
+            self.calculate_pbm()
         self.calculate_as_pbe()
               
     def init_plot(self, default = False, size = 'half', extra = False, mrksize = 5):
@@ -350,13 +355,14 @@ class PBEValidation():
                                    clr=c_KIT_green,mrk='^', alpha=alpha, mrkedgecolor='k')
         
         ## add moments from QMOM
-        mu_pbm = self.mu_pbm
-        if rel:
-            mu_pbm[i,j,:] = mu_pbm[i,j,:]/(mu_pbm[i,j,0] + MIN)
-        ax, fig = pt.plot_data(tp,mu_pbm[i,j,:], fig=fig, ax=ax,
-                               xlbl='Agglomeration time $t_\mathrm{A}$ / $s$',
-                               ylbl=ylbl, lbl='PBM, $M_{\mathrm{order}}='+str(self.p_mom.n_order*2)+'$',
-                               clr=c_KIT_blue,mrk='o', alpha=alpha, mrkedgecolor='k')
+        if self.p.dim == 1:
+            mu_pbm = self.mu_pbm
+            if rel:
+                mu_pbm[i,j,:] = mu_pbm[i,j,:]/(mu_pbm[i,j,0] + MIN)
+            ax, fig = pt.plot_data(tp,mu_pbm[i,j,:], fig=fig, ax=ax,
+                                   xlbl='Agglomeration time $t_\mathrm{A}$ / $s$',
+                                   ylbl=ylbl, lbl='PBM, $M_{\mathrm{order}}='+str(self.mom_order)+'$',
+                                   clr=c_KIT_blue,mrk='D', alpha=alpha, mrkedgecolor='k')
         # if std_mu_mc is not None:
         #     ax.errorbar(tp,mu_mc[i,j,:],yerr=std_mu_mc[i,j,:],fmt='none',color=c_KIT_red,
         #                 capsize=plt.rcParams['lines.markersize']-2,alpha=alpha,zorder=0, mec ='k')

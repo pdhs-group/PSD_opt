@@ -79,6 +79,10 @@ config = {
         # Whether to use PSD (particle size distribution) data for setting the initial conditions 
         # of N.
         
+        'USE_PSD_R': False,
+        # Whether to use R01_0 and R03_0 below to get the particle size in the PSD data as 
+        # the starting coordinates for PBE. If False, the values ​​of R_01 and R_03 are used.
+        
         'R01_0' : 'r0_001',
         # Radius of NM1 primary particles corresponding to the 1% position (Q3) in the PSD data.
         
@@ -124,7 +128,7 @@ config = {
         'tune_storage_path': os.path.join(_config_opt_path, "Ray_Tune"),   
         # Path to store Ray Tune optimization infomation.
         
-        'verbose': 0,
+        'verbose': 1,
     
         'multi_jobs': False,  
         # Whether to run multiple optimization tasks (Tune jobs) concurrently. 
@@ -133,10 +137,10 @@ config = {
         'num_jobs': 3,  
         # Number of parallel optimization jobs to run.
     
-        'cpus_per_trail': 2,  
+        'cpus_per_trail': 3,  
         # Number of CPU cores allocated to each optimization trial.
     
-        'max_concurrent': 2,  
+        'max_concurrent': 4,  
         # Maximum number of trials that can be run concurrently.
         },
     

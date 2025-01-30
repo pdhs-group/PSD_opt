@@ -50,13 +50,21 @@ def return_pop_distribution():
 
 def calc_delta_test(var_delta=False):
     # pop_params = conf.config['pop_params']
-    pop_params = {"pl_v": 2,
-            "pl_P1": 1e-2,
-            "pl_P2": 1,
-            "pl_P3": 1e-2,
-            "pl_P4": 1,
+    pop_params = {"pl_v": 1.52783,  
+    # Parameter in fragment distribution function.
+
+    "V1_mean": 1e-15,
+    # Mean volume of NM1 particles (in cubic meters).
+
+    "V3_mean": 1e-15,  
+    # Mean volume of M particles (in cubic meters).
+    
+    "pl_P1": 6.57369e-05,  
+    "pl_P2": 2.67092,  
+    "pl_P3": 1.28692e-05,  
+    "pl_P4": 2.11026,  
             "G": 80,
-     'corr_agg': np.array([1e-2,1e-2,1e-2])}
+     'corr_agg': np.array([0.00386429,0.0142977,0.00475092])}
     opt.core.init_attr(opt.core_params)
     opt.core.init_pbe(opt.pop_params, opt.data_path) 
     if opt.core.calc_init_N:
@@ -97,7 +105,7 @@ if __name__ == '__main__':
     opt = OptBase()
     multi_flag = opt.multi_flag
     
-    data_name = "Sim_Mul_0.1_para_1_0.01_0.01_0.01_2_0.01_1_0.01_1.xlsx"
+    data_name = "Sim_Mul_0.1_para_1.0_0.001_0.001_0.1_1.5_0.01_0.5_0.01_2.0.xlsx"
     
     exp_data_paths = os.path.join(opt.data_path, data_name)
     if multi_flag:

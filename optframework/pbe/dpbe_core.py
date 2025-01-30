@@ -567,6 +567,7 @@ def calc_F_M(self):
     elif self.dim == 2:
         # To avoid mass leakage at the boundary in CAT, boundary cells are not directly involved in the calculation. 
         # So there is no need to define the corresponding F_M at boundary. F_M is (NS-1)^4 instead (NS)^4
+        # calc_beta = jit_kernel_agg.prepare_calc_beta(self.COLEVAL)
         self.F_M = np.zeros((self.NS-1,self.NS-1,self.NS-1,self.NS-1))
         if self.process_type == 'breakage':
             return

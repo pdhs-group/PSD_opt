@@ -14,6 +14,7 @@ def calc_F_M_1D(NS, COLEVAL, CORR_BETA, G, R, alpha_prim, EFFEVAL, SIZEEVAL, X_S
     # So there is no need to define the corresponding F_M at boundary. F_M is (NS-1)^2 instead (NS)^2
     F_M = np.zeros((NS-1, NS-1))
     
+    # calc_beta = prepare_calc_beta(COLEVAL, CORR_BETA, G)
     # Go through all agglomeration partners 1 [a] and 2 [i]
     # The current index tuple idx stores them as (a, i)
     for idx, tmp in np.ndenumerate(F_M):
@@ -24,8 +25,9 @@ def calc_F_M_1D(NS, COLEVAL, CORR_BETA, G, R, alpha_prim, EFFEVAL, SIZEEVAL, X_S
         # Calculate the corresponding agglomeration efficiency
         # Add one to indices to account for borders
         a, i = idx[0], idx[1]
-        beta = calc_beta(COLEVAL, CORR_BETA, G, R, a, i)
-                        
+        # r1, r2 = R[a], R[i]
+        # beta = calc_beta(r1, r2)
+        beta = calc_beta(COLEVAL, CORR_BETA, G, R, a, i)                
         # Calculate collision efficiency depending on EFFEVAL. 
         if EFFEVAL == 1:
             alpha = alpha_prim
@@ -56,6 +58,7 @@ def calc_F_M_2D(NS,disc,COLEVAL,CORR_BETA,G,R,X1,X3,EFFEVAL,alpha_prim,SIZEEVAL,
     # So there is no need to define the corresponding F_M at boundary. F_M is (NS-1)^4 instead (NS)^4
     F_M = np.zeros((NS-1,NS-1,NS-1,NS-1))
     
+    # calc_beta = prepare_calc_beta(COLEVAL)
     # Go through all agglomeration partners 1 [a,b] and 2 [i,j]
     # The current index tuple idx stores them as (a,b,i,j)
     for idx, tmp in np.ndenumerate(F_M):
@@ -66,6 +69,8 @@ def calc_F_M_2D(NS,disc,COLEVAL,CORR_BETA,G,R,X1,X3,EFFEVAL,alpha_prim,SIZEEVAL,
         # Calculate the corresponding agglomeration efficiency
         # Add one to indices to account for borders
         a, b, i, j = idx[0], idx[1], idx[2], idx[3]
+        # r1, r2 = R[a, b], R[i, j]
+        # beta = calc_beta(r1, r2, CORR_BETA, G)
         beta = calc_beta(COLEVAL, CORR_BETA, G, R, (a, b), (i, j))
         
         # Calculate probabilities, that particle 1 [a,b] is colliding as
@@ -208,6 +213,29 @@ def calc_F_M_3D(NS,disc,COLEVAL,CORR_BETA,G,R,X1,X2,X3,EFFEVAL,alpha_prim,SIZEEV
     
     return F_M
 
+# @jit(nopython=True)
+# def prepare_calc_beta(COLEVAL):
+#     """
+#     Prepare a fast version of calc_beta based on the COLEVAL value.
+#     Returns a function specific to the given COLEVAL to reduce runtime checks.
+#     """
+#     if COLEVAL == 1:
+#         def calc_beta(r1, r2, CORR_BETA, G):
+#             return CORR_BETA * G * 2.3 * (r1 + r2) ** 3
+#     elif COLEVAL == 2:
+#         def calc_beta(r1, r2, CORR_BETA, G):
+#             return CORR_BETA * 2 * 1.38e-23 * 293 * (r1 + r2) ** 2 / (3e-3 * (r1 * r2))
+#     elif COLEVAL == 3:
+#         def calc_beta(r1, r2, CORR_BETA, G):
+#             return CORR_BETA
+#     elif COLEVAL == 4:
+#         def calc_beta(r1, r2, CORR_BETA, G):
+#             return CORR_BETA * 4 * math.pi * (r1 ** 3 + r2 ** 3) / 3
+#     else:
+#         def calc_beta(r1, r2, CORR_BETA, G):
+#             return 0.0
+#     return calc_beta
+
 @jit(nopython=True)
 def calc_beta(COLEVAL, CORR_BETA, G, R, idx1, idx2):
     """
@@ -242,7 +270,5 @@ def calc_beta(COLEVAL, CORR_BETA, G, R, idx1, idx2):
     else:
         beta = 0.0  # Default case if COLEVAL is invalid.
     return beta
-
-
 
 

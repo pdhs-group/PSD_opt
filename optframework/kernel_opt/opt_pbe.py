@@ -210,6 +210,7 @@ def set_comp_para(self, data_path):
         self.p.DIST3_path = DIST3_path
         self.p.DIST1_name = self.PSD_R01
         self.p.DIST3_name = self.PSD_R03
+    if self.USE_PSD_R:
         self.p.R01 = psd_dict_R01[self.R01_0] * self.R01_0_scl
         self.p.R03 = psd_dict_R03[self.R03_0] * self.R03_0_scl
     else:

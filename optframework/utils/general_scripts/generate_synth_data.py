@@ -7,15 +7,14 @@ Created on Thu Jan  4 16:14:15 2024
 import sys
 import os
 import numpy as np
+import runpy
 import multiprocessing
-sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),"../../.."))
+from optframework.kernel_opt.opt_base import OptBase
 from generate_psd import full_psd
-from pypbe.kernel_opt.opt_base import OptBase
-import config.opt_config as conf
 
-def calc_function(conf_params):
+def calc_function(conf_params, data_path, config_path):
     #%%  Input for Opt 
-    find = OptBase(data_path=data_path)
+    find = OptBase(data_path=data_path, config_path=config_path)
     if not isinstance(conf_params, dict):
         raise TypeError("conf_params should be a dictionary.")
     b = conf_params['CORR_BETA']
@@ -34,7 +33,9 @@ if __name__ == '__main__':
     generate_new_psd = True
     # pth = '/pfs/work7/workspace/scratch/px2030-MC_train'
     # data_path = os.path.join(pth,"mix", "data")
-    data_path = r"C:\Users\px2030\Code\PSD_opt\pypbe\data"
+    data_path = r"C:\Users\px2030\Code\PSD_opt\tests\data"
+    config_path = r"C:\Users\px2030\Code\PSD_opt\tests\config\opt_config.py"
+    conf = runpy.run_path(config_path)
     
     if generate_new_psd:
         ## Input for generating psd-data
@@ -112,6 +113,6 @@ if __name__ == '__main__':
     # pool.starmap(calc_function, func_list)                        
     # pool.close()
     # pool.join()        
-    with multiprocessing.Pool(processes=1) as pool:
-        pool.map(calc_function, func_list)                
+    with multiprocessing.Pool(processes=2) as pool:
+        pool.starmap(calc_function, [(conf, data_path, config_path) for conf in func_list])             
                    
