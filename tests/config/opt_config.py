@@ -10,10 +10,12 @@ import os
 _config_opt_path = os.path.dirname(__file__)
 config = {
     ## Use only 2D Data or 1D+2D
-    'multi_flag': True,
+    'multi_flag': False,
+    ## Input only one/one set of PSD data
+    'single_case': False,
     
     'algo_params': {
-        'dim': 2,
+        'dim': 1,
         # The dimensionality of the PBE
         
         't_init' : np.array([0, 0]),
@@ -69,7 +71,7 @@ config = {
         # This value will change global random states for numpy and torch on 
         # initalization and loading from checkpoint.
         
-        'n_iter': 20,
+        'n_iter': 10,
         # Number of iterations for the optimization process.
 
         'calc_init_N': False,

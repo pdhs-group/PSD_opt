@@ -7,15 +7,14 @@ Created on Tue Dec  5 10:58:09 2023
 import sys, os
 import time
 import numpy as np
-sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),".."))
-from pypbe.kernel_opt.opt_base import OptBase
+from optframework.kernel_opt.opt_base import OptBase
 
 if __name__ == '__main__':
     # tmpdir = os.environ.get('TMP_PATH')
     # data_path = os.path.join(tmpdir, "data")
-    data_path = r"C:\Users\px2030\Code\PSD_opt\pypbe\data"
+    # data_path = r"C:\Users\px2030\Code\PSD_opt\pypbe\data"
     #%%  Instantiate OptBase.
-    opt = OptBase(data_path=data_path)
+    opt = OptBase()
     
     multi_flag = opt.multi_flag
     
@@ -47,12 +46,12 @@ if __name__ == '__main__':
     var_alpha_prim = np.array(unique_alpha_prim)
 
     ## define the range of v(breakage function)
-    var_v = np.array([1.0,1.5])
+    var_v = np.array([1.5])
     # var_v = np.array([0.01])    ## define the range of P1, P2 for power law breakage rate
-    var_P1 = np.array([1e-4,1e-2])
-    var_P2 = np.array([0.5,2.0])
-    var_P3 = np.array([1e-4,1e-2])
-    var_P4 = np.array([0.5,2.0])
+    var_P1 = np.array([1e-2])
+    var_P2 = np.array([0.5])
+    var_P3 = np.array([1e-2])
+    var_P4 = np.array([2.0])
 
     ## define the range of particle size scale and minimal size
     
@@ -76,10 +75,11 @@ if __name__ == '__main__':
                                     # 'CORR_BETA' : corr_beta,
                                     # 'alpha_prim' : alpha_prim,
                                     # 'pl_v' : v,
-                                    'pl_P1' : P1,
+                                    # 'pl_P1' : P1,
                                     # 'pl_P2' : P2,
-                                    'pl_P3' : P3,
+                                    # 'pl_P3' : P3,
                                     # 'pl_P4' : P4,
+                                    'G': 1,
                                     }
                                 # known_params = None
                                 if add_noise:
@@ -87,8 +87,9 @@ if __name__ == '__main__':
                                 else:
                                     prefix = "Sim_para"
                                 data_name = f"{prefix}_{corr_beta}_{alpha_prim[0]}_{alpha_prim[1]}_{alpha_prim[2]}_{v}_{P1}_{P2}_{P3}_{P4}.xlsx"
-                                data_path_tem = os.path.join(data_path, data_name)
-                                data_path_tem = data_path_tem.replace(".xlsx", "_0.xlsx")
+                                data_path_tem = os.path.join(opt.data_path, data_name)
+                                if opt.core.sample_num != 1:
+                                    data_path_tem = data_path_tem.replace(".xlsx", "_0.xlsx")
                                 if not os.path.exists(data_path_tem):
                                     continue
                                 data_names_list.append(data_name)
