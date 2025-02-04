@@ -56,7 +56,7 @@ This will create a folder named `PSD_opt_env` in the current directory, which wi
 Next, install all external packages within the current virtual environment:
 
 ```bash
-pip install -r requirements_ray.txt
+pip install -r requirements.txt
 ```
 
 _Remember_: All subsequent usage of this project must be done within the virtual environment.

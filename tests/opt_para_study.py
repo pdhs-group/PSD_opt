@@ -79,7 +79,7 @@ if __name__ == '__main__':
                                     # 'pl_P2' : P2,
                                     # 'pl_P3' : P3,
                                     # 'pl_P4' : P4,
-                                    'G': 1,
+                                    # 'G': 1,
                                     }
                                 # known_params = None
                                 if add_noise:

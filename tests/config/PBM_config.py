@@ -1,7 +1,7 @@
 import numpy as np
 
 config = {
-    "n_order": 2,                          # Order of the moments [-]
+    "n_order": 3,                          # Order of the moments [-]
     "n_add": 3,                          # Number of additional nodes [-] 
     "GQMOM": True,
     "GQMOM_method": "gamma",
@@ -31,7 +31,7 @@ config = {
     # "mix": both agglomeration and breakage
 
 
-    "V_unit": 1,  
+    "V_unit": 1e-1,  
     # Volume unit used for normalization of N (particle number concentration). 
     # Setting a smaller value generally does not affect the relative relationships between N (i.e., the PSD),
     # but helps reduce the stiffness of matrices during calculations, leading to faster solver convergence.

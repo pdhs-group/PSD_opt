@@ -138,7 +138,7 @@ def full_psd(x50, resigma=0.2, minscale=None, maxscale=None, plot_psd=False, out
     
     # Create and save PSD dictionary
     dict_Qx={'Q_PSD':Q,'x_PSD':x, 'r0_001':r0_001, 'r0_005':r0_005, 'r0_01':r0_01}
-    np.save(dist,dict_Qx)  
+    np.save(dist,dict_Qx)
        
     return dist
         

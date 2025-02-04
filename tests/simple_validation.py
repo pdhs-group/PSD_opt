@@ -4,10 +4,32 @@ Created on Fri Jan  3 11:02:26 2025
 
 @author: px2030
 """
+import os
 import numpy as np
 from optframework.pbe.validation import PBEValidation
+from optframework.utils.general_scripts.generate_psd import full_psd
 
 if __name__ == "__main__":
+    ## To ensure that MOM remains relatively stable, 
+    ## the function internally adjusts the particle initialization manually. 
+    ## As a result, the actual volume concentration may no longer match the value of c below! 
+    ## However, the initial conditions for MC-PBE and PBM are directly taken from dPBE, 
+    ## so theoretically, the initial conditions for all three methods remain the same.
+    c = 1e-2  # m3/m3
+    x = 2e-1  # m
+    beta0 = 1e-4 # /m3
+    use_psd = False
+    rel_mom = True
+    
+    ## generate initial PSD
+    pth = os.path.dirname( __file__ )
+    output_dir = os.path.join(pth, "PSD_data")
+    x50 = x * 1e6  # convert to um  
+    resigma = 1
+    minscale = 0.01
+    maxscale = 100
+    dist_path = full_psd(x50, resigma, minscale=minscale, maxscale=maxscale, plot_psd=False, output_dir=output_dir)
+    
     dim = 1
     grid = "geo"
     NS1 = 15
@@ -15,13 +37,14 @@ if __name__ == "__main__":
     S1 = 4
     # S2 = 2
     kernel = "sum"
-    process = "agglomeration"
-    t = np.arange(0, 101, 5, dtype=float)
+    process = "mix"
+    t = np.arange(0, 21, 1, dtype=float)
     
-    v = PBEValidation(dim, grid, NS1, S1, kernel, process, t=t, c=1e-2, x=2e-3, beta0=1e-9)
-    v.calculate_case()
+    v = PBEValidation(dim, grid, NS1, S1, kernel, process, t=t, c=c, x=x, 
+                      beta0=beta0, use_psd=use_psd, dist_path=dist_path)
+    v.calculate_case(calc_pbe=True, calc_mc=True, calc_pbm=True)
     v.init_plot(size = 'half', extra = True, mrksize=6)
-    v.plot_all_moments()
-    v.add_new_moments(NS=NS2)
+    v.plot_all_moments(REL=rel_mom)
+    v.add_new_moments(NS=NS2,REL=rel_mom)
     v.show_plot()
     

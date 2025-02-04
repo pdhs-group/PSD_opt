@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 import optframework.utils.plotter.plotter as pt
 import optframework.utils.func.jit_pbm_qmom as qmom
 import optframework.utils.func.jit_pbm_rhs as jit_pbm_rhs
+from optframework.utils.func.static_method import interpolate_psd
 
 class PBMSolver:
     def __init__(self, dim, t_total=601, t_write=100, t_vec=None, 
@@ -236,45 +237,64 @@ class PBMSolver:
         self.plot_moments_comparison(moments, moments_QMOM, moments_GQMOM)
         
         return moments, moments_QMOM, moments_GQMOM
-    def init_moments(self, NDF_shape="normal", N0=1.0, x_range=(0,1), 
-                     mean=0.5, std_dev=0.1, shape=2, scale=1,
+    def init_moments(self, x=None, NDF=None, NDF_shape="normal", N0=1.0,
+                     V0=None, x_range=(0,1), mean=0.5, std_dev=0.1, shape=2, scale=1,
                      sigma=1, a=2, b=2, size=0.5):
-        if self.USE_PSD:
-            return
-        else:
-            ## Generate NDF with integral (number of particles) equal to 1
-            if NDF_shape == "normal":
-                x, NDF = self.create_ndf(distribution="normal", x_range=x_range, mean=mean, std_dev=std_dev)
-            elif NDF_shape == "gamma":
-                x, NDF = self.create_ndf(distribution="gamma", x_range=x_range, shape=shape, scale=scale)
-            elif NDF_shape == "lognormal":
-                x, NDF = self.create_ndf(distribution="lognormal", x_range=x_range, mean=mean, sigma=sigma)
-            elif NDF_shape == "beta":
-                x, NDF = self.create_ndf(distribution="beta", x_range=x_range, a=a, b=b)
-            elif NDF_shape == "mono":
-                x, NDF = self.create_ndf(distribution="mono", x_range=x_range, size=size)
-
+        if x is None or NDF is None:
+            if self.USE_PSD:
+                x = np.linspace(0.0, x_range[1], 10000)
+                # Ensure no negative volumes
+                if np.any(x < 0):
+                    raise ValueError("Error: Volume (x) cannot be negative!")
+                
+                # Compute diameter safely
+                d = np.where(x > 0, (6 * x / np.pi) ** (1/3), 0)
+                if V0 is None:
+                    raise ValueError("Total volume of particle must be gave to get PSD")
+                NDF = np.zeros_like(d)
+                ## interpolate_psd returns the absolute number of particles, 
+                ## which needs to be converted into particle density.
+                NDF[1:] = interpolate_psd(d[1:], self.DIST1, V0)
+                NDF /= x[1]-x[0]
+            else:
+                ## Generate NDF with integral (number of particles) equal to 1
+                if NDF_shape == "normal":
+                    x, NDF = self.create_ndf(distribution="normal", x_range=x_range, mean=mean, std_dev=std_dev)
+                elif NDF_shape == "gamma":
+                    x, NDF = self.create_ndf(distribution="gamma", x_range=x_range, shape=shape, scale=scale)
+                elif NDF_shape == "lognormal":
+                    x, NDF = self.create_ndf(distribution="lognormal", x_range=x_range, mean=mean, sigma=sigma)
+                elif NDF_shape == "beta":
+                    x, NDF = self.create_ndf(distribution="beta", x_range=x_range, a=a, b=b)
+                elif NDF_shape == "mono":
+                    x, NDF = self.create_ndf(distribution="mono", x_range=x_range, size=size)
+    
+                ## If the NDF peak is very close to the boundary, 
+                ## the integral over the domain may not be 1, 
+                ## so a scaling is performed to ensure that the integral is 1.
+                moment0 = np.trapz(NDF, x)
+                NDF /= moment0
+            
         self.x_max = x[-1]
         # self.x_max = 1.0
         self.moments = np.zeros((self.n_order*2,self.t_num))
-        ## If the NDF peak is very close to the boundary, 
-        ## the integral over the domain may not be 1, 
-        ## so a scaling is performed to ensure that the integral is 1.
-        moment0 = np.trapz(NDF, x)
-        NDF /= moment0
         ## Corrected particle count
         NDF *= N0 * self.V_unit
         self.moments[:,0] = np.array([np.trapz(NDF * (x ** k), x) for k in range(2*self.n_order)])
+        self.normalize_mom()
+        self.set_tol()
         
+    def normalize_mom(self):
+        ## Note: The following scaling method assumes that the original x-coordinates start from zero.
         self.moments_norm = np.copy(self.moments)
         self.moments_norm_factor = np.array([self.x_max**k for k in range(self.n_order*2)])
         self.moments_norm[:,0] = self.moments[:,0] / self.moments_norm_factor
         
+    def set_tol(self):
         ## Sets the integration tolerance associated with the initial moments
         self.atolarray = np.maximum(self.atol_min, self.atol_scale * np.abs(self.moments_norm[:,0]))
         self.rtolarray = np.full_like(self.moments_norm[:,0], self.rtol)
-            
-        self.m = 2*self.n_order
+        
     def solve_PBM(self, t_vec=None):
         if t_vec is None:
             t_vec = self.t_vec
@@ -310,12 +330,12 @@ class PBMSolver:
                     status = True if self.RES.status == 0 else False
                 except (FloatingPointError, ValueError) as e:
                     print(f"Exception encountered: {e}")
-                    y_evaluated = -np.ones((self.m,len(t_vec)))
+                    y_evaluated = -np.ones((2*self.n_order,len(t_vec)))
                     status = False
         # Monitor whether integration are completed  
         self.t_vec = t_vec 
         # self.N = y_evaluated / eva_N_scale
-        self.moments = y_evaluated * self.moments_norm_factor[:, np.newaxis]
+        self.moments = y_evaluated * self.moments_norm_factor[:, np.newaxis] / self.V_unit
         self.calc_status = status   
         if not self.calc_status:
             print('Warning: The integral failed to converge!')

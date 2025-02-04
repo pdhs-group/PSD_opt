@@ -453,7 +453,7 @@ def init_N(self, reset_N=True, N01=None, N02=None, N03=None):
                 self.N[-1,0] = self.N01
             elif self.process_type == "mix":
                 self.N[1,0] = self.N01
-                self.N[-1,0] = self.N01
+                # self.N[-1,0] = self.N01
             else:
                 raise Exception("Current process_type not allowed!")
     
@@ -472,7 +472,7 @@ def init_N(self, reset_N=True, N01=None, N02=None, N03=None):
             elif self.process_type == "mix":
                 self.N[1,0,0] = self.N01
                 self.N[0,1,0] = self.N03  
-                self.N[-1,-1,0] = self.N01
+                # self.N[-1,-1,0] = self.N01
             
     
     # 3-D case

@@ -11,14 +11,14 @@ config = {
     "a0": 1e3,
     # Total amount of particles in control volume (initially)
     
-    "c": np.array([1e-2]), 
+    "c": np.array([1e0]), 
     # "c": np.array([0.5,0.5]), 
     # Volume concentration array of components [m3/m3]
     ## The Volume concentration of components specifies the proportion of the two primary particles 
     ## in the initial total amount a_0.
     ## It also affects/scales the control volume to calculate the PBE!
     
-    "x": np.array([1e-1]),
+    "x": np.array([1e0]),
     # "x": np.array([1e-2, 1e-2]),
     # (Mean) equivalent diameter of primary particles for each component
     
@@ -97,9 +97,9 @@ config = {
     "V3_mean": 1e-15,  
     # Mean volume of M particles (in cubic meters).
     
-    "pl_P1": 1e-2,  
+    "pl_P1": 1e-1,  
     "pl_P2": 1,  
-    "pl_P3": 1e-2,  
+    "pl_P3": 1e-1,  
     "pl_P4": 1,  
     # Parameters for breakage rate kernel.
     "G": 1,
