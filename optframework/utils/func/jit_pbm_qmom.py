@@ -1,8 +1,13 @@
 import numpy as np
 import scipy.stats as stats
+from .jit_pbm_chyqmom import compute_central_moments_2d, compute_central_moments_1d
+
 
 ### This Function is from the open source bib PyQBMMlib(https://github.com/sbryngelson/PyQBMMlib/tree/master)
-def calc_qmom_nodes_weights(moments, n, adaptive=False):
+### Note: There is actually a problem with the adaptive function. 
+### It should dynamically adjust the recursive coefficient and the number of nodes/weights 
+### based on various judgments. But judgments were tested here but adjustment was actually not implemented.
+def calc_qmom_nodes_weights(moments, n, adaptive=False, use_central=False):
     """
     Compute nodes (ξ_i) and weights (w_i) using QMOM with the adaptive Wheeler algorithm.
 
@@ -13,6 +18,7 @@ def calc_qmom_nodes_weights(moments, n, adaptive=False):
     Returns:
         tuple: (x, w), where `x` are the nodes (ξ_i) and `w` are the weights (w_i).
     """
+    
     # Parameters for adaptivity
     rmax = 1e-8  # Ratio threshold for weights
     eabs = 1e-8  # Absolute error threshold for adaptivity
@@ -23,11 +29,18 @@ def calc_qmom_nodes_weights(moments, n, adaptive=False):
         w = moments[0]
         x = moments[1] / moments[0]
         return np.array([x]), np.array([w])
-    
+    if use_central:
+        bx, central_moments = compute_central_moments_1d(moments)
+        mom = central_moments
+    else:
+        mom = moments
     # calculate recurrence coefficients
-    a, b = calc_qmom_recurrence(moments, n, adaptive, cutoff)
-    x, w = recurrence_jacobi_nodes_weights(moments, a, b)
+    a, b = calc_qmom_recurrence(mom, n, adaptive, cutoff)
+    x, w = recurrence_jacobi_nodes_weights(mom, a, b)
 
+    if use_central:
+        x += bx
+        w *= moments[0]
     # Adaptive criteria: Refine nodes and weights if enabled
     if adaptive:
         for n1 in range(n, 0, -1):
@@ -320,10 +333,140 @@ def calc_zetas(a, b, n_reg, n_max_nodes):
         numpy.ndarray: zetas arrays.
     """
     zetas = np.zeros(2 * n_max_nodes)
-    zetas[1] = a[0]
+    if a[0] != 0:
+        zetas[1] = a[0]
+    else:
+        zetas[1] = np.sqrt(b[1])
     for i in range(1, n_reg):
         zetas[2*i] = b[i] / zetas[2*i-1]
         # i <= 2n
         # if i == n_reg: continue
         zetas[2*i+1] = a[i] - zetas[2*i]
     return zetas
+
+def vander_rybicki(x, q):
+    """
+    使用 Rybicki 算法求解 Vandermonde 线性方程组。
+    输入:
+    - x: 节点向量 (1D 数组)
+    - q: 右侧矩阵向量 (1D 数组)
+    输出:
+    - w: 解向量
+    """
+    n = len(x)
+    w = np.zeros(n)
+    c = np.zeros(n)
+
+    if n == 1:
+        w[0] = q[0]
+        return w
+
+    # 计算主多项式系数
+    c[n-1] = -x[0]
+    for i in range(1, n):
+        xx = -x[i]
+        for j in range(n-2, n-i-2, -1):
+            c[j] += xx * c[j+1]
+        c[n-1] += xx
+
+    # 逐项求解子因子
+    for i in range(n):
+        xx = x[i]
+        t = 1.0
+        b = 1.0
+        s = q[n-1]
+
+        for k in range(n-1, 0, -1):
+            b = c[k] + xx * b
+            s += q[k-1] * b
+            t = xx * t + b
+
+        w[i] = s / t
+
+    return w
+
+def conditional_mom_sys_solve(M_matrix, u, R_diag):
+    N1, N2 = M_matrix.shape
+    if len(u) != N1 or len(R_diag) != N1:
+        raise ValueError("u 和 R_diag 必须与 M_matrix 行数一致")
+
+    # 对已知矩阵进行 R^{-1} 变换
+    M_prime = M_matrix 
+
+    # 使用Rybicki 分列求解
+    R1_matrix = np.zeros((N1, N2))
+    R1_debug = np.zeros((N1, N2))
+
+    ## for debug
+    V = np.vander(u, increasing=True)
+    V = np.dot(np.transpose(V), np.diag(R_diag))
+    R1_debug = np.linalg.solve(V, M_matrix)
+    
+    for col in range(N2):
+        R1_matrix[:, col] = vander_rybicki(u, M_prime[:, col]) / R_diag
+    print(np.mean(abs(R1_matrix-R1_debug)))
+    
+    return R1_matrix
+    
+def calc_cqmom_2d(moments, n, indices, use_central=True):
+    m = 2*n
+    indices_array = np.array(indices)
+    mom00, bx, by, central_moments = compute_central_moments_2d(moments, indices_array)
+    
+    M1 = central_moments[:m] if use_central else moments[:m]
+    x1, w1 = calc_qmom_nodes_weights(M1, n, False, use_central)
+    
+    M_matrix = np.zeros((n, m-1))
+    for i in range(n):
+        if use_central:
+            M_matrix[i] = central_moments[m+i*(m-1):m+(i+1)*(m-1)]
+        else:
+            M_matrix[i] = moments[m+i*(m-1):m+(i+1)*(m-1)]
+    
+    R1_matrix = conditional_mom_sys_solve(M_matrix, x1, w1)
+    ones_column = np.ones((R1_matrix.shape[0], 1))
+    R1_matrix = np.hstack((ones_column, R1_matrix))
+    
+    x2 = np.zeros((n, n))
+    w2 = np.zeros((n, n))
+    for i in range(n):
+        x2[i], w2[i] = calc_qmom_nodes_weights(R1_matrix[i], n, False, use_central)
+    
+    if use_central:
+        x1 += bx
+        x2 += by
+        w1 *= mom00
+        
+    abscissas = np.empty((2, n*n), dtype=np.float64)
+    weights = np.empty(n*n, dtype=np.float64)
+    
+    idx = 0
+    for i in range(n):
+        for j in range(n):
+            abscissas[0, idx] = x1[i]
+            abscissas[1, idx] = x2[i, j]
+            weights[idx] = w1[i] * w2[i, j]
+            idx += 1
+    
+    return abscissas, weights
+
+def quadrature_2d(x1, w1, x2, w2, moment_index):
+    mu = 0.0
+    N1, N2 = x2.shape
+    for i in range(N1):
+        for j in range(N2):
+            mu += (
+                w1[i] * w2[i,j]
+                * (x1[i] ** moment_index[0])
+                * (x2[i,j] ** moment_index[1])
+                )
+    return mu
+    
+    
+    
+    
+    
+    
+    
+    
+    

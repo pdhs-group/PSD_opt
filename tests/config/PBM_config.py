@@ -3,8 +3,8 @@ import numpy as np
 config = {
     "n_order": 3,                          # Order of the moments [-]
     "n_add": 3,                          # Number of additional nodes [-] 
-    "GQMOM": True,
-    "GQMOM_method": "gamma",
+    "GQMOM": False,
+    "GQMOM_method": "lognormal",
     "nu": 1,   
     # "R01": 8.677468940430804e-07,
     # "R03": 8.677468940430804e-07,
@@ -69,7 +69,7 @@ config = {
     # Flag that determines whether to account for damping effects due to particle volume growth 
     # during aggregation. This is handled in dpbe_core.py's `calc_F_M`.
 
-    "CORR_BETA": 1e-2,
+    "CORR_BETA": 1e8,
     # Correction factor for the collision frequency kernel, controlling the rate of aggregation.
 
     # 'alpha_prim': np.array([1,1,1,1]),  

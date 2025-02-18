@@ -572,7 +572,7 @@ def calc_F_M(self):
         if self.process_type == 'breakage':
             return
         if self.JIT_FM:
-            self.F_M = jit_kernel_agg.calc_F_M_2D(self.NS,self.disc,self.COLEVAL,self.CORR_BETA,
+            self.F_M = jit_kernel_agg.calc_F_M_2D(self.NS,self.COLEVAL,self.CORR_BETA,
                                        self.G,self.R,self.X1_vol,self.X3_vol,
                                        self.EFFEVAL,self.alpha_prim,self.SIZEEVAL,
                                        self.X_SEL,self.Y_SEL)/self.V_unit

@@ -76,13 +76,19 @@ def breakage_func_2d(x3,x1,y1,y3,v,q,BREAKFVAL):
         # p = (2v+1)*(v+2)/(2*v*(v+1))
         # p should <2 => v should < 1.28!
     return theta / (y1*y3)
-@jit(nopython=True)
-def breakage_func_2d_x1vol(x3,x1,y3,y1,v,q,BREAKFVAL):
-    return x1 * breakage_func_2d(x3,x1,y1,y3,v,q,BREAKFVAL)
+
 
 @jit(nopython=True)
-def breakage_func_2d_x3vol(x3,x1,y3,y1,v,q,BREAKFVAL):
-    return x3 * breakage_func_2d(x3,x1,y1,y3,v,q,BREAKFVAL)
+def breakage_func_2d_x1k(x3,x1,y1,y3,v,q,BREAKFVAL, k):
+    return x1 ** k * breakage_func_2d(x3,x1,y1,y3,v,q,BREAKFVAL)
+
+@jit(nopython=True)
+def breakage_func_2d_x3k(x3,x1,y1,y3,v,q,BREAKFVAL, k):
+    return x3 ** k * breakage_func_2d(x3,x1,y1,y3,v,q,BREAKFVAL)
+
+@jit(nopython=True)
+def breakage_func_2d_x1kx3l(x3,x1,y1,y3,v,q,BREAKFVAL, k, l):
+    return x1 ** k * x3 ** l * breakage_func_2d(x3,x1,y1,y3,v,q,BREAKFVAL)
 
 @jit(nopython=True)
 def gauss_legendre(f,a,b,xs,ws,args=()):
@@ -174,26 +180,27 @@ def calc_int_B_F_2D_GL(NS,V1,V3,V_e1,V_e3,BREAKFVAL,v,q):
             continue
         elif a <= i and b <= j:
             args = (V1[i],V3[j],v,q,BREAKFVAL)
+            argsk = (V1[i],V3[j],v,q,BREAKFVAL,1)
             ## The contribution of fragments in the same cell
             if a == i and b == j:
                 int_B_F[idx]  = dblgauss_legendre(breakage_func_2d,V_e1_tem[a],V1[a],V_e3_tem[b],V3[b],xs1,ws1,xs3,ws3,args=args)
-                intx_B_F[idx] = dblgauss_legendre(breakage_func_2d_x1vol,V_e1_tem[a],V1[a],V_e3_tem[b],V3[b],xs1,ws1,xs3,ws3,args=args)
-                inty_B_F[idx] = dblgauss_legendre(breakage_func_2d_x3vol,V_e1_tem[a],V1[a],V_e3_tem[b],V3[b],xs1,ws1,xs3,ws3,args=args)
+                intx_B_F[idx] = dblgauss_legendre(breakage_func_2d_x1k,V_e1_tem[a],V1[a],V_e3_tem[b],V3[b],xs1,ws1,xs3,ws3,args=argsk)
+                inty_B_F[idx] = dblgauss_legendre(breakage_func_2d_x3k,V_e1_tem[a],V1[a],V_e3_tem[b],V3[b],xs1,ws1,xs3,ws3,args=argsk)
             ## The contributions of fragments on the same vertical axis
             elif a == i:
                 int_B_F[idx]  = dblgauss_legendre(breakage_func_2d,V_e1_tem[a],V1[a],V_e3_tem[b],V_e3_tem[b+1],xs1,ws1,xs3,ws3,args=args)
-                intx_B_F[idx] = dblgauss_legendre(breakage_func_2d_x1vol,V_e1_tem[a],V1[a],V_e3_tem[b],V_e3_tem[b+1],xs1,ws1,xs3,ws3,args=args)
-                inty_B_F[idx] = dblgauss_legendre(breakage_func_2d_x3vol,V_e1_tem[a],V1[a],V_e3_tem[b],V_e3_tem[b+1],xs1,ws1,xs3,ws3,args=args)
+                intx_B_F[idx] = dblgauss_legendre(breakage_func_2d_x1k,V_e1_tem[a],V1[a],V_e3_tem[b],V_e3_tem[b+1],xs1,ws1,xs3,ws3,args=argsk)
+                inty_B_F[idx] = dblgauss_legendre(breakage_func_2d_x3k,V_e1_tem[a],V1[a],V_e3_tem[b],V_e3_tem[b+1],xs1,ws1,xs3,ws3,args=argsk)
             ## The contributions of fragments on the same horizontal axis
             elif b == j:   
                 int_B_F[idx]  = dblgauss_legendre(breakage_func_2d,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V3[b],xs1,ws1,xs3,ws3,args=args)
-                intx_B_F[idx] = dblgauss_legendre(breakage_func_2d_x1vol,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V3[b],xs1,ws1,xs3,ws3,args=args)
-                inty_B_F[idx] = dblgauss_legendre(breakage_func_2d_x3vol,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V3[b],xs1,ws1,xs3,ws3,args=args)
+                intx_B_F[idx] = dblgauss_legendre(breakage_func_2d_x1k,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V3[b],xs1,ws1,xs3,ws3,args=argsk)
+                inty_B_F[idx] = dblgauss_legendre(breakage_func_2d_x3k,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V3[b],xs1,ws1,xs3,ws3,args=argsk)
             ## The contribution from the fragments of large particles on the upper right side 
             else:
                 int_B_F[idx]  = dblgauss_legendre(breakage_func_2d,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V_e3_tem[b+1],xs1,ws1,xs3,ws3,args=args)
-                intx_B_F[idx] = dblgauss_legendre(breakage_func_2d_x1vol,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V_e3_tem[b+1],xs1,ws1,xs3,ws3,args=args)
-                inty_B_F[idx] = dblgauss_legendre(breakage_func_2d_x3vol,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V_e3_tem[b+1],xs1,ws1,xs3,ws3,args=args)
+                intx_B_F[idx] = dblgauss_legendre(breakage_func_2d_x1k,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V_e3_tem[b+1],xs1,ws1,xs3,ws3,args=argsk)
+                inty_B_F[idx] = dblgauss_legendre(breakage_func_2d_x3k,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V_e3_tem[b+1],xs1,ws1,xs3,ws3,args=argsk)
                     
     return int_B_F, intx_B_F, inty_B_F
 
@@ -241,25 +248,26 @@ def calc_int_B_F_2D_quad(NS,V1,V3,V_e1,V_e3,BREAKFVAL,v,q):
             continue
         elif a <= i and b <= j:
             args = (V1[i],V3[j],v,q,BREAKFVAL)
+            argsk = (V1[i],V3[j],v,q,BREAKFVAL,1)
             ## The contributions of fragments on the same vertical axis
             if a == i and b == j:
                 int_B_F[idx],err  = dblquad(breakage_func_2d,V_e1_tem[a],V1[a],V_e3_tem[b],V3[b],args=args)
-                intx_B_F[idx],err = dblquad(breakage_func_2d_x1vol,V_e1_tem[a],V1[a],V_e3_tem[b],V3[b],args=args)
-                inty_B_F[idx],err = dblquad(breakage_func_2d_x3vol,V_e1_tem[a],V1[a],V_e3_tem[b],V3[b],args=args)
+                intx_B_F[idx],err = dblquad(breakage_func_2d_x1k,V_e1_tem[a],V1[a],V_e3_tem[b],V3[b],args=argsk)
+                inty_B_F[idx],err = dblquad(breakage_func_2d_x3k,V_e1_tem[a],V1[a],V_e3_tem[b],V3[b],args=argsk)
             elif a == i:
                 int_B_F[idx],err  = dblquad(breakage_func_2d,V_e1_tem[a],V1[a],V_e3_tem[b],V_e3_tem[b+1],args=args)
-                intx_B_F[idx],err = dblquad(breakage_func_2d_x1vol,V_e1_tem[a],V1[a],V_e3_tem[b],V_e3_tem[b+1],args=args)
-                inty_B_F[idx],err = dblquad(breakage_func_2d_x3vol,V_e1_tem[a],V1[a],V_e3_tem[b],V_e3_tem[b+1],args=args)
+                intx_B_F[idx],err = dblquad(breakage_func_2d_x1k,V_e1_tem[a],V1[a],V_e3_tem[b],V_e3_tem[b+1],args=argsk)
+                inty_B_F[idx],err = dblquad(breakage_func_2d_x3k,V_e1_tem[a],V1[a],V_e3_tem[b],V_e3_tem[b+1],args=argsk)
             ## The contributions of fragments on the same horizontal axis
             elif b == j:   
                 int_B_F[idx],err  = dblquad(breakage_func_2d,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V3[b],args=args)
-                intx_B_F[idx],err = dblquad(breakage_func_2d_x1vol,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V3[b],args=args)
-                inty_B_F[idx],err = dblquad(breakage_func_2d_x3vol,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V3[b],args=args)
+                intx_B_F[idx],err = dblquad(breakage_func_2d_x1k,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V3[b],args=argsk)
+                inty_B_F[idx],err = dblquad(breakage_func_2d_x3k,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V3[b],args=argsk)
             ## The contribution from the fragments of large particles on the upper right side 
             else:
                 int_B_F[idx],err  = dblquad(breakage_func_2d,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V_e3_tem[b+1],args=args)
-                intx_B_F[idx],err = dblquad(breakage_func_2d_x1vol,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V_e3_tem[b+1],args=args)
-                inty_B_F[idx],err = dblquad(breakage_func_2d_x3vol,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V_e3_tem[b+1],args=args)
+                intx_B_F[idx],err = dblquad(breakage_func_2d_x1k,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V_e3_tem[b+1],args=argsk)
+                inty_B_F[idx],err = dblquad(breakage_func_2d_x3k,V_e1_tem[a],V_e1_tem[a+1],V_e3_tem[b],V_e3_tem[b+1],args=argsk)
                                             
     return int_B_F, intx_B_F, inty_B_F
 

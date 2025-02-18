@@ -53,7 +53,7 @@ def calc_F_M_1D(NS, COLEVAL, CORR_BETA, G, R, alpha_prim, EFFEVAL, SIZEEVAL, X_S
     return F_M
             
 @jit(nopython=True)
-def calc_F_M_2D(NS,disc,COLEVAL,CORR_BETA,G,R,X1,X3,EFFEVAL,alpha_prim,SIZEEVAL,X_SEL,Y_SEL):
+def calc_F_M_2D(NS,COLEVAL,CORR_BETA,G,R,X1,X3,EFFEVAL,alpha_prim,SIZEEVAL,X_SEL,Y_SEL):
     # To avoid mass leakage at the boundary in CAT, boundary cells are not directly involved in the calculation. 
     # So there is no need to define the corresponding F_M at boundary. F_M is (NS-1)^4 instead (NS)^4
     F_M = np.zeros((NS-1,NS-1,NS-1,NS-1))
@@ -121,7 +121,7 @@ def calc_F_M_2D(NS,disc,COLEVAL,CORR_BETA,G,R,X1,X3,EFFEVAL,alpha_prim,SIZEEVAL,
     return F_M
                 
 @jit(nopython=True)
-def calc_F_M_3D(NS,disc,COLEVAL,CORR_BETA,G,R,X1,X2,X3,EFFEVAL,alpha_prim,SIZEEVAL,X_SEL,Y_SEL):
+def calc_F_M_3D(NS,COLEVAL,CORR_BETA,G,R,X1,X2,X3,EFFEVAL,alpha_prim,SIZEEVAL,X_SEL,Y_SEL):
                        
     # Initialize F_M Matrix. NOTE: F_M is defined without the border around the calculation grid
     # as e.g. N or V are (saving memory and calculations). 
@@ -257,7 +257,8 @@ def calc_beta(COLEVAL, CORR_BETA, G, R, idx1, idx2):
         r1, r2 = R[idx1[0], idx1[1]], R[idx2[0], idx2[1]]
     else:
         raise ValueError("R array must be 1D or 2D.")
-
+    if r1 <= 0 or r2 <= 0:
+        return 0.0
     # Collision frequency calculation based on COLEVAL
     if COLEVAL == 1:
         beta = CORR_BETA * G * 2.3 * (r1 + r2) ** 3

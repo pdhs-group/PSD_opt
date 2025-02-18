@@ -13,7 +13,7 @@ import ray
 from .opt_core import OptCore
 from .opt_core_multi import OptCoreMulti
 from optframework.utils.func.func_read_exp import write_read_exp
-from optframework.pbe.dpbe_base import bind_methods_from_module
+from optframework.utils.func.bind_methods import bind_methods_from_module
 ## For plots
 # import matplotlib.pyplot as plt
 # from ..utils.plotter import plotter as pt        

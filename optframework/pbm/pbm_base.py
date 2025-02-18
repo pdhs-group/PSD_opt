@@ -12,11 +12,12 @@ from pathlib import Path
 import scipy.stats as stats
 import runpy
 import scipy.integrate as integrate
-import matplotlib.pyplot as plt
 import optframework.utils.plotter.plotter as pt
 import optframework.utils.func.jit_pbm_qmom as qmom
 import optframework.utils.func.jit_pbm_rhs as jit_pbm_rhs
+import optframework.utils.func.jit_pbm_chyqmom as chyqmom
 from optframework.utils.func.static_method import interpolate_psd
+from optframework.utils.func.bind_methods import bind_methods_from_module
 
 class PBMSolver:
     def __init__(self, dim, t_total=601, t_write=100, t_vec=None, 
@@ -36,7 +37,7 @@ class PBMSolver:
         self.nu = 1                           # Exponent for the correction in gaussian-GQMOM
 
         self.atol_min  = 1e-16
-        self.atol_scale = 1e-6
+        self.atol_scale = 1e-9
         self.rtol = 1e-6
         ## Parameters in agglomeration kernels
         self.COLEVAL = 1                      # Case for calculation of beta. 1 = Orthokinetic, 2 = Perikinetic
@@ -178,65 +179,7 @@ class PBMSolver:
         self.N02 = 3*self.V02/(4*math.pi*self.R02**3)     # Total number concentration of primary particles component 2 [1/m³] - NM2 (if no PSD)
         self.V03 = self.c_mag_exp*self.V_unit        # Total volume concentration of component 3 [unit/unit] - M
         self.N03 = 3*self.V03/(4*math.pi*self.R03**3)     # Total number concentration of primary particles component 1 [1/m³] - M (if no PSD) 
-          
-    def quick_test_QMOM(self, NDF_shape="normal"):
-        if NDF_shape == "normal":
-            x, NDF = self.create_ndf(distribution="normal", x_range=(0, 100), mean=50, std_dev=20)
-        elif NDF_shape == "gamma":
-            x, NDF = self.create_ndf(distribution="gamma", x_range=(0, 1), shape=5, scale=1)
-        elif NDF_shape == "lognormal":
-            x, NDF = self.create_ndf(distribution="lognormal", x_range=(0, 1), mean=0.1, sigma=1)
-        elif NDF_shape == "beta":
-            x, NDF = self.create_ndf(distribution="beta", x_range=(0, 1), a=2, b=2)
-        n = self.n_order
-        moments = np.array([np.trapz(NDF * (x ** k), x) for k in range(2*n)])
-        nodes, weights = qmom.calc_qmom_nodes_weights(moments, n)
-        nodes_G, weights_G = qmom.calc_gqmom_nodes_weights(moments, n, self.n_add, 
-                                                           method=self.GQMOM_method, nu=self.nu)
-        moments_QMOM = np.zeros_like(moments)
-        moments_GQMOM = np.zeros_like(moments)  
-        for i in range(2*n):
-            moments_QMOM[i] = sum(weights * nodes**i)
-            moments_GQMOM[i] = sum(weights_G * nodes_G**i)
-        pt.plot_init(scl_a4=1,figsze=[12.8,6.4*1.5],lnewdth=0.8,mrksze=5,use_locale=True,scl=1.2)
-        self.plot_nodes_weights_comparision(x, NDF, nodes, weights, nodes_G, weights_G)
-        self.plot_moments_comparison(moments, moments_QMOM, moments_GQMOM)
-        return moments, moments_QMOM, moments_GQMOM
     
-    def quick_test_QMOM_normal(self, NDF_shape="normal"):
-        if NDF_shape == "normal":
-            x, NDF = self.create_ndf(distribution="normal", x_range=(0, 1e-12), mean=5e-13, std_dev=2e-13)
-        elif NDF_shape == "gamma":
-            x, NDF = self.create_ndf(distribution="gamma", x_range=(0, 1e-12), shape=1, scale=1)
-        elif NDF_shape == "lognormal":
-            x, NDF = self.create_ndf(distribution="lognormal", x_range=(0, 1e-12), mean=5e-13, sigma=1e-10)
-        elif NDF_shape == "beta":
-            x, NDF = self.create_ndf(distribution="beta", x_range=(0, 1), a=2, b=2)
-        elif NDF_shape == "mono":
-            x, NDF = self.create_ndf(distribution="mono", x_range=(0, 1e-12), size=5e-13)
-        n = self.n_order
-        NDF *= 1e12
-        # x_normal = x / x[-1]
-        # NDF_normal = NDF / x[-1]
-        moments = np.array([np.trapz(NDF * (x ** k), x) for k in range(2*n)])
-        moments_normal = np.array([moments[k] / x[-1]**k for k in range(2*n)])
-        nodes, weights = qmom.calc_qmom_nodes_weights(moments_normal, n)
-        nodes_G, weights_G = qmom.calc_gqmom_nodes_weights(moments_normal, n, self.n_add, 
-                                                           method=self.GQMOM_method, nu=self.nu)
-        nodes *= x[-1]
-        # weights *= x[-1]
-        nodes_G *= x[-1]
-        # weights_G *= x[-1]
-        moments_QMOM = np.zeros_like(moments)
-        moments_GQMOM = np.zeros_like(moments)  
-        for i in range(2*n):
-            moments_QMOM[i] = sum(weights * nodes**i)
-            moments_GQMOM[i] = sum(weights_G * nodes_G**i)
-        pt.plot_init(scl_a4=1,figsze=[12.8,6.4*1.5],lnewdth=0.8,mrksze=5,use_locale=True,scl=1.2)
-        self.plot_nodes_weights_comparision(x, NDF, nodes, weights, nodes_G, weights_G)
-        self.plot_moments_comparison(moments, moments_QMOM, moments_GQMOM)
-        
-        return moments, moments_QMOM, moments_GQMOM
     def init_moments(self, x=None, NDF=None, NDF_shape="normal", N0=1.0,
                      V0=None, x_range=(0,1), mean=0.5, std_dev=0.1, shape=2, scale=1,
                      sigma=1, a=2, b=2, size=0.5):
@@ -275,15 +218,27 @@ class PBMSolver:
                 moment0 = np.trapz(NDF, x)
                 NDF /= moment0
             
-        self.x_max = x[-1]
-        # self.x_max = 1.0
+        # self.x_max = x[-1]
+        self.x_max = 1.0
         self.moments = np.zeros((self.n_order*2,self.t_num))
         ## Corrected particle count
         NDF *= N0 * self.V_unit
         self.moments[:,0] = np.array([np.trapz(NDF * (x ** k), x) for k in range(2*self.n_order)])
         self.normalize_mom()
         self.set_tol()
+    
+    def init_moments_2d(self):
+        x1, NDF1 = self.create_ndf(distribution="normal", x_range=(0,1), mean=0.5, std_dev=0.3)
+        x1, NDF1 = self.create_ndf(distribution="normal", x_range=(-1,10), mean=3, std_dev=1)
         
+        self.moment_2d_indices_chy()
+        moments = np.zeros((self.n_order*2,self.t_num))
+    
+    def trapz_2d(self, NDF1, NDF2, x1, x2, k, l):
+        integrand = np.outer(NDF1 * (x1 ** k), NDF2 * (x2 ** l))
+        integral_x2 = np.trapz(integrand, x2, axis=1)
+        integral_x1 = np.trapz(integral_x2, x1)
+        return integral_x1
     def normalize_mom(self):
         ## Note: The following scaling method assumes that the original x-coordinates start from zero.
         self.moments_norm = np.copy(self.moments)
@@ -321,8 +276,9 @@ class PBMSolver:
                                                     args=args,
                                                     ## If `rtol` is set too small, it may cause the results to diverge, 
                                                     ## leading to the termination of the calculation.
-                                                    method='RK45',first_step=1e-3,
+                                                    method='RK45',first_step=None,
                                                     atol=self.atolarray, rtol=self.rtolarray)
+                                                    # atol=1e-9, rtol=1e-6)
                     
                     # Reshape and save result to N and t_vec
                     t_vec = self.RES.t
@@ -399,112 +355,6 @@ class PBMSolver:
 
         return x, ndf
 
-    def plot_moments_comparison(self, moments, moments_QMOM, moments_GQMOM):
-        """
-        Plot a visual comparison of QMOM and GQMOM moments against original moments.
-
-        Parameters:
-            moments (array-like): Original moments (true values).
-            moments_QMOM (array-like): Moments calculated using QMOM.
-            moments_GQMOM (array-like): Moments calculated using GQMOM.
-        """
-        fig=plt.figure()
-        ori_ax = fig.add_subplot(1,2,1)   
-        rel_ax = fig.add_subplot(1,2,2)  
-        # Calculate relative errors
-        relative_error_QMOM = np.abs((moments_QMOM - moments) / moments)
-        relative_error_GQMOM = np.abs((moments_GQMOM - moments) / moments)
-
-        # Define the orders of moments
-        orders = np.arange(len(moments))
-
-        # Plot 1: Original values comparison
-        ori_ax, fig = pt.plot_data(orders, moments, fig=fig, ax=ori_ax,
-                                xlbl='Order of Moment',
-                                ylbl='Moment Value',
-                                lbl='Original Moments (True)',
-                                clr='k',mrk='o')
-        ori_ax, fig = pt.plot_data(orders, moments_QMOM, fig=fig, ax=ori_ax,
-                                lbl='QMOM Moments',
-                                clr='b',mrk='o')
-        ori_ax, fig = pt.plot_data(orders, moments_GQMOM, fig=fig, ax=ori_ax,
-                                lbl='GQMOM Moments',
-                                clr='r',mrk='o')
-        
-        rel_ax, fig = pt.plot_data(orders, relative_error_QMOM, fig=fig, ax=rel_ax,
-                                xlbl='Order of Moment',
-                                ylbl='Relative Error',
-                                lbl='Relative Error (QMOM)',
-                                clr='b',mrk='o')
-        rel_ax, fig = pt.plot_data(orders, relative_error_GQMOM, fig=fig, ax=rel_ax,
-                                lbl='Relative Error (GQMOM)',
-                                clr='r',mrk='o')
-        ori_ax.grid('minor')
-        ori_ax.set_yscale('log')
-        rel_ax.grid('minor')
-        plt.title('Comparison of Moments')
-        plt.tight_layout()
-        plt.legend()
-        plt.show()
-
-    def plot_NDF_comparison(self, x, NDF, NDF_QMOM, NDF_GQMOM):
-        """
-        Plot a visual comparison of QMOM and GQMOM NDF against original NDF.
-
-        Parameters:
-            NDF (array-like): Original NDF (true values).
-            NDF_QMOM (array-like): NDF calculated using QMOM.
-            NDF_GQMOM (array-like): NDF calculated using GQMOM.
-        """
-        fig=plt.figure()
-
-        # Plot 1: Original values comparison
-        ax, fig = pt.plot_data(x, NDF, fig=fig, ax=None,
-                                xlbl='x',
-                                ylbl='NDF',
-                                lbl='Original(True)',
-                                clr='k',mrk='o')
-        ax, fig = pt.plot_data(x, NDF_QMOM, fig=fig, ax=ax,
-                                lbl='QMOM',
-                                clr='b',mrk='o')
-        ax, fig = pt.plot_data(x, NDF_GQMOM, fig=fig, ax=ax,
-                                lbl='GQMOM',
-                                clr='r',mrk='o')
-        
-        ax.grid('minor')
-        plt.title('Comparison of NDF')
-        plt.tight_layout()
-        plt.legend()
-        plt.show()
-
-    def plot_nodes_weights_comparision(self, x, NDF, nodes, weights, nodes_G, weights_G):
-        fig=plt.figure()
-        # ax1 = fig.add_subplot(1,3,1)   
-        # ax2 = fig.add_subplot(1,3,2)
-        # ax3 = fig.add_subplot(1,3,3)
-        # Plot 1: Original values comparison
-        ax1, fig = pt.plot_data(x, NDF, fig=fig, ax=None,
-                                xlbl='x',
-                                ylbl='NDF',
-                                lbl='Original(True)',
-                                clr='k',mrk='o')
-        
-        ax2 = ax1.twinx()
-        ax2, fig = pt.plot_data(nodes, weights, fig=fig, ax=ax2,
-                                lbl='QMOM',
-                                clr='b',mrk='o')
-        ax2, fig = pt.plot_data(nodes_G, weights_G, fig=fig, ax=ax2,
-                                lbl='GQMOM',
-                                clr='r',mrk='o')
-        
-        ax1.grid('minor')
-        ax2.grid('minor')
-        # ax3.grid('minor')
-        plt.title('Comparison of nodes and weights')
-        plt.tight_layout()
-        plt.legend()
-        plt.show()
-
     def NDF_approx(self, x, nodes, weights, width=1e-1):
         """
         Approximate NDF/Dirac delta function using a sum of Gaussian distributions.
@@ -524,3 +374,36 @@ class PBMSolver:
         norm_factor = np.trapz(NDF_ap, x)
         NDF_ap /= norm_factor
         return NDF_ap
+    
+    def moment_2d_indices_chy(self):
+        if self.n_order == 2:
+            self.indices = np.array([[0, 0], [1, 0], [0, 1], [2, 0], [1, 1], [0, 2]])
+            
+        elif self.n_order == 3:
+            self.indices = np.array([
+                    [0, 0],
+                    [1, 0],
+                    [0, 1],
+                    [2, 0],
+                    [1, 1],
+                    [0, 2],
+                    [3, 0],
+                    [0, 3],
+                    [4, 0],
+                    [0, 4],
+                ])
+            
+        else:
+            raise ValueError(f"Incorrect order of quadrature nodes, which is {self.n_order} (only 2 or 3 is supported!)")
+            
+    def moment_2d_indices_c(self):
+        self.indices = []
+        for i in range(2 * self.n_order):
+            self.indices.append([i, 0])
+        
+        for i in range(self.n_order):
+            for j in range(1, 2 * self.n_order):
+                self.indices.append([i, j])
+
+bind_methods_from_module(PBMSolver, 'optframework.pbm.pbm_post')
+bind_methods_from_module(PBMSolver, 'optframework.pbm.pbm_quick_test')
