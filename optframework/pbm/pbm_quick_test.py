@@ -105,8 +105,8 @@ def quick_test_CHyQMOM_2d(self):
     return moments, moments_chyqmom
 
 def quick_test_CQMOM_2d(self, use_central):
-    x1, NDF1 = self.create_ndf(distribution="normal", x_range=(0,1e-12), mean=5e-13, std_dev=1e-13)
-    x2, NDF2 = self.create_ndf(distribution="normal", x_range=(0,1e-12), mean=5e-13, std_dev=1e-13)
+    x1, NDF1 = self.create_ndf(distribution="normal", x_range=(0,1), mean=0.5, std_dev=0.1)
+    x2, NDF2 = self.create_ndf(distribution="normal", x_range=(0,1), mean=0.5, std_dev=0.1)
     
     self.moment_2d_indices_c()
     mu_num = len(self.indices)

@@ -97,7 +97,6 @@ def hyqmom_newton_correction(xi, wi, moments, method="lm"):
     wi = sol.x[len(xi_free):]
 
     return xi, wi
-
     
 def get_dMdt_1d(t, moments, x_max, GQMOM, GQMOM_method, 
                 moments_norm_factor, n_add, nu, 
@@ -115,9 +114,9 @@ def get_dMdt_1d(t, moments, x_max, GQMOM, GQMOM_method,
     n = m // 2  # Number of xi based on available moments
     
     if not GQMOM:
-        xi, wi = qmom.calc_qmom_nodes_weights(moments, n, adaptive=False, use_central=False)
+        xi, wi, n = qmom.calc_qmom_nodes_weights(moments, n, adaptive=False, use_central=False)
     else:
-        xi, wi = qmom.calc_gqmom_nodes_weights(moments, n, n_add, GQMOM_method, nu)
+        xi, wi, n = qmom.calc_gqmom_nodes_weights(moments, n, n_add, GQMOM_method, nu)
         # xi, wi = filter_negative_nodes(xi, wi)
         n += n_add
 
@@ -194,36 +193,29 @@ def get_dMdt_1d(t, moments, x_max, GQMOM, GQMOM_method,
     
     return dMdt_norm
 
-def get_dMdt_2d(t, moments, indices, COLEVAL, CORR_BETA, G, alpha_prim, EFFEVAL, 
+def get_dMdt_2d(t, moments, n, indices, COLEVAL, CORR_BETA, G, alpha_prim, EFFEVAL, 
                 SIZEEVAL, V_unit, X_SEL, Y_SEL, 
                 V1_mean, V3_mean, pl_P1, pl_P2, pl_P3, pl_P4, BREAKRVAL, 
                 v, q, BREAKFVAL, type_flag):
-    
+    # eta = 1e-2
+    n0 = n
     dMdt = np.zeros(moments.shape)
     # Check if moments are unrealizable
     if moments[0] <= 0:
         raise ValueError("Wheeler: Moments are NOT realizable (moment[0] <= 0.0).")
-    
-    m = len(moments)
-    n = m // 2  # Number of xi based on available moments
-    
 
-    xi, wi = qmom.calc_cqmom_2d(moments, n, indices, use_central=False)
-
+    xi, wi, n = qmom.calc_cqmom_2d(moments, n, indices, use_central=True)
     
-    if np.any(xi<0):
-        print(f"t = {t}")
-        print(f"xi = {xi}, wi = {wi}")   
-    # print(moments)
-    
+    if n0 > n:
+        print(f"Warning: At t = {t}, the moments are NOT realizable, abscissas reduced to {n}.")
     ## 因为PBE中的计算考虑了零点，所以这里对于PBM使用的时候坐标会发生一定偏移
-    V = np.ones(n+1, n+1)
+    V = np.ones((n+1, n+1))
     V1 = xi[0,:]
     V3 = xi[1,:]
     V_flat = np.ones(n*n)
-    R = np.ones(n+1, n+1)
-    X1 = np.ones(n+1, n+1)
-    X3 = np.ones(n+1, n+1)
+    R = np.ones((n+1, n+1))
+    X1 = np.ones((n+1, n+1))
+    X3 = np.ones((n+1, n+1))
     
     for i in range(1, n+1):
         for j in range(1, n+1):
@@ -231,7 +223,14 @@ def get_dMdt_2d(t, moments, indices, COLEVAL, CORR_BETA, G, alpha_prim, EFFEVAL,
             V_flat[i+j-2] = V[i,j]
             X1[i,j] = V1[i+j-2] / V[i,j]
             X3[i,j] = V3[i+j-2] / V[i,j]
-            
+    
+    if np.any(V<0):
+        print(f"t = {t}")
+        print(f"xi = {xi}, wi = {wi}")   
+    # print(moments)
+    # print(t)
+    # print(xi[:,0])
+    
     R[1:, 1:] = (V[1:, 1:]*3/(4*math.pi))**(1/3)
     
     if type_flag == "agglomeration" or type_flag == "mix":
@@ -240,12 +239,17 @@ def get_dMdt_2d(t, moments, indices, COLEVAL, CORR_BETA, G, alpha_prim, EFFEVAL,
         F_M = F_M_tem[1:,1:,1:,1:] / V_unit
         
     if type_flag == "breakage" or type_flag == "mix":
-        B_F_intxk = np.zeros((m, n, m, n))
-        B_R_flat = kernel_break.breakage_rate_2d_flat(V, V1, V3, V1_mean, V3_mean, 
-                                                     pl_P1, pl_P2, pl_P3, pl_P4, G, BREAKRVAL)
+        ## kB_F_intxkxl is not actually fully populated. 
+        ## Only the positions corresponding to the indices need to be computed, 
+        ## which correspond to the second-order moments used by the system.
+        B_F_intxk = np.zeros((2*n, n, 2*n, n))
+        B_R_flat = kernel_break.breakage_rate_2d_flat(V_flat, V1, V3, V1_mean, V3_mean, G,
+                                                     pl_P1, pl_P2, pl_P3, pl_P4, BREAKRVAL, BREAKFVAL)
         B_R = np.zeros((n,n))
         for i in range(n):
             for j in range(n):
+                # if V1[i] < eta or V3[j] < eta:
+                #     continue
                 B_R[i,j] = B_R_flat[i+j]
 
         xs1 = np.array([-9.681602395076260859e-01,
@@ -266,26 +270,49 @@ def get_dMdt_2d(t, moments, indices, COLEVAL, CORR_BETA, G, alpha_prim, EFFEVAL,
                     2.606106964029356599e-01,
                     1.806481606948571184e-01,
                     8.127438836157471758e-02])
-        for k in range(m):
-            for l in range(m):
-                for i in range(n):
-                    for j in range(n):
-                        ## If a calculation error occurs, it may be necessary to check whether 
-                        ## V1 or V3 is equal to zero and apply a different integration strategy accordingly.
-                        argsk = (V1[i+j],V3[i+j],v,q,BREAKFVAL,k)
-                        func = kernel_break.breakage_func_2d_x1kx3l
-                        B_F_intxk[k, i, l, j] = kernel_break.gauss_legendre(func, 0.0, V[i+1], xs1, ws1, args=argsk)
-    
-    for k in range(m):
-        dMdt_agg_ij = 0.0
-        dMdt_break_i = 0.0
-        for i in range(n):
-            if type_flag == "agglomeration" or type_flag == "mix":
+        xs3 = xs1
+        ws3 = ws1
+        for idx, _ in enumerate(dMdt):
+            k = indices[idx][0]
+            l = indices[idx][1]
+            for i in range(n):
                 for j in range(n):
-                    dMdt_agg_ij += 0.5 * wi[i]*wi[j]*F_M[i, j]*((xi[i]+xi[j])**k-xi[i]**k-xi[j]**k)
-            if type_flag == "breakage" or type_flag == "mix":
-                dMdt_break_i += wi[i] * B_R[i] * B_F_intxk[k, i] - wi[i] * xi[i]**k * B_R[i]
-        dMdt[k] = dMdt_agg_ij + dMdt_break_i
+                    # if V1[i+j] < eta or V3[i+j] < eta:
+                    #     continue
+                    ## If a calculation error occurs, it may be necessary to check whether 
+                    ## V1 or V3 is equal to zero and apply a different integration strategy accordingly.
+                    argsk = (V1[i+j],V3[i+j],v,q,BREAKFVAL,k,l)
+                    func = kernel_break.breakage_func_2d_x1kx3l
+                    B_F_intxk[k, i, l, j] = kernel_break.dblgauss_legendre(func, 0.0, V1[i+j], 0.0, V3[i+j], xs1, ws1, xs3,ws3,args=argsk)
+                    
+                    # argsk = (V1[i+j],V3[i+j],v,q,BREAKFVAL,1,eta)
+                    # func1 = kernel_break.breakage_func_2d_x1k_trunc
+                    # func2 = kernel_break.breakage_func_2d_x3k_trunc
+                    # norm_fac1 = kernel_break.dblgauss_legendre(func1, eta, V1[i+j], eta, V3[i+j], xs1, ws1, xs3,ws3,args=argsk)
+                    # norm_fac2 = kernel_break.dblgauss_legendre(func2, eta, V1[i+j], eta, V3[i+j], xs1, ws1, xs3,ws3,args=argsk)
+                    # argsk_trunc = (V1[i+j],V3[i+j],v,q,BREAKFVAL,k,l,eta)
+                    # func_norm = kernel_break.breakage_func_2d_trunc
+                    # B_F_intxk_trunk = kernel_break.dblgauss_legendre(func_norm, eta, V1[i+j], eta, V3[i+j], xs1, ws1, xs3,ws3,args=argsk_trunc)
+                    # B_F_intxk[k, i, l, j] = B_F_intxk_trunk / ((norm_fac1 + norm_fac2) / V[i+1,j+1])
+
+    for idx, _ in enumerate(dMdt):
+        k = indices[idx][0]
+        l = indices[idx][1]
+        dMdt_agg_ijab = 0.0
+        dMdt_break_ij = 0.0
+        for i in range(n):
+            for j in range(n):
+                if type_flag == "agglomeration" or type_flag == "mix":
+                    for a in range(n):
+                        for b in range(n):
+                            dMdt_agg_ijab += 0.5 * wi[i+j]*wi[a+b]*F_M[i,j,a,b]*(
+                                (xi[0,i+j]+xi[0,a+b])**k*(xi[1,i+j]+xi[1,a+b])**l
+                                -xi[0,i+j]**k*xi[1,i+j]**l
+                                -xi[0,a+b]**k*xi[1,a+b]**l)
+                if type_flag == "breakage" or type_flag == "mix":
+                    dMdt_break_ij += (wi[i+j] * B_R[i,j] * B_F_intxk[k,i,l,j] - wi[i+j]
+                                      * xi[0,i+j]**k * xi[1,i+j]**l * B_R[i,j])
+        dMdt[idx] = dMdt_agg_ijab + dMdt_break_ij
     
     return dMdt
 

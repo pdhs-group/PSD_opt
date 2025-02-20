@@ -21,43 +21,27 @@ def calc_qmom_nodes_weights(moments, n, adaptive=False, use_central=False):
     
     # Parameters for adaptivity
     rmax = 1e-8  # Ratio threshold for weights
-    eabs = 1e-8  # Absolute error threshold for adaptivity
     cutoff = 0   # Minimum diagonal element to consider
 
     # Special case for a single node or extremely small moments
     if n == 1 or (adaptive and moments[0] < rmax):
         w = moments[0]
         x = moments[1] / moments[0]
-        return np.array([x]), np.array([w])
+        return np.array([x]), np.array([w]), n
     if use_central:
         bx, central_moments = compute_central_moments_1d(moments)
         mom = central_moments
     else:
         mom = moments
     # calculate recurrence coefficients
-    a, b = calc_qmom_recurrence(mom, n, adaptive, cutoff)
+    a, b, n = calc_qmom_recurrence(mom, n, adaptive, cutoff)
     x, w = recurrence_jacobi_nodes_weights(mom, a, b)
 
     if use_central:
         x += bx
         w *= moments[0]
-    # Adaptive criteria: Refine nodes and weights if enabled
-    if adaptive:
-        for n1 in range(n, 0, -1):
-            if n1 == 1:
-                return np.array([moments[1] / moments[0]]), np.array([moments[0]])
 
-            # Check the minimum and maximum distance between nodes
-            dab = np.min([np.abs(x[i] - x[:i]) for i in range(1, n1)], axis=0)
-            mab = np.max([np.abs(x[i] - x[:i]) for i in range(1, n1)], axis=0)
-
-            mindab = np.min(dab)
-            maxmab = np.max(mab)
-
-            if np.min(w) / np.max(w) > rmax and mindab / maxmab > eabs:
-                return x, w
-    else:
-        return x, w
+    return x, w, n
 
 def calc_qmom_recurrence(moments, n, adaptive=False, cutoff=0):
     # Initialize modified moments (σ) and recurrence coefficients (a, b)
@@ -91,7 +75,7 @@ def calc_qmom_recurrence(moments, n, adaptive=False, cutoff=0):
                 if n == 1:
                     w = moments[0]
                     x = moments[1] / moments[0]
-                    return np.array([x]), np.array([w])
+                    return np.array([x]), np.array([w]), n
 
         # Recalculate recurrence coefficients for the reduced node count
         a = np.zeros(n)
@@ -116,7 +100,7 @@ def calc_qmom_recurrence(moments, n, adaptive=False, cutoff=0):
     # Check for realizability of moments
     if b.min() < 0:
         raise ValueError("Moments in Wheeler_moments are not realizable!")
-    return a, b
+    return a, b, n
 
 def recurrence_jacobi_nodes_weights(moments, a, b):
     # Construct Jacobi matrix and solve for eigenvalues and eigenvectors
@@ -133,7 +117,7 @@ def recurrence_jacobi_nodes_weights(moments, a, b):
     
 def calc_gqmom_nodes_weights(moments, n, n_add, method="gaussian", nu=1):
     # calculate regular recurrence coefficients
-    a_reg, b_reg = calc_qmom_recurrence(moments, n)
+    a_reg, b_reg, n = calc_qmom_recurrence(moments, n)
     
     if method == "gaussian":
         a, b = calc_gqmom_recurrence_real(a_reg, b_reg, n_add, nu)
@@ -147,7 +131,7 @@ def calc_gqmom_nodes_weights(moments, n, n_add, method="gaussian", nu=1):
         raise ValueError("The input method for GQMOM is not available. \
                          \n Supported methods are: gaussian, gamma, lognormal, and beta.")
     
-    return recurrence_jacobi_nodes_weights(moments, a, b)
+    return recurrence_jacobi_nodes_weights(moments, a, b), n
 
 def calc_gqmom_recurrence_real(a_reg, b_reg, n_add, nu):
     """
@@ -395,16 +379,16 @@ def conditional_mom_sys_solve(M_matrix, u, R_diag):
 
     # 使用Rybicki 分列求解
     R1_matrix = np.zeros((N1, N2))
-    R1_debug = np.zeros((N1, N2))
+    # R1_debug = np.zeros((N1, N2))
 
     ## for debug
-    V = np.vander(u, increasing=True)
-    V = np.dot(np.transpose(V), np.diag(R_diag))
-    R1_debug = np.linalg.solve(V, M_matrix)
+    # V = np.vander(u, increasing=True)
+    # V = np.dot(np.transpose(V), np.diag(R_diag))
+    # R1_debug = np.linalg.solve(V, M_matrix)
     
     for col in range(N2):
         R1_matrix[:, col] = vander_rybicki(u, M_prime[:, col]) / R_diag
-    print(np.mean(abs(R1_matrix-R1_debug)))
+    # print(np.mean(abs(R1_matrix-R1_debug)))
     
     return R1_matrix
     
@@ -414,7 +398,7 @@ def calc_cqmom_2d(moments, n, indices, use_central=True):
     mom00, bx, by, central_moments = compute_central_moments_2d(moments, indices_array)
     
     M1 = central_moments[:m] if use_central else moments[:m]
-    x1, w1 = calc_qmom_nodes_weights(M1, n, False, use_central)
+    x1, w1, n = calc_qmom_nodes_weights(M1, n, True, use_central)
     
     M_matrix = np.zeros((n, m-1))
     for i in range(n):
@@ -430,7 +414,8 @@ def calc_cqmom_2d(moments, n, indices, use_central=True):
     x2 = np.zeros((n, n))
     w2 = np.zeros((n, n))
     for i in range(n):
-        x2[i], w2[i] = calc_qmom_nodes_weights(R1_matrix[i], n, False, use_central)
+        x2_tem, w2_tem, n_tem = calc_qmom_nodes_weights(R1_matrix[i], n, True, use_central)
+        x2[i,:n_tem], w2[i,:n_tem] = x2_tem, w2_tem
     
     if use_central:
         x1 += bx
@@ -448,7 +433,7 @@ def calc_cqmom_2d(moments, n, indices, use_central=True):
             weights[idx] = w1[i] * w2[i, j]
             idx += 1
     
-    return abscissas, weights
+    return abscissas, weights, n
 
 def quadrature_2d(x1, w1, x2, w2, moment_index):
     mu = 0.0

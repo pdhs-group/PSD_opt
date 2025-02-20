@@ -1,7 +1,7 @@
 import numpy as np
 
 config = {
-    "n_order": 3,                          # Order of the moments [-]
+    "n_order": 2,                          # Order of the moments [-]
     "n_add": 3,                          # Number of additional nodes [-] 
     "GQMOM": False,
     "GQMOM_method": "lognormal",
@@ -18,10 +18,10 @@ config = {
     "R03": 2.9e-7,  
     # Radius of primary M particles (in meters).
 
-    "t_total": 100,  
+    "t_total": 31,  
     # Total simulation time in seconds.
 
-    "t_write": 5,  
+    "t_write": 2,  
     # Interval in seconds for writing output data (e.g., simulation results).
 
     "process_type": "agglomeration",  
@@ -31,7 +31,7 @@ config = {
     # "mix": both agglomeration and breakage
 
 
-    "V_unit": 1e-1,  
+    "V_unit": 1e-0,  
     # Volume unit used for normalization of N (particle number concentration). 
     # Setting a smaller value generally does not affect the relative relationships between N (i.e., the PSD),
     # but helps reduce the stiffness of matrices during calculations, leading to faster solver convergence.
@@ -69,11 +69,11 @@ config = {
     # Flag that determines whether to account for damping effects due to particle volume growth 
     # during aggregation. This is handled in dpbe_core.py's `calc_F_M`.
 
-    "CORR_BETA": 1e8,
+    "CORR_BETA": 1e-0,
     # Correction factor for the collision frequency kernel, controlling the rate of aggregation.
 
-    # 'alpha_prim': np.array([1,1,1,1]),  
-    'alpha_prim': np.array([1]),
+    'alpha_prim': np.array([1,1,1,1]),  
+    # 'alpha_prim': np.array([1]),
     # Factors for collision efficiency.
     # The length of the alpha_prim array must be the square of the dpbe's dimensionality (dim^2).
 
@@ -91,7 +91,7 @@ config = {
     "V1_mean": 5e-13,
     # Mean volume of NM1 particles (in cubic meters).
 
-    "V3_mean": 5e-13,  
+    "V3_mean": 5e-13,
     # Mean volume of M particles (in cubic meters).
     
     "pl_P1": 1e-2,  

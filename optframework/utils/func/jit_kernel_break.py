@@ -91,6 +91,27 @@ def breakage_func_2d_x1kx3l(x3,x1,y1,y3,v,q,BREAKFVAL, k, l):
     return x1 ** k * x3 ** l * breakage_func_2d(x3,x1,y1,y3,v,q,BREAKFVAL)
 
 @jit(nopython=True)
+def breakage_func_2d_trunc(x3,x1,y1,y3,v,q,BREAKFVAL, k, l, eta):
+    if x1 < eta or x3 < eta:
+        return 0.0
+    else:
+        return x1 ** k * x3 ** l * breakage_func_2d(x3,x1,y1,y3,v,q,BREAKFVAL)
+
+@jit(nopython=True)
+def breakage_func_2d_x1k_trunc(x3,x1,y1,y3,v,q,BREAKFVAL, k, eta):
+    if x1 < eta or x3 < eta:
+        return 0.0
+    else:
+        return x1 ** k * breakage_func_2d(x3,x1,y1,y3,v,q,BREAKFVAL)
+
+@jit(nopython=True)
+def breakage_func_2d_x3k_trunc(x3,x1,y1,y3,v,q,BREAKFVAL, k, eta):
+    if x1 < eta or x3 < eta:
+        return 0.0
+    else:
+        return x3 ** k * breakage_func_2d(x3,x1,y1,y3,v,q,BREAKFVAL)
+
+@jit(nopython=True)
 def gauss_legendre(f,a,b,xs,ws,args=()):
     int_f = 0.0
     psi = (b - a) * 0.5 * xs + (b + a) * 0.5

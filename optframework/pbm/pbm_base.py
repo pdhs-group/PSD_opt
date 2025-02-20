@@ -222,33 +222,42 @@ class PBMSolver:
         self.x_max = 1.0
         self.moments = np.zeros((self.n_order*2,self.t_num))
         ## Corrected particle count
-        NDF *= N0 * self.V_unit
-        self.moments[:,0] = np.array([np.trapz(NDF * (x ** k), x) for k in range(2*self.n_order)])
+        NDF *= N0
+        self.moments[:,0] = np.array([np.trapz(NDF * (x ** k), x) for k in range(2*self.n_order)]) * self.V_unit
         self.normalize_mom()
-        self.set_tol()
+        self.set_tol(self.moments_norm)
     
-    def init_moments_2d(self):
-        x1, NDF1 = self.create_ndf(distribution="normal", x_range=(0,1), mean=0.5, std_dev=0.3)
-        x1, NDF1 = self.create_ndf(distribution="normal", x_range=(-1,10), mean=3, std_dev=1)
+    def init_moments_2d(self, N01=1.0, N02=1.0):
+        x1, NDF1 = self.create_ndf(distribution="normal", x_range=(1e-2,1e-1), mean=6e-2, std_dev=2e-2)
+        x2, NDF2 = self.create_ndf(distribution="normal", x_range=(1e-2,1e-1), mean=6e-2, std_dev=2e-2)
+        NDF1 *= N01
+        NDF2 *= N02
         
-        self.moment_2d_indices_chy()
-        moments = np.zeros((self.n_order*2,self.t_num))
+        self.moment_2d_indices_c()
+        mu_num = len(self.indices)
+        self.moments = np.zeros((mu_num,self.t_num))
+        for idx in range(mu_num):
+            k = self.indices[idx][0]
+            l = self.indices[idx][1]
+            self.moments[idx,0] = self.trapz_2d(NDF1, NDF2, x1, x2, k, l) * self.V_unit
+        self.set_tol(self.moments)
     
     def trapz_2d(self, NDF1, NDF2, x1, x2, k, l):
         integrand = np.outer(NDF1 * (x1 ** k), NDF2 * (x2 ** l))
         integral_x2 = np.trapz(integrand, x2, axis=1)
         integral_x1 = np.trapz(integral_x2, x1)
         return integral_x1
+    
     def normalize_mom(self):
         ## Note: The following scaling method assumes that the original x-coordinates start from zero.
         self.moments_norm = np.copy(self.moments)
         self.moments_norm_factor = np.array([self.x_max**k for k in range(self.n_order*2)])
         self.moments_norm[:,0] = self.moments[:,0] / self.moments_norm_factor
         
-    def set_tol(self):
+    def set_tol(self, moments):
         ## Sets the integration tolerance associated with the initial moments
-        self.atolarray = np.maximum(self.atol_min, self.atol_scale * np.abs(self.moments_norm[:,0]))
-        self.rtolarray = np.full_like(self.moments_norm[:,0], self.rtol)
+        self.atolarray = np.maximum(self.atol_min, self.atol_scale * np.abs(moments[:,0]))
+        self.rtolarray = np.full_like(moments[:,0], self.rtol)
         
     def solve_PBM(self, t_vec=None):
         if t_vec is None:
@@ -288,10 +297,44 @@ class PBMSolver:
                     print(f"Exception encountered: {e}")
                     y_evaluated = -np.ones((2*self.n_order,len(t_vec)))
                     status = False
+        
+        if self.dim == 2:
+            rhs = jit_pbm_rhs.get_dMdt_2d
+            args = (self.n_order, self.indices,self.COLEVAL, self.CORR_BETA, self.G, 
+                    self.alpha_prim, self.EFFEVAL, self.SIZEEVAL, self.V_unit,
+                    self.X_SEL, self.Y_SEL, self.V1_mean, self.V3_mean,
+                    self.pl_P1, self.pl_P2, self.pl_P3, self.pl_P4,self.BREAKRVAL, 
+                    self.pl_v, self.pl_q, self.BREAKFVAL, self.process_type)
+            
+            
+            with np.errstate(divide='raise', over='raise',invalid='raise'):
+                try:
+                    self.RES = integrate.solve_ivp(rhs, 
+                                                    [0, t_max], 
+                                                    self.moments[:,0], t_eval=t_vec,
+                                                    args=args,
+                                                    ## If `rtol` is set too small, it may cause the results to diverge, 
+                                                    ## leading to the termination of the calculation.
+                                                    method='RK45',first_step=None,max_step=np.inf,
+                                                    atol=self.atolarray, rtol=self.rtolarray)
+                                                    # atol=1e-9, rtol=1e-6)
+                    
+                    # Reshape and save result to N and t_vec
+                    t_vec = self.RES.t
+                    y_evaluated = self.RES.y
+                    status = True if self.RES.status == 0 else False
+                except (FloatingPointError, ValueError) as e:
+                    print(f"Exception encountered: {e}")
+                    y_evaluated = -np.ones((2*self.n_order,len(t_vec)))
+                    status = False
+                    
         # Monitor whether integration are completed  
         self.t_vec = t_vec 
         # self.N = y_evaluated / eva_N_scale
-        self.moments = y_evaluated * self.moments_norm_factor[:, np.newaxis] / self.V_unit
+        if hasattr(self, "moments_norm_factor") and self.moments_norm_factor is not None:
+            self.moments = y_evaluated * self.moments_norm_factor[:, np.newaxis] / self.V_unit
+        else:
+            self.moments = y_evaluated / self.V_unit
         self.calc_status = status   
         if not self.calc_status:
             print('Warning: The integral failed to converge!')
