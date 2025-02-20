@@ -131,7 +131,8 @@ def calc_gqmom_nodes_weights(moments, n, n_add, method="gaussian", nu=1):
         raise ValueError("The input method for GQMOM is not available. \
                          \n Supported methods are: gaussian, gamma, lognormal, and beta.")
     
-    return recurrence_jacobi_nodes_weights(moments, a, b), n
+    x, w = recurrence_jacobi_nodes_weights(moments, a, b)
+    return x, w, n
 
 def calc_gqmom_recurrence_real(a_reg, b_reg, n_add, nu):
     """

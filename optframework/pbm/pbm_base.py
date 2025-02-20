@@ -11,13 +11,9 @@ import math
 from pathlib import Path
 import scipy.stats as stats
 import runpy
-import scipy.integrate as integrate
-import optframework.utils.plotter.plotter as pt
-import optframework.utils.func.jit_pbm_qmom as qmom
-import optframework.utils.func.jit_pbm_rhs as jit_pbm_rhs
-import optframework.utils.func.jit_pbm_chyqmom as chyqmom
-from optframework.utils.func.static_method import interpolate_psd
-from optframework.utils.func.bind_methods import bind_methods_from_module
+from optframework.pbm.pbm_post import PBMPost
+from optframework.pbm.pbm_quick_test import PBMQuickTest
+from optframework.pbm.pbm_core import PBMCore
 
 class PBMSolver:
     def __init__(self, dim, t_total=601, t_write=100, t_vec=None, 
@@ -102,6 +98,11 @@ class PBMSolver:
             self.load_attributes(config_path)
         self.check_params()
         self.reset_params()
+
+        # Instantiate submodules
+        self.post = PBMPost(self)
+        self.quick_test = PBMQuickTest(self)
+        self.core = PBMCore(self)
         
     def check_params(self):
         """
@@ -180,68 +181,6 @@ class PBMSolver:
         self.V03 = self.c_mag_exp*self.V_unit        # Total volume concentration of component 3 [unit/unit] - M
         self.N03 = 3*self.V03/(4*math.pi*self.R03**3)     # Total number concentration of primary particles component 1 [1/m³] - M (if no PSD) 
     
-    def init_moments(self, x=None, NDF=None, NDF_shape="normal", N0=1.0,
-                     V0=None, x_range=(0,1), mean=0.5, std_dev=0.1, shape=2, scale=1,
-                     sigma=1, a=2, b=2, size=0.5):
-        if x is None or NDF is None:
-            if self.USE_PSD:
-                x = np.linspace(0.0, x_range[1], 10000)
-                # Ensure no negative volumes
-                if np.any(x < 0):
-                    raise ValueError("Error: Volume (x) cannot be negative!")
-                
-                # Compute diameter safely
-                d = np.where(x > 0, (6 * x / np.pi) ** (1/3), 0)
-                if V0 is None:
-                    raise ValueError("Total volume of particle must be gave to get PSD")
-                NDF = np.zeros_like(d)
-                ## interpolate_psd returns the absolute number of particles, 
-                ## which needs to be converted into particle density.
-                NDF[1:] = interpolate_psd(d[1:], self.DIST1, V0)
-                NDF /= x[1]-x[0]
-            else:
-                ## Generate NDF with integral (number of particles) equal to 1
-                if NDF_shape == "normal":
-                    x, NDF = self.create_ndf(distribution="normal", x_range=x_range, mean=mean, std_dev=std_dev)
-                elif NDF_shape == "gamma":
-                    x, NDF = self.create_ndf(distribution="gamma", x_range=x_range, shape=shape, scale=scale)
-                elif NDF_shape == "lognormal":
-                    x, NDF = self.create_ndf(distribution="lognormal", x_range=x_range, mean=mean, sigma=sigma)
-                elif NDF_shape == "beta":
-                    x, NDF = self.create_ndf(distribution="beta", x_range=x_range, a=a, b=b)
-                elif NDF_shape == "mono":
-                    x, NDF = self.create_ndf(distribution="mono", x_range=x_range, size=size)
-    
-                ## If the NDF peak is very close to the boundary, 
-                ## the integral over the domain may not be 1, 
-                ## so a scaling is performed to ensure that the integral is 1.
-                moment0 = np.trapz(NDF, x)
-                NDF /= moment0
-            
-        # self.x_max = x[-1]
-        self.x_max = 1.0
-        self.moments = np.zeros((self.n_order*2,self.t_num))
-        ## Corrected particle count
-        NDF *= N0
-        self.moments[:,0] = np.array([np.trapz(NDF * (x ** k), x) for k in range(2*self.n_order)]) * self.V_unit
-        self.normalize_mom()
-        self.set_tol(self.moments_norm)
-    
-    def init_moments_2d(self, N01=1.0, N02=1.0):
-        x1, NDF1 = self.create_ndf(distribution="normal", x_range=(1e-2,1e-1), mean=6e-2, std_dev=2e-2)
-        x2, NDF2 = self.create_ndf(distribution="normal", x_range=(1e-2,1e-1), mean=6e-2, std_dev=2e-2)
-        NDF1 *= N01
-        NDF2 *= N02
-        
-        self.moment_2d_indices_c()
-        mu_num = len(self.indices)
-        self.moments = np.zeros((mu_num,self.t_num))
-        for idx in range(mu_num):
-            k = self.indices[idx][0]
-            l = self.indices[idx][1]
-            self.moments[idx,0] = self.trapz_2d(NDF1, NDF2, x1, x2, k, l) * self.V_unit
-        self.set_tol(self.moments)
-    
     def trapz_2d(self, NDF1, NDF2, x1, x2, k, l):
         integrand = np.outer(NDF1 * (x1 ** k), NDF2 * (x2 ** l))
         integral_x2 = np.trapz(integrand, x2, axis=1)
@@ -258,86 +197,6 @@ class PBMSolver:
         ## Sets the integration tolerance associated with the initial moments
         self.atolarray = np.maximum(self.atol_min, self.atol_scale * np.abs(moments[:,0]))
         self.rtolarray = np.full_like(moments[:,0], self.rtol)
-        
-    def solve_PBM(self, t_vec=None):
-        if t_vec is None:
-            t_vec = self.t_vec
-            t_max = self.t_vec[-1]
-        else:
-            t_max = t_vec[-1]
-            
-        if self.dim == 1:
-            self.alpha_prim = self.alpha_prim.item() if isinstance(self.alpha_prim, np.ndarray) else self.alpha_prim
-            rhs = jit_pbm_rhs.get_dMdt_1d
-            args = (self.x_max, self.GQMOM, self.GQMOM_method, 
-                    self.moments_norm_factor, self.n_add, self.nu, 
-                    self.COLEVAL, self.CORR_BETA, self.G, 
-                    self.alpha_prim, self.EFFEVAL, self.SIZEEVAL, self.V_unit,
-                    self.X_SEL, self.Y_SEL, self.V1_mean, 
-                    self.pl_P1, self.pl_P2, self.BREAKRVAL, 
-                    self.pl_v, self.pl_q, self.BREAKFVAL, self.process_type)
-            
-            with np.errstate(divide='raise', over='raise',invalid='raise'):
-                try:
-                    self.RES = integrate.solve_ivp(rhs, 
-                                                    [0, t_max], 
-                                                    self.moments_norm[:,0], t_eval=t_vec,
-                                                    args=args,
-                                                    ## If `rtol` is set too small, it may cause the results to diverge, 
-                                                    ## leading to the termination of the calculation.
-                                                    method='RK45',first_step=None,
-                                                    atol=self.atolarray, rtol=self.rtolarray)
-                                                    # atol=1e-9, rtol=1e-6)
-                    
-                    # Reshape and save result to N and t_vec
-                    t_vec = self.RES.t
-                    y_evaluated = self.RES.y
-                    status = True if self.RES.status == 0 else False
-                except (FloatingPointError, ValueError) as e:
-                    print(f"Exception encountered: {e}")
-                    y_evaluated = -np.ones((2*self.n_order,len(t_vec)))
-                    status = False
-        
-        if self.dim == 2:
-            rhs = jit_pbm_rhs.get_dMdt_2d
-            args = (self.n_order, self.indices,self.COLEVAL, self.CORR_BETA, self.G, 
-                    self.alpha_prim, self.EFFEVAL, self.SIZEEVAL, self.V_unit,
-                    self.X_SEL, self.Y_SEL, self.V1_mean, self.V3_mean,
-                    self.pl_P1, self.pl_P2, self.pl_P3, self.pl_P4,self.BREAKRVAL, 
-                    self.pl_v, self.pl_q, self.BREAKFVAL, self.process_type)
-            
-            
-            with np.errstate(divide='raise', over='raise',invalid='raise'):
-                try:
-                    self.RES = integrate.solve_ivp(rhs, 
-                                                    [0, t_max], 
-                                                    self.moments[:,0], t_eval=t_vec,
-                                                    args=args,
-                                                    ## If `rtol` is set too small, it may cause the results to diverge, 
-                                                    ## leading to the termination of the calculation.
-                                                    method='RK45',first_step=None,max_step=np.inf,
-                                                    atol=self.atolarray, rtol=self.rtolarray)
-                                                    # atol=1e-9, rtol=1e-6)
-                    
-                    # Reshape and save result to N and t_vec
-                    t_vec = self.RES.t
-                    y_evaluated = self.RES.y
-                    status = True if self.RES.status == 0 else False
-                except (FloatingPointError, ValueError) as e:
-                    print(f"Exception encountered: {e}")
-                    y_evaluated = -np.ones((2*self.n_order,len(t_vec)))
-                    status = False
-                    
-        # Monitor whether integration are completed  
-        self.t_vec = t_vec 
-        # self.N = y_evaluated / eva_N_scale
-        if hasattr(self, "moments_norm_factor") and self.moments_norm_factor is not None:
-            self.moments = y_evaluated * self.moments_norm_factor[:, np.newaxis] / self.V_unit
-        else:
-            self.moments = y_evaluated / self.V_unit
-        self.calc_status = status   
-        if not self.calc_status:
-            print('Warning: The integral failed to converge!')
         
     def create_ndf(self, distribution="normal", x_range=(0, 100), points=1000, **kwargs):
         """
@@ -447,6 +306,3 @@ class PBMSolver:
         for i in range(self.n_order):
             for j in range(1, 2 * self.n_order):
                 self.indices.append([i, j])
-
-bind_methods_from_module(PBMSolver, 'optframework.pbm.pbm_post')
-bind_methods_from_module(PBMSolver, 'optframework.pbm.pbm_quick_test')
