@@ -47,7 +47,7 @@ class PBMCore:
         NDF *= N0
         solver.moments[:,0] = np.array([np.trapz(NDF * (x ** k), x) for k in range(2*solver.n_order)]) * solver.V_unit
         solver.normalize_mom()
-        solver.set_tol(solver.moments_norm)
+        solver.set_tol(solver.moments_norm[:,0])
 
     def init_moments_2d(self, N01=1.0, N02=1.0):
         solver = self.solver
@@ -63,7 +63,7 @@ class PBMCore:
             k = solver.indices[idx][0]
             l = solver.indices[idx][1]
             solver.moments[idx,0] = solver.trapz_2d(NDF1, NDF2, x1, x2, k, l) * solver.V_unit
-        solver.set_tol(solver.moments)
+        solver.set_tol(solver.moments[:,0])
 
     def solve_PBM(self, t_vec=None):
         solver = self.solver

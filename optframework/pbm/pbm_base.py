@@ -195,8 +195,8 @@ class PBMSolver:
         
     def set_tol(self, moments):
         ## Sets the integration tolerance associated with the initial moments
-        self.atolarray = np.maximum(self.atol_min, self.atol_scale * np.abs(moments[:,0]))
-        self.rtolarray = np.full_like(moments[:,0], self.rtol)
+        self.atolarray = np.maximum(self.atol_min, self.atol_scale * np.abs(moments))
+        self.rtolarray = np.full_like(moments, self.rtol)
         
     def create_ndf(self, distribution="normal", x_range=(0, 100), points=1000, **kwargs):
         """

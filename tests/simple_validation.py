@@ -10,15 +10,15 @@ from optframework.pbe.validation import PBEValidation
 from optframework.utils.general_scripts.generate_psd import full_psd
 
 if __name__ == "__main__":
-    ## To ensure that MOM remains relatively stable, 
+    ## To ensure that PBE remains relatively stable, 
     ## the function internally adjusts the particle initialization manually. 
     ## As a result, the actual volume concentration may no longer match the value of c below! 
     ## However, the initial conditions for MC-PBE and PBM are directly taken from dPBE, 
     ## so theoretically, the initial conditions for all three methods remain the same.
     c = 1e-2  # m3/m3
     x = 2e-1  # m
-    beta0 = 1e-4 # /m3
-    use_psd = False
+    beta0 = 1e-7 # /m3
+    use_psd = True
     rel_mom = True
     
     ## generate initial PSD
@@ -30,15 +30,15 @@ if __name__ == "__main__":
     maxscale = 100
     dist_path = full_psd(x50, resigma, minscale=minscale, maxscale=maxscale, plot_psd=False, output_dir=output_dir)
     
-    dim = 1
+    dim = 2
     grid = "geo"
-    NS1 = 15
+    NS1 = 20
     NS2 = None
     S1 = 4
     # S2 = 2
     kernel = "sum"
     process = "mix"
-    t = np.arange(0, 21, 1, dtype=float)
+    t = np.arange(0, 11, 1, dtype=float)
     
     v = PBEValidation(dim, grid, NS1, S1, kernel, process, t=t, c=c, x=x, 
                       beta0=beta0, use_psd=use_psd, dist_path=dist_path)

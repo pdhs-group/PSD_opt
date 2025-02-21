@@ -24,7 +24,7 @@ config = {
     "t_write": 2,  
     # Interval in seconds for writing output data (e.g., simulation results).
 
-    "process_type": "agglomeration",  
+    "process_type": "breakage",  
     # Type of process being simulated.
     # "agglomeration": pure agglomeration
     # "breakage": pure breakage

@@ -61,13 +61,13 @@ class PBEValidation():
         self.p.S = S
         self.p.USE_PSD = self.use_psd
         self.p.R01, self.p.R03 = self.x/2, self.x/2
-        self.p.DIST1, self.p.DIST1 = self.dist_path, self.dist_path
+        self.p.DIST1, self.p.DIST3 = self.dist_path, self.dist_path
         self.p.alpha_prim = np.ones(dim**2)
         self.p.G = 1.0
         self.p.process_type = process
         self.p.calc_R()
         self.p.init_N(reset_N=True, N01=self.n0, N03=self.n0)
-        self.p.N[2,0] = self.p.N01
+        # self.p.N[2,0] = self.p.N01
         
         if dim == 1:
             self.v0 = self.p.V[1]
@@ -82,9 +82,9 @@ class PBEValidation():
     
     def init_mcpbe(self, dim, t, process):
         ## The number of times to repeat the MC-PBE
-        self.N_MC = 5
+        self.N_MC = 10
         self.p_mc = MCPBESolver(dim=dim, verbose=True, load_attr=False, init=False)
-        self.p_mc.a0 = 400
+        self.p_mc.a0 = 2000
         self.p_mc.CDF_method = "disc"
         self.p.G = 1.0
         self.p_mc.process_type = process
@@ -105,8 +105,8 @@ class PBEValidation():
             for i in range(self.p.V.shape[0]):
                 for j in range(self.p.V.shape[1]):
                     if a_array[i, j] > 0:
-                        self.p.V[0, cnt:cnt + a_array[i, j]] = np.full(a_array[i, j], self.p.V[i, 0])
-                        self.p.V[1, cnt:cnt + a_array[i, j]] = np.full(a_array[i, j], self.p.V[0, j])
+                        self.p_mc.V[0, cnt:cnt + a_array[i, j]] = np.full(a_array[i, j], self.p.V[i, 0])
+                        self.p_mc.V[1, cnt:cnt + a_array[i, j]] = np.full(a_array[i, j], self.p.V[0, j])
                         cnt += a_array[i, j]
         self.p_mc.V[-1, :] = np.sum(self.p_mc.V[:dim, :], axis=0)
         # self.p_mc.USE_PSD = self.use_psd
@@ -123,19 +123,18 @@ class PBEValidation():
         #     self.p_mc.savesteps = len(t)
             
     def init_pbm(self, dim, t, process, mom_n_order, mom_n_add):
-        if dim == 1:
-            self.p_mom = PBMSolver(dim, t_vec=t, load_attr=False)
-            self.p_mom.n_order = mom_n_order                          # Number of the simple nodes [-]
-            self.p_mom.n_add = mom_n_add                          # Number of additional nodes [-] 
-            self.p_mom.GQMOM = False
-            self.p_mom.GQMOM_method = "lognormal"
-            self.p_mom.USE_PSD = self.use_psd
-            self.p_mom.process_type = process
-            self.p_mom.G = 1.0
-            self.p_mom.alpha_prim = np.ones(dim**2)
-            self.p_mom.V_unit = 1
-            self.p_mom.DIST1 = self.dist_path
-            self.p_mom.DIST3 = self.dist_path
+        self.p_mom = PBMSolver(dim, t_vec=t, load_attr=False)
+        self.p_mom.n_order = mom_n_order                          # Number of the simple nodes [-]
+        self.p_mom.n_add = mom_n_add                          # Number of additional nodes [-] 
+        self.p_mom.GQMOM = False
+        self.p_mom.GQMOM_method = "lognormal"
+        self.p_mom.USE_PSD = self.use_psd
+        self.p_mom.process_type = process
+        self.p_mom.G = 1.0
+        self.p_mom.alpha_prim = np.ones(dim**2)
+        self.p_mom.V_unit = 1
+        self.p_mom.DIST1 = self.dist_path
+        self.p_mom.DIST3 = self.dist_path
             # x_range = (0.0, self.p.V[-1])
             # if process == "agglomeration" or process == "mix":
             #     size = self.p.V[1]
@@ -145,12 +144,34 @@ class PBEValidation():
             # x_range = (0.0, self.p.V[-1])
             # self.p_mom.init_moments(NDF_shape="mono",N0=self.n0, x_range=x_range, V0=self.p.V01)
             ## To better match the initial conditions of dPBE, manually initialize pbm.
-            self.p_mom.x_max = self.p.V[-1]
+            # self.p_mom.x_max = self.p.V[-1]
+        if dim == 1:
+            self.p_mom.x_max = 1
             self.p_mom.moments = np.zeros((self.p_mom.n_order*2,self.p_mom.t_num))
             self.p_mom.moments[:,0] = np.array([np.sum(self.p.V**k*self.p.N[:,0]) for k in range(2*self.p_mom.n_order)])
             self.p_mom.normalize_mom()
-            self.p_mom.set_tol()
-        
+        elif dim == 2:
+            # x1 = self.p.V[:,0]
+            # NDF1 = self.p.N[:,0,0]
+            # x2 = self.p.V[0,:]
+            # NDF2 = self.p.N[0,:,0]
+            self.p.N[0,0,:] = 0.0
+            self.p_mom.moment_2d_indices_c()
+            mu_num = len(self.p_mom.indices)
+            self.p_mom.moments = np.zeros((mu_num, self.p_mom.t_num))
+            ## 注意： 因为dPBE中的N是颗粒数量密度而不是常说的NDF(它们之间存在一个类似NDF=dN/dx的关系)
+            ## 所以由dPBE的初始条件得到PBM初始条件的时候不是对N积分，而是直接求和！
+            for idx in range(mu_num):
+                k = self.p_mom.indices[idx][0]
+                l = self.p_mom.indices[idx][1]
+            #     self.p_mom.moments[idx,0] = self.p_mom.trapz_2d(NDF1, NDF2, x1, x2, k, l) * self.p_mom.V_unit
+                self.p_mom.moments[idx,0] = np.sum((self.p.X1_vol*self.p.V)**k
+                                                   *(self.p.X3_vol*self.p.V)**l
+                                                   *self.p.N[:,:,0]) * self.p_mom.V_unit
+            
+        self.p_mom.set_tol(self.p_mom.moments[:,0])
+            
+    
     def init_mu(self):
         if self.p.t_vec is None:
             if self.kernel == "const":
@@ -161,7 +182,7 @@ class PBEValidation():
         self.p_mc.tA = t[-1]
         self.p_mc.savesteps = len(t)
         
-        self.mu_as = np.zeros((3,3,len(t)))
+        self.mu_as = np.ones((3,3,len(t)))
         self.mu_pbe = np.zeros((3,3,len(t)))
         self.mu_mc = np.zeros((3,3,len(t)))  
         self.mu_pbm = np.zeros((3,3,len(t)))  
@@ -206,8 +227,14 @@ class PBEValidation():
         if self.N_MC > 1: self.std_mu_mc = np.std(mu_tmp,ddof=1,axis=0)
     
     def calculate_pbm(self):
-        self.p_mom.solve_PBM()
-        self.mu_pbm[:,0,:] = self.p_mom.moments[:3,:]
+        self.p_mom.core.solve_PBM()
+        if self.p_mom.dim == 1:
+            self.mu_pbm[:,0,:] = self.p_mom.moments[:3,:]
+        elif self.p_mom.dim == 2:
+            for idx, (i, j) in enumerate(self.p_mom.indices):
+                if i < 3 and j < 3: 
+                    self.mu_pbm[i, j, :] = self.p_mom.moments[idx, :]
+            
     
     def calculate_as_pbe(self, t=None):
         t = self.p.t_vec if t is None else t
@@ -304,7 +331,7 @@ class PBEValidation():
         if calc_mc:
             self.set_kernel_params(self.p_mc)
             self.calculate_mc_pbe()
-        if calc_pbm and self.p.dim == 1:
+        if calc_pbm:
             self.set_kernel_params(self.p_mom)
             self.calculate_pbm()
         if not self.use_psd:
@@ -406,14 +433,16 @@ class PBEValidation():
                                    clr=c_KIT_green,mrk='^', alpha=alpha, mrkedgecolor='k')
         
         ## add moments from QMOM
-        if self.p.dim == 1:
+        if i == 1 and j == 1:
+            mu_pbm = self.mu_pbm[:,:,1:]
+        else:
             mu_pbm = self.mu_pbm
-            if rel:
-                mu_pbm[i,j,:] = mu_pbm[i,j,:]/(mu_pbm[i,j,0] + MIN)
-            ax, fig = pt.plot_data(tp,mu_pbm[i,j,:], fig=fig, ax=ax,
-                                   xlbl='Agglomeration time $t_\mathrm{A}$ / $s$',
-                                   ylbl=ylbl, lbl='PBM, $M_{\mathrm{order}}='+str(self.mom_order)+'$',
-                                   clr=c_KIT_blue,mrk='D', alpha=alpha, mrkedgecolor='k')
+        if rel:
+            mu_pbm[i,j,:] = mu_pbm[i,j,:]/(mu_pbm[i,j,0] + MIN)
+        ax, fig = pt.plot_data(tp,mu_pbm[i,j,:], fig=fig, ax=ax,
+                               xlbl='Agglomeration time $t_\mathrm{A}$ / $s$',
+                               ylbl=ylbl, lbl='PBM, $M_{\mathrm{order}}='+str(self.mom_order)+'$',
+                               clr=c_KIT_blue,mrk='D', alpha=alpha, mrkedgecolor='k')
         # if std_mu_mc is not None:
         #     ax.errorbar(tp,mu_mc[i,j,:],yerr=std_mu_mc[i,j,:],fmt='none',color=c_KIT_red,
         #                 capsize=plt.rcParams['lines.markersize']-2,alpha=alpha,zorder=0, mec ='k')

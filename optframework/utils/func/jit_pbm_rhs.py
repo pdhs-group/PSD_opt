@@ -206,23 +206,31 @@ def get_dMdt_2d(t, moments, n, indices, COLEVAL, CORR_BETA, G, alpha_prim, EFFEV
 
     xi, wi, n = qmom.calc_cqmom_2d(moments, n, indices, use_central=True)
     
+    # for Debug
+    # moments_cqmom = np.zeros_like(moments)
+    # for idx, _ in enumerate(moments_cqmom):
+    #     indice = indices[idx]
+    #     moments_cqmom[idx] = chyqmom.quadrature_2d(wi, xi, indice)
+    # print(np.mean(abs(moments_cqmom-moments)/moments))
+    
     if n0 > n:
         print(f"Warning: At t = {t}, the moments are NOT realizable, abscissas reduced to {n}.")
-    ## 因为PBE中的计算考虑了零点，所以这里对于PBM使用的时候坐标会发生一定偏移
-    V = np.ones((n+1, n+1))
+    V = np.ones((n, n))
     V1 = xi[0,:]
     V3 = xi[1,:]
     V_flat = np.ones(n*n)
+    
+    ## 因为PBE中的计算考虑了零点，所以这里对于PBM使用的时候坐标会发生一定偏移
     R = np.ones((n+1, n+1))
     X1 = np.ones((n+1, n+1))
     X3 = np.ones((n+1, n+1))
     
-    for i in range(1, n+1):
-        for j in range(1, n+1):
-            V[i,j] = V1[i+j-2] + V3[i+j-2]
-            V_flat[i+j-2] = V[i,j]
-            X1[i,j] = V1[i+j-2] / V[i,j]
-            X3[i,j] = V3[i+j-2] / V[i,j]
+    for i in range(n):
+        for j in range(n):
+            V[i,j] = V1[i*n+j] + V3[i*n+j]
+            V_flat[i*n+j] = V[i,j]
+            X1[i+1,j+1] = V1[i*n+j] / V[i,j]
+            X3[i+1,j+1] = V3[i*n+j] / V[i,j]
     
     if np.any(V<0):
         print(f"t = {t}")
@@ -231,7 +239,7 @@ def get_dMdt_2d(t, moments, n, indices, COLEVAL, CORR_BETA, G, alpha_prim, EFFEV
     # print(t)
     # print(xi[:,0])
     
-    R[1:, 1:] = (V[1:, 1:]*3/(4*math.pi))**(1/3)
+    R[1:, 1:] = (V*3/(4*math.pi))**(1/3)
     
     if type_flag == "agglomeration" or type_flag == "mix":
         F_M_tem = kernel_agg.calc_F_M_2D(n+2, COLEVAL, CORR_BETA, G, R, X1, X3,EFFEVAL, 
@@ -250,7 +258,7 @@ def get_dMdt_2d(t, moments, n, indices, COLEVAL, CORR_BETA, G, alpha_prim, EFFEV
             for j in range(n):
                 # if V1[i] < eta or V3[j] < eta:
                 #     continue
-                B_R[i,j] = B_R_flat[i+j]
+                B_R[i,j] = B_R_flat[i*n+j]
 
         xs1 = np.array([-9.681602395076260859e-01,
                     -8.360311073266357695e-01,
@@ -277,23 +285,23 @@ def get_dMdt_2d(t, moments, n, indices, COLEVAL, CORR_BETA, G, alpha_prim, EFFEV
             l = indices[idx][1]
             for i in range(n):
                 for j in range(n):
-                    # if V1[i+j] < eta or V3[i+j] < eta:
+                    # if V1[i*n+j] < eta or V3[i*n+j] < eta:
                     #     continue
                     ## If a calculation error occurs, it may be necessary to check whether 
                     ## V1 or V3 is equal to zero and apply a different integration strategy accordingly.
-                    argsk = (V1[i+j],V3[i+j],v,q,BREAKFVAL,k,l)
+                    argsk = (V1[i*n+j],V3[i*n+j],v,q,BREAKFVAL,k,l)
                     func = kernel_break.breakage_func_2d_x1kx3l
-                    B_F_intxk[k, i, l, j] = kernel_break.dblgauss_legendre(func, 0.0, V1[i+j], 0.0, V3[i+j], xs1, ws1, xs3,ws3,args=argsk)
+                    B_F_intxk[k, i, l, j] = kernel_break.dblgauss_legendre(func, 0.0, V1[i*n+j], 0.0, V3[i*n+j], xs1, ws1, xs3,ws3,args=argsk)
                     
-                    # argsk = (V1[i+j],V3[i+j],v,q,BREAKFVAL,1,eta)
+                    # argsk = (V1[i*n+j],V3[i*n+j],v,q,BREAKFVAL,1,eta)
                     # func1 = kernel_break.breakage_func_2d_x1k_trunc
                     # func2 = kernel_break.breakage_func_2d_x3k_trunc
-                    # norm_fac1 = kernel_break.dblgauss_legendre(func1, eta, V1[i+j], eta, V3[i+j], xs1, ws1, xs3,ws3,args=argsk)
-                    # norm_fac2 = kernel_break.dblgauss_legendre(func2, eta, V1[i+j], eta, V3[i+j], xs1, ws1, xs3,ws3,args=argsk)
-                    # argsk_trunc = (V1[i+j],V3[i+j],v,q,BREAKFVAL,k,l,eta)
+                    # norm_fac1 = kernel_break.dblgauss_legendre(func1, eta, V1[i*n+j], eta, V3[i*n+j], xs1, ws1, xs3,ws3,args=argsk)
+                    # norm_fac2 = kernel_break.dblgauss_legendre(func2, eta, V1[i*n+j], eta, V3[i*n+j], xs1, ws1, xs3,ws3,args=argsk)
+                    # argsk_trunc = (V1[i*n+j],V3[i*n+j],v,q,BREAKFVAL,k,l,eta)
                     # func_norm = kernel_break.breakage_func_2d_trunc
-                    # B_F_intxk_trunk = kernel_break.dblgauss_legendre(func_norm, eta, V1[i+j], eta, V3[i+j], xs1, ws1, xs3,ws3,args=argsk_trunc)
-                    # B_F_intxk[k, i, l, j] = B_F_intxk_trunk / ((norm_fac1 + norm_fac2) / V[i+1,j+1])
+                    # B_F_intxk_trunk = kernel_break.dblgauss_legendre(func_norm, eta, V1[i*n+j], eta, V3[i*n+j], xs1, ws1, xs3,ws3,args=argsk_trunc)
+                    # B_F_intxk[k, i, l, j] = B_F_intxk_trunk / ((norm_fac1 + norm_fac2) / V[i,j])
 
     for idx, _ in enumerate(dMdt):
         k = indices[idx][0]
@@ -305,13 +313,17 @@ def get_dMdt_2d(t, moments, n, indices, COLEVAL, CORR_BETA, G, alpha_prim, EFFEV
                 if type_flag == "agglomeration" or type_flag == "mix":
                     for a in range(n):
                         for b in range(n):
-                            dMdt_agg_ijab += 0.5 * wi[i+j]*wi[a+b]*F_M[i,j,a,b]*(
-                                (xi[0,i+j]+xi[0,a+b])**k*(xi[1,i+j]+xi[1,a+b])**l
-                                -xi[0,i+j]**k*xi[1,i+j]**l
-                                -xi[0,a+b]**k*xi[1,a+b]**l)
+                            dMdt_agg_ijab += 0.5 * wi[i*n+j]*wi[a*n+b]*F_M[i,j,a,b]*(
+                                (xi[0,i*n+j]+xi[0,a*n+b])**k*(xi[1,i*n+j]+xi[1,a*n+b])**l
+                                -xi[0,i*n+j]**k*xi[1,i*n+j]**l
+                                -xi[0,a*n+b]**k*xi[1,a*n+b]**l)
+                            
+                            # print((F_M[i,j,a,b]
+                            # -(xi[0,i*n+j]+xi[0,a*n+b]+xi[1,i*n+j]+xi[1,a*n+b])*CORR_BETA)/F_M[i,j,a,b])
                 if type_flag == "breakage" or type_flag == "mix":
-                    dMdt_break_ij += (wi[i+j] * B_R[i,j] * B_F_intxk[k,i,l,j] - wi[i+j]
-                                      * xi[0,i+j]**k * xi[1,i+j]**l * B_R[i,j])
+                    dMdt_break_ij += (wi[i*n+j] * B_R[i,j] * B_F_intxk[k,i,l,j] - wi[i*n+j]
+                                      * xi[0,i*n+j]**k * xi[1,i*n+j]**l * B_R[i,j])
+                    
         dMdt[idx] = dMdt_agg_ijab + dMdt_break_ij
     
     return dMdt
