@@ -16,6 +16,25 @@ class PBMCore:
     def init_moments(self, x=None, NDF=None, NDF_shape="normal", N0=1.0,
                      V0=None, x_range=(0,1), mean=0.5, std_dev=0.1, shape=2, scale=1,
                      sigma=1, a=2, b=2, size=0.5):
+        """
+        Initialize the moments for the PBM solver.
+
+        Parameters:
+            x (numpy.ndarray): x-coordinates for the distribution function.
+            NDF (numpy.ndarray): Normalized distribution function.
+            NDF_shape (str): Shape of the distribution ("normal", "gamma", "lognormal", "beta", "mono").
+            N0 (float): Initial number concentration.
+            V0 (float): Total volume of particles.
+            x_range (tuple): Range of x values.
+            mean (float): Mean value for normal/lognormal distribution.
+            std_dev (float): Standard deviation for normal distribution.
+            shape (float): Shape parameter for gamma distribution.
+            scale (float): Scale parameter for gamma distribution.
+            sigma (float): Standard deviation for lognormal distribution.
+            a (float): Alpha parameter for beta distribution.
+            b (float): Beta parameter for beta distribution.
+            size (float): Size parameter for mono distribution.
+        """
         solver = self.solver
         if x is None or NDF is None:
             if solver.USE_PSD:
@@ -50,6 +69,13 @@ class PBMCore:
         solver.set_tol(solver.moments_norm[:,0])
 
     def init_moments_2d(self, N01=1.0, N02=1.0):
+        """
+        Initialize the 2D moments for the PBM solver.
+
+        Parameters:
+            N01 (float): Initial number concentration for component 1.
+            N02 (float): Initial number concentration for component 2.
+        """
         solver = self.solver
         x1, NDF1 = solver.create_ndf(distribution="normal", x_range=(1e-2,1e-1), mean=6e-2, std_dev=2e-2)
         x2, NDF2 = solver.create_ndf(distribution="normal", x_range=(1e-2,1e-1), mean=6e-2, std_dev=2e-2)
@@ -60,12 +86,18 @@ class PBMCore:
         mu_num = len(solver.indices)
         solver.moments = np.zeros((mu_num, solver.t_num))
         for idx in range(mu_num):
-            k = solver.indices[idx][0]
-            l = solver.indices[idx][1]
+            k = solver.indices[idx,0]
+            l = solver.indices[idx,1]
             solver.moments[idx,0] = solver.trapz_2d(NDF1, NDF2, x1, x2, k, l) * solver.V_unit
         solver.set_tol(solver.moments[:,0])
 
     def solve_PBM(self, t_vec=None):
+        """
+        Solve the Population Balance Model (PBM) using the specified time vector.
+
+        Parameters:
+            t_vec (numpy.ndarray): Time vector for the simulation.
+        """
         solver = self.solver
         if t_vec is None:
             t_vec = solver.t_vec
@@ -132,3 +164,4 @@ class PBMCore:
         solver.calc_status = status
         if not solver.calc_status:
             print('Warning: The integral failed to converge!')
+

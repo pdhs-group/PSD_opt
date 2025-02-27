@@ -7,6 +7,7 @@ import optframework.utils.func.jit_kernel_break as kernel_break
 import optframework.utils.func.jit_pbm_chyqmom as chyqmom
 from scipy.optimize import root
 from scipy.optimize import least_squares
+from numba import jit
 
 def filter_negative_nodes(xi, wi, threshold=1e-7):
     """
@@ -98,6 +99,7 @@ def hyqmom_newton_correction(xi, wi, moments, method="lm"):
 
     return xi, wi
     
+@jit(nopython=True)
 def get_dMdt_1d(t, moments, x_max, GQMOM, GQMOM_method, 
                 moments_norm_factor, n_add, nu, 
                 COLEVAL, CORR_BETA, G, alpha_prim, EFFEVAL, 
@@ -112,11 +114,12 @@ def get_dMdt_1d(t, moments, x_max, GQMOM, GQMOM_method,
     
     m = len(moments)
     n = m // 2  # Number of xi based on available moments
-    
+    adaptive = False
+    use_central=False
     if not GQMOM:
-        xi, wi, n = qmom.calc_qmom_nodes_weights(moments, n, adaptive=False, use_central=False)
+        xi, wi, n = qmom.calc_qmom_nodes_weights(moments, n, adaptive, use_central)
     else:
-        xi, wi, n = qmom.calc_gqmom_nodes_weights(moments, n, n_add, GQMOM_method, nu)
+        xi, wi, n = qmom.calc_gqmom_nodes_weights(moments, n, n_add, GQMOM_method, nu,adaptive, use_central)
         # xi, wi = filter_negative_nodes(xi, wi)
         n += n_add
 
@@ -193,6 +196,7 @@ def get_dMdt_1d(t, moments, x_max, GQMOM, GQMOM_method,
     
     return dMdt_norm
 
+@jit(nopython=True)
 def get_dMdt_2d(t, moments, n, indices, COLEVAL, CORR_BETA, G, alpha_prim, EFFEVAL, 
                 SIZEEVAL, V_unit, X_SEL, Y_SEL, 
                 V1_mean, V3_mean, pl_P1, pl_P2, pl_P3, pl_P4, BREAKRVAL, 
@@ -281,8 +285,8 @@ def get_dMdt_2d(t, moments, n, indices, COLEVAL, CORR_BETA, G, alpha_prim, EFFEV
         xs3 = xs1
         ws3 = ws1
         for idx, _ in enumerate(dMdt):
-            k = indices[idx][0]
-            l = indices[idx][1]
+            k = indices[idx,0]
+            l = indices[idx,1]
             for i in range(n):
                 for j in range(n):
                     # if V1[i*n+j] < eta or V3[i*n+j] < eta:
@@ -304,8 +308,8 @@ def get_dMdt_2d(t, moments, n, indices, COLEVAL, CORR_BETA, G, alpha_prim, EFFEV
                     # B_F_intxk[k, i, l, j] = B_F_intxk_trunk / ((norm_fac1 + norm_fac2) / V[i,j])
 
     for idx, _ in enumerate(dMdt):
-        k = indices[idx][0]
-        l = indices[idx][1]
+        k = indices[idx,0]
+        l = indices[idx,1]
         dMdt_agg_ijab = 0.0
         dMdt_break_ij = 0.0
         for i in range(n):

@@ -2,9 +2,9 @@ import numpy as np
 
 config = {
     "n_order": 2,                          # Order of the moments [-]
-    "n_add": 3,                          # Number of additional nodes [-] 
+    "n_add": 1,                          # Number of additional nodes [-] 
     "GQMOM": False,
-    "GQMOM_method": "lognormal",
+    "GQMOM_method": "gaussian",
     "nu": 1,   
     # "R01": 8.677468940430804e-07,
     # "R03": 8.677468940430804e-07,
@@ -24,7 +24,7 @@ config = {
     "t_write": 2,  
     # Interval in seconds for writing output data (e.g., simulation results).
 
-    "process_type": "breakage",  
+    "process_type": "mix",  
     # Type of process being simulated.
     # "agglomeration": pure agglomeration
     # "breakage": pure breakage
@@ -69,7 +69,7 @@ config = {
     # Flag that determines whether to account for damping effects due to particle volume growth 
     # during aggregation. This is handled in dpbe_core.py's `calc_F_M`.
 
-    "CORR_BETA": 1e-0,
+    "CORR_BETA": 1e-1,
     # Correction factor for the collision frequency kernel, controlling the rate of aggregation.
 
     'alpha_prim': np.array([1,1,1,1]),  

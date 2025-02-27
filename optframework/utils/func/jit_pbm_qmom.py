@@ -1,13 +1,14 @@
 import numpy as np
 import scipy.stats as stats
+from numba import jit
 from .jit_pbm_chyqmom import compute_central_moments_2d, compute_central_moments_1d
-
 
 ### This Function is from the open source bib PyQBMMlib(https://github.com/sbryngelson/PyQBMMlib/tree/master)
 ### Note: There is actually a problem with the adaptive function. 
 ### It should dynamically adjust the recursive coefficient and the number of nodes/weights 
 ### based on various judgments. But judgments were tested here but adjustment was actually not implemented.
-def calc_qmom_nodes_weights(moments, n, adaptive=False, use_central=False):
+@jit(nopython=True)
+def calc_qmom_nodes_weights(moments, n, adaptive, use_central):
     """
     Compute nodes (ξ_i) and weights (w_i) using QMOM with the adaptive Wheeler algorithm.
 
@@ -43,7 +44,8 @@ def calc_qmom_nodes_weights(moments, n, adaptive=False, use_central=False):
 
     return x, w, n
 
-def calc_qmom_recurrence(moments, n, adaptive=False, cutoff=0):
+@jit(nopython=True)
+def calc_qmom_recurrence(moments, n, adaptive, cutoff):
     # Initialize modified moments (σ) and recurrence coefficients (a, b)
     a = np.zeros(n)
     b = np.zeros(n)
@@ -102,6 +104,7 @@ def calc_qmom_recurrence(moments, n, adaptive=False, cutoff=0):
         raise ValueError("Moments in Wheeler_moments are not realizable!")
     return a, b, n
 
+@jit(nopython=True)
 def recurrence_jacobi_nodes_weights(moments, a, b):
     # Construct Jacobi matrix and solve for eigenvalues and eigenvectors
     sqrt_b = np.sqrt(b[1:])
@@ -115,9 +118,10 @@ def recurrence_jacobi_nodes_weights(moments, a, b):
     w = moments[0] * eigenvectors[0, :] ** 2  # Compute weights
     return x, w
     
-def calc_gqmom_nodes_weights(moments, n, n_add, method="gaussian", nu=1):
+@jit(nopython=True)
+def calc_gqmom_nodes_weights(moments, n, n_add, method, nu, adaptive, cutoff):
     # calculate regular recurrence coefficients
-    a_reg, b_reg, n = calc_qmom_recurrence(moments, n)
+    a_reg, b_reg, n = calc_qmom_recurrence(moments, n, adaptive, cutoff)
     
     if method == "gaussian":
         a, b = calc_gqmom_recurrence_real(a_reg, b_reg, n_add, nu)
@@ -134,6 +138,7 @@ def calc_gqmom_nodes_weights(moments, n, n_add, method="gaussian", nu=1):
     x, w = recurrence_jacobi_nodes_weights(moments, a, b)
     return x, w, n
 
+@jit(nopython=True)
 def calc_gqmom_recurrence_real(a_reg, b_reg, n_add, nu):
     """
     Correct recurrence coefficients a and b for (Gaussian) Generalized QMOM.
@@ -172,9 +177,10 @@ def calc_gqmom_recurrence_real(a_reg, b_reg, n_add, nu):
     # Correct the last b
     b[n_nodes - 1] = b[n_reg - 1] * (float(n_nodes - 1) / float(n_reg - 1)) ** nu
 
-    return a, b
+    return np.array(a), np.array(b)
 
-def calc_gqmom_recurrence_beta(a_reg, b_reg, n_add, ndf_type="gamma"):
+@jit(nopython=True)
+def calc_gqmom_recurrence_beta(a_reg, b_reg, n_add):
     # Number of regular quadrature nodes
     n_reg = len(a_reg)
     
@@ -225,9 +231,10 @@ def calc_gqmom_recurrence_beta(a_reg, b_reg, n_add, ndf_type="gamma"):
     for i in range(1, n_max_nodes):
         b[i] = zetas[2 * i - 1] * zetas[2 * i]
     
-    return a, b
+    return np.array(a), np.array(b)
 
-def calc_gqmom_recurrence_realplus(moments,a_reg, b_reg, n_add, ndf_type="gamma"):
+@jit(nopython=True)
+def calc_gqmom_recurrence_realplus(moments,a_reg, b_reg, n_add, ndf_type):
     """
     Correct recurrence coefficients for (Gamma/Lognormal)Generalized QMOM using R+ moments.
     
@@ -298,8 +305,9 @@ def calc_gqmom_recurrence_realplus(moments,a_reg, b_reg, n_add, ndf_type="gamma"
     for i in range(1, n_max_nodes):
         b[i] = zetas[2 * i - 1] * zetas[2 * i]
     
-    return a, b
+    return np.array(a), np.array(b)
 
+@jit(nopython=True)
 def calc_zetas(a, b, n_reg, n_max_nodes):
     """
     Set regular zetas array from constraint: a_i=zeta_2i+zeta_(2i+1),b_i=zeta_(2i-1)*zeta_2i
@@ -329,6 +337,7 @@ def calc_zetas(a, b, n_reg, n_max_nodes):
         zetas[2*i+1] = a[i] - zetas[2*i]
     return zetas
 
+@jit(nopython=True)
 def vander_rybicki(x, q):
     """
     使用 Rybicki 算法求解 Vandermonde 线性方程组。
@@ -370,6 +379,7 @@ def vander_rybicki(x, q):
 
     return w
 
+@jit(nopython=True)
 def conditional_mom_sys_solve(M_matrix, u, R_diag):
     N1, N2 = M_matrix.shape
     if len(u) != N1 or len(R_diag) != N1:
@@ -393,10 +403,10 @@ def conditional_mom_sys_solve(M_matrix, u, R_diag):
     
     return R1_matrix
     
+@jit(nopython=True)
 def calc_cqmom_2d(moments, n, indices, use_central=True):
     m = 2*n
-    indices_array = np.array(indices)
-    mom00, bx, by, central_moments = compute_central_moments_2d(moments, indices_array)
+    mom00, bx, by, central_moments = compute_central_moments_2d(moments, indices)
     
     M1 = central_moments[:m] if use_central else moments[:m]
     x1, w1, n = calc_qmom_nodes_weights(M1, n, True, use_central)
@@ -423,8 +433,8 @@ def calc_cqmom_2d(moments, n, indices, use_central=True):
         x2 += by
         w1 *= mom00
         
-    abscissas = np.empty((2, n*n), dtype=np.float64)
-    weights = np.empty(n*n, dtype=np.float64)
+    abscissas = np.zeros((2, n*n), dtype=np.float64)
+    weights = np.zeros(n*n, dtype=np.float64)
     
     idx = 0
     for i in range(n):
@@ -436,6 +446,7 @@ def calc_cqmom_2d(moments, n, indices, use_central=True):
     
     return abscissas, weights, n
 
+@jit(nopython=True)
 def quadrature_2d(x1, w1, x2, w2, moment_index):
     mu = 0.0
     N1, N2 = x2.shape

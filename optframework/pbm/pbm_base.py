@@ -242,13 +242,7 @@ class PBMSolver:
                 raise ValueError("Beta distribution requires x_range in [0, 1].")
             ndf = stats.beta.pdf(x, a, b)
         elif distribution == "mono":
-            # size = kwargs.get("size", (x_range[1] - x_range[0]) / 2)
-            # ndf = np.zeros_like(x) 
-            # ## Set the value of ndf to ensure trapz(ndf, x) = 1
-            # closest_idx = np.argmin(np.abs(x - size))
-            # dx = x[1] - x[0]
-            # ndf[closest_idx] = 1 / dx
-            
+            ## 
             mean = kwargs.get("size", (x_range[1]-x_range[0])/2 )
             std_dev = (x_range[1]-x_range[0]) / 1000
             ndf = (1 / (std_dev * np.sqrt(2 * np.pi))) * np.exp(-0.5 * ((x - mean) / std_dev) ** 2)  
@@ -306,3 +300,4 @@ class PBMSolver:
         for i in range(self.n_order):
             for j in range(1, 2 * self.n_order):
                 self.indices.append([i, j])
+        self.indices = np.array(self.indices)
