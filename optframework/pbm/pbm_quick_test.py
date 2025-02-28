@@ -14,6 +14,15 @@ class PBMQuickTest:
         self.solver = solver
 
     def QMOM(self, NDF_shape="normal"):
+        """
+        Perform Quadrature Method of Moments (QMOM) test.
+
+        Parameters:
+            NDF_shape (str): Shape of the distribution ("normal", "gamma", "lognormal", "beta").
+
+        Returns:
+            tuple: Original moments, QMOM moments, and GQMOM moments.
+        """
         solver = self.solver
         if NDF_shape == "normal":
             x, NDF = solver.create_ndf(distribution="normal", x_range=(0,1), mean=0.5, std_dev=0.1)
@@ -41,6 +50,15 @@ class PBMQuickTest:
         return moments, moments_QMOM, moments_GQMOM
 
     def QMOM_normal(self, NDF_shape="normal"):
+        """
+        Perform QMOM test with normalization.
+
+        Parameters:
+            NDF_shape (str): Shape of the distribution ("normal", "gamma", "lognormal", "beta", "mono").
+
+        Returns:
+            tuple: Original moments, QMOM moments, and GQMOM moments.
+        """
         solver = self.solver
         if NDF_shape == "normal":
             x, NDF = solver.create_ndf(distribution="normal", x_range=(0, 1e-12), mean=5e-13, std_dev=2e-13)
@@ -73,6 +91,12 @@ class PBMQuickTest:
         return moments, moments_QMOM, moments_GQMOM
 
     def CHyQMOM_2d(self):
+        """
+        Perform 2D Conditional Hyperbolic Quadrature Method of Moments (CHyQMOM) test.
+
+        Returns:
+            tuple: Original moments and CHyQMOM moments.
+        """
         solver = self.solver
         x1, NDF1 = solver.create_ndf(distribution="normal", x_range=(0,1), mean=0.5, std_dev=0.1)
         x2, NDF2 = solver.create_ndf(distribution="normal", x_range=(-1,10), mean=3, std_dev=1)
@@ -100,6 +124,15 @@ class PBMQuickTest:
         return moments, moments_chyqmom
 
     def CQMOM_2d(self, use_central):
+        """
+        Perform 2D Conditional Quadrature Method of Moments (CQMOM) test.
+
+        Parameters:
+            use_central (bool): Flag to use central moments.
+
+        Returns:
+            tuple: Original moments and CQMOM moments.
+        """
         solver = self.solver
         x1, NDF1 = solver.create_ndf(distribution="normal", x_range=(0,1), mean=0.5, std_dev=0.1)
         x2, NDF2 = solver.create_ndf(distribution="normal", x_range=(0,1), mean=0.5, std_dev=0.1)

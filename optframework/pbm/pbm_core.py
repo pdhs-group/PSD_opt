@@ -17,13 +17,13 @@ class PBMCore:
                      V0=None, x_range=(0,1), mean=0.5, std_dev=0.1, shape=2, scale=1,
                      sigma=1, a=2, b=2, size=0.5):
         """
-        Initialize the moments for the PBM solver.
+        Initialize 1D moments for the PBM solver.
 
         Parameters:
             x (numpy.ndarray): x-coordinates for the distribution function.
-            NDF (numpy.ndarray): Normalized distribution function.
+            NDF (numpy.ndarray): (Normalized) Distribution function.
             NDF_shape (str): Shape of the distribution ("normal", "gamma", "lognormal", "beta", "mono").
-            N0 (float): Initial number concentration.
+            N0 (float): Initial total number concentration.
             V0 (float): Total volume of particles.
             x_range (tuple): Range of x values.
             mean (float): Mean value for normal/lognormal distribution.

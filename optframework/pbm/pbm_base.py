@@ -23,43 +23,39 @@ class PBMSolver:
         
         ## Simulation parameters
         self.dim = dim                        # Dimension (1=1D, 2=2D, 3=3D)
-        self.t_total = t_total                       # total simulation time [second]
-        self.t_write = t_write
-        self.t_vec = t_vec
-        self.n_order = 5                          # n_order*2 is the order of the moments [-]
-        self.n_add = 10                          # Number of additional nodes [-] 
-        self.GQMOM = False
-        self.GQMOM_method = "gaussian"
+        self.t_total = t_total                # Total simulation time [second]
+        self.t_write = t_write                # Time interval for writing output
+        self.t_vec = t_vec                    # Time vector for simulation
+        self.n_order = 5                      # n_order*2 is the order of the moments [-]
+        self.n_add = 10                       # Number of additional nodes [-] 
+        self.GQMOM = False                    # Flag for using GQMOM method
+        self.GQMOM_method = "gaussian"        # Method for GQMOM
         self.nu = 1                           # Exponent for the correction in gaussian-GQMOM
 
-        self.atol_min  = 1e-16
-        self.atol_scale = 1e-9
-        self.rtol = 1e-6
+        self.atol_min  = 1e-16                # Minimum absolute tolerance
+        self.atol_scale = 1e-9                # Scaling factor for absolute tolerance
+        self.rtol = 1e-6                      # Relative tolerance
         ## Parameters in agglomeration kernels
         self.COLEVAL = 1                      # Case for calculation of beta. 1 = Orthokinetic, 2 = Perikinetic
         self.EFFEVAL = 2                      # Case for calculation of alpha. 1 = Full calculation, 2 = Reduced model (only based on primary particle interactions)
         self.SIZEEVAL = 2                     # Case for implementation of size dependency. 1 = No size dependency, 2 = Model from Soos2007 
 
-        self.alpha_prim = np.ones(dim**2)
-        self.CORR_BETA = 1e6*2.5e-5           # Correction Term for collision frequency [-]. Can be defined
-                                            # dependent on rotary speed, e.g. ((corr_beta250-corr_beta100)*(n_exp-100)/(250-100)+corr_beta100)
+        self.alpha_prim = np.ones(dim**2)     # Primary particle interaction parameter
+        self.CORR_BETA = 1e6*2.5e-5           # Correction Term for collision frequency [-]
 
         ## Parameters in breakage kernels
         self.BREAKRVAL = 3                    # Case for calculation breakage rate. 1 = constant, 2 = size dependent
         self.BREAKFVAL = 3                    # Case for calculation breakage function. 1 = conservation of Hypervolume, 2 = conservation of 0 Moments 
-        self.process_type = "breakage"    # "agglomeration": only calculate agglomeration, "breakage": only calculate breakage, "mix": calculate both agglomeration and breakage
-        self.pl_v = 1                         # number of fragments in product function of power law
-                                            # or (v+1)/v: number of fragments in simple power law  
-        self.pl_q = 1                         # parameter describes the breakage type(in product function of power law) 
-        self.pl_P1 = 1e-6                     # 1. parameter in power law for breakage rate  1d/2d
-        self.pl_P2 = 0.5                      # 2. parameter in power law for breakage rate  1d/2d
-        self.pl_P3 = 1e-6                     # 3. parameter in power law for breakage rate  2d
-        self.pl_P4 = 0.5                      # 4. parameter in power law for breakage rate  2d
-        self.V1_mean = 4.37*1e-14
-        self.V3_mean = 4.37*1e-14
-        self.B_F_type = 'int_func'            # 'int_func': calculate B_F with breakage function
-                                            # 'MC_bond': Obtain B_F directly from the result of MC_bond
-                                            # 'ANN_MC': Calculate MC results using ANN model and convert to B_F
+        self.process_type = "breakage"        # Process type: "agglomeration", "breakage", or "mix"
+        self.pl_v = 1                         # Number of fragments in product function of power law
+        self.pl_q = 1                         # Parameter describing the breakage type in product function of power law
+        self.pl_P1 = 1e-6                     # 1st parameter in power law for breakage rate 1D/2D
+        self.pl_P2 = 0.5                      # 2nd parameter in power law for breakage rate 1D/2D
+        self.pl_P3 = 1e-6                     # 3rd parameter in power law for breakage rate 2D
+        self.pl_P4 = 0.5                      # 4th parameter in power law for breakage rate 2D
+        self.V1_mean = 4.37*1e-14             # Mean volume of component 1
+        self.V3_mean = 4.37*1e-14             # Mean volume of component 3
+        self.B_F_type = 'int_func'            # Type for calculating B_F: 'int_func', 'MC_bond', 'ANN_MC'
         self.work_dir_MC_BOND = os.path.join(self.work_dir,'bond_break','int_B_F.npz')
         
         ## MATERIAL parameters:
@@ -67,7 +63,7 @@ class PBMSolver:
         self.R01 = 2.9e-7                     # Radius primary particle component 1 [m] - NM1
         self.R02 = 2.9e-7                     # Radius primary particle component 2 [m] - NM2
         self.R03 = 2.9e-7                     # Radius primary particle component 3 [m] - M3
-        self.USE_PSD = True                   # Define wheter or not the PSD should be initializes (False = monodisperse primary particles)
+        self.USE_PSD = True                   # Flag to initialize PSD (False = monodisperse primary particles)
         
         # Set default initial PSD file paths
         self.DIST1_path = os.path.join(self.work_dir,'data','PSD_data')
@@ -77,9 +73,8 @@ class PBMSolver:
         self.DIST2_name = 'PSD_x50_1.0E-6_r01_2.9E-7.npy'
         self.DIST3_name = 'PSD_x50_1.0E-6_r01_2.9E-7.npy' 
         
-        self.V_unit = 1                  # The unit volume used to calculate the total particle concentration. 
-                                            # It is essentially a parameter used to scale the variabel.
-                                            
+        self.V_unit = 1                       # Unit volume used to calculate the total particle concentration
+        
         self.X_SEL = 0.310601                 # Size dependency parameter for Selomulya2003 / Soos2006 
         self.Y_SEL = 1.06168                  # Size dependency parameter for Selomulya2003 / Soos2006
         
@@ -87,8 +82,7 @@ class PBMSolver:
         self.c_mag_exp = 0.01                 # Volume concentration of magnetic particles [Vol-%] 
         self.Psi_c1_exp = 1                   # Concentration ratio component 1 (V_NM1/V_M) [-] 
         self.Psi_c2_exp = 1                   # Concentration ratio component 2 (V_NM2/V_M) [-] 
-        self.G = 1                            # Shear rate [1/s]. Can be defined dependent on rotary speed, 
-                                            # e.g. G=(1400-354)*(n_exp-100)/(250-100)+354
+        self.G = 1                            # Shear rate [1/s]
 
         # Load the configuration file, if available
         if config_path is None and load_attr:
@@ -176,25 +170,46 @@ class PBMSolver:
         self.cv_2 = self.c_mag_exp*self.Psi_c2_exp   # Volume concentration of NM2 particles [Vol-%] 
         self.V01 = self.cv_1*self.V_unit             # Total volume concentration of component 1 [unit/unit] - NM1
         self.N01 = 3*self.V01/(4*math.pi*self.R01**3)     # Total number concentration of primary particles component 1 [1/m³] - NM1 (if no PSD)
-        self.V02 = self.cv_2*self.V_unit         # Total volume concentration of component 2 [unit/unit] - NM2
+        self.V02 = self.cv_2*self.V_unit             # Total volume concentration of component 2 [unit/unit] - NM2
         self.N02 = 3*self.V02/(4*math.pi*self.R02**3)     # Total number concentration of primary particles component 2 [1/m³] - NM2 (if no PSD)
         self.V03 = self.c_mag_exp*self.V_unit        # Total volume concentration of component 3 [unit/unit] - M
         self.N03 = 3*self.V03/(4*math.pi*self.R03**3)     # Total number concentration of primary particles component 1 [1/m³] - M (if no PSD) 
     
     def trapz_2d(self, NDF1, NDF2, x1, x2, k, l):
+        """
+        Perform 2D trapezoidal integration.
+
+        Parameters:
+            NDF1 (numpy.ndarray): First distribution function.
+            NDF2 (numpy.ndarray): Second distribution function.
+            x1 (numpy.ndarray): x-coordinates for NDF1.
+            x2 (numpy.ndarray): x-coordinates for NDF2.
+            k (int): Power for x1.
+            l (int): Power for x2.
+
+        Returns:
+            float: Result of the 2D trapezoidal integration.
+        """
         integrand = np.outer(NDF1 * (x1 ** k), NDF2 * (x2 ** l))
         integral_x2 = np.trapz(integrand, x2, axis=1)
         integral_x1 = np.trapz(integral_x2, x1)
         return integral_x1
     
     def normalize_mom(self):
-        ## Note: The following scaling method assumes that the original x-coordinates start from zero.
+        """
+        Normalize the moments by scaling them with the maximum x-coordinate.
+        """
         self.moments_norm = np.copy(self.moments)
         self.moments_norm_factor = np.array([self.x_max**k for k in range(self.n_order*2)])
         self.moments_norm[:,0] = self.moments[:,0] / self.moments_norm_factor
         
     def set_tol(self, moments):
-        ## Sets the integration tolerance associated with the initial moments
+        """
+        Set the integration tolerance based on the initial moments.
+
+        Parameters:
+            moments (numpy.ndarray): Initial moments.
+        """
         self.atolarray = np.maximum(self.atol_min, self.atol_scale * np.abs(moments))
         self.rtolarray = np.full_like(moments, self.rtol)
         
@@ -242,7 +257,13 @@ class PBMSolver:
                 raise ValueError("Beta distribution requires x_range in [0, 1].")
             ndf = stats.beta.pdf(x, a, b)
         elif distribution == "mono":
-            ## 
+            # size = kwargs.get("size", (x_range[1] - x_range[0]) / 2)
+            # ndf = np.zeros_like(x) 
+            # ## Set the value of ndf to ensure trapz(ndf, x) = 1
+            # closest_idx = np.argmin(np.abs(x - size))
+            # dx = x[1] - x[0]
+            # ndf[closest_idx] = 1 / dx
+            
             mean = kwargs.get("size", (x_range[1]-x_range[0])/2 )
             std_dev = (x_range[1]-x_range[0]) / 1000
             ndf = (1 / (std_dev * np.sqrt(2 * np.pi))) * np.exp(-0.5 * ((x - mean) / std_dev) ** 2)  
@@ -272,6 +293,9 @@ class PBMSolver:
         return NDF_ap
     
     def moment_2d_indices_chy(self):
+        """
+        Generate 2D moment indices for CHY method.
+        """
         if self.n_order == 2:
             self.indices = np.array([[0, 0], [1, 0], [0, 1], [2, 0], [1, 1], [0, 2]])
             
@@ -293,6 +317,9 @@ class PBMSolver:
             raise ValueError(f"Incorrect order of quadrature nodes, which is {self.n_order} (only 2 or 3 is supported!)")
             
     def moment_2d_indices_c(self):
+        """
+        Generate 2D moment indices for C method.
+        """
         self.indices = []
         for i in range(2 * self.n_order):
             self.indices.append([i, 0])
@@ -300,4 +327,3 @@ class PBMSolver:
         for i in range(self.n_order):
             for j in range(1, 2 * self.n_order):
                 self.indices.append([i, j])
-        self.indices = np.array(self.indices)

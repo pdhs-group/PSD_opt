@@ -4,6 +4,15 @@ from numba import jit
 
 @jit(nopython=True)
 def sign(q):
+    """
+    Return the sign of the input number.
+    
+    Parameters:
+        q (float): Input number.
+        
+    Returns:
+        int: 1 if q > 0, 0 if q == 0, and -1 if q < 0.
+    """
     if q > 0:
         return 1
     elif q == 0:
@@ -14,29 +23,32 @@ def sign(q):
 @jit(nopython=True)
 def hyqmom2(moments):
     """
-    This function inverts moments into a two-node quadrature rule.
-
-    :param moments: Statistical moments of the transported PDF
-    :type moments: array like
-    :return: Abscissas, weights
-    :rtype: array like
+    Invert moments to obtain a two-node quadrature rule.
+    
+    Parameters:
+        moments (array-like): The input moments.
+        
+    Returns:
+        tuple: (x, w) where x are the abscissas and w are the weights.
     """
 
     n = 2
     w = np.zeros(n)
     x = np.zeros(n)
 
+    # Equal weights for two-node quadrature
     w[0] = moments[0] / 2.0
     w[1] = w[0]
 
-    # bx = moments[1] / moments[0]
-    # d2 = moments[2] / moments[0]
-    # c2 = d2 - bx ** 2.0
+    # Calculate central moments and use them to position the abscissas
     bx, central_moments = compute_central_moments_1d(moments)
-    c2 = central_moments[2]
+    c2 = central_moments[2]  
 
+    # Enforce minimum variance for numerical stability
     if c2 < 10 ** (-12):
         c2 = 10 ** (-12)
+        
+    # Position nodes symmetrically around mean (±√c2)
     x[0] = bx - math.sqrt(c2)
     x[1] = bx + math.sqrt(c2)
 
@@ -46,14 +58,15 @@ def hyqmom2(moments):
 @jit(nopython=True)
 def hyqmom3(moments, max_skewness=30, checks=True):
     """
-    This function inverts moments into a three-node quadrature rule.
-
-    :param moments: Statistical moments of the transported PDF
-    :param max_skewness: Maximum skewness
-    :type moments: array like
-    :type max_skewness: float
-    :return: Abscissas, weights
-    :rtype: array like
+    Invert moments to obtain a three-node quadrature rule.
+    
+    Parameters:
+        moments (array-like): The input moments.
+        max_skewness (float): Maximum allowed skewness (default: 30).
+        checks (bool): Flag to perform validity checks (default: True).
+        
+    Returns:
+        tuple: (x, w) where x are the abscissas and w are the weights.
     """
 
     n = 3
@@ -67,34 +80,32 @@ def hyqmom3(moments, max_skewness=30, checks=True):
     xps = np.zeros(n)
     rho = np.zeros(n)
 
+    # Edge case: zero total weight
     if moments[0] <= verysmall and checks:
         w[1] = moments[0]
         return x, w
 
-    # bx = moments[1] / moments[0]
-    # d2 = moments[2] / moments[0]
-    # d3 = moments[3] / moments[0]
-    # d4 = moments[4] / moments[0]
-    # c2 = d2 - bx ** 2
-    # c3 = d3 - 3 * bx * d2 + 2 * bx ** 3
-    # c4 = d4 - 4 * bx * d3 + 6 * (bx ** 2) * d2 - 3 * bx ** 4
+    # Compute central moments
     bx, central_moments = compute_central_moments_1d(moments)
-    c2 = central_moments[2]
-    c3 = central_moments[3]
-    c4 = central_moments[4]
+    c2 = central_moments[2]  
+    c3 = central_moments[3]  
+    c4 = central_moments[4] 
 
+    # Realizability checks and corrections
     if checks:
         if c2 < 0:
             if c2 < -verysmall:
                 raise ValueError("c2 negative in three node HYQMOM")
-                # print("Error: c2 negative in three node HYQMOM")
         else:
+            # Check Hamburger moment constraint: c2*c4 - c2^3 - c3^2 ≥ 0
             realizable = c2 * c4 - c2 ** 3 - c3 ** 2
             if realizable < 0:
                 if c2 >= etasmall:
+                    # Calculate normalized skewness (q) and kurtosis (eta)
                     q = c3 / math.sqrt(c2) / c2
                     eta = c4 / c2 / c2
                     if abs(q) > verysmall:
+                        # Adjust q to make moments realizable
                         slope = (eta - 3) / q
                         det = 8 + slope ** 2
                         qp = 0.5 * (slope + math.sqrt(det))
@@ -106,24 +117,29 @@ def hyqmom3(moments, max_skewness=30, checks=True):
                     else:
                         q = 0
 
+                    # Recompute eta, c3 and c4 to ensure realizability
                     eta = q ** 2 + 1
                     c3 = q * math.sqrt(c2) * c2
                     c4 = eta * c2 ** 2
                     if realizable < -(10.0 ** (-6)):
                         raise ValueError("c4 small in HYQMOM3")
-                        # print("Error: c4 small in HYQMOM3")
                 else:
+                    # For very small variance, make distribution symmetric
                     c3 = 0.0
                     c4 = c2 ** 2.0
 
+    # Scale factor based on standard deviation
     scale = math.sqrt(c2)
     if checks and c2 < etasmall:
+        # For near-zero variance cases
         q = 0
         eta = 1
     else:
+        # Normalized skewness and kurtosis parameters
         q = c3 / math.sqrt(c2) / c2
         eta = c4 / c2 / c2
 
+    # Limit skewness if too large
     if q ** 2 > max_skewness ** 2:
         slope = (eta - 3) / q
         if q > 0:
@@ -136,10 +152,12 @@ def hyqmom3(moments, max_skewness=30, checks=True):
             if realizable < 0:
                 eta = 1 + q ** 2
 
+    # Calculate standardized abscissas using q and eta
     xps[0] = (q - math.sqrt(4 * eta - 3 * q ** 2)) / 2.0
-    xps[1] = 0.0
+    xps[1] = 0.0  # Middle node at mean
     xps[2] = (q + math.sqrt(4 * eta - 3 * q ** 2)) / 2.0
 
+    # Calculate corresponding weights
     dem = 1.0 / math.sqrt(4 * eta - 3 * q ** 2)
     prod = -xps[0] * xps[2]
     prod = max(prod, 1 + realsmall)
@@ -148,60 +166,59 @@ def hyqmom3(moments, max_skewness=30, checks=True):
     rho[1] = 1 - 1 / prod
     rho[2] = dem / xps[2]
 
+    # Normalize weights
     srho = np.sum(rho)
     rho = rho / srho
     if min(rho) < 0:
         raise ValueError("Negative weight in HYQMOM")
-        # print("Error: Negative weight in HYQMOM")
 
+    # Scale standardized abscissas back to original scale
     scales = np.sum(rho * xps ** 2) / np.sum(rho)
     xp = xps * scale / math.sqrt(scales)
 
+    # Final weights and positions
     w = moments[0] * rho
     x = xp
-    x = bx + x
+    x = bx + x  # Shift by mean
     return x, w
 
 @jit(nopython=True)
 def chyqmom4(moments, indices, max_skewness=30):
+    """
+    Invert 2D moments to obtain a four-node quadrature rule via the CHyQMOM method.
+    
+    Parameters:
+        moments (array-like): Input moments.
+        indices (array-like): Moment indices (2D) used for central moments.
+        max_skewness (float): Maximum allowed skewness (default: 30).
+        
+    Returns:
+        tuple: (x, w) where x is a list with two arrays [x, y] of abscissas and w are the weights.
+    """
     n = 4
     w = np.zeros(n)
     x = np.zeros(n)
     y = np.zeros(n)
     
+    # Calculate zeroth moment, means, and central moments
     mom00, bx, by, central_moments = compute_central_moments_2d(moments, indices)
-    c20 = central_moments[3]
-    c11 = central_moments[4]
-    c02 = central_moments[5]
-
-    # mom00 = moments[0]
-    # mom10 = moments[1]
-    # mom01 = moments[2]
-    # mom20 = moments[3]
-    # mom11 = moments[4]
-    # mom02 = moments[5]
-
-    # n = 4
-    # w = np.zeros(n)
-    # x = np.zeros(n)
-    # y = np.zeros(n)
-
-    # bx = mom10 / mom00
-    # by = mom01 / mom00
-    # d20 = mom20 / mom00
-    # d11 = mom11 / mom00
-    # d02 = mom02 / mom00
-
-    # c20 = d20 - bx ** 2.0
-    # c11 = d11 - bx * by
-    # c02 = d02 - by ** 2.0
+    c20 = central_moments[3]  # Variance in x
+    c11 = central_moments[4]  # Covariance
+    c02 = central_moments[5]  # Variance in y
     
+    # Get x-quadrature using 2-node HyQMOM (1D)
     M1 = np.array([1, 0, c20])
     xp, rho = hyqmom2(M1)
+    
+    # Calculate conditional means for y|x using correlation
     yf = c11 * xp / c20
+    
+    # Compute remaining variance for y after accounting for correlation
     mu2avg = c02 - np.sum(rho * yf ** 2)
-    mu2avg = max(mu2avg, 0)
+    mu2avg = max(mu2avg, 0)  # Ensure non-negative
     mu2 = mu2avg
+    
+    # Get y-quadrature for remaining variance
     M3 = np.array([1, 0, mu2])
     xp3, rh3 = hyqmom2(M3)
     yp21 = xp3[0]
@@ -209,23 +226,26 @@ def chyqmom4(moments, indices, max_skewness=30):
     rho21 = rh3[0]
     rho22 = rh3[1]
 
+    # Tensorize weights and nodes
     w[0] = rho[0] * rho21
     w[1] = rho[0] * rho22
     w[2] = rho[1] * rho21
     w[3] = rho[1] * rho22
-    w = mom00 * w
+    w = mom00 * w  # Scale by zeroth moment
 
+    # x nodes (2 distinct x-positions)
     x[0] = xp[0]
     x[1] = xp[0]
     x[2] = xp[1]
     x[3] = xp[1]
-    x = bx + x
+    x = bx + x  # Shift by mean
 
+    # y nodes (conditional mean plus remaining variance)
     y[0] = yf[0] + yp21
     y[1] = yf[0] + yp22
     y[2] = yf[1] + yp21
     y[3] = yf[1] + yp22
-    y = by + y
+    y = by + y  # Shift by mean
 
     x = [x, y]
     return x, w
@@ -233,6 +253,18 @@ def chyqmom4(moments, indices, max_skewness=30):
 
 @jit(nopython=True)
 def chyqmom9(moments, indices, max_skewness=30, checks=True):
+    """
+    Invert 2D moments to obtain a nine-node quadrature rule via the CHyQMOM method.
+    
+    Parameters:
+        moments (array-like): Input moments.
+        indices (array-like): Moment indices for the 2D moments.
+        max_skewness (float): Maximum allowed skewness (default: 30).
+        checks (bool): Flag to perform validity checks (default: True).
+        
+    Returns:
+        tuple: (x, w) where x is a list with two arrays [x, y] of abscissas and w are the weights.
+    """
     n = 9
     w = np.zeros(n)
     x = np.zeros(n)
@@ -241,52 +273,29 @@ def chyqmom9(moments, indices, max_skewness=30, checks=True):
     csmall = 10.0 ** (-10)
     verysmall = 10.0 ** (-14)
 
+    # Calculate zeroth moment, means, and central moments
     mom00, bx, by, central_moments = compute_central_moments_2d(moments, indices)
     
-    c20 = central_moments[3]
-    c11 = central_moments[4]
-    c02 = central_moments[5]
-    c30 = central_moments[6]
-    c03 = central_moments[7]
-    c40 = central_moments[8]
-    c04 = central_moments[9]
+    c20 = central_moments[3]  
+    c11 = central_moments[4]  
+    c02 = central_moments[5]  
+    c30 = central_moments[6]  
+    c03 = central_moments[7]  
+    c40 = central_moments[8]  
+    c04 = central_moments[9]  
     
-    # mom00 = moments[0]
-    # mom10 = moments[1]
-    # mom01 = moments[2]
-    # mom20 = moments[3]
-    # mom11 = moments[4]
-    # mom02 = moments[5]
-    # mom30 = moments[6]
-    # mom03 = moments[7]
-    # mom40 = moments[8]
-    # mom04 = moments[9]
-
-    # bx = mom10 / mom00
-    # by = mom01 / mom00
-    # d20 = mom20 / mom00
-    # d11 = mom11 / mom00
-    # d02 = mom02 / mom00
-    # d30 = mom30 / mom00
-    # d03 = mom03 / mom00
-    # d40 = mom40 / mom00
-    # d04 = mom04 / mom00
-
-    # c20 = d20 - bx ** 2.0
-    # c11 = d11 - bx * by
-    # c02 = d02 - by ** 2.0
-    # c30 = d30 - 3.0 * bx * d20 + 2.0 * bx ** 3.0
-    # c03 = d03 - 3.0 * by * d02 + 2.0 * by ** 3.0
-    # c40 = d40 - 4.0 * bx * d30 + 6 * (bx ** 2.0) * d20 - 3.0 * bx ** (4)
-    # c04 = d04 - 4.0 * by * d03 + 6 * (by ** 2.0) * d02 - 3.0 * by ** (4)
-    
+    # Get x-quadrature using 3-node HyQMOM (1D)
     M1 = np.array([1, 0, c20, c30, c40])
     xp, rho = hyqmom3(M1, max_skewness, checks)
+    
+    # Special case: negligible variance in x
     if checks and c20 < csmall:
         rho[0] = 0.0
         rho[1] = 1.0
         rho[2] = 0.0
         yf = 0 * xp
+        
+        # Use y moments directly with HyQMOM
         M2 = np.array([1, 0, c02, c03, c04])
         xp2, rho2 = hyqmom3(M2, max_skewness, checks)
         yp21 = xp2[0]
@@ -296,17 +305,25 @@ def chyqmom9(moments, indices, max_skewness=30, checks=True):
         rho22 = rho2[1]
         rho23 = rho2[2]
     else:
+        # Calculate conditional means for y|x using correlation
         yf = c11 * xp / c20
+        
+        # Compute remaining variance for y after accounting for correlation
         mu2avg = c02 - np.sum(rho * (yf ** 2.0))
         mu2avg = max(mu2avg, 0.0)
         mu2 = mu2avg
         mu3 = 0 * mu2
         mu4 = mu2 ** 2.0
+        
+        # If sufficient remaining variance, compute conditional higher moments
         if mu2 > csmall:
+            # Calculate normalized skewness and kurtosis for y|x
             q = (c03 - np.sum(rho * (yf ** 3.0))) / mu2 ** (3.0 / 2.0)
             eta = (
                 c04 - np.sum(rho * (yf ** 4.0)) - 6 * np.sum(rho * (yf ** 2.0)) * mu2
             ) / mu2 ** 2.0
+            
+            # Adjust for realizability
             if eta < (q ** 2 + 1):
                 if abs(q) > verysmall:
                     slope = (eta - 3.0) / q
@@ -319,12 +336,13 @@ def chyqmom9(moments, indices, max_skewness=30, checks=True):
                         q = qm
                 else:
                     q = 0
-
                 eta = q ** 2 + 1
 
+            # Compute moments for HyQMOM based on q and eta
             mu3 = q * mu2 ** (3.0 / 2.0)
             mu4 = eta * mu2 ** 2.0
 
+        # Get y-quadrature for remaining moments
         M3 = np.array([1, 0, mu2, mu3, mu4])
         xp3, rh3 = hyqmom3(M3, max_skewness, checks)
         yp21 = xp3[0]
@@ -334,6 +352,7 @@ def chyqmom9(moments, indices, max_skewness=30, checks=True):
         rho22 = rh3[1]
         rho23 = rh3[2]
 
+    # Tensorize weights (3×3 grid)
     w[0] = rho[0] * rho21
     w[1] = rho[0] * rho22
     w[2] = rho[0] * rho23
@@ -343,8 +362,9 @@ def chyqmom9(moments, indices, max_skewness=30, checks=True):
     w[6] = rho[2] * rho21
     w[7] = rho[2] * rho22
     w[8] = rho[2] * rho23
-    w = mom00 * w
+    w = mom00 * w  # Scale by zeroth moment
 
+    # x nodes (3 distinct x-positions repeated 3 times)
     x[0] = xp[0]
     x[1] = xp[0]
     x[2] = xp[0]
@@ -354,8 +374,9 @@ def chyqmom9(moments, indices, max_skewness=30, checks=True):
     x[6] = xp[2]
     x[7] = xp[2]
     x[8] = xp[2]
-    x = bx + x
+    x = bx + x  # Shift by mean
 
+    # y nodes (conditional means plus deviations)
     y[0] = yf[0] + yp21
     y[1] = yf[0] + yp22
     y[2] = yf[0] + yp23
@@ -365,38 +386,32 @@ def chyqmom9(moments, indices, max_skewness=30, checks=True):
     y[6] = yf[2] + yp21
     y[7] = yf[2] + yp22
     y[8] = yf[2] + yp23
-    y = by + y
+    y = by + y  # Shift by mean
 
     x = [x, y]
     return x, w
 
 
-# @jit(nopython=True)
+# Uncomment @jit if desired for performance; here left un-jitted for debugging.
 def chyqmom27(moments, indices, max_skewness=30, checks=True):
-
+    """
+    (Non-jitted) Invert moments to obtain a 27-node quadrature rule for 3D distributions via CHyQMOM.
+    
+    Parameters:
+        moments (array-like): Input moments (3D).
+        indices (array-like): Indices corresponding to the moments.
+        max_skewness (float): Maximum allowed skewness (default: 30).
+        checks (bool): Flag for performing validity checks (default: True).
+    
+    Returns:
+        Updates internal arrays. (This function uses many intermediate variables.)
+    """
     # Indices used for calling chyqmom9
     RF_idx = np.array(
         [[0, 0], [1, 0], [0, 1], [2, 0], [1, 1], [0, 2], [3, 0], [0, 3], [4, 0], [0, 4]]
     )
 
-    # normalidx = indices.tolist()
-    # m000 = moments[normalidx.index([0,0,0])]
-    # m100 = moments[normalidx.index([1,0,0])]
-    # m010 = moments[normalidx.index([0,1,0])]
-    # m001 = moments[normalidx.index([0,0,1])]
-    # m200 = moments[normalidx.index([2,0,0])]
-    # m110 = moments[normalidx.index([1,1,0])]
-    # m101 = moments[normalidx.index([1,0,1])]
-    # m020 = moments[normalidx.index([0,2,0])]
-    # m011 = moments[normalidx.index([0,1,1])]
-    # m002 = moments[normalidx.index([0,0,2])]
-    # m300 = moments[normalidx.index([3,0,0])]
-    # m030 = moments[normalidx.index([0,3,0])]
-    # m003 = moments[normalidx.index([0,0,3])]
-    # m400 = moments[normalidx.index([4,0,0])]
-    # m040 = moments[normalidx.index([0,4,0])]
-    # m004 = moments[normalidx.index([0,0,4])]
-
+    # Extract raw moments
     m000 = moments[0]
     m100 = moments[1]
     m010 = moments[2]
@@ -414,6 +429,7 @@ def chyqmom27(moments, indices, max_skewness=30, checks=True):
     m040 = moments[14]
     m004 = moments[15]
 
+    # Numerical tolerance constants
     small = 1.0e-10
     isosmall = 1.0e-14
     csmall = 1.0e-10
@@ -423,19 +439,23 @@ def chyqmom27(moments, indices, max_skewness=30, checks=True):
     n = 27
     w = np.zeros(n)
     abscissas = np.zeros((n, 3))
-    Yf = np.zeros(3)
-    Zf = np.zeros((3, 3))
+    Yf = np.zeros(3)  # Conditional means for y|x
+    Zf = np.zeros((3, 3))  # Conditional means for z|x,y
     W = np.zeros(n)
 
+    # Edge case: zero total weight
     if m000 <= verysmall and checks:
         w[12] = m000
         return
 
+    # Calculate means
     bx = m100 / m000
     by = m010 / m000
     bz = m001 / m000
 
+    # Calculate central moments with checks for small values
     if checks and m000 <= isosmall:
+        # Calculate normalized raw moments
         d200 = m200 / m000
         d020 = m020 / m000
         d002 = m002 / m000
@@ -446,6 +466,7 @@ def chyqmom27(moments, indices, max_skewness=30, checks=True):
         d040 = m040 / m000
         d004 = m004 / m000
 
+        # Calculate central moments using raw moments and means
         c200 = d200 - bx ** 2
         c020 = d020 - by ** 2
         c002 = d002 - bz ** 2
@@ -456,10 +477,12 @@ def chyqmom27(moments, indices, max_skewness=30, checks=True):
         c040 = d040 - 4 * by * d030 + 6 * (by ** 2) * d020 - 3 * by ** 4
         c004 = d004 - 4 * bz * d003 + 6 * (bz ** 2) * d002 - 3 * bz ** 4
 
+        # Zero covariance terms for numerical stability
         c110 = 0
         c101 = 0
         c011 = 0
     else:
+        # Calculate normalized raw moments
         d200 = m200 / m000
         d110 = m110 / m000
         d101 = m101 / m000
@@ -473,6 +496,7 @@ def chyqmom27(moments, indices, max_skewness=30, checks=True):
         d040 = m040 / m000
         d004 = m004 / m000
 
+        # Calculate central moments
         c200 = d200 - bx ** 2
         c110 = d110 - bx * by
         c101 = d101 - bx * bz
@@ -486,15 +510,18 @@ def chyqmom27(moments, indices, max_skewness=30, checks=True):
         c040 = d040 - 4 * by * d030 + 6 * by ** 2 * d020 - 3 * by ** 4
         c004 = d004 - 4 * bz * d003 + 6 * bz ** 2 * d002 - 3 * bz ** 4
 
+    # Realizability checks and adjustments for x moments
     if c200 <= 0 and checks:
         c200 = 0
         c300 = 0
         c400 = 0
 
     if c200 * c400 < (c200 ** 3 + c300 ** 2) and checks:
+        # Fix realizability by adjusting q and eta
         q = c300 / c200 ** (3.0 / 2.0)
         eta = c400 / c200 ** 2
         if abs(q) > verysmall:
+            # Calculate new q that satisfies realizability
             slope = (eta - 3.0) / q
             det = 8 + slope ** 2
             qp = 0.5 * (slope + math.sqrt(det))
@@ -506,10 +533,12 @@ def chyqmom27(moments, indices, max_skewness=30, checks=True):
         else:
             q = 0
 
+        # Recompute moments based on adjusted q and eta
         eta = q ** 2 + 1
         c300 = q * c200 ** (3.0 / 2.0)
         c400 = eta * c200 ** 2.0
 
+    # Realizability checks for y moments (similar to x)
     if c020 <= 0 and checks:
         c020 = 0
         c030 = 0
@@ -556,6 +585,7 @@ def chyqmom27(moments, indices, max_skewness=30, checks=True):
         c030 = q * c020 ** (3 / 2)
         c040 = eta * c020 ** 2
 
+    # Realizability checks for z moments (similar to x and y)
     if c002 <= 0 and checks:
         c002 = 0
         c003 = 0
@@ -579,9 +609,12 @@ def chyqmom27(moments, indices, max_skewness=30, checks=True):
         c003 = q * c002 ** (3 / 2)
         c004 = eta * c002 ** 2
 
+    # Get x-quadrature using 3-node HyQMOM
     M1 = np.array([1, 0, c200, c300, c400])
     xp, rho = hyqmom3(M1, max_skewness, checks)
 
+    # Initialize weights for the nodes
+    # These will be updated below depending on variance conditions
     rho11 = 0
     rho12 = 1
     rho13 = 0
@@ -657,8 +690,11 @@ def chyqmom27(moments, indices, max_skewness=30, checks=True):
     zp332 = 0
     zp333 = 0
 
+    # Special case handling for different variance conditions
+    # Case 1: Near-zero variance in x direction
     if c200 <= csmall and checks:
         if c020 <= csmall:
+            # Both x and y have near-zero variance - use 1D HyQMOM for z
             M0 = np.array([1, 0, c002, c003, c004])
             Z0, W0 = hyqmom3(M0, max_skewness, checks)
 
@@ -1079,10 +1115,15 @@ def chyqmom27(moments, indices, max_skewness=30, checks=True):
 @jit(nopython=True)
 def quadrature_1d(weights, abscissas, moment_index):
     """
-    This function computes quadrature in 1D
-    Inputs:
-    - weights: quadrature weights
-    Return:
+    Compute a unidimensional quadrature sum.
+    
+    Parameters:
+        weights (array-like): Quadrature weights.
+        abscissas (array-like): Abscissas corresponding to weights.
+        moment_index (int): Power to which abscissas are raised.
+    
+    Returns:
+        float: Approximated moment.
     """
     xi_to_idx = abscissas ** moment_index
     mu = np.dot(weights, xi_to_idx)
@@ -1091,6 +1132,17 @@ def quadrature_1d(weights, abscissas, moment_index):
 
 @jit(nopython=True)
 def quadrature_2d(weights, abscissas, moment_index):
+    """
+    Compute a two-dimensional quadrature sum.
+    
+    Parameters:
+        weights (array-like): Quadrature weights.
+        abscissas (list of arrays): List containing two arrays of abscissas (for x and y).
+        moment_index (list or array): Powers for the two dimensions.
+    
+    Returns:
+        float: Approximated moment.
+    """
     mu = 0.0
     for i, weight in enumerate(weights):
         mu += (
@@ -1102,6 +1154,17 @@ def quadrature_2d(weights, abscissas, moment_index):
 
 @jit(nopython=True)
 def quadrature_3d(weights, abscissas, moment_index):
+    """
+    Compute a three-dimensional quadrature sum.
+    
+    Parameters:
+        weights (array-like): Quadrature weights.
+        abscissas (ndarray): 2D array where each row corresponds to one coordinate.
+        moment_index (list or array): Powers for each of the three dimensions.
+    
+    Returns:
+        float: Approximated moment.
+    """
     mu = 0.0
     for i, weight in enumerate(weights):
         mu += (
@@ -1115,81 +1178,60 @@ def quadrature_3d(weights, abscissas, moment_index):
 @jit(nopython=True)
 def compute_central_moments_2d(moments, indices):
     """
-    计算二维图像的所有中心矩（central moments）
-
-    参数：
-    - moments: list，包含普通矩的列表
-    - indices: list，普通矩的索引列表，形如 [[0,0], [1,0], [0,1], [2,0], ...]
-
-    返回：
-    - central_moments: dict，键为中心矩的名称，如 'c20', 'c11'，值为计算结果
+    Compute central moments for a 2D distribution.
+    
+    Parameters:
+        moments (array-like): Array of raw moments.
+        indices (array-like): 2D indices array such as [[0,0], [1,0], [0,1], ...].
+    
+    Returns:
+        tuple: (mom00, bx, by, central_moments) where mom00 is the zeroth moment,
+               bx and by are the centroids, and central_moments is an array of central moments.
     """
-    # 提取基准矩
-    # mom00 = moments[0]
-    # mom10 = moments[1]
-    # mom01 = moments[2]
     mom00 = get_moment(moments, indices, 0, 0)
     mom10 = get_moment(moments, indices, 1, 0)
     mom01 = get_moment(moments, indices, 0, 1)
-    
-
-    # 计算质心坐标 bx, by
     bx = mom10 / mom00
     by = mom01 / mom00
-
-    # 计算所有的中心矩
     central_moments = np.zeros_like(moments)
     idx = 0
     for k, l in indices:
-        if (k, l) == (0, 0):  
-        # if idx == 0:
-            central_moments[idx] = 1.0  # c00 始终为 1
+        if (k, l) == (0, 0):
+            central_moments[idx] = 1.0
             idx += 1
             continue
-        if (k, l) in [(1, 0), (0, 1)]: 
-        # if idx == 1 or idx == 2:
-            central_moments[idx] = 0.0  # c10, c01 始终为 0
+        if (k, l) in [(1, 0), (0, 1)]:
+            central_moments[idx] = 0.0
             idx += 1
             continue
-
-        # 获取 M_k,l
-        raw_moment = moments[idx] / mom00  # 归一化
-
-        # 计算中心矩
+        raw_moment = moments[idx] / mom00
         ckl = raw_moment
         for p in range(k + 1):
             for q in range(l + 1):
                 if p == k and q == l:
-                    continue  # 跳过自身
-                binom_kp = comb(k, p)  
+                    continue
+                binom_kp = comb(k, p)
                 binom_lq = comb(l, q)
                 moment_pq = get_moment(moments, indices, p, q)
                 ckl += binom_kp * binom_lq * ((-bx) ** (k - p)) * ((-by) ** (l - q)) * moment_pq / mom00
         central_moments[idx] = ckl
         idx += 1
-
     return mom00, bx, by, central_moments
 
 @jit(nopython=True)
 def compute_central_moments_1d(moments):
     """
-    计算二维图像的所有中心矩（central moments）
-
-    参数：
-    - moments: list，包含普通矩的列表
-    - indices: list，普通矩的索引列表，形如 [[0,0], [1,0], [0,1], [2,0], ...]
-
-    返回：
-    - central_moments: dict，键为中心矩的名称，如 'c20', 'c11'，值为计算结果
+    Compute central moments for a 1D distribution.
+    
+    Parameters:
+        moments (array-like): Array of raw moments.
+    
+    Returns:
+        tuple: (bx, central_moments) where bx is the centroid and central_moments is an array of central moments.
     """
-    # 提取基准矩
     mom0 = moments[0]
     mom1 = moments[1]
-
-    # 计算质心坐标 bx, by
     bx = mom1 / mom0
-
-    # 计算所有的中心矩
     central_moments = np.zeros_like(moments)
     for k in range(len(moments)):
         if k == 0:
@@ -1212,12 +1254,31 @@ def compute_central_moments_1d(moments):
 
 @jit(nopython=True)
 def comb(n, k):
+    """
+    Compute the binomial coefficient "n choose k".
+    
+    Parameters:
+        n (int): Total number.
+        k (int): Number chosen.
+    
+    Returns:
+        int: The binomial coefficient.
+    """
     if k > n or k < 0:
         return 0
     return factorial(n) // (factorial(k) * factorial(n - k))
 
 @jit(nopython=True)
 def factorial(n):
+    """
+    Compute the factorial of n.
+    
+    Parameters:
+        n (int): Non-negative integer.
+    
+    Returns:
+        int: n!
+    """
     if n == 0 or n == 1:
         return 1
     result = 1
@@ -1227,12 +1288,31 @@ def factorial(n):
 
 @jit(nopython=True)
 def get_moment(moments, indices, p, q):
+    """
+    Retrieve the moment corresponding to orders (p, q) from the moments array.
+    
+    Parameters:
+        moments (array-like): Array of moments.
+        indices (array-like): Array of indices (2D).
+        p (int): Order in first variable.
+        q (int): Order in second variable.
+    
+    Returns:
+        float: The moment value if found; otherwise 0.
+    """
     for i in range(len(moments)):  # 线性搜索
         if indices[i, 0] == p and indices[i, 1] == q:
             return moments[i]
     return 0
 
 def generalized_hyqmom(moments):
-    # central_moments = compute
-    return 0
+    """
+    (Placeholder) Generalized HYQMOM for inverting moments.
     
+    Parameters:
+        moments (array-like): Input moments.
+        
+    Returns:
+        int: Currently returns 0.
+    """
+    return 0
