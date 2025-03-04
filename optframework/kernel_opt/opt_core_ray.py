@@ -65,6 +65,7 @@ class OptCoreRay(OptCore, tune.Trainable):
             self.init_N_NM = None
             self.init_N_M = None
             self.init_N_2D = None
+            self.init_N = None
             
         # Store experimental data and known parameters
         self.known_params = known_params

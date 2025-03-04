@@ -37,6 +37,7 @@ class OptCore():
         self.init_N_NM = None
         self.init_N_M = None
         self.init_N_2D = None
+        self.init_N = None
         
  
     def init_attr(self, core_params):

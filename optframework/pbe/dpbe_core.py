@@ -99,9 +99,9 @@ def init_pbe_params(self, dim, t_total, t_write, t_vec, disc, **attr):
     self.USE_PSD = True                   # Define wheter or not the PSD should be initializes (False = monodisperse primary particles)
     
     # Set default initial PSD file paths
-    self.DIST1_path = os.path.join(self.work_dir,'..','data','PSD_data')
-    self.DIST2_path = os.path.join(self.work_dir,'..','data','PSD_data')
-    self.DIST3_path = os.path.join(self.work_dir,'..','data','PSD_data')
+    self.DIST1_path = os.path.join(self.work_dir,'data','PSD_data')
+    self.DIST2_path = os.path.join(self.work_dir,'data','PSD_data')
+    self.DIST3_path = os.path.join(self.work_dir,'data','PSD_data')
     self.DIST1_name = 'PSD_x50_1.0E-6_r01_2.9E-7.npy'
     self.DIST2_name = 'PSD_x50_1.0E-6_r01_2.9E-7.npy'
     self.DIST3_name = 'PSD_x50_1.0E-6_r01_2.9E-7.npy' 
@@ -438,6 +438,9 @@ def init_N(self, reset_N=True, N01=None, N02=None, N03=None):
             self.N03 = 3*self.V03/(4*math.pi*self.R03**3)     # Total number concentration of primary particles component 1 [1/m³] - M (if no PSD) 
         else:
             self.N03 = N03 * self.V_unit 
+            
+    if self.t_vec is not None:
+        self.t_num = len(self.t_vec) 
     # 1-D case
     if self.dim == 1:
         self.N = np.zeros((self.NS,self.t_num))
@@ -450,7 +453,7 @@ def init_N(self, reset_N=True, N01=None, N02=None, N03=None):
                 self.N[-1,0] = self.N01
             elif self.process_type == "mix":
                 self.N[1,0] = self.N01
-                self.N[-1,0] = self.N01
+                # self.N[-1,0] = self.N01
             else:
                 raise Exception("Current process_type not allowed!")
     
@@ -469,7 +472,7 @@ def init_N(self, reset_N=True, N01=None, N02=None, N03=None):
             elif self.process_type == "mix":
                 self.N[1,0,0] = self.N01
                 self.N[0,1,0] = self.N03  
-                self.N[-1,-1,0] = self.N01
+                # self.N[-1,-1,0] = self.N01
             
     
     # 3-D case
@@ -494,6 +497,7 @@ def calc_F_M(self):
     """
     # 1-D case
     if self.dim == 1:
+        self.alpha_prim = self.alpha_prim.item() if isinstance(self.alpha_prim, np.ndarray) else self.alpha_prim
         # To avoid mass leakage at the boundary in CAT, boundary cells are not directly involved in the calculation. 
         # So there is no need to define the corresponding F_M at boundary. F_M is (NS-1)^2 instead (NS)^2
         self.F_M = np.zeros((self.NS-1,self.NS-1))
@@ -563,11 +567,12 @@ def calc_F_M(self):
     elif self.dim == 2:
         # To avoid mass leakage at the boundary in CAT, boundary cells are not directly involved in the calculation. 
         # So there is no need to define the corresponding F_M at boundary. F_M is (NS-1)^4 instead (NS)^4
+        # calc_beta = jit_kernel_agg.prepare_calc_beta(self.COLEVAL)
         self.F_M = np.zeros((self.NS-1,self.NS-1,self.NS-1,self.NS-1))
         if self.process_type == 'breakage':
             return
         if self.JIT_FM:
-            self.F_M = jit_kernel_agg.calc_F_M_2D(self.NS,self.disc,self.COLEVAL,self.CORR_BETA,
+            self.F_M = jit_kernel_agg.calc_F_M_2D(self.NS,self.COLEVAL,self.CORR_BETA,
                                        self.G,self.R,self.X1_vol,self.X3_vol,
                                        self.EFFEVAL,self.alpha_prim,self.SIZEEVAL,
                                        self.X_SEL,self.Y_SEL)/self.V_unit
@@ -757,103 +762,20 @@ def calc_B_R(self):
     Creates the following class attributes: 
         * ``pop.B_R``: (2D)Breakage rate for class ab. The result is stored in ``B_R[a,b]`` 
     """
+    self.B_R = np.zeros_like(self.V)
     # 1-D case
     if self.dim == 1:
         ## Note: The breakage rate of the smallest particle is 0. 
         ## Note: Because particles with a volume of zero are skipped, 
         ##       calculation with V requires (index+1)
-        self.B_R = np.zeros(self.NS)
         if self.process_type == 'agglomeration':
             return
-        # Size independent breakage rate --> See Leong2023 (10)
-        # only for validation with analytical results
-        if self.BREAKRVAL == 1:
-            self.B_R[1:] = 1
-            
-        # Size dependent breakage rate --> See Leong2023 (10)
-        # only for validation with analytical results
-        elif self.BREAKRVAL == 2:
-            for idx, tmp in np.ndenumerate(self.B_R):
-                a = idx[0]
-                if a != 0:
-                    self.B_R[a] = self.V[a]
-                    
-        # Power Law Pandy and Spielmann --> See Jeldres2018 (28)
-        # Scale particle volume using the average volume of all possible fragments produced
-        elif self.BREAKRVAL == 3:
-            for idx, tmp in np.ndenumerate(self.B_R):
-                a = idx[0]
-                if a != 0:
-                    self.B_R[a] = self.pl_P1*self.G*(self.V[a]/self.V1_mean)**self.pl_P2    
-        # Hypothetical formula considering volume fraction
-        elif self.BREAKRVAL == 4:
-            for idx, tmp in np.ndenumerate(self.B_R):
-                a = idx[0]
-                if a != 0:
-                    self.B_R[a] = self.pl_P1*self.G*(self.V[a]/self.V1_mean)**self.pl_P2            
+        self.B_R = jit_kernel_break.breakage_rate_1d(self.V, self.V1_mean, self.G, self.pl_P1, self.pl_P2, self.BREAKRVAL)          
     # 2-D case            
     if self.dim == 2:
-        self.B_R = np.zeros((self.NS, self.NS))
         if self.process_type == 'agglomeration':
             return
-        # Size independent breakage rate --> See Leong2023 (10)
-        # only for validation with analytical results
-        if self.BREAKRVAL == 1:
-            self.B_R[:,:] = 1
-            self.B_R[0,0] = 0
-            
-        # Size dependent breakage rate --> See Leong2023 (10)
-        elif self.BREAKRVAL == 2:
-            for idx, tmp in np.ndenumerate(self.B_R):
-                a = idx[0]; b = idx[1]
-                ## Note: Because of the conditional restrictions of breakage on the boundary, 
-                ##       1d calculation needs to be performed on the boundary.
-                if a == 0 and b == 0:
-                    continue
-                elif a == 0:
-                    self.B_R[idx] = self.V3[b]
-                elif b == 0:
-                    self.B_R[idx] = self.V1[a]
-                else:
-                    if self.BREAKFVAL == 1:
-                        self.B_R[idx] = self.V1[a]*self.V3[b]
-                    elif self.BREAKFVAL == 2:
-                        self.B_R[idx] = self.V1[a] + self.V3[b]
-                        
-        # Power Law Pandy and Spielmann --> See Jeldres2018 (28)
-        # Scale particle volume using the average volume of all possible fragments produced
-        elif self.BREAKRVAL == 3:
-            V_mean = (self.V3_mean + self.V1_mean) / 2
-            for idx, tmp in np.ndenumerate(self.B_R):
-                a = idx[0]; b = idx[1]
-                if a == 0 and b == 0:
-                    continue
-                elif a == 0:
-                    self.B_R[idx] = self.pl_P1 * self.G * (self.V3[b]/self.V3_mean)**self.pl_P2
-                    # self.B_R[idx] = self.pl_P1 * self.G * self.V3[b]**self.pl_P2
-                elif b == 0:
-                    self.B_R[idx] = self.pl_P1 * self.G * (self.V1[a]/self.V1_mean)**self.pl_P2
-                    # self.B_R[idx] = self.pl_P1 * self.G * self.V1[a]**self.pl_P2
-                else:
-                    self.B_R[idx] = self.pl_P1 * self.G * (self.V[a+1,b+1]/V_mean)**self.pl_P2
-                    # self.B_R[idx] = self.pl_P1 * self.G * self.V[a+1,b+1]**self.pl_P2
-        # Hypothetical formula considering volume fraction
-        elif self.BREAKRVAL == 4:
-            for idx, tmp in np.ndenumerate(self.B_R):
-                a = idx[0]; b = idx[1]
-                if a == 0 and b == 0:
-                    continue
-                elif a == 0: 
-                    self.B_R[idx] = self.pl_P3 * self.G * (self.V3[b]/self.V3_mean)**self.pl_P4
-                    # self.B_R[idx] = self.pl_P3 * self.G * (self.V3[b])**self.pl_P4
-                elif b == 0:
-                    self.B_R[idx] = self.pl_P1 * self.G * (self.V1[a]/self.V1_mean)**self.pl_P2
-                    # self.B_R[idx] = self.pl_P1 * self.G * (self.V1[a])**self.pl_P2
-                else:
-                    self.B_R[idx] = self.pl_P1 * self.G * (self.V1[a]/self.V1_mean)**self.pl_P2 + \
-                                      self.pl_P3 * self.G * (self.V3[b]/self.V3_mean)**self.pl_P4
-                    # self.B_R[idx] = self.pl_P1 * self.G * (self.V1[a])**self.pl_P2 + \
-                                      # self.pl_P3 * self.G * (self.V3[b])**self.pl_P4
+        self.B_R = jit_kernel_break.breakage_rate_2d(self.V, self.V1, self.V3, self.V1_mean, self.V3_mean, self.G, self.pl_P1, self.pl_P2, self.pl_P3, self.pl_P4, self.BREAKRVAL, self.BREAKFVAL)
                     
 ## Calculate integrated breakage function matrix.         
 def calc_int_B_F(self):
@@ -897,12 +819,13 @@ def calc_int_B_F(self):
                     a = idx[0]; i = idx[1]
                     if i != 0 and a <= i:
                         args = (self.V[i],self.pl_v,self.pl_q,self.BREAKFVAL)
+                        argsk = (self.V[i],self.pl_v,self.pl_q,self.BREAKFVAL,1)
                         if a == i:
                             self.int_B_F[idx],err = integrate.quad(jit_kernel_break.breakage_func_1d,V_e_tem[a],self.V[a],args=args)
-                            self.intx_B_F[idx],err = integrate.quad(jit_kernel_break.breakage_func_1d_vol,V_e_tem[a],self.V[a],args=args)
+                            self.intx_B_F[idx],err = integrate.quad(jit_kernel_break.breakage_func_1d_xk,V_e_tem[a],self.V[a],args=argsk)
                         else:
                             self.int_B_F[idx],err = integrate.quad(jit_kernel_break.breakage_func_1d,V_e_tem[a],V_e_tem[a+1],args=args)
-                            self.intx_B_F[idx],err = integrate.quad(jit_kernel_break.breakage_func_1d_vol,V_e_tem[a],V_e_tem[a+1],args=args)
+                            self.intx_B_F[idx],err = integrate.quad(jit_kernel_break.breakage_func_1d_xk,V_e_tem[a],V_e_tem[a+1],args=argsk)
                 
     # 2-D case
     elif self.dim == 2:
@@ -927,10 +850,6 @@ def calc_int_B_F(self):
                     self.NS, self.V1, self.V3, self.V_e1, self.V_e3, self.BREAKFVAL, self.pl_v, self.pl_q)
         elif self.B_F_type == 'ANN_MC': 
             return
-        
-
-        
-
         
 ## Calculate alphas of primary particles
 def calc_alpha_prim(self):
@@ -1229,4 +1148,4 @@ def solve_PBE(self, t_vec=None):
         self.t_res_tem = t_res_tem
         self.rate_res_tem = rate_res_tem
         self.error_res_tem = error_res_tem
-    
+

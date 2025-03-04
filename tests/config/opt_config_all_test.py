@@ -125,6 +125,8 @@ config = {
         # In such cases, the objective function is the sum of the individual errors.
         'tune_storage_path': os.path.join(_config_opt_path, "Ray_Tune"),  
         # Path to store Ray Tune optimization infomation.
+                
+        'verbose': 0,
         
         'multi_jobs': False,
         # Whether to run multiple optimization tasks (Tune jobs) concurrently. 

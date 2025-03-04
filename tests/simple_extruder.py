@@ -6,12 +6,11 @@ Created on Thu Dec 12 10:15:15 2024
 """
 
 import sys, os
-sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),".."))
 import numpy as np
-from pypbe.pbe import ExtruderPBESolver
+from optframework.pbe import ExtruderPBESolver
 
 if __name__ == "__main__":
-    dim = 1
+    dim = 2
     NC = 3
     t_total = 601
     t_write = 100

@@ -7,15 +7,12 @@ Validate discrete PBE with analytical solutions for various cases
 # %% IMPORTS
 import matplotlib.pyplot as plt
 from matplotlib.ticker import ScalarFormatter, FuncFormatter
-import sys, os
-sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),".."))
 import numpy as np
 import math
-import pypbe.utils.plotter.plotter as pt
-from pypbe.utils.plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
-
-from pypbe.pbe.dpbe_base import DPBESolver as pop_disc
-from pypbe.pbe.mcpbe import population_MC as pop_mc 
+import optframework.utils.plotter.plotter as pt
+from optframework.utils.plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
+from optframework.pbe.dpbe_base import DPBESolver as pop_disc
+from optframework.pbe.mcpbe import population_MC as pop_mc 
 
 #%% CASES
 def calculate_case(CASE, PBE=True, MC=False):
@@ -254,7 +251,7 @@ def calculate_case(CASE, PBE=True, MC=False):
     elif CASE == '2D_sum_mono':
         ### POPULATION BALANCE
         if PBE:
-            p = pop_disc(2, disc=grid, load_attr=False)
+            p = pop_disc(2, disc=grid, t_vec=t, load_attr=False)
         
             p.NS = NS  
             p.process_type = process_type
@@ -517,20 +514,20 @@ if __name__ == "__main__":
     CASE = '2D_sum_mono'
     
     ### General parameters
-    t = np.arange(0, 5, 0.25, dtype=float)     # Time array [s]
+    t = np.arange(0, 100, 5, dtype=float)     # Time array [s]
     c = 1                # Volume concentration [-]
-    x = 2e-1                  # Particle diameter [m]
+    x = 2e-1            # Particle diameter [m]
     n0 = 3*c/(4*math.pi*(x/2)**3)   # Total number concentration of primary particles
     
     ### PBE Parameters
     grid = 'geo'
     S = 4
-    NS = 15
-    # NS2 = 15
+    NS = 10
+    NS2 = None
     #NS2 = 50
     process_type = "breakage"
     
-    beta0 = 1e-16                  # Collision frequency parameter [m^3/s]
+    beta0 = 1e-3                 # Collision frequency parameter [m^3/s]
     v0 = 4*math.pi*(x/2)**3/3*(1+S)/2
     alpha_pbe = np.array([1,1,1,1])
     
@@ -541,7 +538,7 @@ if __name__ == "__main__":
     alpha_mc = np.reshape(alpha_pbe,(2,2))
     
 
-    mu_as, mu_pbe, mu_mc, std_mu_mc, p, m, mu_mc_reps, m_save  = calculate_case(CASE,MC=False)
+    mu_as, mu_pbe, mu_mc, std_mu_mc, p, m, mu_mc_reps, m_save  = calculate_case(CASE,MC=True)
     
     #%% PLOTS
     # pt.close()

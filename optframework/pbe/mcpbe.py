@@ -45,16 +45,16 @@ class population_MC():
         self.SIG2 = None
         
         ## Calculation of beta
-        # BETACALC = 1: -- Random selection, beta = beta0
-        # BETACALC = 2: -- Size selection, orthokinetic beta
-        # BETACALC = 3: -- Size selection, beta from sum kernel 
-        self.BETACALC = 1
+        # BETACALC = 3: -- Random selection, beta = beta0
+        # BETACALC = 1: -- Size selection, orthokinetic beta
+        # BETACALC = 4: -- Size selection, beta from sum kernel 
+        self.BETACALC = 3
         self.beta0 = 2.3e-18                   
 
         ## Calculation of alpha 
         # ALPHACALC = 1: -- Constant alpha0
         # ALPHACALC = 2: -- Calculation of alpha via collision case model
-        self.ALPHACALC = 1
+        self.ALPHACALC = 2
         self.alpha0 = 1.0
         self.alpha_prim = np.ones((dim,dim))
         
@@ -73,7 +73,7 @@ class population_MC():
     def init_calc(self):
         
         # Check dimension of all relevant parameters:
-        if not self.ceck_dim_consistency():
+        if not self.check_dim_consistency():
             print('Provided inputs are not consistend in their dimensions. Exiting..')
             sys.exit()
             
@@ -168,7 +168,7 @@ class population_MC():
         self.t=[0]
         
         # Initialize beta array
-        if self.BETACALC == 2 or self.BETACALC == 3:
+        if self.BETACALC == 1 or self.BETACALC == 4:
             self.betaarray = calc_betaarray_jit(self.BETACALC, self.a_tot, self.G, self.X, self.beta0, self.V)
         
         # Save arrays
@@ -219,7 +219,7 @@ class population_MC():
         while self.t[-1] <= self.tA and count < maxiter:
         
             ## Simplified case for random choice of collision partners (constant kernel) 
-            if self.BETACALC == 1:
+            if self.BETACALC == 3:
                 
                 self.beta = self.beta0
                 idx1, idx2 = self.select_random()
@@ -227,7 +227,7 @@ class population_MC():
             
             ## Calculation of beta array containing all collisions
             ## Probability-weighted choice of two collision partners
-            elif self.BETACALC == 2 or self.BETACALC == 3:
+            elif self.BETACALC == 1 or self.BETACALC == 4:
                 
                 # select = self.select_size()                    # Class method
                 select = select_size_jit(self.betaarray[0,:])    # JIT-compiled select
@@ -322,7 +322,7 @@ class population_MC():
         idx2 = np.random.randint(self.a_tot)
         while idx1 == idx2:
             idx2 = np.random.randint(self.a_tot)
-        return idx1, idx2    
+        return idx1, idx2
     
     # Beta-weighted selection (requires beta array)
     def select_size(self): 
@@ -332,10 +332,10 @@ class population_MC():
     # Calculation of inter-event-time          
     def calc_inter_event_time(self):
         #Berechnung der inter-event-time nach Briesen (2008) mit konstantem/berechneten/ausgewähtem beta
-        if self.BETACALC == 1 :
+        if self.BETACALC == 3 :
             dtd=2*self.Vc/(self.beta0*self.a_tot**2)
         
-        elif self.BETACALC == 2 or self.BETACALC == 3: 
+        elif self.BETACALC == 1 or self.BETACALC == 4: 
             # Use mean value of all betas
             dtd=2*self.Vc/(self.a_tot**2*np.mean(self.betaarray[0,:]))
           
@@ -538,7 +538,7 @@ class population_MC():
         else:
             return x_uni, q3, Q3, x_10, x_50, x_90
     
-    def ceck_dim_consistency(self):
+    def check_dim_consistency(self):
         check = np.array([len(self.x),len(self.PGV),len(self.SIG),
                           self.alpha_prim.shape[0],self.alpha_prim.shape[1]])
         return len(check[check==len(self.c)]) == len(check)
@@ -557,7 +557,7 @@ def calc_betaarray_jit(BETACALC, a, G, X, beta0, V):
     cnt = 0
     
     # Orthokinetic kernel
-    if BETACALC == 2:
+    if BETACALC == 1:
         for i in range(a):
             for j in range(i):
                 beta[0,cnt] = beta0*G*2.3*((3*V[-1,i]/(4*np.pi))**(1/3)+(3*V[-1,j]/(4*np.pi))**(1/3))**3
@@ -566,7 +566,7 @@ def calc_betaarray_jit(BETACALC, a, G, X, beta0, V):
                 cnt += 1  
                 
     # Sum-kernel
-    if BETACALC == 3:
+    if BETACALC == 4:
         for i in range(a):
             for j in range(i):
                 beta[0,cnt] = beta0*(V[-1,i]+V[-1,j])

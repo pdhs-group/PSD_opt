@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+import sys
+import time
 import numpy as np
 import os
 import runpy
@@ -11,7 +13,7 @@ import ray
 from .opt_core import OptCore
 from .opt_core_multi import OptCoreMulti
 from optframework.utils.func.func_read_exp import write_read_exp
-from optframework.pbe.dpbe_base import bind_methods_from_module
+from optframework.utils.func.bind_methods import bind_methods_from_module
 ## For plots
 # import matplotlib.pyplot as plt
 # from ..utils.plotter import plotter as pt        
@@ -64,11 +66,16 @@ class OptBase():
             self.multi_flag = config['multi_flag']
         else:
             self.multi_flag = multi_flag
+        self.single_case = config['single_case']
+        self.print_highlighted(f'Current operating mode: single_case = {self.single_case}, multi_flag = {self.multi_flag}.',
+                               title="INFO", color="cyan")
+        
         self.opt_params = config['opt_params']
         self.dim = self.core_params.get('dim', None)
         # Set the data path, use default if not provided
         if data_path is None:
-            print('Data path is not found or is None, default path will be used.')
+            self.print_highlighted('Data path is not found or is None, default path will be used.',
+                                   title="INFO", color="cyan")
             self.data_path = os.path.join(self.work_dir, "data")
         else:
             self.data_path = data_path
@@ -77,6 +84,15 @@ class OptBase():
         self.init_opt_core()
         # Initialize t_vec for file generation
         self.idt_vec = [np.where(self.core.t_all == t_time)[0][0] for t_time in self.core.t_vec]
+        self.check_core_params()
+        
+    def check_core_params(self):
+        """
+        Check the validity of optimization core parameters.
+        """
+        ### verbose, delta_flag, method, noise_type, t_vec, t_init...
+        pass
+        
         
     def check_config_path(self, config_path):
         """
@@ -110,6 +126,8 @@ class OptBase():
             # Load the configuration from the specified file
             conf = runpy.run_path(config_path)
             config = conf['config']
+            self.print_highlighted(f"The Optimization and dPBE are using config file at : {config_path}",
+                                   title="INFO", color="cyan")
             return config
         
     def init_opt_core(self):
@@ -124,7 +142,8 @@ class OptBase():
         # Initialize the optimization core based on dimensionality and multi_flag
         if self.dim == 1 and self.multi_flag:
             # If the dimension is 1, the multi algorithm is not applicable
-            print("The multi algorithm does not support 1-D pop!")
+            self.print_highlighted("The multi algorithm does not support 1-D pop!",
+                                   title="WARNING", color="yellow")
             self.multi_flag = False
         # Initialize optimization core with or without 1D data based on multi_flag
         if not self.multi_flag:
@@ -133,6 +152,8 @@ class OptBase():
             self.core = OptCoreMulti()  
         # Initialize attributes for the optimization core
         self.core.init_attr(self.core_params)
+        if self.dim == 2 and not self.multi_flag and self.core.calc_init_N:
+            raise ValueError("2d PSD can only use exp data to calculate initial conditions if multi_flag is enabled!")
         # Initialize PBE with population parameters and data path
         self.core.init_pbe(self.pop_params, self.data_path)
         
@@ -313,8 +334,8 @@ class OptBase():
                 known_params = None
             # Handle multi-flag (whether auxiliary 1D data is used for 2D-PBE)
             if self.multi_flag:
-                # If the first element of data_names is a list, we are dealing with multiple datasets
-                if isinstance(data_names[0], list):
+                # We are dealing with multiple datasets
+                if not self.single_case:
                     # Ensure known_params is of the same length as data_names, even if empty
                     if known_params is None:
                         known_params = [None] * len(data_names)
@@ -325,19 +346,20 @@ class OptBase():
                     # Single dataset optimization
                     exp_data_paths = join_paths(data_names)
             else:
-                if isinstance(data_names, list):
+                if not self.single_case:
                     if known_params is None:
                         known_params = [None] * len(data_names)
                             
                 exp_data_paths = join_paths(data_names)
             # Initialize ray for parallel computation
-            ray.init(log_to_driver=True, runtime_env={
+            log_to_driver = True if self.core.verbose != 0 else False
+            ray.init(log_to_driver=log_to_driver, runtime_env={
                 "env_vars": {"PYTHONPATH": os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))}})
             # ray.init(address=os.environ["ip_head"], log_to_driver=False, runtime_env={
             #     "env_vars": {"PYTHONPATH": os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))}})
             if method == 'kernels':
                 # Currently, this method is not implemented
-                print("not coded yet")
+                self.print_highlighted("not coded yet", title="ERROR", color="red")
             elif method == 'delta':
                 # Perform multi-job optimization if enabled
                 if self.core.multi_jobs:
@@ -346,7 +368,7 @@ class OptBase():
                 else:
                     # Perform sequential optimization for multiple datasets
                     result_dict = []
-                    if isinstance(exp_data_paths[0], list):
+                    if not self.single_case:
                         for exp_data_paths_tem, known_params_tem in zip(exp_data_paths, known_params):
                             result_dict_tem = self.optimierer_ray(self.opt_params,exp_data_paths=exp_data_paths_tem,
                                                                         known_params=known_params_tem)
@@ -410,5 +432,52 @@ ulated delta by comparing the
         # Calculate the delta value based on the difference between simulated and experimental data
         delta = self.core.calc_delta(params, x_uni_exp, data_exp)
         return delta, exp_data_path_ori
+    
+    def print_highlighted(self, message, title=None, color="yellow", separator=True, timestamp=True, width=80):
+        """
+        Print a highlighted message with optional color, timestamp, and separator.
+    
+        Parameters:
+            message (str): The message to print.
+            title (str, optional): Title for the message (e.g., "WARNING", "INFO").
+            color (str, optional): Color of the message ("red", "green", "yellow", "blue", "cyan", etc.).
+            separator (bool, optional): Whether to print a separator line before the message.
+            timestamp (bool, optional): Whether to include a timestamp.
+            width (int, optional): The width of the separator line.
+    
+        Colors supported:
+            - "red", "green", "yellow", "blue", "magenta", "cyan", "white"
+        """
+    
+        # ANSI color codes
+        colors = {
+            "red": "\033[91m",
+            "green": "\033[92m",
+            "yellow": "\033[93m",
+            "blue": "\033[94m",
+            "magenta": "\033[95m",
+            "cyan": "\033[96m",
+            "white": "\033[97m",
+            "reset": "\033[0m"
+        }
+        
+        color_code = colors.get(color.lower(), colors["yellow"])
+        
+        # Build the output string
+        output = ""
+        
+        if separator:
+            output += "=" * width + "\n"  # Print a separator line
+        
+        if timestamp:
+            time_str = time.strftime("[%Y-%m-%d %H:%M:%S]")
+            output += f"{time_str} "
+        
+        if title:
+            output += f"[{title.upper()}] "
+    
+        output += f"{color_code}{message}{colors['reset']}"  # Apply color formatting
+    
+        print(output, file=sys.stdout)
 # Bind methods from another module into this class    
 bind_methods_from_module(OptBase, 'optframework.kernel_opt.opt_base_ray')        
