@@ -9,8 +9,8 @@ from pathlib import Path
 import numpy as np
 import math
 import scipy.integrate as integrate
-from optframework.pbe import DPBESolver
-import optframework.utils.func.jit_extruder as jit_rhs
+from optframework.dpbe import DPBESolver
+import optframework.utils.func.jit_extruder_rhs as jit_rhs
 import optframework.utils.func.func_math as func_math
 
 class ExtruderPBESolver():

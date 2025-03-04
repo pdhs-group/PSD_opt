@@ -7,7 +7,7 @@ compreated on Wed Decomp 11 11:44:12 2024
 import numpy as np
 import math
 from numba import jit, njit, float64, int64
-import optframework.utils.func.jit_rhs as jit_rhs
+import optframework.utils.func.jit_dpbe_rhs as jit_rhs
 
 @jit(nopython=True)
 def get_dNdt_1d_geo_extruder(t,NN_ex,NS,V_p,V_e,F_M,B_R,bf_int,xbf_int,type_flag,agg_comprit,

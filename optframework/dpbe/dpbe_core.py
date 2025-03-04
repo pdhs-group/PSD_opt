@@ -8,7 +8,7 @@ import numpy as np
 import math
 import scipy.integrate as integrate
 ## jit function
-from  optframework.utils.func import jit_rhs, jit_kernel_agg, jit_kernel_break
+from  optframework.utils.func import jit_dpbe_rhs, jit_kernel_agg, jit_kernel_break
 from  optframework.utils.func.static_method import interpolate_psd
 ## For math
 from  optframework.utils.func import RK_Radau as RK
@@ -1046,11 +1046,11 @@ def solve_PBE(self, t_vec=None):
     if self.dim == 1:
         # Define right-hand-side function depending on discretization
         if self.disc == 'geo':
-            rhs = jit_rhs.get_dNdt_1d_geo
+            rhs = jit_dpbe_rhs.get_dNdt_1d_geo
             args=(self.NS,self.V,self.V_e,self.F_M,self.B_R,self.int_B_F,
                   self.intx_B_F,self.process_type,self.aggl_crit_id)
         elif self.disc == 'uni':
-            rhs = jit_rhs.get_dNdt_1d_uni                
+            rhs = jit_dpbe_rhs.get_dNdt_1d_uni                
             args=(self.V,self.B_R,self.B_F,self.F_M,self.NS,self.aggl_crit_id,self.process_type)
         if self.solver == "ivp":    
             with np.errstate(divide='raise', over='raise',invalid='raise'):
@@ -1082,11 +1082,11 @@ def solve_PBE(self, t_vec=None):
     elif self.dim == 2:
         # Define right-hand-side function depending on discretization
         if self.disc == 'geo':
-            rhs = jit_rhs.get_dNdt_2d_geo
+            rhs = jit_dpbe_rhs.get_dNdt_2d_geo
             args=(self.NS,self.V,self.V_e1,self.V_e3,self.F_M,self.B_R,self.int_B_F,
                   self.intx_B_F,self.inty_B_F,self.process_type,self.aggl_crit_id)
         elif self.disc == 'uni':
-            rhs = jit_rhs.get_dNdt_2d_uni   
+            rhs = jit_dpbe_rhs.get_dNdt_2d_uni   
             args=(self.V,self.V1,self.V3,self.F_M,self.NS,self.THR_DN)
         if self.solver == "ivp":  
             with np.errstate(divide='raise', over='raise',invalid='raise'):
@@ -1120,9 +1120,9 @@ def solve_PBE(self, t_vec=None):
     elif self.dim == 3:
         # Define right-hand-side function depending on discretization
         if self.disc == 'geo':
-            rhs = jit_rhs.get_dNdt_3d_geo
+            rhs = jit_dpbe_rhs.get_dNdt_3d_geo
         elif self.disc == 'uni':
-            rhs = jit_rhs.get_dNdt_3d_uni   
+            rhs = jit_dpbe_rhs.get_dNdt_3d_uni   
             
         self.RES = integrate.solve_ivp(rhs, 
                                        [0, t_max], 

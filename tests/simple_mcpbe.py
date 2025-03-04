@@ -9,9 +9,9 @@ import numpy as np
 import copy
 import math
 import time
-from optframework.pbe.mcpbe_new import MCPBESolver as pop_mc_new
-from optframework.pbe.mcpbe_jit import MCPBESolver as pop_mc_jit
-from optframework.pbe.mcpbe import population_MC as pop_mc 
+from optframework.mcpbe.mcpbe_new import MCPBESolver as pop_mc_new
+from optframework.mcpbe.mcpbe_jit import MCPBESolver as pop_mc_jit
+from optframework.mcpbe.mcpbe import population_MC as pop_mc 
 
 def run_mcpbe(m):
     t_start = time.time()
