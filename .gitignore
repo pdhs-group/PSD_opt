@@ -27,3 +27,4 @@ docs/_build/
 tests/distribution_animation.gif
 poetry.lock
 /dist
+*.7z
