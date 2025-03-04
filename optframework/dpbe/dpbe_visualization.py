@@ -7,9 +7,9 @@ Created on Thu Jul 18 09:45:12 2024
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.animation import FuncAnimation
-from ..kernel_opt.opt_data import KDE_fit, KDE_score
-from ..utils.plotter import plotter as pt          
-from ..utils.plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
+from optframework.kernel_opt.opt_data import KDE_fit, KDE_score
+from optframework.utils.plotter import plotter as pt          
+from optframework.utils.plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
         
 def init_visual_params(self):
     pass

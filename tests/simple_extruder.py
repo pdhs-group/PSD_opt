@@ -7,7 +7,7 @@ Created on Thu Dec 12 10:15:15 2024
 
 import sys, os
 import numpy as np
-from optframework.pbe import ExtruderPBESolver
+from optframework.dpbe import ExtruderPBESolver
 
 if __name__ == "__main__":
     dim = 2

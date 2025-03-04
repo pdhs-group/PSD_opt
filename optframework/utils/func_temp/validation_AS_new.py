@@ -11,8 +11,8 @@ import numpy as np
 import math
 import optframework.utils.plotter.plotter as pt
 from optframework.utils.plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
-from optframework.pbe.dpbe_base import DPBESolver as pop_disc
-from optframework.pbe.mcpbe import population_MC as pop_mc 
+from optframework.dpbe.dpbe_base import DPBESolver as pop_disc
+from optframework.mcpbe.mcpbe import population_MC as pop_mc 
 
 #%% CASES
 def calculate_case(CASE, PBE=True, MC=False):

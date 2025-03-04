@@ -23,8 +23,8 @@ import optframework.utils.func.jit_kernel_break as kernel_break
 
 ## For plots
 import matplotlib.pyplot as plt
-from ..utils.plotter import plotter as pt          
-from ..utils.plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
+from optframework.utils.plotter import plotter as pt          
+from optframework.utils.plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
 
 ### ------ POPULATION CLASS DEFINITION ------ ###
 class MCPBESolver():

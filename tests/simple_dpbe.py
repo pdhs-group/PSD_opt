@@ -7,7 +7,7 @@ Created on Wed Apr 17 08:57:57 2024
 import sys, os
 import time
 import numpy as np
-from optframework.pbe import DPBESolver
+from optframework.dpbe import DPBESolver
 ## for plotter
 import matplotlib.pyplot as plt
 import optframework.kernel_opt.opt_core as core

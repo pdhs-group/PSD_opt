@@ -10,8 +10,8 @@ import math
 import copy
 import matplotlib.pyplot as plt
 from matplotlib.ticker import ScalarFormatter
-from optframework.pbe import DPBESolver, ExtruderPBESolver
-from optframework.pbe import MCPBESolver
+from optframework.dpbe import DPBESolver, ExtruderPBESolver
+from optframework.mcpbe import MCPBESolver
 from optframework.pbm import PBMSolver
 import optframework.utils.plotter.plotter as pt
 from optframework.utils.plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue

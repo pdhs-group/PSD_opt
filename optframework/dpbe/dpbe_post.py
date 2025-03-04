@@ -6,7 +6,7 @@ Created on Thu Jul 18 11:11:33 2024
 """
 import numpy as np
 import math
-from ..utils.func.func_math import float_in_list, float_equal, isZero
+from optframework.utils.func.func_math import float_in_list, float_equal, isZero
 
 def init_post_params(self):
     pass

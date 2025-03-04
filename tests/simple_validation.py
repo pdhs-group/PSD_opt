@@ -6,7 +6,7 @@ Created on Fri Jan  3 11:02:26 2025
 """
 import os
 import numpy as np
-from optframework.pbe.validation import PBEValidation
+from optframework.dpbe.validation import PBEValidation
 from optframework.utils.general_scripts.generate_psd import full_psd
 
 if __name__ == "__main__":
@@ -32,7 +32,7 @@ if __name__ == "__main__":
     
     dim = 2
     grid = "geo"
-    NS1 = 20
+    NS1 = 10
     NS2 = None
     S1 = 4
     # S2 = 2

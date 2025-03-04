@@ -327,3 +327,4 @@ class PBMSolver:
         for i in range(self.n_order):
             for j in range(1, 2 * self.n_order):
                 self.indices.append([i, j])
+        self.indices = np.array(self.indices)

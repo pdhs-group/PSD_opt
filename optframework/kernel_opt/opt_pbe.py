@@ -5,7 +5,7 @@ PBE-related calculations during optimization
 import os
 import numpy as np
 from scipy.interpolate import interp1d
-from optframework.pbe import DPBESolver
+from optframework.dpbe import DPBESolver
 
 def create_1d_pop(self, t_vec, disc='geo'):
     """

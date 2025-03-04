@@ -8,10 +8,10 @@ Created on Thu Jul 18 09:53:09 2024
 import os
 import runpy
 # import importlib.util
-import optframework.pbe.dpbe_core as dpbe_core
-import optframework.pbe.dpbe_visualization as dpbe_visualization
-import optframework.pbe.dpbe_post as dpbe_post
-import optframework.pbe.dpbe_mag_sep as dpbe_mag_sep
+import optframework.dpbe.dpbe_core as dpbe_core
+import optframework.dpbe.dpbe_visualization as dpbe_visualization
+import optframework.dpbe.dpbe_post as dpbe_post
+import optframework.dpbe.dpbe_mag_sep as dpbe_mag_sep
 from optframework.utils.func.bind_methods import bind_methods_from_module
         
 class DPBESolver():
@@ -109,7 +109,7 @@ class DPBESolver():
         self.reset_params(reset_t=reset_t)
             
 # Bind methods from different PBE-related modules to DPBESolver            
-bind_methods_from_module(DPBESolver, 'optframework.pbe.dpbe_core')
-bind_methods_from_module(DPBESolver, 'optframework.pbe.dpbe_visualization')
-bind_methods_from_module(DPBESolver, 'optframework.pbe.dpbe_post')
-bind_methods_from_module(DPBESolver, 'optframework.pbe.dpbe_mag_sep')
+bind_methods_from_module(DPBESolver, 'optframework.dpbe.dpbe_core')
+bind_methods_from_module(DPBESolver, 'optframework.dpbe.dpbe_visualization')
+bind_methods_from_module(DPBESolver, 'optframework.dpbe.dpbe_post')
+bind_methods_from_module(DPBESolver, 'optframework.dpbe.dpbe_mag_sep')
