@@ -1,0 +1,11 @@
+numpy==1.26.4
+pandas==2.2.3
+numba==0.60.0
+scipy==1.14.1
+scikit-optimize==0.10.2
+bayesian-optimization==2.0.2
+matplotlib==3.10.0
+openpyxl==3.1.5
+optuna==4.1.0
+cmaes==0.11.1
+ray[default,train,tune]==2.40.0
