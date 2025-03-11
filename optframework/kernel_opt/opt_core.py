@@ -2,12 +2,12 @@
 """
 Calculate the difference between the PSD of the simulation results and the experimental data.
 """
-import os ,sys
 import numpy as np
 from ray import tune
 from scipy.stats import entropy
 from sklearn.metrics import mean_squared_error, mean_absolute_error
-from optframework.pbe.dpbe_base import DPBESolver, bind_methods_from_module, unbind_methods_from_class
+from optframework.dpbe.dpbe_base import DPBESolver
+from optframework.utils.func.bind_methods import bind_methods_from_module , unbind_methods_from_class
 
 class OptCore():
     """
@@ -378,7 +378,7 @@ class OptCore():
 bind_methods_from_module(OptCore, 'optframework.kernel_opt.opt_algo_bo')
 bind_methods_from_module(OptCore, 'optframework.kernel_opt.opt_data')
 bind_methods_from_module(OptCore, 'optframework.kernel_opt.opt_pbe')
-bind_methods_from_module(OptCore, 'optframework.pbe.dpbe_post')
+bind_methods_from_module(OptCore, 'optframework.dpbe.dpbe_post')
 methods_to_remove = ['calc_v_uni','calc_x_uni', 'return_distribution', 'return_num_distribution',
                      'return_N_t','calc_mom_t']
 unbind_methods_from_class(OptCore, methods_to_remove)

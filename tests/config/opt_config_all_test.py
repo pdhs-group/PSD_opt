@@ -13,7 +13,7 @@ _config_opt_path = os.path.dirname(__file__)
 config = {
     ## Use only 2D Data or 1D+2D
     'multi_flag': True,
-    
+    'single_case': True,
     'algo_params': {
         'dim': 2,
         # The dimensionality of the PBE
@@ -80,6 +80,10 @@ config = {
         'USE_PSD' : True,
         # Whether to use PSD (particle size distribution) data for setting the initial conditions 
         # of N.
+        
+        'USE_PSD_R': False,
+        # Whether to use R01_0 and R03_0 below to get the particle size in the PSD data as 
+        # the starting coordinates for PBE. If False, the values ​​of R_01 and R_03 are used.
         
         'R01_0' : 'r0_001',
         # Radius of NM1 primary particles corresponding to the 1% position (Q3) in the PSD data.
