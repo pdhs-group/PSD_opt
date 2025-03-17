@@ -3,12 +3,17 @@
 
 This project mainly consists of three fundamental modules:
 
-1. **dPBE (discrete Population Balance Equation) Solver - `pbe.DPBESolver`**: The current dPBE solver is capable of calculating particle aggregation and breakage processes, supporting both single and dual-component systems.
+1. **dPBE (discrete Population Balance Equation) Solver - `dpbe.DPBESolver`**: The current dPBE solver is capable of calculating particle aggregation and breakage processes, supporting both single and dual-component systems.
    - **Uni-grid**: Corresponds to the general discretization method, suitable for standard verification but may contain bugs.  
    - **Geo-grid**: Uses the Cell Average Technique (CAT). The primary development is based on geo-grid, and it is the recommended option for use.
-2. **Ray Tune-based Optimization Framework - `kernel_opt`**: This module takes one or more PSD (Particle Size Distribution) data sets as input and uses optimization algorithms to search for kernels in the dPBE model. The `kernel_opt` module requires the use of the `pbe` module mentioned above.  
+  
+2. **mcPBE (Monte Carlo Population Balance Equation) Solver - `mcpbe.MCPBESolver`**: The mcPBE solver uses the Monte Carlo random method to solve the PBE. The kernels used are the same as those in the dPBE solver. It supports both single and dual-component systems.
+
+3. **PBM (Population Balance Moments) Solver - `pbm.PBMSolver`**: The PBM solver uses the Quadrature Method of Moments (QMOM) to solve the PBE. It includes various QMOM algorithms such as HyQMOM, GQMOM, and CQMOM. It supports both single and dual-component systems.
+
+4. **Ray Tune-based Optimization Framework - `kernel_opt`**: This module takes one or more PSD (Particle Size Distribution) data sets as input and uses optimization algorithms to search for kernels in the dPBE model. The `kernel_opt` module requires the use of the `pbe` module mentioned above.  
    _Note_: **What are kernels?** Kernels are parameters in the dPBE that describe the dynamics of aggregation and breakage processes. They are usually related to material properties and experimental conditions.
-3. **dPBE-Extruder Solver (beta) - `pbe.ExtruderPBESolver`**: Extends the calculation of a single-region dPBE to multiple regions, such as an extruder. Essentially, it solves multiple sets of dPBEs with identical dimensions and allows interactions between them through particle mass flow. This module is still in the testing phase.
+5. **dPBE-Extruder Solver (beta) - `pbe.ExtruderPBESolver`**: Extends the calculation of a single-region dPBE to multiple regions, such as an extruder. Essentially, it solves multiple sets of dPBEs with identical dimensions and allows interactions between them through particle mass flow. This module is still in the testing phase.
 
 For a detailed explanation of each module, refer to the respective sections.
 
@@ -114,3 +119,5 @@ These scripts provide examples and a starting point for understanding and testin
   - **simple_dpbe.py**: Independently tests the functionality of the dPBE module. It reads parameters from `config/PBE_config.py` and generates a PSD animation as well as a PSD plot for the final time step.
   - **simple_extruder.py**: Tests the `dPBE-Extruder` extension module (beta). By default, it reads parameters for all regions from `config/Extruder0_config.py`. To assign different parameters for each region, refer to the annotations within the script.
   - **simple_opt.py**: Independently tests the optimization framework module. It reads parameters from `config/opt_config.py`.
+  - **simple_mcpbe.py**: Tests the `MCPBESolver`.
+  - **simple_pbm**: Tests the `PBMSolver`.
