@@ -17,8 +17,6 @@ This project mainly consists of three fundamental modules:
 
 For a detailed explanation of each module, refer to the respective sections.
 
-See the [documentation](docs/_build/html/index.html) for more information! (You have to open it locally in your browser currently, because private repo)
-
 ### Section 2: Installation
 
 ### **Important Notes**
