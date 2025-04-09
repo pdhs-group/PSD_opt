@@ -20,6 +20,7 @@ For a detailed explanation of each module, refer to the respective sections.
 ### Section 2: Installation
 
 ### **Important Notes**
+- **Supported Python version: 3.9 - 3.12**
 - The project has not yet been tested on Linux systems, so some issues might arise.
 - If you choose the first installation method (manual installation), you need to manually add the `PSD_opt` folder to Python's search path for it to work correctly. However, this step is not required if you use the second method (pre-packaged wheel file), which is recommended.
 

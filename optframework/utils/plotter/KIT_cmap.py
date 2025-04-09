@@ -1,8 +1,7 @@
-# -*- coding: utf-8 -*-
 """
-Created on Wed Apr 21 15:29:04 2021
+Karlsruhe Institute of Technology (KIT) colormap for consistent plots
 
-@author: xy0264
+@author: Frank Rhein
 """
 import numpy as np
 from matplotlib.colors import ListedColormap

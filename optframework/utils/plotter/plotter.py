@@ -1,12 +1,11 @@
-# -*- coding: utf-8 -*-
 """
-Created on Tue Sep 14 07:05:56 2021
+Scientific Python plotter 
 
 @author: Frank Rhein
 """
 import matplotlib.pyplot as plt
 
-print('Imported correct plotter module (08.01.2024)') 
+print('Imported plotter module (18.09.2024)')
    
 # ----------------------------------
 # Define Plot defaults
@@ -17,14 +16,23 @@ print('Imported correct plotter module (08.01.2024)')
 # page_lnewdth_cm: Linewidth of document in cm
 # scl: Additional font scaling
 # fnt: Font type used in plot
-# figsze: Figure size in inches
+# figsze: Figure size in inches (defines aspect ratio)
 # frac_lnewdth: Additional scaling option to width = frac_lnewith*document_linewidth
 # mrksze: Markersize
 # lnewdth: Linewidth (of lines used in plot)
 # use_locale: If True use local number format
-def plot_init(scl_a4=1,page_lnewdth_cm=16.5,scl=1,fnt='Arial',figsze=[6.4,4.8],
-              frac_lnewdth=0.6,mrksze=6,lnewdth=1.5,use_locale=False, fontsize = 10,
-              labelfontsize=9, tickfontsize=8):
+def plot_init(scl_a4=1, 
+              page_lnewdth_cm=16.5, 
+              scl=1, 
+              fnt='Latin Modern Roman',  # This is a custom font ('serif')
+              figsze=[6.4,4.8],
+              frac_lnewdth=0.6,
+              mrksze=6,
+              lnewdth=1.5,
+              use_locale=False, 
+              fontsize = 10,
+              labelfontsize=9, 
+              tickfontsize=8):
     
     # --- Initialize defaults ---
     plt.rcdefaults()
@@ -211,7 +219,7 @@ def plot_1d_hist(x,w=None,bins=10,scale='lin',fig=None,ax=None,xlbl=None,
         x_mean = np.array([(xe[i]+xe[i-1])/2 for i in range(1,len(xe))])
         dx = np.array([xe[i]-xe[i-1] for i in range(1,len(xe))])
         
-        ax, fig = plot_data(x_mean, H, plt_type='bar', barwidth=dx,leg=False, 
+        ax, fig = plot_data(x_mean, H, plt_type='bar', barwidth=dx,leg=False,  
                             alpha=alpha, clr=clr, ax=ax, fig=fig)
             
         # --- Set labels, title and grid if given ---
@@ -335,7 +343,7 @@ def plot_export(filename,squeeze=True,dpi=1000,pad_inch=False):
         plt.savefig(filename,dpi=dpi,bbox_inches=bb)
         
 # ----------------------------------
-# Close all plots (no import of matplotlib required)
+# Close all plots (no separate import of matplotlib required)
 # ----------------------------------  
 def close():
     plt.close('all')

@@ -58,7 +58,7 @@ class ExtruderPBESolver():
         self.fill_rate = fill_rate    # Fill ratio
         self.geom_length = geom_length   # Measurements for calibration
         self.VC = self.geom_length*self.cs_area
-        self.V_flow = self.Vdot/(self.fill_rate*self.geom_length)
+        self.V_flow = self.Vdot/(self.fill_rate*self.VC)
         
     def get_all_comp_params(self, config_paths=None, same_pbe=False, N_feed=None):
         ## For N in Extruder, the order of dimension is like [NC, NS..., t]     
