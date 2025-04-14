@@ -18,16 +18,19 @@ def float_in_list(target, float_list, rel_tol=1e-6):
 def isZero(value, tol=1e-20):
     return abs(value) <= tol
 
-def ensure_integer_array(array):
+def ensure_integer_array(x):
     """
-    Ensure the input array is of integer type.
+    Ensure the input is of integer type, supports both scalars and arrays.
 
     Parameters:
-        array (numpy.ndarray): Input array.
+        x (scalar or numpy.ndarray): Input value or array.
 
     Returns:
-        numpy.ndarray: Integer array.
+        int or numpy.ndarray: Integer version of the input.
     """
-    if not np.issubdtype(array.dtype, np.integer):
-        return array.astype(int)
-    return array
+    if np.isscalar(x):
+        return int(x) if not isinstance(x, (int, np.integer)) else x
+    elif isinstance(x, np.ndarray):
+        return x if np.issubdtype(x.dtype, np.integer) else x.astype(int)
+    else:
+        raise TypeError(f"Unsupported input type: {type(x)}")

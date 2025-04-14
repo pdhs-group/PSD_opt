@@ -24,7 +24,7 @@ print('Imported plotter module (18.09.2024)')
 def plot_init(scl_a4=1, 
               page_lnewdth_cm=16.5, 
               scl=1, 
-              fnt='Latin Modern Roman',  # This is a custom font ('serif')
+              fnt='sans-serif',  # This is a custom font ('serif')
               figsze=[6.4,4.8],
               frac_lnewdth=0.6,
               mrksze=6,

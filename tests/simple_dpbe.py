@@ -15,7 +15,8 @@ import optframework.utils.plotter.plotter as pt
 from matplotlib.animation import FuncAnimation
 
 def visualize_distribution(t_frame=-1, axq3=None,fig=None, clr='b', q3lbl='q3'):
-    x_uni, q3, Q3, sumvol_uni = p.return_distribution(t=t_frame, flag='x_uni, q3, Q3,sumvol_uni')
+    # x_uni, q3, Q3, sumvol_uni = p.return_distribution(t=t_frame, flag='x_uni, q3, Q3,sumvol_uni')
+    x_uni, q3, Q3, sumvol_uni = p.return_distribution0(t=t_frame, flag='x_uni, qx, Qx,sum_uni')
     if smoothing:
         core_ins = core.OptCore()
         kde = core_ins.KDE_fit(x_uni[1:],sumvol_uni[1:],bandwidth='scott', kernel_func='epanechnikov')
@@ -37,7 +38,8 @@ def animation_distribution(t_vec, fps=10):
         q3lbl = f"t={t_vec[frame]}"
         while len(axq3.lines) > 0:
             axq3.lines[0].remove()
-        x_uni, q3, Q3, sumvol_uni = p.return_distribution(t=frame, flag='x_uni, q3, Q3, sumvol_uni')
+        # x_uni, q3, Q3, sumvol_uni = p.return_distribution(t=frame, flag='x_uni, q3, Q3, sumvol_uni')
+        x_uni, q3, Q3, sumvol_uni = p.return_distribution0(t=frame, flag='x_uni, qx, Qx, sum_uni')
         if smoothing:
             core_ins = core.OptCore()
             kde = core_ins.KDE_fit(x_uni[1:],sumvol_uni[1:],bandwidth='scott', kernel_func='epanechnikov')
@@ -101,7 +103,7 @@ def visualize_N():
 
 #%% MAIN   
 if __name__ == "__main__":
-    dim=2
+    dim=1
     p = DPBESolver(dim=dim)
     smoothing = True
     t_start = time.time()

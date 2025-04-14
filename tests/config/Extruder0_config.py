@@ -24,7 +24,7 @@ config = {
     "solver": "ivp",  
     # Numerical solver used to integrate the PBE.
 
-    "V_unit": 1e-7,  
+    # "V_unit": 1e-7,  
     # Volume unit used for normalization of N (particle number concentration). 
     # Setting a smaller value generally does not affect the relative relationships between N (i.e., the PSD),
     # but helps reduce the stiffness of matrices during calculations, leading to faster solver convergence.

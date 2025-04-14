@@ -125,7 +125,7 @@ def re_calc_distribution(self, x_uni, q3=None, sum_uni=None, flag='all'):
         return tuple(outputs[f.strip()] for f in flags if f.strip() in outputs)
     
 ## Return particle size distribution on fixed grid 
-def return_distribution(self, comp='all', t=0, N=None, flag='all', rel_q=False):
+def return_distribution_old(self, comp='all', t=0, N=None, flag='all', rel_q=False):
     """
     Returns the results of Volume-based PSD(Particle density distribution) of a time step.
     
@@ -231,6 +231,178 @@ def return_distribution(self, comp='all', t=0, N=None, flag='all', rel_q=False):
     else:
         flags = flag.split(',')
         return tuple(outputs[f.strip()] for f in flags if f.strip() in outputs)
+
+def return_distribution(self, comp='all', t=0, N=None, flag='all', rel_q=False, q_type='q3'):
+    """
+    Returns the particle size distribution (PSD) on a fixed grid.
+    
+    This function computes the PSD based on a chosen quantity:
+      - 'q0': Number-based PSD (weight = N, i.e., V^0 × N)
+      - 'q3': Volume-based PSD (weight = V * N, i.e., V^1 × N)
+      - 'q6': Square-volume PSD (weight = V^2 * N)
+      
+    The returned values include:
+      - 'x_uni': Unique particle diameters (in µm)
+      - 'qx': The density distribution corresponding to the chosen q_type
+      - 'Qx': Cumulative distribution (0–1)
+      - 'x_10', 'x_50', 'x_90': Particle diameters corresponding to 10%, 50%, and 90% cumulative distribution, respectively (in µm)
+      - 'sum_uni': The cumulative weight at each particle size class (number, volume, or squared-volume)
+    
+    Note on unit conversion:
+      - For q3, original volumes (in m³) are converted to µm³ by multiplying by 1e18.
+      - For q6, squared volumes (in m⁶) are converted to µm⁶ by multiplying by 1e36.
+      - For q0, no conversion is necessary.
+    
+    Parameters
+    ----------
+    comp : str, optional
+        Which particles are counted. Currently, only 'all' is implemented.
+    t : int, optional
+        Time step index to return.
+    N : array_like, optional
+        The particle number distribution. If not provided, the class instance self.N is used.
+    flag : str, optional
+        Specifies which data to return. Options include:
+           - 'x_uni': Unique particle diameters
+           - 'qx': Density distribution (according to q_type)
+           - 'Qx': Cumulative distribution
+           - 'x_10': Particle diameter for 10% cumulative distribution
+           - 'x_50': Particle diameter for 50% cumulative distribution
+           - 'x_90': Particle diameter for 90% cumulative distribution
+           - 'sum_uni': Cumulative weight in each particle size class
+           - 'all': Returns all of the above data.
+    rel_q : bool, optional
+        If True, the density distribution qx will be normalized by its maximum value.
+    q_type : str, optional
+        The type of distribution to compute. Should be one of:
+           - 'q0' for number-based distribution,
+           - 'q3' for volume-based distribution,
+           - 'q6' for square-volume distribution.
+        The default is 'q3'.
+    
+    Returns
+    -------
+    A tuple containing the requested arrays. If flag == 'all' then the order of return is:
+      (x_uni, qx, Qx, x_10, x_50, x_90, sum_uni)
+    Otherwise, only the items corresponding to the keys specified in flag (comma-separated) are returned.
+    """
+    def unique_with_tolerance(V, tol=1e-3):
+        # Sort the flattened array and remove duplicate values within a tolerance,
+        # using np.isclose to compare floating point numbers.
+        V_sorted = np.sort(V.flatten())
+        V_unique = [V_sorted[0]]
+        for V_val in V_sorted[1:]:
+            if not np.isclose(V_val, V_unique[-1], atol=tol * V_sorted[0], rtol=0):
+                V_unique.append(V_val)
+        return np.array(V_unique)
+    
+    # If no N is provided, use the one from the class instance.
+    if N is None:
+        N = self.N
+
+    # Extract unique V values from self.V (ignoring boundary value -1)
+    if self.disc == 'geo':
+        v_uni = np.setdiff1d(self.V.flatten(), np.array([-1.0]))
+    else:
+        v_uni = unique_with_tolerance(self.V)
+        
+    num_classes = len(v_uni)
+    qx = np.zeros(num_classes)
+    x_uni = np.zeros(num_classes)
+    sum_uni = np.zeros(num_classes)
+    ATOL = v_uni[1] * 1e-3
+    
+    # Determine the exponent for V based on q_type.
+    # q0: exponent 0; q3: exponent 1; q6: exponent 2.
+    if q_type not in ['q0', 'q3', 'q6']:
+        raise ValueError("Unsupported q_type. Options are 'q0', 'q3', or 'q6'.")
+    exp = {'q0': 0, 'q3': 1, 'q6': 2}[q_type]
+    
+    # Precompute V_power = self.V**exp so that each weight is given by V_power * N.
+    V_power = self.V ** exp
+
+    # Loop through all grid cells and accumulate weight
+    if comp == 'all':
+        if self.dim == 1:
+            for i in range(self.NS):
+                # For each cell in 1D, weight = V_power[i] * N[i,t]
+                weight = V_power[i] * N[i, t]
+                # Find the index in unique v_uni (based on self.V)
+                idx = np.where(np.isclose(v_uni, self.V[i], atol=ATOL))[0]
+                if idx.size > 0:
+                    sum_uni[idx[0]] += weight
+        elif self.dim == 2:
+            for i in range(self.NS):
+                for j in range(self.NS):
+                    weight = V_power[i, j] * N[i, j, t]
+                    idx = np.where(np.isclose(v_uni, self.V[i, j], atol=ATOL))[0]
+                    if idx.size > 0:
+                        sum_uni[idx[0]] += weight
+        elif self.dim == 3:
+            for i in range(self.NS):
+                for j in range(self.NS):
+                    for k in range(self.NS):
+                        weight = V_power[i, j, k] * N[i, j, k, t]
+                        idx = np.where(np.isclose(v_uni, self.V[i, j, k], atol=ATOL))[0]
+                        if idx.size > 0:
+                            sum_uni[idx[0]] += weight
+        else:
+            raise ValueError("Unsupported dimension: {}".format(self.dim))
+    else:
+        print('Case for comp not coded yet. Exiting')
+        return
+    
+    # Unit conversion: For q3 and q6, convert V units accordingly.
+    if q_type == 'q3':
+        # Prevent extremely small (or negative) values, assign a small positive value based on v_uni[1]
+        if num_classes > 1:
+            sum_uni[sum_uni < 0] = v_uni[1] * 1e-3
+        sum_uni *= 1e18  # Convert from m³ to µm³.
+    elif q_type == 'q6':
+        if num_classes > 1:
+            sum_uni[sum_uni < 0] = (v_uni[1] ** 2) * 1e-3
+        sum_uni *= 1e36  # Convert from m⁶ to µm⁶.
+    # For q0, no conversion is needed.
+    
+    total_weight = np.sum(sum_uni)
+    Qx = np.cumsum(sum_uni) / total_weight if total_weight != 0 else np.zeros(num_classes)
+    
+    # Calculate the diameter array based on particle volume.
+    # Using the spherical volume formula: d = (6V/π)^(1/3), converting meters to micrometers.
+    x_uni[0] = 0
+    if num_classes > 1:
+        x_uni[1:] = (6 * v_uni[1:] / np.pi) ** (1/3) * 1e6
+    
+    # Compute the density distribution from the cumulative distribution.
+    if num_classes > 1:
+        qx[1:] = np.diff(Qx) / np.diff(x_uni)
+    
+    # Obtain the x10, x50, and x90 values by interpolation.
+    x_10 = np.interp(0.1, Qx, x_uni)
+    x_50 = np.interp(0.5, Qx, x_uni)
+    x_90 = np.interp(0.9, Qx, x_uni)
+    
+    if rel_q:
+        max_qx = np.max(qx)
+        if max_qx != 0:
+            qx = qx / max_qx
+    
+    outputs = {
+        'x_uni': x_uni,
+        'qx': qx,
+        'Qx': Qx,
+        'x_10': x_10,
+        'x_50': x_50,
+        'x_90': x_90,
+        'sum_uni': sum_uni,
+    }
+    
+    if flag == 'all':
+        return outputs.values()
+    else:
+        flags = flag.split(',')
+        return tuple(outputs[f.strip()] for f in flags if f.strip() in outputs)
+
 
 def return_num_distribution(self, comp='all', t=0, N=None, flag='all', rel_q=False):
     """

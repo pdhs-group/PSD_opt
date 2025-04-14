@@ -118,7 +118,7 @@ class OptBase():
             # Use the default configuration file path if none is provided
             # config_path = os.path.join(self.pth, "..","..","config","opt_config.py")
             # config_name = "opt_config"
-            config_path = os.path.join(self.work_dir,"config","opt_config.py")
+            config_path = os.path.join(self.work_dir,"config","opt_extruder_config.py")
         if not os.path.exists(config_path):
             # Raise an exception if the config file is not found
             raise Exception(f"Warning: Config file not found at: {config_path}.")
@@ -353,10 +353,8 @@ class OptBase():
                 exp_data_paths = join_paths(data_names)
             # Initialize ray for parallel computation
             log_to_driver = True if self.core.verbose != 0 else False
-            ray.init(log_to_driver=log_to_driver, runtime_env={
-                "env_vars": {"PYTHONPATH": os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))}})
-            # ray.init(address=os.environ["ip_head"], log_to_driver=False, runtime_env={
-            #     "env_vars": {"PYTHONPATH": os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))}})
+            ray.init(log_to_driver=log_to_driver)
+            # ray.init(address=os.environ["ip_head"], log_to_driver=False)
             if method == 'kernels':
                 # Currently, this method is not implemented
                 self.print_highlighted("not coded yet", title="ERROR", color="red")

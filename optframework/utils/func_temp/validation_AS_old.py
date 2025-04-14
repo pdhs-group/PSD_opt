@@ -709,7 +709,7 @@ def plot_Q3(m_save, p, p2=None, alpha=1, label=None, Q3_grid=np.linspace(0,1,21)
     x_mc = np.mean(x_mc_full, axis=1)
     x_mc_std = np.std(x_mc_full, axis=1)
     
-    x_pbe, Q3_pbe= p.return_distribution(t=-1,flag='x_uni,q3')
+    x_pbe, Q3_pbe= p.return_distribution(t=-1,flag='x_uni,qx')
 
     fig=plt.figure()    
     ax=fig.add_subplot(1,1,1)   
@@ -727,7 +727,7 @@ def plot_Q3(m_save, p, p2=None, alpha=1, label=None, Q3_grid=np.linspace(0,1,21)
                            lbl='dPBE, $N_{\mathrm{S}}='+str(p.NS)+'$')
     
     if p2 is not None:
-        x_pbe2, Q3_pbe2 = p2.return_distribution(t=-1,flag='x_uni,q3')
+        x_pbe2, Q3_pbe2 = p2.return_distribution(t=-1,flag='x_uni,qx')
         ax, fig = pt.plot_data(x_pbe2, Q3_pbe2, fig=fig, ax=ax,
                                xlbl='Equivalent Diameter $d$ / $\mathrm{\mu m}$',
                                ylbl='Cumulative Distribution $Q_3$ / $-$', alpha=alpha,

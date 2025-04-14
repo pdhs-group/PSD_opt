@@ -252,10 +252,10 @@ def visualize_distribution(self, q3=None, Q3=None, t=-1, smoothing=False, vol_di
                            lbl='',clr='k',mrk='o',scl_a4=1,figsze=[12.8,6.4*1.5]): 
     if q3 is None or Q3 is None:
         if vol_dis:
-            x_uni, q3, Q3, sum_uni = self.return_distribution(t=t, flag='x_uni, q3, Q3, sumvol_uni')
+            x_uni, q3, Q3, sum_uni = self.return_distribution(t=t, flag='x_uni, qx, Qx, sum_uni')
             ylbl = 'volume distribution of agglomerates $q3$ / $-$'
         else:
-            x_uni, q3, Q3, sum_uni = self.return_num_distribution(t=t, flag='x_uni, q3, Q3, sumN_uni')
+            x_uni, q3, Q3, sum_uni = self.return_distribution(t=t, flag='x_uni, qx, Qx, sum_uni', q_type= 'q0')
             ylbl = 'number distribution of agglomerates $q3$ / $-$'
     if smoothing:
         kde = KDE_fit(None, x_uni[1:], sum_uni[1:])
@@ -304,9 +304,9 @@ def visualize_distribution_animation(self, t_vec=None, smoothing=False,
             axq3.lines[0].remove()
             
         if vol_dis:
-            x_uni, q3, Q3, sum_uni = self.return_distribution(t=frame, flag='x_uni, q3, Q3, sumvol_uni')
+            x_uni, q3, Q3, sum_uni = self.return_distribution(t=frame, flag='x_uni, qx, Qx, sum_uni')
         else:
-            x_uni, q3, Q3, sum_uni = self.return_num_distribution(t=frame, flag='x_uni, q3, Q3, sumN_uni')
+            x_uni, q3, Q3, sum_uni = self.return_distribution(t=frame, flag='x_uni, qx, Qx, sum_uni', q_type= 'q0')
         if smoothing:
             kde = KDE_fit(None, x_uni[1:], sum_uni[1:])
             q3 = KDE_score(self, kde, x_uni[1:])
@@ -317,9 +317,9 @@ def visualize_distribution_animation(self, t_vec=None, smoothing=False,
             colors = ['r', 'g', 'm', 'c', 'y']
             for i, other in enumerate(others):
                 if vol_dis:
-                    x_uni_other, q3_other, Q3_other, sum_uni_other = other.return_distribution(t=frame, flag='x_uni, q3, Q3, sumvol_uni')
+                    x_uni_other, q3_other, Q3_other, sum_uni_other = other.return_distribution(t=frame, flag='x_uni, qx, Qx, sum_uni')
                 else:
-                    x_uni_other, q3_other, Q3_other, sumvol__other = other.return_num_distribution(t=frame, flag='x_uni, q3, Q3, sumN_uni')
+                    x_uni_other, q3_other, Q3_other, sumvol__other = other.return_distribution(t=frame, flag='x_uni, qx, Qx, sum_uni', q_type= 'q0') 
                 if smoothing:
                     kde_other = KDE_fit(None, x_uni_other[1:], sum_uni_other[1:])
                     q3_other = KDE_score(self, kde_other, x_uni_other[1:])

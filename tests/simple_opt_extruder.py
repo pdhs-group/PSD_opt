@@ -7,7 +7,7 @@ Created on Thu Jan  4 14:53:00 2024
 import sys
 import os
 import ray
-from optframework.kernel_opt.opt_base import OptBase
+from optframework.kernel_opt_extruder.opt_base import OptBase
 import config.opt_config as conf
 import numpy as np
 import pandas as pd
@@ -30,7 +30,10 @@ def normal_test():
     
     ## Calculate PBE with synth-data and parameter from optimization in 2D
     opt.core.set_init_N(exp_data_paths, 'mean')
-    opt.core.calc_all_pop(result_dict["opt_params"], opt.core.t_vec)
+    if opt.multi_flag:
+        opt.core.calc_all_pop(result_dict["opt_params"], opt.core.t_vec)
+    else:
+        opt.core.calc_pop(opt.core.extruder, result_dict["opt_params"], opt.core.t_vec, init_N=opt.core.init_N)
     x_uni, Q3 = return_pop_distribution()
     
     return  x_uni, Q3 , result_dict
@@ -116,8 +119,7 @@ if __name__ == '__main__':
         ]
     
     known_params = {
-        # 'CORR_BETA' : 1.0,
-        # 'alpha_prim' : [1e-3,1e-3,0.1],
+        # 'corr_agg' : [1e-3,1e-3,0.1],
         # 'pl_v' : v,
         # 'pl_P1' : P1,
         # 'pl_P2' : P2,
@@ -126,6 +128,6 @@ if __name__ == '__main__':
         }
     
     # Run an optimization and generate graphs of the results
-    # x_uni, Q3 , result_dict = normal_test()
+    x_uni, Q3 , result_dict = normal_test()
     
-    x_uni_test, Q3_test , delta = calc_delta_test(var_delta=False)
+    # x_uni_test, Q3_test , delta = calc_delta_test(var_delta=False)

@@ -6,7 +6,7 @@ import numpy as np
 from ray import tune
 from scipy.stats import entropy
 from sklearn.metrics import mean_squared_error, mean_absolute_error
-from optframework.dpbe.dpbe_base import DPBESolver
+from optframework.dpbe import ExtruderPBESolver
 from optframework.utils.func.bind_methods import bind_methods_from_module , unbind_methods_from_class
 
 class OptCore():
@@ -32,7 +32,6 @@ class OptCore():
         
         """
         self.calc_init_N = False
-        self.set_init_pop_para_flag = False
         self.set_comp_para_flag = False
         self.init_N_NM = None
         self.init_N_M = None
@@ -92,14 +91,17 @@ class OptCore():
             The path to the data directory for loading component parameters.
         """
         # Initialize the PBE solver
-        self.p = DPBESolver(dim=self.dim, disc='geo', t_vec=self.t_vec, load_attr=False)
+        self.extruder = ExtruderPBESolver(dim=self.dim, NC=self.NC, disc='geo', t_vec=self.t_vec, load_attr=False)
+        self.set_init_pop_para_flag = False
+        self.p = self.extruder.p
         # If the dimension is 2, also create a 1D population for initialization
         if self.dim == 2:
             self.create_1d_pop(self.t_vec, disc='geo')
         # Set the initial population parameters and component parameters
-        self.set_init_pop_para(pop_params)
         self.set_comp_para(data_path)
         self.p.reset_params()
+        self.set_init_pop_para(pop_params)
+        
         if self.dim == 2:
             self.p_NM.reset_params()
             self.p_M.reset_params()
@@ -130,16 +132,16 @@ class OptCore():
         params = self.check_corr_agg(params_in)
         
         # Run the PBE calculations using the provided parameters
-        self.calc_pop(self.p, params, self.t_vec, init_N=self.init_N)
+        self.calc_pop(self.extruder, params, self.t_vec, init_N=self.init_N)
         
         # If the PBE calculation is successful, calculate the delta
-        if self.p.calc_status:
-            return self.calc_delta_tem(x_uni_exp, data_exp, self.p)
+        if self.extruder.calc_status:
+            return self.calc_delta_tem(x_uni_exp, data_exp, self.p, self.extruder)
         else:
             # Return a large delta value if the PBE calculation fails
             return 10
 
-    def calc_delta_tem(self, x_uni_exp, data_exp, pop):
+    def calc_delta_tem(self, x_uni_exp, data_exp, pop, extruder):
         """
         Calculate the average differences (delta) between experimental and simulated PSDs.
  
@@ -162,6 +164,7 @@ class OptCore():
             The average difference (delta) between the experimental PSD and the simulated PSD, 
             normalized by the number of particle sizes in the experimental data (`x_uni_exp`).
         """
+        N = extruder.N[-1, ...]
         # If smoothing is enabled, initialize a list to store KDE objects
         if self.smoothing:
             kde_list = []
@@ -172,7 +175,7 @@ class OptCore():
         # Loop through time steps to collect the simulation results and convert to PSD
         for idt in range(self.delta_t_start_step, self.num_t_steps):
             if self.smoothing:
-                sumvol_uni = pop.return_distribution(t=idt, flag='sum_uni')[0]
+                sumvol_uni = pop.return_distribution(t=idt, N=N, flag='sum_uni')[0]
                 # Volume of particles with index=0 is 0; in theory, such particles do not exist
                 kde = self.KDE_fit(x_uni[1:], sumvol_uni[1:])
                 kde_list.append(kde)
@@ -186,7 +189,7 @@ class OptCore():
                     q3_mod_tem = self.KDE_score(kde_list[idt], x_uni_exp[1:])
                     q3_mod[1:, idt] = q3_mod_tem
                 else:
-                    q3_mod[:, idt] = pop.return_distribution(t=idt+self.delta_t_start_step, flag='qx')[0]
+                    q3_mod[:, idt] = pop.return_distribution(t=idt+self.delta_t_start_step, N=N, flag='qx')[0]
                 Q3 = self.calc_Q3(x_uni_exp, q3_mod[:, idt]) 
                 q3_mod[:, idt] = q3_mod[:, idt] / Q3.max() 
             # Calculate the delta for each cost function type, if is defined.
@@ -208,7 +211,7 @@ class OptCore():
                         q3_mod_tem = self.KDE_score(kde_list[idt], x_uni_exp[i][1:])
                         q3_mod[1:, idt] = q3_mod_tem
                     else:
-                        q3_mod[:, idt] = pop.return_distribution(t=idt+self.delta_t_start_step, flag='qx')[0]
+                        q3_mod[:, idt] = pop.return_distribution(t=idt+self.delta_t_start_step, N=N, flag='qx')[0]
                     Q3 = self.calc_Q3(x_uni_exp[i], q3_mod[:, idt]) 
                     q3_mod[:, idt] = q3_mod[:, idt] / Q3.max()
                 # Calculate delta for each cost function type, if is defined.    
@@ -375,9 +378,9 @@ class OptCore():
         print(notice)
 
 # Bind methods from other modules into this class
-bind_methods_from_module(OptCore, 'optframework.kernel_opt.opt_algo_bo')
-bind_methods_from_module(OptCore, 'optframework.kernel_opt.opt_data')
-bind_methods_from_module(OptCore, 'optframework.kernel_opt.opt_pbe')
+bind_methods_from_module(OptCore, 'optframework.kernel_opt_extruder.opt_algo_bo')
+bind_methods_from_module(OptCore, 'optframework.kernel_opt_extruder.opt_data')
+bind_methods_from_module(OptCore, 'optframework.kernel_opt_extruder.opt_pbe')
 bind_methods_from_module(OptCore, 'optframework.dpbe.dpbe_post')
 methods_to_remove = ['calc_v_uni','calc_x_uni', 'return_distribution',
                      'return_N_t','calc_mom_t']

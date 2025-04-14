@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 import pypbe.utils.plotter.plotter as pt 
 
 def return_results(find, pop, t_frame):
-    x_uni, q3, Q3, sumvol_uni = pop.return_distribution(t=t_frame, flag='x_uni, q3, Q3, sumvol_uni')
+    x_uni, q3, Q3, sumvol_uni = pop.return_distribution(t=t_frame, flag='x_uni, qx, Qx, sum_uni')
     # Conversion unit
     if find.algo.smoothing:
         kde = find.algo.KDE_fit(x_uni, sumvol_uni, bandwidth='scott', kernel_func='epanechnikov')    

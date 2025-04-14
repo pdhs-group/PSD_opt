@@ -1,10 +1,10 @@
 import numpy as np
 
 config = {
-    "NS": 10,  
+    "NS": 20,  
     # Number of size classes for discretizing particle populations (grid points).
 
-    "S": 4,  
+    "S": 2,  
     # Geometric ratio used to define the spacing in the size grid for 'geo' discretization. 
 
     # "R01": 8.677468940430804e-07,
@@ -19,10 +19,10 @@ config = {
     "R03": 2.9e-7,  
     # Radius of primary M particles (in meters).
 
-    "t_total": 1801,  
+    "t_total": 1,  
     # Total simulation time in seconds.
 
-    "t_write": 300,  
+    "t_write": 0.01,  
     # Interval (in time steps) for writing output data (e.g., simulation results).
 
     "process_type": "mix",  
@@ -39,7 +39,7 @@ config = {
     # Setting a smaller value generally does not affect the relative relationships between N (i.e., the PSD),
     # but helps reduce the stiffness of matrices during calculations, leading to faster solver convergence.
 
-    "USE_PSD": True,  
+    "USE_PSD": False,  
     # Flag indicating whether a particle size distribution (PSD) should be used. If True, 
     # the solver will use the provided PSD files to initialize N.
     # If False, N will be initialized in a quasi-monodisperse form based on process_type:
@@ -75,11 +75,11 @@ config = {
     "aggl_crit": 100,  
     # Critical particle size for agglomeration. Agglomeration will be limited to particles larger than this size.
 
-    "CORR_BETA": 1e-2,
+    "CORR_BETA": 1e1,
     # Correction factor for the collision frequency kernel, controlling the rate of aggregation.
 
-    'alpha_prim': np.array([1,1,1,1]),  
-    # 'alpha_prim': np.array([1]),
+    # 'alpha_prim': np.array([1,1,1,1]),  
+    'alpha_prim': np.array([1]),
     # Factors for collision efficiency.
     # The length of the alpha_prim array must be the square of the dpbe's dimensionality (dim^2).
 
@@ -100,9 +100,9 @@ config = {
     "V3_mean": 1e-15,  
     # Mean volume of M particles (in cubic meters).
     
-    "pl_P1": 1e-2,  
+    "pl_P1": 1e-4,  
     "pl_P2": 1,  
-    "pl_P3": 1e-2,  
+    "pl_P3": 1e-4,  
     "pl_P4": 1,  
     # Parameters for breakage rate kernel.
     "G": 80,

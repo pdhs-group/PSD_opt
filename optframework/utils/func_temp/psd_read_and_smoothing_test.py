@@ -187,15 +187,15 @@ if __name__ == '__main__':
     # find.algo.cal_pop(find.algo.p_M, find.algo.corr_beta, find.algo.alpha_prim[0])
     
     if smoothing_test:
-        x_uni, q3, Q3, sumvol_uni = find.algo.p.return_distribution(t=-1, flag='x_uni, q3, Q3, sumvol_uni')
+        x_uni, q3, Q3, sumvol_uni = find.algo.p.return_distribution(t=-1, flag='x_uni, qx, Qx, sum_uni')
         v_uni = find.algo.calc_v_uni(find.algo.p)
         visualize_distribution_smoothing(find, find.algo.p, x_uni, q3, Q3, sumvol_uni)
         if find.multi_flag:
-            x_uni_NM, q3_NM, Q3_NM, sumvol_uni_NM = find.algo.p_NM.return_distribution(t=-1, flag='x_uni, q3, Q3, sumvol_uni')
+            x_uni_NM, q3_NM, Q3_NM, sumvol_uni_NM = find.algo.p_NM.return_distribution(t=-1, flag='x_uni, qx, Qx, sum_uni')
             v_uni_NM = find.algo.calc_v_uni(find.algo.p_NM)
             visualize_distribution_smoothing(find, find.algo.p_NM, x_uni_NM, q3_NM, Q3_NM, sumvol_uni_NM)
         if find.multi_flag:    
-            x_uni_M, q3_M, Q3_M, sumvol_uni_M = find.algo.p_M.return_distribution(t=-1, flag='x_uni, q3, Q3, sumvol_uni')
+            x_uni_M, q3_M, Q3_M, sumvol_uni_M = find.algo.p_M.return_distribution(t=-1, flag='x_uni, qx, Qx, sum_uni')
             v_uni_M = find.algo.calc_v_uni(find.algo.p_M)
             visualize_distribution_smoothing(find, find.algo.p_M, x_uni_M, q3_M, Q3_M, sumvol_uni_M)
     

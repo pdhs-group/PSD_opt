@@ -12,11 +12,13 @@ config = {
     ## Use only 2D Data or 1D+2D
     'multi_flag': False,
     ## Input only one/one set of PSD data
-    'single_case': False,
+    'single_case': True,
     
     'algo_params': {
         'dim': 1,
         # The dimensionality of the PBE
+        'NC': 7,
+        # Number of Compartments    
         't_init' : np.array([0, 0]),
         # Initial time points for simulation. 
         # These values are used to initialize N in dPBE wenn calc_init_N is True.
@@ -148,48 +150,85 @@ config = {
     ## PBE parameters
     ## For a detailed explanation of the PBE parameters, please refer to the `PBE_config.py` file.
     'pop_params': {
-        'NS' : 10,
-        'S' : 4,
-        "SIZEEVAL": 1,
-        "COLEVAL": 1,
-        "EFFEVAL": 1,
-        'BREAKRVAL' : 4,
-        'BREAKFVAL' : 5,
-        ## aggl_crit: The sequence number of the particle that allows further agglomeration
-        'aggl_crit' : 100,
-        'process_type' : "mix",
-        ## The "average volume" of the two elemental particles in the system.
-        ## Used to scale the particle volume in calculation of the breakage rate.
-        'V1_mean' : 1e-15,
-        'V3_mean' : 1e-15,
-        ## Reduce particle number desity concentration to improve calculation stability
-        ## Default value = 1e14 
-        'V_unit': 1e-12,
-        ## When True, use distribution data simulated using MC-bond-break methods
-        'USE_MC_BOND' : False,
-        'solver' : "ivp",
+        'geom_params': {
+            'cs_area': 8.75e-5 ,
+            # Cross sectional area the extruder
+            
+            'Vdot': 1.47e-7 ,
+            # Axial volume flow rate [m³/s]
+            
+            'fill_rate': np.array([1, 1, 1, 1, 1, 1, 1]),
+            # Fill ratio in each compartment
+            
+            'geom_length': np.array([0.022, 0.022, 0.022, 0.022, 0.022, 0.022, 0.022]),
+            # Depth of the screw [m]
+            },
+        'pbe_params': {
+            'global': {
+                'NS' : 10,
+                'S' : 4,
+                "SIZEEVAL": 1,
+                "COLEVAL": 1,
+                "EFFEVAL": 1,
+                'BREAKRVAL' : 4,
+                'BREAKFVAL' : 5,
+                ## aggl_crit: The sequence number of the particle that allows further agglomeration
+                'aggl_crit' : 100,
+                'process_type' : "mix",
+                ## The "average volume" of the two elemental particles in the system.
+                ## Used to scale the particle volume in calculation of the breakage rate.
+                'V1_mean' : 1e-15,
+                'V3_mean' : 1e-15,
+                ## Reduce particle number desity concentration to improve calculation stability
+                ## Default value = 1e14 
+                'V_unit': 1e-12,
+                ## When True, use distribution data simulated using MC-bond-break methods
+                'USE_MC_BOND' : False,
+                'solver' : "ivp",
         
-        "CORR_BETA": 1,
-        'alpha_prim': np.array([1e-2, 1e-2, 1e-2]),
-        # 'alpha_prim': np.array([1]),
-        "pl_v": 2,
-        "pl_P1": 1e-2,
-        "pl_P2": 1,
-        "pl_P3": 1e-2,
-        "pl_P4": 1,
-        "G": 80,
+                "CORR_BETA": 1,
+                'alpha_prim': np.array([1e-2, 1e-2, 1e-2]),
+                # 'alpha_prim': np.array([1]),
+                "pl_v": 2,
+                "pl_P1": 1e-2,
+                "pl_P2": 1,
+                "pl_P3": 1e-2,
+                "pl_P4": 1,
+                },
+            'local_0':{
+                "G": 80,
+                },
+            'local_1':{
+                "G": 60,
+                },
+            'local_2':{
+                "G": 30,
+                },
+            'local_3':{
+                "G": 40,
+                },
+            'local_4':{
+                "G": 60,
+                },
+            'local_5':{
+                "G": 20,
+                },
+            'local_6':{
+                "G": 20,
+                },
+            },
         },
     
     ## Parameters which should be optimized
     'opt_params' : {
         'corr_agg_0': {'bounds': (-4.0, 0.0), 'log_scale': True},
-        'corr_agg_1': {'bounds': (-4.0, 0.0), 'log_scale': True},
-        'corr_agg_2': {'bounds': (-4.0, 0.0), 'log_scale': True},
+        # 'corr_agg_1': {'bounds': (-4.0, 0.0), 'log_scale': True},
+        # 'corr_agg_2': {'bounds': (-4.0, 0.0), 'log_scale': True},
         'pl_v': {'bounds': (0.5, 2.0), 'log_scale': False},
         'pl_P1': {'bounds': (-5.0, -1.0), 'log_scale': True},
         'pl_P2': {'bounds': (0.3, 3.0), 'log_scale': False},
-        'pl_P3': {'bounds': (-5.0, -1.0), 'log_scale': True},
-        'pl_P4': {'bounds': (0.3, 3.0), 'log_scale': False},
+        # 'pl_P3': {'bounds': (-5.0, -1.0), 'log_scale': True},
+        # 'pl_P4': {'bounds': (0.3, 3.0), 'log_scale': False},
     },
 
 }
