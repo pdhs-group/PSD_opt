@@ -9,7 +9,7 @@ import math
 from numba import jit, njit, float64, int64
 import optframework.utils.func.jit_dpbe_rhs as jit_rhs
 
-@jit(nopython=True)
+@njit
 def get_dNdt_1d_geo_extruder(t,NN_ex,NS,V_p,V_e,F_M,B_R,bf_int,xbf_int,type_flag,agg_comprit,
                              NC, V_flow):
     N_ex = np.copy(NN_ex)
@@ -28,7 +28,7 @@ def get_dNdt_1d_geo_extruder(t,NN_ex,NS,V_p,V_e,F_M,B_R,bf_int,xbf_int,type_flag
   
     return dNdt.reshape(-1)
 
-@jit(nopython=True)
+@njit
 def get_dNdt_2d_geo_extruder(t,NN_ex,NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,type_flag,agg_comprit,
                              NC, V_flow):
     N_ex = np.copy(NN_ex)

@@ -48,7 +48,7 @@ config = {
         'noise_strength': 0.1,
         # The strength of the added noise.
         
-        'sample_num': 1,
+        'sample_num': 3,
         # Number of experimental or synthetic data samples used during the optimization process.
         
         'exp_data' : False, 
@@ -107,15 +107,20 @@ config = {
         'weight_2d': 1,  
         # Weight applied to the error (delta) of 2D particle populations, giving it 
         # more importance during optimization.
-    
-        'delta_flag': [('q3','MSE'), 
-                       # ('Q3','RMSE'), 
+        
+        'dist_type': 'q0',
+        # - 'q0': Number-based PSD (weight = N, i.e., V^0 × N)
+        # - 'q3': Volume-based PSD (weight = V * N, i.e., V^1 × N)
+        # - 'q6': Square-volume PSD (weight = V^2 * N)
+        
+        'delta_flag': [('qx','MSE'), 
+                       # ('Qx','RMSE'), 
                        #('x_50','MSE')
                        ],
         # Specifies which particle size distribution (PSD) and cost function to use 
         # during optimization. Options for PSD include:
-        # - 'q3': Number-based distribution
-        # - 'Q3': Cumulative distribution
+        # - 'qx': density distribution
+        # - 'Qx': Cumulative distribution
         # - 'x_10': Particle size at 10% of cumulative distribution
         # - 'x_50': Particle size at 50% of cumulative distribution
         # - 'x_90': Particle size at 90% of cumulative distribution
@@ -183,13 +188,13 @@ config = {
     ## Parameters which should be optimized
     'opt_params' : {
         'corr_agg_0': {'bounds': (-4.0, 0.0), 'log_scale': True},
-        'corr_agg_1': {'bounds': (-4.0, 0.0), 'log_scale': True},
-        'corr_agg_2': {'bounds': (-4.0, 0.0), 'log_scale': True},
+        # 'corr_agg_1': {'bounds': (-4.0, 0.0), 'log_scale': True},
+        # 'corr_agg_2': {'bounds': (-4.0, 0.0), 'log_scale': True},
         'pl_v': {'bounds': (0.5, 2.0), 'log_scale': False},
         'pl_P1': {'bounds': (-5.0, -1.0), 'log_scale': True},
         'pl_P2': {'bounds': (0.3, 3.0), 'log_scale': False},
-        'pl_P3': {'bounds': (-5.0, -1.0), 'log_scale': True},
-        'pl_P4': {'bounds': (0.3, 3.0), 'log_scale': False},
+        # 'pl_P3': {'bounds': (-5.0, -1.0), 'log_scale': True},
+        # 'pl_P4': {'bounds': (0.3, 3.0), 'log_scale': False},
     },
 
 }

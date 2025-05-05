@@ -172,9 +172,13 @@ class OptCore():
         # Loop through time steps to collect the simulation results and convert to PSD
         for idt in range(self.delta_t_start_step, self.num_t_steps):
             if self.smoothing:
-                sumvol_uni = pop.return_distribution(t=idt, flag='sum_uni')[0]
+                sumvol_uni = pop.return_distribution(t=idt, flag='sum_uni', q_type=self.dist_type)[0]
                 # Volume of particles with index=0 is 0; in theory, such particles do not exist
-                kde = self.KDE_fit(x_uni[1:], sumvol_uni[1:])
+                # kde = self.KDE_fit(x_uni[1:], sumvol_uni[1:])
+                # The qx distribution measured by the Lumisizer is typically matched using the 
+                # average values of two measurement nodes, so the corresponding conversion has also been performed here.
+                x_uni_m = (x_uni[:-1]+x_uni[1:]) / 2
+                kde = self.KDE_fit(x_uni_m, sumvol_uni[1:])
                 kde_list.append(kde)
                 
         delta_sum = 0 
@@ -344,7 +348,7 @@ class OptCore():
             return np.sqrt(mse)
         elif cost_func_type == 'MAE':
             return mean_absolute_error(data_mod, data_exp)
-        elif (flag == 'q3' or flag == 'Q3') and cost_func_type == 'KL':
+        elif (flag == 'qx' or flag == 'Qx') and cost_func_type == 'KL':
             # Replace very small values with a minimum threshold to avoid division by zero in KL divergence
             data_mod = np.where(data_mod <= 10e-20, 10e-20, data_mod)
             data_exp = np.where(data_exp <= 10e-20, 10e-20, data_exp)

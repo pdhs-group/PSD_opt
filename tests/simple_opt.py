@@ -105,7 +105,7 @@ if __name__ == '__main__':
     opt = OptBase()
     multi_flag = opt.multi_flag
     
-    data_name = "Sim_Mul_0.1_para_1.0_0.001_0.001_0.1_1.5_0.01_0.5_0.01_2.0.xlsx"
+    data_name = "CB_n600_Teil1.xlsx"
     
     exp_data_paths = os.path.join(opt.data_path, data_name)
     if multi_flag:
@@ -126,6 +126,6 @@ if __name__ == '__main__':
         }
     
     # Run an optimization and generate graphs of the results
-    # x_uni, Q3 , result_dict = normal_test()
+    x_uni, Q3 , result_dict = normal_test()
     
-    x_uni_test, Q3_test , delta = calc_delta_test(var_delta=False)
+    # x_uni_test, Q3_test , delta = calc_delta_test(var_delta=False)

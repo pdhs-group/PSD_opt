@@ -1,8 +1,8 @@
 import numpy as np
 import math
-from numba import jit
+from numba import njit
 
-@jit(nopython=True)
+@njit
 def sign(q):
     """
     Return the sign of the input number.
@@ -20,7 +20,7 @@ def sign(q):
     else:
         return -1
 
-@jit(nopython=True)
+@njit
 def hyqmom2(moments):
     """
     Invert moments to obtain a two-node quadrature rule.
@@ -55,7 +55,7 @@ def hyqmom2(moments):
     return x, w
 
 
-@jit(nopython=True)
+@njit
 def hyqmom3(moments, max_skewness=30, checks=True):
     """
     Invert moments to obtain a three-node quadrature rule.
@@ -182,7 +182,7 @@ def hyqmom3(moments, max_skewness=30, checks=True):
     x = bx + x  # Shift by mean
     return x, w
 
-@jit(nopython=True)
+@njit
 def chyqmom4(moments, indices, max_skewness=30):
     """
     Invert 2D moments to obtain a four-node quadrature rule via the CHyQMOM method.
@@ -251,7 +251,7 @@ def chyqmom4(moments, indices, max_skewness=30):
     return x, w
 
 
-@jit(nopython=True)
+@njit
 def chyqmom9(moments, indices, max_skewness=30, checks=True):
     """
     Invert 2D moments to obtain a nine-node quadrature rule via the CHyQMOM method.
@@ -1112,7 +1112,7 @@ def chyqmom27(moments, indices, max_skewness=30, checks=True):
 
     return abscissas, W
 
-@jit(nopython=True)
+@njit
 def quadrature_1d(weights, abscissas, moment_index):
     """
     Compute a unidimensional quadrature sum.
@@ -1130,7 +1130,7 @@ def quadrature_1d(weights, abscissas, moment_index):
     return mu
 
 
-@jit(nopython=True)
+@njit
 def quadrature_2d(weights, abscissas, moment_index):
     """
     Compute a two-dimensional quadrature sum.
@@ -1152,7 +1152,7 @@ def quadrature_2d(weights, abscissas, moment_index):
         )
     return mu
 
-@jit(nopython=True)
+@njit
 def quadrature_3d(weights, abscissas, moment_index):
     """
     Compute a three-dimensional quadrature sum.
@@ -1175,7 +1175,7 @@ def quadrature_3d(weights, abscissas, moment_index):
         )
     return mu
 
-@jit(nopython=True)
+@njit
 def compute_central_moments_2d(moments, indices):
     """
     Compute central moments for a 2D distribution.
@@ -1218,7 +1218,7 @@ def compute_central_moments_2d(moments, indices):
         idx += 1
     return mom00, bx, by, central_moments
 
-@jit(nopython=True)
+@njit
 def compute_central_moments_1d(moments):
     """
     Compute central moments for a 1D distribution.
@@ -1252,7 +1252,7 @@ def compute_central_moments_1d(moments):
 
     return bx, central_moments
 
-@jit(nopython=True)
+@njit
 def comb(n, k):
     """
     Compute the binomial coefficient "n choose k".
@@ -1268,7 +1268,7 @@ def comb(n, k):
         return 0
     return factorial(n) // (factorial(k) * factorial(n - k))
 
-@jit(nopython=True)
+@njit
 def factorial(n):
     """
     Compute the factorial of n.
@@ -1286,7 +1286,7 @@ def factorial(n):
         result *= i
     return result
 
-@jit(nopython=True)
+@njit
 def get_moment(moments, indices, p, q):
     """
     Retrieve the moment corresponding to orders (p, q) from the moments array.

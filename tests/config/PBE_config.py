@@ -1,10 +1,10 @@
 import numpy as np
 
 config = {
-    "NS": 20,  
+    "NS": 100,  
     # Number of size classes for discretizing particle populations (grid points).
 
-    "S": 2,  
+    "S": 1.2,  
     # Geometric ratio used to define the spacing in the size grid for 'geo' discretization. 
 
     # "R01": 8.677468940430804e-07,

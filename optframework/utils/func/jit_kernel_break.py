@@ -9,7 +9,7 @@ import math
 from numba import jit, njit, float64, int64
 from scipy.integrate import quad, dblquad
 
-@jit(nopython=True)
+@njit
 def beta_func(x, y):
     return math.gamma(x) * math.gamma(y) / math.gamma(x + y)
 
@@ -46,13 +46,13 @@ def breakage_func_1d(x,y,v,q,BREAKFVAL):
         # p = (v+2) / v
     return theta / y
 
-@jit(nopython=True)
+@njit
 def breakage_func_1d_xk(x,y,v,q,BREAKFVAL,k):
     return x ** k * breakage_func_1d(x,y,v,q,BREAKFVAL)
 
 ## Note: The counter-intuitive position in the input parameters (x3,x1...) of the 2d breakage function 
 ## is determined by the characteristics of the integrate function dblquad()
-@jit(nopython=True)
+@njit
 def breakage_func_2d(x3,x1,y1,y3,v,q,BREAKFVAL):
     if BREAKFVAL == 1:
         theta = 4.0 
@@ -78,40 +78,40 @@ def breakage_func_2d(x3,x1,y1,y3,v,q,BREAKFVAL):
     return theta / (y1*y3)
 
 
-@jit(nopython=True)
+@njit
 def breakage_func_2d_x1k(x3,x1,y1,y3,v,q,BREAKFVAL, k):
     return x1 ** k * breakage_func_2d(x3,x1,y1,y3,v,q,BREAKFVAL)
 
-@jit(nopython=True)
+@njit
 def breakage_func_2d_x3k(x3,x1,y1,y3,v,q,BREAKFVAL, k):
     return x3 ** k * breakage_func_2d(x3,x1,y1,y3,v,q,BREAKFVAL)
 
-@jit(nopython=True)
+@njit
 def breakage_func_2d_x1kx3l(x3,x1,y1,y3,v,q,BREAKFVAL, k, l):
     return x1 ** k * x3 ** l * breakage_func_2d(x3,x1,y1,y3,v,q,BREAKFVAL)
 
-@jit(nopython=True)
+@njit
 def breakage_func_2d_trunc(x3,x1,y1,y3,v,q,BREAKFVAL, k, l, eta):
     if x1 < eta or x3 < eta:
         return 0.0
     else:
         return x1 ** k * x3 ** l * breakage_func_2d(x3,x1,y1,y3,v,q,BREAKFVAL)
 
-@jit(nopython=True)
+@njit
 def breakage_func_2d_x1k_trunc(x3,x1,y1,y3,v,q,BREAKFVAL, k, eta):
     if x1 < eta or x3 < eta:
         return 0.0
     else:
         return x1 ** k * breakage_func_2d(x3,x1,y1,y3,v,q,BREAKFVAL)
 
-@jit(nopython=True)
+@njit
 def breakage_func_2d_x3k_trunc(x3,x1,y1,y3,v,q,BREAKFVAL, k, eta):
     if x1 < eta or x3 < eta:
         return 0.0
     else:
         return x3 ** k * breakage_func_2d(x3,x1,y1,y3,v,q,BREAKFVAL)
 
-@jit(nopython=True)
+@njit
 def gauss_legendre(f,a,b,xs,ws,args=()):
     int_f = 0.0
     psi = (b - a) * 0.5 * xs + (b + a) * 0.5
@@ -120,7 +120,7 @@ def gauss_legendre(f,a,b,xs,ws,args=()):
         int_f += (b - a) * 0.5 * ws[idx] * f_values
     return int_f
 
-@jit(nopython=True)
+@njit
 def dblgauss_legendre(f,a1,b1,a2,b2,xs1,ws1,xs2,ws2,args=()):
     int_f = 0.0
     psi1 = (b1 - a1) * 0.5 * xs1 + (b1 + a1) * 0.5
@@ -131,7 +131,7 @@ def dblgauss_legendre(f,a1,b1,a2,b2,xs1,ws1,xs2,ws2,args=()):
             int_f += (b1 - a1) * (b2 - a2)* 0.25 * ws1[idx] * ws2[idy] * f_values
     return int_f
 
-@jit(nopython=True)
+@njit
 ## integration function scipy.quad and scipy.dblquad are not compatible with jit!
 ## So a manually implemented integration method(GL: gauss-legendre quadrature) is needed here.
 def calc_int_B_F_2D_GL(NS,V1,V3,V_e1,V_e3,BREAKFVAL,v,q):
@@ -292,7 +292,7 @@ def calc_int_B_F_2D_quad(NS,V1,V3,V_e1,V_e3,BREAKFVAL,v,q):
                                             
     return int_B_F, intx_B_F, inty_B_F
 
-@jit(nopython=True)
+@njit
 def breakage_rate_1d(V, V1_mean, pl_P1, pl_P2, G, BREAKRVAL):
     B_R = np.zeros_like(V)
     num_particles = len(B_R)
@@ -304,7 +304,7 @@ def breakage_rate_1d(V, V1_mean, pl_P1, pl_P2, G, BREAKRVAL):
             B_R[i] = calc_B_R_1d(V, V1_mean, pl_P1, pl_P2, G, BREAKRVAL, i)
     return B_R
 
-@jit(nopython=True)
+@njit
 def calc_B_R_1d(V, V1_mean, pl_P1, pl_P2, G, BREAKRVAL, i):
     if BREAKRVAL == 1:
         # Size independent breakage rate --> See Leong2023 (10)
@@ -323,7 +323,7 @@ def calc_B_R_1d(V, V1_mean, pl_P1, pl_P2, G, BREAKRVAL, i):
         B_R = pl_P1 * G * (V[i] / V1_mean) ** pl_P2
     return B_R
     
-@jit(nopython=True)
+@njit
 def breakage_rate_2d(V, V1, V3, V1_mean, V3_mean, G, pl_P1, pl_P2, pl_P3, pl_P4, BREAKRVAL, BREAKFVAL):
     B_R = np.zeros_like(V)
     V_mean = (V3_mean + V1_mean) / 2.0
@@ -344,7 +344,7 @@ def breakage_rate_2d(V, V1, V3, V1_mean, V3_mean, G, pl_P1, pl_P2, pl_P3, pl_P4,
 
     return B_R
 
-@jit(nopython=True)
+@njit
 def breakage_rate_2d_flat(V, V1, V3, V1_mean, V3_mean, G, pl_P1, pl_P2, pl_P3, pl_P4, BREAKRVAL, BREAKFVAL):
     ## Normally B_R here should be a flat one-dimensional array, for example in MC-PBE
     ## And there is a one-to-one correspondence between V1, 
@@ -365,7 +365,7 @@ def breakage_rate_2d_flat(V, V1, V3, V1_mean, V3_mean, G, pl_P1, pl_P2, pl_P3, p
 
     return B_R
 
-@jit(nopython=True)
+@njit
 def calc_B_R_2d(V, V1, V3, V1_mean, V3_mean, V_mean, G, 
                 pl_P1, pl_P2, pl_P3, pl_P4, BREAKRVAL, BREAKFVAL, i, j):
     if BREAKRVAL == 1:
@@ -381,7 +381,7 @@ def calc_B_R_2d(V, V1, V3, V1_mean, V3_mean, V_mean, G,
         B_R =  pl_P1 * G * (V1[i]/V1_mean)**pl_P2 + pl_P3 * G * (V3[j]/V3_mean)**pl_P4
     return B_R
 
-@jit(nopython=True)
+@njit
 def calc_B_R_2d_flat(V, V1, V3, V1_mean, V3_mean, V_mean, G, 
                 pl_P1, pl_P2, pl_P3, pl_P4, BREAKRVAL, BREAKFVAL, i):
     if BREAKRVAL == 1:

@@ -8,7 +8,7 @@ import numpy as np
 import math
 from numba import jit, njit, float64, int64
 
-@jit(nopython=True)
+@njit
 def get_dNdt_1d_geo(t,N,NS,V_p,V_e,F_M,B_R,bf_int,xbf_int,type_flag,agg_crit):
     dNdt = np.zeros(N.shape)
     M_c = np.zeros(V_e.shape)
@@ -60,7 +60,7 @@ def get_dNdt_1d_geo(t,N,NS,V_p,V_e,F_M,B_R,bf_int,xbf_int,type_flag,agg_crit):
     
     return dNdt 
 
-@jit(nopython=True)
+@njit
 def get_dNdt_2d_geo(t,NN,NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,type_flag,agg_crit):       
     N = np.copy(NN) 
     N = np.reshape(N,(NS,NS))
@@ -151,7 +151,7 @@ def get_dNdt_2d_geo(t,NN,NS,V_p,V_e1,V_e2,F_M,B_R,bf_int,xbf_int,ybf_int,type_fl
     return dNdt.reshape(-1)   
 
 
-@jit(nopython=True)
+@njit
 def get_dNdt_3d_geo(t,NN,V,V1,V2,V3,F_M,NS,THR):       
         
     N = NN.copy() 
@@ -281,7 +281,7 @@ def get_dNdt_3d_geo(t,NN,V,V1,V2,V3,F_M,NS,THR):
     
     return DN.reshape(-1) 
 
-@jit(nopython=True)
+@njit
 def get_dNdt_1d_uni(t,N,V,B_R,B_F,F_M,NS,agg_crit,process_type):       
 
     # Initialize DN with zeros
@@ -332,7 +332,7 @@ def get_dNdt_1d_uni(t,N,V,B_R,B_F,F_M,NS,agg_crit,process_type):
     #     if abs(DN[i])<THR: DN[i] = 0
     return DN
 
-@jit(nopython=True)
+@njit
 def get_dNdt_2d_uni(t,NN,V,V1,V3,F_M,NS,THR):       
   
     N = NN.copy() 
@@ -385,7 +385,7 @@ def get_dNdt_2d_uni(t,NN,V,V1,V3,F_M,NS,THR):
     
     return DN.reshape(-1) 
 
-@jit(nopython=True)
+@njit
 def get_dNdt_3d_uni(t,NN,V,V1,V2,V3,F_M,NS,THR):       
         
     N = NN.copy() 
@@ -440,7 +440,7 @@ def get_dNdt_3d_uni(t,NN,V,V1,V2,V3,F_M,NS,THR):
     
     return DN.reshape(-1) 
 
-@jit(nopython=True)
+@njit
 def lam(v, V_p, i, m):
     if m == "+":
         return (v-V_p[i-1])/(V_p[i]-V_p[i-1])
@@ -449,7 +449,7 @@ def lam(v, V_p, i, m):
     # else:
     #     print('WRONG CASE FOR LAM')
         
-@jit(nopython=True)
+@njit
 def lam_2d(x,y,Vx,Vy,i,j,m1,m2):
 
     if m1 == "+":
@@ -470,7 +470,7 @@ def lam_2d(x,y,Vx,Vy,i,j,m1,m2):
     
     return lam 
 
-@jit(nopython=True)
+@njit
 def heaviside(x1, x2):
     if x1 < 0:
         return 0.0
@@ -479,23 +479,23 @@ def heaviside(x1, x2):
     else:
         return x2
 
-# @jit(nopython=True)
+# @njit
 # def b_integrate(x_up,x_low,y_up=None,y_low=None,bf=None):
 #     if y_up is None or y_low is None:
 #         return (x_up - x_low)*bf
 #     else:
 #         return (x_up- x_low)*(y_up - y_low)*bf
-# @jit(nopython=True)    
+# @njit    
 # def xb_integrate(x_up,x_low,y_up=None,y_low=None,bf=None):
 #     if y_up is None or y_low is None:
 #         return (x_up**2 - x_low**2)*0.5*bf
 #     else:
 #         return (x_up**2- x_low**2)*(y_up - y_low)*0.5*bf
-# @jit(nopython=True)    
+# @njit    
 # def yb_integrate(x_up,x_low,y_up=None,y_low=None,bf=None):
 #     return (y_up**2 - y_low**2)*(x_up-x_low)*0.5*bf 
 
-@jit(nopython=True)
+@njit
 def get_lam_3d(x,y,z,Vx,Vy,Vz,i,j,k,m1,m2,m3):
 
     if m1 == "+":
@@ -539,7 +539,7 @@ def get_lam_3d(x,y,z,Vx,Vy,Vz,i,j,k,m1,m2,m3):
 
 
 
-@jit(nopython=True)
+@njit
 def calc_1d_agglomeration(N,V_p,V_e,F_M,B_c,M_c,D,agg_crit):
     for e in range(1,agg_crit):
         # Loop through all pivots (twice)
@@ -557,7 +557,7 @@ def calc_1d_agglomeration(N,V_p,V_e,F_M,B_c,M_c,D,agg_crit):
                         M_c[e] += F*N[i]*N[j]*(V_p[i]+V_p[j])/2
                         D[j] -= F*N[i]*N[j]
     return B_c, M_c, D
-@jit(nopython=True)
+@njit
 def calc_1d_breakage(N,V_p,V_e,B_R,bf_int,xbf_int,B_c,M_c,D):
     # D_M = np.zeros(N.shape)
     #  Loop through all pivots
@@ -575,7 +575,7 @@ def calc_1d_breakage(N,V_p,V_e,B_R,bf_int,xbf_int,B_c,M_c,D):
     # print(volume_erro)
     return B_c, M_c, D
  
-@jit(nopython=True)
+@njit
 def calc_2d_agglomeration(N,V_p,V_e1,V_e2,F_M,B_c,M1_c,M2_c,D,agg_crit):
     x_crit = agg_crit[0]
     y_crit = agg_crit[1]
@@ -605,7 +605,7 @@ def calc_2d_agglomeration(N,V_p,V_e1,V_e2,F_M,B_c,M1_c,M2_c,D,agg_crit):
                                 D[i,j] -= F*N[i,j]*N[a,b]
 
     return B_c,M1_c,M2_c,D
-@jit(nopython=True)
+@njit
 def calc_2d_breakage(N,V_p,V_e1,V_e2,B_R,bf_int,xbf_int,ybf_int,B_c,M1_c,M2_c,D):
     ## only to check volume conservation
     # D_M = np.zeros(N.shape)

@@ -7,7 +7,7 @@ import optframework.utils.func.jit_kernel_break as kernel_break
 import optframework.utils.func.jit_pbm_chyqmom as chyqmom
 from scipy.optimize import root
 from scipy.optimize import least_squares
-from numba import jit
+from numba import njit
 
 def filter_negative_nodes(xi, wi, threshold=1e-7):
     """
@@ -103,7 +103,7 @@ def hyqmom_newton_correction(xi, wi, moments, method="lm"):
 
     return xi, wi
     
-@jit(nopython=True)
+@njit
 def get_dMdt_1d(t, moments, x_max, GQMOM, GQMOM_method, 
                 moments_norm_factor, n_add, nu, 
                 COLEVAL, CORR_BETA, G, alpha_prim, EFFEVAL, 
@@ -242,7 +242,7 @@ def get_dMdt_1d(t, moments, x_max, GQMOM, GQMOM_method,
     
     return dMdt_norm
 
-@jit(nopython=True)
+@njit
 def get_dMdt_2d(t, moments, n, indices, COLEVAL, CORR_BETA, G, alpha_prim, EFFEVAL, 
                 SIZEEVAL, V_unit, X_SEL, Y_SEL, 
                 V1_mean, V3_mean, pl_P1, pl_P2, pl_P3, pl_P4, BREAKRVAL, 

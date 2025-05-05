@@ -8,7 +8,7 @@ import numpy as np
 import math
 from numba import jit, njit, float64, int64
 
-@jit(nopython=True)
+@njit
 def calc_F_M_1D(NS, COLEVAL, CORR_BETA, G, R, alpha_prim, EFFEVAL, SIZEEVAL, X_SEL, Y_SEL):
     # To avoid mass leakage at the boundary in CAT, boundary cells are not directly involved in the calculation. 
     # So there is no need to define the corresponding F_M at boundary. F_M is (NS-1)^2 instead (NS)^2
@@ -52,7 +52,7 @@ def calc_F_M_1D(NS, COLEVAL, CORR_BETA, G, R, alpha_prim, EFFEVAL, SIZEEVAL, X_S
 
     return F_M
             
-@jit(nopython=True)
+@njit
 def calc_F_M_2D(NS,COLEVAL,CORR_BETA,G,R,X1,X3,EFFEVAL,alpha_prim,SIZEEVAL,X_SEL,Y_SEL):
     # To avoid mass leakage at the boundary in CAT, boundary cells are not directly involved in the calculation. 
     # So there is no need to define the corresponding F_M at boundary. F_M is (NS-1)^4 instead (NS)^4
@@ -120,7 +120,7 @@ def calc_F_M_2D(NS,COLEVAL,CORR_BETA,G,R,X1,X3,EFFEVAL,alpha_prim,SIZEEVAL,X_SEL
 
     return F_M
                 
-@jit(nopython=True)
+@njit
 def calc_F_M_3D(NS,COLEVAL,CORR_BETA,G,R,X1,X2,X3,EFFEVAL,alpha_prim,SIZEEVAL,X_SEL,Y_SEL):
                        
     # Initialize F_M Matrix. NOTE: F_M is defined without the border around the calculation grid
@@ -213,7 +213,7 @@ def calc_F_M_3D(NS,COLEVAL,CORR_BETA,G,R,X1,X2,X3,EFFEVAL,alpha_prim,SIZEEVAL,X_
     
     return F_M
 
-# @jit(nopython=True)
+# @njit
 # def prepare_calc_beta(COLEVAL):
 #     """
 #     Prepare a fast version of calc_beta based on the COLEVAL value.
@@ -236,7 +236,7 @@ def calc_F_M_3D(NS,COLEVAL,CORR_BETA,G,R,X1,X2,X3,EFFEVAL,alpha_prim,SIZEEVAL,X_
 #             return 0.0
 #     return calc_beta
 
-@jit(nopython=True)
+@njit
 def calc_beta(COLEVAL, CORR_BETA, G, R, idx1, idx2):
     """
     Calculate beta based on collision model with flexible support for 1D or 2D R arrays.

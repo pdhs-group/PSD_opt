@@ -66,53 +66,53 @@ def calc_q3(self, Q3, x_uni):
     q3[1:] = np.diff(Q3) / np.diff(x_uni)
     return q3
     
-def re_calc_distribution(self, x_uni, q3=None, sum_uni=None, flag='all'):
+def re_calc_distribution(self, x_uni, qx=None, sum_uni=None, flag='all'):
     """
     Recalculate distribution metrics for a given DPBESolver and distribution data.
     
-    Can operate on either q3 or sum_uni distribution data to calculate Q3, q3, and particle
+    Can operate on either qx or sum_uni distribution data to calculate Qx, qx, and particle
     diameters corresponding to specific percentiles (x_10, x_50, x_90).
     
     Parameters
     ----------
     x_uni : `array`
         Unique particle diameters.
-    q3 : `array`, optional
-        q3 distribution data.
+    qx : `array`, optional
+        qx distribution data.
     sum_uni : `array`, optional
         sum_uni distribution data.
     flag : `str`, optional
         Specifies which metrics to return. Defaults to 'all', can be a comma-separated list
-        of 'q3', 'Q3', 'x_10', 'x_50', 'x_90'.
+        of 'qx', 'Qx', 'x_10', 'x_50', 'x_90'.
     
     Returns
     -------
     `tuple`
-        Selected distribution metrics based on the `flag`. Can include q3, Q3, x_10, x_50,
+        Selected distribution metrics based on the `flag`. Can include qx, Qx, x_10, x_50,
         and x_90 values.
     """
-    if q3 is not None:
-        q3_new = q3
-        Q3_new = np.apply_along_axis(lambda q3_slice: 
-                                 self.calc_Q3(x_uni, q3=q3_slice), 0, q3)
+    if qx is not None:
+        qx_new = qx
+        Qx_new = np.apply_along_axis(lambda qx_slice: 
+                                 self.calc_Qx(x_uni, qx=qx_slice), 0, qx)
 
     else:
-        Q3_new = np.apply_along_axis(lambda sum_uni_slice: 
-                                 self.calc_Q3(x_uni, sum_uni=sum_uni_slice), 0, sum_uni)
-        q3_new = np.apply_along_axis(lambda Q3_slice: 
-                                      self.calc_q3(Q3_slice, x_uni), 0, Q3_new)
+        Qx_new = np.apply_along_axis(lambda sum_uni_slice: 
+                                 self.calc_Qx(x_uni, sum_uni=sum_uni_slice), 0, sum_uni)
+        qx_new = np.apply_along_axis(lambda Qx_slice: 
+                                      self.calc_qx(Qx_slice, x_uni), 0, Qx_new)
     
-    dim = q3_new.shape[1]
+    dim = qx_new.shape[1]
     x_10_new = np.zeros(dim)
     x_50_new = np.zeros(dim)
     x_90_new = np.zeros(dim)
     for idx in range(dim):
-        x_10_new[idx] = np.interp(0.1, Q3_new[:, idx], x_uni)
-        x_50_new[idx] = np.interp(0.5, Q3_new[:, idx], x_uni)
-        x_90_new[idx] = np.interp(0.9, Q3_new[:, idx], x_uni)
+        x_10_new[idx] = np.interp(0.1, Qx_new[:, idx], x_uni)
+        x_50_new[idx] = np.interp(0.5, Qx_new[:, idx], x_uni)
+        x_90_new[idx] = np.interp(0.9, Qx_new[:, idx], x_uni)
     outputs = {
-    'q3': q3_new,
-    'Q3': Q3_new,
+    'qx': qx_new,
+    'Qx': Qx_new,
     'x_10': x_10_new,
     'x_50': x_50_new,
     'x_90': x_90_new,
