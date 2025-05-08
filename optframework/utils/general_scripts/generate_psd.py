@@ -147,4 +147,5 @@ if __name__ == '__main__':
     resigma = 0.2
     minscale = 0.01
     maxscale = 100
-    full_psd(x50, resigma, minscale=minscale, maxscale=maxscale, plot_psd=True)
+    dist=full_psd(x50, resigma, minscale=minscale, maxscale=maxscale, plot_psd=True)
+    psd_dict = np.load(dist,allow_pickle=True).item()

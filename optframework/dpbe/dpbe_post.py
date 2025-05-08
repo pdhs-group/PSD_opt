@@ -34,37 +34,37 @@ def calc_x_uni(self, unit_trans=True):
     x_uni = (6*v_uni/np.pi)**(1/3)
     return x_uni
 
-def calc_Q3(self, x_uni, q3=None, sum_uni=None):
+def calc_Qx(self, x_uni, qx=None, sum_uni=None):
     """
-    Calculate the cumulative distribution Q3 from q3 or sum_uni distribution data.
+    Calculate the cumulative distribution Qx from qx or sum_uni distribution data.
     """
-    Q3 = np.zeros_like(q3) if q3 is not None else np.zeros_like(sum_uni)
-    if q3 is None:
-        Q3 = np.cumsum(sum_uni)/sum_uni.sum()
+    Qx = np.zeros_like(qx) if qx is not None else np.zeros_like(sum_uni)
+    if qx is None:
+        Qx = np.cumsum(sum_uni)/sum_uni.sum()
     else:
-        for i in range(1, len(Q3)):
-                # Q3[i] = np.trapz(q3[:i+1], x_uni[:i+1])
+        for i in range(1, len(Qx)):
+                # Qx[i] = np.trapz(qx[:i+1], x_uni[:i+1])
                 ## Euler backward
-                Q3[i] = Q3[i-1] + q3[i] * (x_uni[i] - x_uni[i-1])
-    return Q3
+                Qx[i] = Qx[i-1] + qx[i] * (x_uni[i] - x_uni[i-1])
+    return Qx
 
-def calc_sum_uni(self, Q3, sum_total):
+def calc_sum_uni(self, Qx, sum_total):
     """
-    Calculate the sum_uni distribution from the Q3 cumulative distribution and total sum.
+    Calculate the sum_uni distribution from the Qx cumulative distribution and total sum.
     """
-    sum_uni = np.zeros_like(Q3)
-    # sum_uni[0] = sum_total * Q3[0]
-    for i in range(1, len(Q3)):
-        sum_uni[i] = sum_total * max((Q3[i] -Q3[i-1] ), 0)
+    sum_uni = np.zeros_like(Qx)
+    # sum_uni[0] = sum_total * Qx[0]
+    for i in range(1, len(Qx)):
+        sum_uni[i] = sum_total * max((Qx[i] -Qx[i-1] ), 0)
     return sum_uni
 
-def calc_q3(self, Q3, x_uni):
+def calc_qx(self, Qx, x_uni):
     """
-    Calculate the q3 distribution from the Q3 cumulative distribution.
+    Calculate the qx distribution from the Qx cumulative distribution.
     """
-    q3 = np.zeros_like(Q3)
-    q3[1:] = np.diff(Q3) / np.diff(x_uni)
-    return q3
+    qx = np.zeros_like(Qx)
+    qx[1:] = np.diff(Qx) / np.diff(x_uni)
+    return qx
     
 def re_calc_distribution(self, x_uni, qx=None, sum_uni=None, flag='all'):
     """

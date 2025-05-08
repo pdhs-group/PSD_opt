@@ -91,10 +91,12 @@ config = {
     "pl_v": 1.0,  
     # Parameter in fragment distribution function.
 
-    "V1_mean": 1e-15,
+    ### To ensure the monotonicity of the breakage rate, this setting has been deprecated, 
+    ### and all particle volumes are scaled by the volume of the smallest particle.
+    # "V1_mean": 1e-15,
     # Mean volume of NM1 particles (in cubic meters).
 
-    "V3_mean": 1e-15,  
+    # "V3_mean": 1e-15,  
     # Mean volume of M particles (in cubic meters).
     
     "pl_P1": 1e-1,  

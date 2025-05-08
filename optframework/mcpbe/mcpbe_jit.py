@@ -84,6 +84,9 @@ class MCPBESolver():
         self.pl_P2 = 0.5                      # 2. parameter in power law for breakage rate  1d/2d
         self.pl_P3 = 1e-6                     # 3. parameter in power law for breakage rate  2d
         self.pl_P4 = 0.5                      # 4. parameter in power law for breakage rate  2d
+        
+        ### To ensure the monotonicity of the breakage rate, this setting has been deprecated, 
+        ### and all particle volumes are scaled by the volume of the smallest particle.
         self.V1_mean = 4.37*1e-14
         self.V3_mean = 4.37*1e-14
         

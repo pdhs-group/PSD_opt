@@ -29,7 +29,8 @@ class OptCoreRay(OptCore, tune.Trainable):
         # Initialize tune.Trainable to prepare the class as a Ray Tune actor
         tune.Trainable.__init__(self, *args, **kwargs)
         
-    def setup(self, config, core_params, pop_params, data_path, exp_data_paths, x_uni_exp, data_exp, known_params):
+    def setup(self, config, core_params, pop_params, data_path, 
+              exp_data_paths, x_uni_exp, data_exp, known_params, exp_case):
         """
         Set up the environment for the optimization task.
         
@@ -72,6 +73,7 @@ class OptCoreRay(OptCore, tune.Trainable):
         self.x_uni_exp = x_uni_exp
         self.data_exp = data_exp
         self.exp_data_paths = exp_data_paths
+        self.exp_case = exp_case
         self.reuse_num=0
         self.actor_wait=False
     
@@ -89,23 +91,35 @@ class OptCoreRay(OptCore, tune.Trainable):
             A dictionary containing the loss (delta) and the reuse count for the current Actor.
         """
         start_time = time.time()
-        
         # Transform the input parameters if they include corr_agg for dimensional handling
         if 'corr_agg_0' in self.config:
             transformed_params = self.array_dict_transform(self.config)
         else:
             transformed_params = self.config
-        
-        # Apply known parameters to override any conflicting optimization parameters
-        if self.known_params is not None:
-            for key, value in self.known_params.items():
-                if key in transformed_params:
-                    print(f"Warning: Known parameter '{key}' are set for optimization.")
-                transformed_params[key] = value
-                
-        # print(f"The paramters actually entered calc_delta are {transformed_params}")
-        # Calculate the loss (delta) using the transformed parameters
-        loss = self.calc_delta(transformed_params, self.x_uni_exp, self.data_exp)
+            
+        if not self.exp_case:
+            # Apply known parameters to override any conflicting optimization parameters
+            if self.known_params is not None:
+                for key, value in self.known_params.items():
+                    if key in transformed_params:
+                        print(f"Warning: Known parameter '{key}' are set for optimization.")
+                    transformed_params[key] = value
+                    
+            # print(f"The paramters actually entered calc_delta are {transformed_params}")
+            # Calculate the loss (delta) using the transformed parameters
+            loss = self.calc_delta(transformed_params, self.x_uni_exp, self.data_exp)
+        else:
+            losses = []
+            for i in range(len(self.known_params)):
+                known_i = self.known_params[i]
+                for key, value in known_i.items():
+                    transformed_params[key] = value
+                x_i = self.x_uni_exp[i]
+                data_i = self.data_exp[i]
+                loss_i = self.calc_delta(transformed_params, x_i, data_i)
+                losses.append(loss_i)
+            loss = sum(losses) / len(losses)
+            
         end_time = time.time()
         execution_time = end_time - start_time
         

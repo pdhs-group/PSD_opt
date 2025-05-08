@@ -172,30 +172,30 @@ class OptCore():
         # Loop through time steps to collect the simulation results and convert to PSD
         for idt in range(self.delta_t_start_step, self.num_t_steps):
             if self.smoothing:
-                sumvol_uni = pop.return_distribution(t=idt, flag='sum_uni', q_type=self.dist_type)[0]
+                sum_uni = pop.return_distribution(t=idt, flag='sum_uni', q_type=self.dist_type)[0]
                 # Volume of particles with index=0 is 0; in theory, such particles do not exist
-                # kde = self.KDE_fit(x_uni[1:], sumvol_uni[1:])
+                kde = self.KDE_fit(x_uni[1:], sum_uni[1:])
                 # The qx distribution measured by the Lumisizer is typically matched using the 
                 # average values of two measurement nodes, so the corresponding conversion has also been performed here.
-                x_uni_m = (x_uni[:-1]+x_uni[1:]) / 2
-                kde = self.KDE_fit(x_uni_m, sumvol_uni[1:])
+                # x_uni_m = (x_uni[:-1]+x_uni[1:]) / 2
+                # kde = self.KDE_fit(x_uni_m, sum_uni[1:])
                 kde_list.append(kde)
                 
         delta_sum = 0 
         # Single sample case
         if self.sample_num == 1:
-            q3_mod = np.zeros((len(x_uni_exp), self.num_t_steps-self.delta_t_start_step))
+            qx_mod = np.zeros((len(x_uni_exp), self.num_t_steps-self.delta_t_start_step))
             for idt in range(self.num_t_steps-self.delta_t_start_step):
                 if self.smoothing:
-                    q3_mod_tem = self.KDE_score(kde_list[idt], x_uni_exp[1:])
-                    q3_mod[1:, idt] = q3_mod_tem
+                    qx_mod_tem = self.KDE_score(kde_list[idt], x_uni_exp[1:])
+                    qx_mod[1:, idt] = qx_mod_tem
                 else:
-                    q3_mod[:, idt] = pop.return_distribution(t=idt+self.delta_t_start_step, flag='qx')[0]
-                Q3 = self.calc_Q3(x_uni_exp, q3_mod[:, idt]) 
-                q3_mod[:, idt] = q3_mod[:, idt] / Q3.max() 
+                    qx_mod[:, idt] = pop.return_distribution(t=idt+self.delta_t_start_step, flag='qx')[0]
+                Qx = self.calc_Qx(x_uni_exp, qx_mod[:, idt]) 
+                qx_mod[:, idt] = qx_mod[:, idt] / Qx.max() 
             # Calculate the delta for each cost function type, if is defined.
             for flag, cost_func_type in self.delta_flag:
-                data_mod = pop.re_calc_distribution(x_uni_exp, q3=q3_mod, flag=flag)[0]
+                data_mod = pop.re_calc_distribution(x_uni_exp, qx=qx_mod, flag=flag)[0]
                 delta = self.cost_fun(data_exp, data_mod, cost_func_type, flag)
                 delta_sum += delta 
                 
@@ -206,18 +206,18 @@ class OptCore():
         # Multiple sample case
         else:
             for i in range (0, self.sample_num):
-                q3_mod = np.zeros((len(x_uni_exp[i]), self.num_t_steps-self.delta_t_start_step))
+                qx_mod = np.zeros((len(x_uni_exp[i]), self.num_t_steps-self.delta_t_start_step))
                 for idt in range(self.num_t_steps-self.delta_t_start_step):
                     if self.smoothing:
-                        q3_mod_tem = self.KDE_score(kde_list[idt], x_uni_exp[i][1:])
-                        q3_mod[1:, idt] = q3_mod_tem
+                        qx_mod_tem = self.KDE_score(kde_list[idt], x_uni_exp[i][1:])
+                        qx_mod[1:, idt] = qx_mod_tem
                     else:
-                        q3_mod[:, idt] = pop.return_distribution(t=idt+self.delta_t_start_step, flag='qx')[0]
-                    Q3 = self.calc_Q3(x_uni_exp[i], q3_mod[:, idt]) 
-                    q3_mod[:, idt] = q3_mod[:, idt] / Q3.max()
+                        qx_mod[:, idt] = pop.return_distribution(t=idt+self.delta_t_start_step, flag='qx')[0]
+                    Qx = self.calc_Qx(x_uni_exp[i], qx_mod[:, idt]) 
+                    qx_mod[:, idt] = qx_mod[:, idt] / Qx.max()
                 # Calculate delta for each cost function type, if is defined.    
                 for flag, cost_func_type in self.delta_flag:
-                    data_mod = pop.re_calc_distribution(x_uni_exp[i], q3=q3_mod, flag=flag)[0]
+                    data_mod = pop.re_calc_distribution(x_uni_exp[i], qx=qx_mod, flag=flag)[0]
                     delta = self.cost_fun(data_exp[i], data_mod, cost_func_type, flag)
                     delta_sum += delta 
                     
@@ -327,9 +327,9 @@ class OptCore():
                 - 'MSE': Mean Squared Error
                 - 'RMSE': Root Mean Squared Error
                 - 'MAE': Mean Absolute Error
-                - 'KL': Kullback-Leibler divergence (only for 'q3' or 'Q3').
+                - 'KL': Kullback-Leibler divergence (only for 'qx' or 'Qx').
         flag : str
-            A flag indicating whether to use 'q3' or 'Q3' for KL divergence.
+            A flag indicating whether to use 'qx' or 'Qx' for KL divergence.
 
         Returns
         -------

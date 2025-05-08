@@ -22,10 +22,7 @@ class write_read_exp():
                 self.exp_data = pd.read_excel(path_exp_data)
             else:
                 self.exp_data = pd.read_excel(path_exp_data, sheet_name=sheet_name)
-            if not exp_data:
-                self.exp_data = self.exp_data.set_index('Circular Equivalent Diameter')
-            else:
-                self.exp_data = self.exp_data.set_index('Q(x)')
+            self.exp_data = self.exp_data.set_index('Circular Equivalent Diameter')
                     
             # Parse time in Format %H:%M:%S and convert to minutes
             self.exp_data.columns = [self.convert_time_to_seconds(col) for col in self.exp_data.columns]

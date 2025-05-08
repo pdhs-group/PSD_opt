@@ -236,20 +236,20 @@ def save_average_xQ_data(x_avg_array, Q_x_ref, sorted_time_labels):
 
     # Use mean x values as common interpolation points
     # x_m = x_avg_array.mean(axis=0)
-    x_m = generate_nonuniform_grid(x_min=0.037, x_max=1, num_points=100, gamma=1.2)
+    x_m = generate_nonuniform_grid(x_min=0.037, x_max=1, num_points=101, gamma=1.2)
     Q_x_int = np.zeros((x_avg_array.shape[0], len(x_m)))
 
     # Interpolate Q(x), normalize to [0, 1]
     for i in range(x_avg_array.shape[0]):
-        Q_x_int[i, :] = interpolate_Qx(
+        Q_x_int[i, 1:] = interpolate_Qx(
             x_vals=x_avg_array[i, :],
             Q_vals=Q_x_ref,
-            x_target=x_m,
-            method="lognormal",     #'int1d', 'pchip', 'isotonic', 'lognormal'
+            x_target=x_m[1:],
+            method=interpolation_method,     #'int1d', 'pchip', 'isotonic', 'lognormal'
             fraction=1.0
         )
 
-    Q_x_int_df = pd.DataFrame(Q_x_int.T, index=x_m, columns=formatted_time_labels)
+    Q_x_int_df = pd.DataFrame(Q_x_int[:, 1:].T, index=x_m[1:], columns=formatted_time_labels)
     Q_x_int_df.index.name = 'Circular Equivalent Diameter'
 
     # Compute q(x) by differentiating Q(x)
@@ -264,15 +264,16 @@ def save_average_xQ_data(x_avg_array, Q_x_ref, sorted_time_labels):
         qx_int[i, :] = q
 
     # Construct new x_mm for q(x): [0] + midpoints of intervals
-    x_mm = np.zeros_like(x_m)
-    x_mm[1:] = (x_m[:-1] + x_m[1:]) / 2
+    # x_mm = np.zeros_like(x_m)
+    # x_mm[1:] = (x_m[:-1] + x_m[1:]) / 2
+    x_mm = x_m
 
-    qx_int_df = pd.DataFrame(qx_int.T, index=x_mm, columns=formatted_time_labels)
+    qx_int_df = pd.DataFrame(qx_int[:, 1:].T, index=x_mm[1:], columns=formatted_time_labels)
     qx_int_df.index.name = 'Circular Equivalent Diameter'
 
     # Save Excel
     post_file = f"{filename_base}_post{ext}"
-    save_path = os.path.join(r"C:\Users\px2030\Code\Ergebnisse\BatchDaten\post", post_file)
+    save_path = os.path.join(base_path, "post", post_file)
     with pd.ExcelWriter(save_path) as writer:
         x_Q_df.to_excel(writer, sheet_name='Q_x')
         Q_x_int_df.to_excel(writer, sheet_name='Q_x_int')
@@ -344,15 +345,15 @@ def interpolate_Qx(x_vals, Q_vals, x_target, method="pchip", fraction=0.9):
         Q_iso = ir.fit_transform(x_sub, Q_sub)
         f_base = interp1d(x_sub, Q_iso, bounds_error=False, fill_value=np.nan)
     elif method == "lognormal":
-        f, _ = fit_lognormal_cdf(x_sub, Q_sub, method='global_opt', weight_mode='uniform')
+        f, _ = fit_lognormal_cdf(x_sub, Q_sub, method=fit_lognormal_method, weight_mode='uniform')
     else:
         raise ValueError(f"Unknown interpolation method: {method}")
 
     if method != "lognormal":
         f = wrap_with_linear_extrapolation(f_base, x_sub, Q_sub)
     Qx_vals = f(x_target)
-    Q_test = f(x_sub)
-    print(np.mean(abs(Q_sub-Q_test)))
+    # Q_test = f(x_sub)
+    # print(np.mean(abs(Q_sub-Q_test)))
     # Clip to [0, 1]
     # Qx_vals[Qx_vals < 0] = 0.0
     # Qx_vals /= Qx_vals[-1]
@@ -360,7 +361,7 @@ def interpolate_Qx(x_vals, Q_vals, x_target, method="pchip", fraction=0.9):
 
     return Qx_vals
 
-def fit_lognormal_cdf(x, Q, method='curve_fit', weight_mode='uniform', clip_eps=1e-6):
+def fit_lognormal_cdf(x, Q, method='zscore', weight_mode='uniform', clip_eps=1e-6):
     """
     Fit a log-normal CDF to (x, Q) data using one of three methods:
     - 'curve_fit': Nonlinear least squares
@@ -515,18 +516,34 @@ def plot_xQ_profiles(x_Q_df, Q_x_int_df, qx_int_df):
 
 if __name__ == '__main__':
     len_data = 201 
+    interpolation_method = "lognormal"     #'int1d', 'pchip', 'isotonic', 'lognormal'
+    fit_lognormal_method = "zscore" #'curve_fit', 'zscore', 'global_opt'
     # Usage
-    raw_file = "Batch_1500_Q0.xlsx"
-    filename_base, ext = os.path.splitext(os.path.basename(raw_file))
-    file_path = os.path.join(r"C:\Users\px2030\Code\Ergebnisse\BatchDaten", raw_file)
-    data, measurement_count = load_excel_data(file_path)
-    # Q_x_arrays, q_x_array, x_arrays, xm_arrays, sorted_time_labels = process_data(data, measurement_count)
-    # Q_x_dfs, q_x_dfs = save_interpolated_data(Q_x_arrays, q_x_array, x_arrays, xm_arrays, sorted_time_labels,measurement_count)
-    # Now `data` contains all the extracted information
-    
-    x_avg_array, Q_x_ref, sorted_time_labels = process_data_xQ(data, measurement_count)
-    x_Q_df, Q_x_int_df, qx_int_df = save_average_xQ_data(x_avg_array, Q_x_ref, sorted_time_labels)
-    plot_xQ_profiles(x_Q_df, Q_x_int_df, qx_int_df)
-    
-    
+    base_path = r"C:\Users\px2030\Code\Ergebnisse\BatchDaten"
+    # raw_file = "Batch_1800_Q0.xlsx"
+    batch_files = [
+        "Batch_600_Q0.xlsx",
+        "Batch_900_Q0.xlsx",
+        "Batch_1200_Q0.xlsx",
+        "Batch_1500_Q0.xlsx",
+        "Batch_1800_Q0.xlsx",
+    ]
+    x_int_list = []
+    for raw_file in batch_files:
+        filename_base, ext = os.path.splitext(os.path.basename(raw_file))
+        file_path = os.path.join(base_path, raw_file)
+        data, measurement_count = load_excel_data(file_path)
+        # Q_x_arrays, q_x_array, x_arrays, xm_arrays, sorted_time_labels = process_data(data, measurement_count)
+        # Q_x_dfs, q_x_dfs = save_interpolated_data(Q_x_arrays, q_x_array, x_arrays, xm_arrays, sorted_time_labels,measurement_count)
+        # Now `data` contains all the extracted information
+        
+        x_avg_array, Q_x_ref, sorted_time_labels = process_data_xQ(data, measurement_count)
+        x_int_list.append(x_avg_array[0,:])
+        x_Q_df, Q_x_int_df, qx_int_df = save_average_xQ_data(x_avg_array, Q_x_ref, sorted_time_labels)
+        plot_xQ_profiles(x_Q_df, Q_x_int_df, qx_int_df)
+   
+    x_int_avg = np.mean(x_int_list, axis=0) * 1e-6     # convert the unit from um to m
+    dist_path = os.path.join(base_path, "Batch_int_PSD.npy")
+    dict_Qx={'Q_PSD':Q_x_ref,'x_PSD':x_int_avg, 'r0_001':x_int_avg[0], 'r0_005':x_int_avg[1], 'r0_01':x_int_avg[2]}
+    np.save(dist_path,dict_Qx)
 

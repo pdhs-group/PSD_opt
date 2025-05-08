@@ -12,20 +12,18 @@ config = {
     ## Use only 2D Data or 1D+2D
     'multi_flag': False,
     ## Input only one/one set of PSD data
-    'single_case': True,
+    'single_case': False,
     
     'algo_params': {
         'dim': 1,
         # The dimensionality of the PBE
-        'NC': 7,
-        # Number of Compartments    
         't_init' : np.array([0, 0]),
         # Initial time points for simulation. 
         # These values are used to initialize N in dPBE wenn calc_init_N is True.
         # Note: The first value in t_init must be zero.
         
         # 't_vec' : np.array([0, 0]),
-        't_vec' : np.array([0, 5, 10, 15, 20, 25, 30])*60,
+        't_vec' : np.array([0, 5, 10, 45])*60,
         # Time vector for the entire simulation, specifying the time points at which 
         # calculations are performed.
         
@@ -36,7 +34,7 @@ config = {
         'add_noise': True,
         # Whether to add noise to the generated data.
         
-        'smoothing': True,
+        'smoothing': False,
         # Whether to apply smoothing to the simulated data, usually performed using 
         # kernel density estimation (KDE).
         
@@ -53,10 +51,10 @@ config = {
         'sample_num': 1,
         # Number of experimental or synthetic data samples used during the optimization process.
         
-        'exp_data' : False, 
+        'exp_data' : True, 
         # Whether to use experimental data (True) or synthetic data (False) during optimization.
         
-        'sheet_name' : None, 
+        'sheet_name' : 'q_x_int1', 
         # Name of the sheet in the experimental data file (if applicable).
          
         'method': 'Cmaes',
@@ -72,7 +70,7 @@ config = {
         # This value will change global random states for numpy and torch on 
         # initalization and loading from checkpoint.
         
-        'n_iter': 10,
+        'n_iter': 800,
         # Number of iterations for the optimization process.
 
         'calc_init_N': False,
@@ -92,32 +90,37 @@ config = {
         'R03_0' : 'r0_001',
         # Radius of M primary particles corresponding to the 1% position (Q3) in the PSD data.
 
-        'R_01': 2.9e-7,
-        'R_03': 2.9e-7,
+        'R_01': 3.7e-8/2,
+        'R_03': 3.7e-8/2,
         'R01_0_scl': 1,
         # Scaling factor for the NM1 primary particle radius.
         
         'R03_0_scl': 1,
         # Scaling factor for the M primary particle radius.
         
-        'PSD_R01' : 'PSD_x50_2.0E-5_RelSigmaV_2.0E-1.npy',
+        'PSD_R01' : 'Batch_int_PSD.npy',
         # File name for the PSD data for NM1 particles.
         
-        'PSD_R03': 'PSD_x50_2.0E-5_RelSigmaV_2.0E-1.npy',  
+        'PSD_R03': 'Batch_int_PSD.npy',  
         # File name for the PSD data for M particles.
     
         'weight_2d': 1,  
         # Weight applied to the error (delta) of 2D particle populations, giving it 
         # more importance during optimization.
-    
-        'delta_flag': [('q3','MSE'), 
-                       # ('Q3','RMSE'), 
+        
+        'dist_type': 'q0',
+        # - 'q0': Number-based PSD (weight = N, i.e., V^0 × N)
+        # - 'q3': Volume-based PSD (weight = V * N, i.e., V^1 × N)
+        # - 'q6': Square-volume PSD (weight = V^2 * N)
+        
+        'delta_flag': [('qx','MSE'), 
+                       # ('Qx','RMSE'), 
                        #('x_50','MSE')
                        ],
         # Specifies which particle size distribution (PSD) and cost function to use 
         # during optimization. Options for PSD include:
-        # - 'q3': Number-based distribution
-        # - 'Q3': Cumulative distribution
+        # - 'qx': density distribution
+        # - 'Qx': Cumulative distribution
         # - 'x_10': Particle size at 10% of cumulative distribution
         # - 'x_50': Particle size at 50% of cumulative distribution
         # - 'x_90': Particle size at 90% of cumulative distribution
@@ -150,85 +153,45 @@ config = {
     ## PBE parameters
     ## For a detailed explanation of the PBE parameters, please refer to the `PBE_config.py` file.
     'pop_params': {
-        'geom_params': {
-            'cs_area': 8.75e-5 ,
-            # Cross sectional area the extruder
-            
-            'Vdot': 1.47e-7 ,
-            # Axial volume flow rate [m³/s]
-            
-            'fill_rate': np.array([1, 1, 1, 1, 1, 1, 1]),
-            # Fill ratio in each compartment
-            
-            'geom_length': np.array([0.022, 0.022, 0.022, 0.022, 0.022, 0.022, 0.022]),
-            # Depth of the screw [m]
-            },
-        'pbe_params': {
-            'global': {
-                'NS' : 10,
-                'S' : 4,
-                "SIZEEVAL": 1,
-                "COLEVAL": 1,
-                "EFFEVAL": 1,
-                'BREAKRVAL' : 4,
-                'BREAKFVAL' : 5,
-                ## aggl_crit: The sequence number of the particle that allows further agglomeration
-                'aggl_crit' : 100,
-                'process_type' : "mix",
-                ## The "average volume" of the two elemental particles in the system.
-                ## Used to scale the particle volume in calculation of the breakage rate.
-                ### To ensure the monotonicity of the breakage rate, this setting has been deprecated, 
-                ### and all particle volumes are scaled by the volume of the smallest particle.
-                # 'V1_mean' : 1e-15,
-                # 'V3_mean' : 1e-15,
-                ## Reduce particle number desity concentration to improve calculation stability
-                ## Default value = 1e14 
-                'V_unit': 1e-12,
-                ## When True, use distribution data simulated using MC-bond-break methods
-                'USE_MC_BOND' : False,
-                'solver' : "ivp",
+        'NS' : 101,
+        'S' : 1.2,
+        "SIZEEVAL": 1,
+        "COLEVAL": 1,
+        "EFFEVAL": 1,
+        'BREAKRVAL' : 4,
+        'BREAKFVAL' : 5,
+        ## aggl_crit: The sequence number of the particle that allows further agglomeration
+        'aggl_crit' : 100,
+        'process_type' : "mix",
+
+        ## density of CB(with CMC and SBR): 1245.46kg/m3, mass 6.02g
+        ## density of battery slurry: 1300kg/m3, mass 200g
+        'c_mag_exp': 0.00602/1245.46/(0.2/1300),
+        'V_unit': 1e-12,
         
-                "CORR_BETA": 1,
-                'alpha_prim': np.array([1e-2, 1e-2, 1e-2]),
-                # 'alpha_prim': np.array([1]),
-                "pl_v": 2,
-                "pl_P1": 1e-2,
-                "pl_P2": 1,
-                "pl_P3": 1e-2,
-                "pl_P4": 1,
-                },
-            'local_0':{
-                "G": 80,
-                },
-            'local_1':{
-                "G": 60,
-                },
-            'local_2':{
-                "G": 30,
-                },
-            'local_3':{
-                "G": 40,
-                },
-            'local_4':{
-                "G": 60,
-                },
-            'local_5':{
-                "G": 20,
-                },
-            'local_6':{
-                "G": 20,
-                },
-            },
+        ## When True, use distribution data simulated using MC-bond-break methods
+        'USE_MC_BOND' : False,
+        'solver' : "ivp",
+        
+        "CORR_BETA": 1,
+        # 'alpha_prim': np.array([1e-2, 1e-2, 1e-2]),
+        'alpha_prim': np.array([1]),
+        "pl_v": 2,
+        "pl_P1": 1e-2,
+        "pl_P2": 1,
+        "pl_P3": 1e-2,
+        "pl_P4": 1,
+        "G": 80,
         },
     
     ## Parameters which should be optimized
     'opt_params' : {
-        'corr_agg_0': {'bounds': (-4.0, 0.0), 'log_scale': True},
+        'corr_agg_0': {'bounds': (-8.0, 2.0), 'log_scale': True},
         # 'corr_agg_1': {'bounds': (-4.0, 0.0), 'log_scale': True},
         # 'corr_agg_2': {'bounds': (-4.0, 0.0), 'log_scale': True},
-        'pl_v': {'bounds': (0.5, 2.0), 'log_scale': False},
-        'pl_P1': {'bounds': (-5.0, -1.0), 'log_scale': True},
-        'pl_P2': {'bounds': (0.3, 3.0), 'log_scale': False},
+        'pl_v': {'bounds': (0.1, 2.0), 'log_scale': False},
+        'pl_P1': {'bounds': (-8.0, 2.0), 'log_scale': True},
+        'pl_P2': {'bounds': (0.1, 5.0), 'log_scale': False},
         # 'pl_P3': {'bounds': (-5.0, -1.0), 'log_scale': True},
         # 'pl_P4': {'bounds': (0.3, 3.0), 'log_scale': False},
     },

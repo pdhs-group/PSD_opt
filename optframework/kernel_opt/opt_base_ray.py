@@ -163,6 +163,7 @@ def optimierer_ray(self, opt_params=None, exp_data_paths=None,known_params=None)
         else:
             x_uni_exp, data_exp = self.core.get_all_synth_data(exp_data_paths)
         data_name = os.path.basename(exp_data_paths)
+        
     # Set up the Ray Tune search space    
     if opt_params is not None:    
         self.RT_space = {}
@@ -189,11 +190,13 @@ def optimierer_ray(self, opt_params=None, exp_data_paths=None,known_params=None)
     if not self.multi_flag:
         trainable = tune.with_parameters(OptCoreRay, core_params=self.core_params, pop_params=self.pop_params,
                                          data_path=self.data_path, exp_data_paths=exp_data_paths,
-                                         x_uni_exp=x_uni_exp, data_exp=data_exp, known_params=known_params)
+                                         x_uni_exp=x_uni_exp, data_exp=data_exp, known_params=known_params, 
+                                         exp_case=self.core.exp_data)
     else:
         trainable = tune.with_parameters(OptCoreMultiRay, core_params=self.core_params, pop_params=self.pop_params,
                                          data_path=self.data_path, exp_data_paths=exp_data_paths,
-                                         x_uni_exp=x_uni_exp, data_exp=data_exp, known_params=known_params)    
+                                         x_uni_exp=x_uni_exp, data_exp=data_exp, known_params=known_params,
+                                         exp_case=self.core.exp_data)    
     # Define the resources used for each trial using PlacementGroupFactory
     trainable_with_resources  = tune.with_resources(trainable, 
                                                   resources=tune.PlacementGroupFactory([{"CPU": self.core.cpus_per_trail}]),
