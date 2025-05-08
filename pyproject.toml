@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "optframework"
-version = "0.4.0"
+version = "0.5.0"
 description = "A dPBE solver based framework used to find kernel parameters."
 authors = ["HR94 <haoran.ji@kit.edu>"]
 license = "GPL-3.0-only"

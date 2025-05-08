@@ -9,7 +9,7 @@
 #SBATCH --mem=40000mb
 
 module purge
-module load devel/python/3.11.7_intel_2021.4.0
+module load devel/python/3.11.7-gnu-14.2
 export TMP_PATH=$TMPDIR
 
 tar -C $TMPDIR/ -xzf $(ws_find MC_train)/mix_data_shear2.tar.gz
