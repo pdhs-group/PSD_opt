@@ -186,7 +186,7 @@ config = {
     
     ## Parameters which should be optimized
     'opt_params' : {
-        'corr_agg_0': {'bounds': (-8.0, 2.0), 'log_scale': True},
+        'corr_agg_0': {'bounds': (-8.0, -1.0), 'log_scale': True},
         # 'corr_agg_1': {'bounds': (-4.0, 0.0), 'log_scale': True},
         # 'corr_agg_2': {'bounds': (-4.0, 0.0), 'log_scale': True},
         'pl_v': {'bounds': (0.1, 2.0), 'log_scale': False},

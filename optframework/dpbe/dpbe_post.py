@@ -363,7 +363,7 @@ def return_distribution(self, comp='all', t=0, N=None, flag='all', rel_q=False, 
             sum_uni[sum_uni < 0] = (v_uni[1] ** 2) * 1e-3
         sum_uni *= 1e36  # Convert from m⁶ to µm⁶.
     # For q0, no conversion is needed.
-    
+    sum_uni[0] = 0.0
     total_weight = np.sum(sum_uni)
     Qx = np.cumsum(sum_uni) / total_weight if total_weight != 0 else np.zeros(num_classes)
     

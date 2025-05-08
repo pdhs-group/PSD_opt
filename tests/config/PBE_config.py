@@ -9,20 +9,20 @@ config = {
 
     # "R01": 8.677468940430804e-07,
     # "R03": 8.677468940430804e-07,
-    "R01": 2.9e-7,  
+    "R01": 3.7e-8/2,  
     # Radius of primary NM1 particles (in meters) for uni-grid.
     # In a geometric grid, volumes are calculated as midpoints between volume edges (V_e).
     # Therefore, when using a geo-grid, the specified value here corresponds to the radius
     # of the left edge of the grid, V_e[1]. The actual primary particle size is given by 
     # V_e[1] * (1 + S) / 2, where S is the geometric spacing factor.
     
-    "R03": 2.9e-7,  
+    "R03": 3.7e-8/2,  
     # Radius of primary M particles (in meters).
 
-    "t_total": 1,  
+    "t_total": 45*60+1,  
     # Total simulation time in seconds.
 
-    "t_write": 0.01,  
+    "t_write": 5*60,  
     # Interval (in time steps) for writing output data (e.g., simulation results).
 
     "process_type": "mix",  
@@ -33,13 +33,13 @@ config = {
 
     "solver": "ivp",  
     # Numerical solver used to integrate the PBE.
-
-    "V_unit": 1e-12,  
+    'c_mag_exp': 0.00602/1245.46/(0.2/1300),
+    "V_unit": 1e-15,  
     # Volume unit used for normalization of N (particle number concentration). 
     # Setting a smaller value generally does not affect the relative relationships between N (i.e., the PSD),
     # but helps reduce the stiffness of matrices during calculations, leading to faster solver convergence.
 
-    "USE_PSD": False,  
+    "USE_PSD": True,  
     # Flag indicating whether a particle size distribution (PSD) should be used. If True, 
     # the solver will use the provided PSD files to initialize N.
     # If False, N will be initialized in a quasi-monodisperse form based on process_type:
@@ -54,10 +54,10 @@ config = {
     "DIST3_path": None,  
     # File path to the PSD data for M particles. If None, default location will be used.
 
-    "DIST1_name": "PSD_x50_2.0E-5_RelSigmaV_2.0E-1.npy",  
+    "DIST1_name": "Batch_int_PSD.npy",  
     # Name of the file containing the PSD for NM1 particles.
 
-    "DIST3_name": "PSD_x50_2.0E-5_RelSigmaV_2.0E-1.npy",  
+    "DIST3_name": "Batch_int_PSD.npy",  
     # Name of the file containing the PSD for M particles.
 
     "COLEVAL": 1,  
@@ -75,7 +75,7 @@ config = {
     "aggl_crit": 100,  
     # Critical particle size for agglomeration. Agglomeration will be limited to particles larger than this size.
 
-    "CORR_BETA": 1e1,
+    "CORR_BETA": 1e-4,
     # Correction factor for the collision frequency kernel, controlling the rate of aggregation.
 
     # 'alpha_prim': np.array([1,1,1,1]),  
@@ -102,9 +102,9 @@ config = {
     # "V3_mean": 1e-15,  
     # Mean volume of M particles (in cubic meters).
     
-    "pl_P1": 1e-4,  
+    "pl_P1": 1e-8,  
     "pl_P2": 1,  
-    "pl_P3": 1e-4,  
+    "pl_P3": 1e-8,  
     "pl_P4": 1,  
     # Parameters for breakage rate kernel.
     "G": 80,
