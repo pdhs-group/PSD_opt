@@ -516,10 +516,10 @@ def plot_xQ_profiles(x_Q_df, Q_x_int_df, qx_int_df):
 
 if __name__ == '__main__':
     len_data = 201 
-    interpolation_method = "lognormal"     #'int1d', 'pchip', 'isotonic', 'lognormal'
+    interpolation_method = "int1d"     #'int1d', 'pchip', 'isotonic', 'lognormal'
     fit_lognormal_method = "zscore" #'curve_fit', 'zscore', 'global_opt'
     # Usage
-    base_path = r"C:\Users\px2030\Code\Ergebnisse\BatchDaten"
+    base_path = r"C:\Users\px2030\Code\Ergebnisse\BatchDatenL1L2"
     # raw_file = "Batch_1800_Q0.xlsx"
     batch_files = [
         "Batch_600_Q0.xlsx",

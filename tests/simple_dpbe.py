@@ -52,7 +52,7 @@ def animation_distribution(t_vec, fps=10):
 
     fig, axq3 = plt.subplots()
     clr = 'b'  
-    t_frame = np.arange(1, len(t_vec))
+    t_frame = np.arange(0, len(t_vec))
     axq3.set_xlabel(r'Agglomeration size $x_\mathrm{A}$ / $-$')
     axq3.set_ylabel('number distribution of agglomerates $q3$ / $-$')
     axq3.grid('minor')

@@ -774,7 +774,7 @@ def calc_B_R(self):
         ##       calculation with V requires (index+1)
         if self.process_type == 'agglomeration':
             return
-        self.B_R = jit_kernel_break.breakage_rate_1d(self.V, self.V1_mean, self.G, self.pl_P1, self.pl_P2, self.BREAKRVAL)          
+        self.B_R = jit_kernel_break.breakage_rate_1d(self.V, self.V1_mean, self.pl_P1, self.pl_P2, self.G, self.BREAKRVAL)          
     # 2-D case            
     if self.dim == 2:
         if self.process_type == 'agglomeration':

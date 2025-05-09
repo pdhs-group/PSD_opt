@@ -46,6 +46,7 @@ def calc_delta_test(known_params_list, exp_data_paths, opt_params=None, visual=F
         data_i = data_exp[i]
         loss_i = opt.core.calc_delta(pop_params, x_i, data_i)
         if visual:
+            ## The comparison is between the test data and the simulation results for each data set.
             visualize_opt_distribution(x_uni_exp=x_i, data_exp=data_i)
         losses.append(loss_i)
 
@@ -134,17 +135,17 @@ def visualize_opt_distribution(t_frame=-1, x_uni_exp=None, data_exp=None):
         q0 = q0 / Q0.max()
         x_uni = x_uni_exp
     fig, ax = plt.subplots()
-    ax, fig = pt.plot_data(x_uni, q0, fig=fig, ax=ax,
+    ax, fig = pt.plot_data(x_uni[:30], q0[:30], fig=fig, ax=ax,
                            xlbl=r'Agglomeration size $x_\mathrm{A}$ / $-$',
                            ylbl='number distribution of agglomerates $q0$ / $-$',
                            lbl='opt',clr='b',mrk='o')
-    ax, fig = pt.plot_data(x_uni_exp, data_exp[:, t_frame], fig=fig, ax=ax,
+    ax, fig = pt.plot_data(x_uni_exp[:30], data_exp[:30, t_frame], fig=fig, ax=ax,
                            xlbl=r'Agglomeration size $x_\mathrm{A}$ / $-$',
                            ylbl='number distribution of agglomerates $q0$ / $-$',
                            lbl='exp',clr='r',mrk='^')
     
     ax.grid('minor')
-    ax.set_xscale('log')
+    # ax.set_xscale('log')
     plt.tight_layout()  
     plt.show()
     return ax, fig        
@@ -152,12 +153,11 @@ def visualize_opt_distribution(t_frame=-1, x_uni_exp=None, data_exp=None):
 if __name__ == '__main__':
     base_path = Path(os.getcwd()).resolve()
     config_path = os.path.join(base_path, "config", "opt_Batch_config.py")
-    data_dir = "L1_int1d"
-    # tmpdir = os.environ.get('TMP_PATH')
-    # data_path = os.path.join(tmpdir, "data")
+    data_dir = "int1d"  ## "int1d", "lognormal_curvefit", "lognormal_zscore"
+    # tmp_path = os.environ.get('TMP_PATH')
+    # data_path = os.path.join(tmp_path, "data", data_dir)
     data_path = os.path.join(base_path, "data", data_dir)
     opt = OptBase(config_path=config_path, data_path=data_path)
-    n_iter = opt.core.n_iter
     data_names_list = [
         "Batch_600_Q0_post.xlsx",
         "Batch_900_Q0_post.xlsx",
@@ -166,22 +166,29 @@ if __name__ == '__main__':
         "Batch_1800_Q0_post.xlsx",
     ]
     
-    G_flag = "Median_Integral"
-    if G_flag == "Median_Integral":
-        G_datas = [32.0404, 39.1135, 41.4924, 44.7977, 45.6443]
-    elif G_flag == "Median_LocalStirrer":
-        G_datas = [104.014, 258.081, 450.862, 623.357, 647.442]
-    elif G_flag == "Mean_Integral":
-        G_datas = [87.2642, 132.668, 143.68, 183.396, 185.225]
-    elif G_flag == "Mean_LocalStirrer":
-        G_datas = [297.136, 594.268, 890.721, 1167.74, 1284.46]
-    else:
-        raise ValueError(f"Unknown G_flag: {G_flag}")
+    G_flag = "Median_LocalStirrer"
+    n_iter = opt.core.n_iter
+    n_iter_list = [100, 200, 400, 800]
+    for n_iter in n_iter_list:
+        opt.core.n_iter = int(n_iter)
+        G_flag_list = ["Median_Integral", "Median_LocalStirrer", "Mean_Integral", "Mean_LocalStirrer"]
         
-    known_params_list = [{'G': G_val} for G_val in G_datas]
-
-    result_dir = os.path.join(base_path, "cv_results")
-    cross_validation(data_names_list, known_params_list, result_dir)
+        for G_flag in G_flag_list:
+            if G_flag == "Median_Integral":
+                G_datas = [32.0404, 39.1135, 41.4924, 44.7977, 45.6443]
+            elif G_flag == "Median_LocalStirrer":
+                G_datas = [104.014, 258.081, 450.862, 623.357, 647.442]
+            elif G_flag == "Mean_Integral":
+                G_datas = [87.2642, 132.668, 143.68, 183.396, 185.225]
+            elif G_flag == "Mean_LocalStirrer":
+                G_datas = [297.136, 594.268, 890.721, 1167.74, 1284.46]
+            else:
+                raise ValueError(f"Unknown G_flag: {G_flag}")
+                
+            known_params_list = [{'G': G_val} for G_val in G_datas]
+        
+            result_dir = os.path.join(base_path, "cv_results")
+            # cross_validation(data_names_list, known_params_list, result_dir)
     
-    opt_params_list, opt_scores, losses_all_list = load_cross_validation_results(result_dir, n_iter, data_dir)
-    calc_delta_test(known_params_list, data_names_list, opt_params_list[0], visual=True)
+    # opt_params_list, opt_scores, losses_all_list = load_cross_validation_results(result_dir, n_iter, data_dir)
+    # calc_delta_test(known_params_list, data_names_list, opt_params_list[0], visual=True)

@@ -34,7 +34,7 @@ config = {
     "solver": "ivp",  
     # Numerical solver used to integrate the PBE.
     'c_mag_exp': 0.00602/1245.46/(0.2/1300),
-    "V_unit": 1e-15,  
+    "V_unit": 1e-12,  
     # Volume unit used for normalization of N (particle number concentration). 
     # Setting a smaller value generally does not affect the relative relationships between N (i.e., the PSD),
     # but helps reduce the stiffness of matrices during calculations, leading to faster solver convergence.
@@ -102,11 +102,11 @@ config = {
     # "V3_mean": 1e-15,  
     # Mean volume of M particles (in cubic meters).
     
-    "pl_P1": 1e-8,  
+    "pl_P1": 1e-6,  
     "pl_P2": 1,  
-    "pl_P3": 1e-8,  
+    "pl_P3": 1e-6,  
     "pl_P4": 1,  
     # Parameters for breakage rate kernel.
-    "G": 80,
+    "G": 1,
 
 }
