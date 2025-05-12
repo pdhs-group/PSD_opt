@@ -52,7 +52,7 @@ def calc_delta_test(known_params_list, exp_data_paths, opt_params=None, visual=F
 
     return losses
 
-def cross_validation(data_names_list, known_params_list, result_dir):
+def cross_validation(data_names_list, known_params_list, result_dir, G_flag):
     os.makedirs(result_dir, exist_ok=True)
     N = len(data_names_list)
     for i in range(N):
@@ -88,43 +88,198 @@ def cross_validation(data_names_list, known_params_list, result_dir):
         np.savez(file_path, **result_dict)
         print(f"Saved result to {file_path}\n")
 
-def load_cross_validation_results(result_dir, n_iter, data_dir):
+# Modified load function to include G_flag as parameter
+def load_cross_validation_results(result_dir, n_iter, data_dir, G_flag):
     """
-    Load and assemble results from saved cross-validation files.
-
-    Parameters
-    ----------
-    result_dir : str
-        Directory where cross-validation result .npz files are saved.
-    n_iter : int
-        Iteration number used in saved filenames.
-    data_dir : str
-        Data directory name used in saved filenames.
-
-    Returns
-    -------
-    opt_params_list : list of dict
-        List of optimized parameter dictionaries for each CV iteration.
-    opt_scores : list of float
-        List of training set optimization scores for each CV iteration.
-    losses_all_list : list of list[float]
-        List of losses on all data for each CV iteration.
+    Load and assemble cross-validation results for a specific (n_iter, data_dir, G_flag).
+    Returns lists of optimized parameters, training scores, and all losses.
     """
     opt_params_list = []
     opt_scores = []
     losses_all_list = []
 
-    files = sorted([f for f in os.listdir(result_dir) if f.startswith(f"cv_iter_{n_iter}_") and f.endswith(f"_{data_dir}_{G_flag}.npz")])
+    # Build filename patterns
+    prefix = f"cv_iter_{n_iter}_"
+    suffix = f"_{data_dir}_{G_flag}.npz"
+    files = sorted([
+        f for f in os.listdir(result_dir)
+        if f.startswith(prefix) and f.endswith(suffix)
+    ])
 
-    for file in files:
-        file_path = os.path.join(result_dir, file)
-        data = np.load(file_path, allow_pickle=True)
-        opt_params_list.append(data['opt_params'].item())  # .item() because it's a dict saved in npz
+    # Load each file
+    for fname in files:
+        path = os.path.join(result_dir, fname)
+        data = np.load(path, allow_pickle=True)
+        opt_params_list.append(data['opt_params'].item())
         opt_scores.append(data['opt_score_train'].item())
         losses_all_list.append(data['losses_all'])
 
     return opt_params_list, opt_scores, losses_all_list
 
+
+def load_all_cv_results(result_dir, n_iter_list, data_dir, G_flag_list):
+    """
+    Load results across all combinations of n_iter and G_flag.
+    Returns a nested dict: results[G_flag][n_iter] = {...}
+    """
+    results = {}
+    for G_flag in G_flag_list:
+        results[G_flag] = {}
+        for n_iter in n_iter_list:
+            opt_params, scores, losses = load_cross_validation_results(
+                result_dir, n_iter, data_dir, G_flag
+            )
+            results[G_flag][n_iter] = {
+                'opt_params_list': opt_params,
+                'opt_scores': scores,
+                'losses_all_list': losses
+            }
+    return results
+
+
+def analyze_and_plot_cv_results(results, n_iter_list, G_flag_list, result_dir):
+    """
+    Analyze and visualize cross-validation statistics and save each figure as JPG.
+    Parameters:
+      results       : Nested dict from load_all_cv_results
+      n_iter_list   : List of iteration counts
+      G_flag_list   : List of G_flag strings
+      result_dir    : Directory path to save plots
+    """
+    # Ensure save directory exists
+    os.makedirs(result_dir, exist_ok=True)
+
+    # Determine parameter names from first G_flag and n_iter
+    first_flag = G_flag_list[0]
+    first_iter = n_iter_list[0]
+    sample_params = results[first_flag][first_iter]['opt_params_list'][0]
+    param_names = list(sample_params.keys())
+
+    # 1. Plot each parameter's mean ± std
+    for param in param_names:
+        if param == "G":
+            continue
+        plt.figure()
+        for G_flag in G_flag_list:
+            means = []
+            stds = []
+            for n_iter in n_iter_list:
+                vals = [p[param] for p in results[G_flag][n_iter]['opt_params_list']]
+                means.append(np.mean(vals))
+                stds.append(np.std(vals))
+            plt.errorbar(
+                n_iter_list,
+                means,
+                yerr=stds,
+                marker='o',
+                capsize=5,
+                capthick=1.5,
+                elinewidth=1.2,
+                label=G_flag
+            )
+        plt.xlabel('n_iter')
+        plt.ylabel(param)
+        plt.title(f"Parameter '{param}' Mean ± Std vs n_iter")
+        plt.legend()
+        plt.grid(True)
+        # Save figure
+        fname = f"param_{param}_mean_std.jpg"
+        plt.savefig(os.path.join(result_dir, fname), format='jpg')
+        plt.close()
+
+    # --- Additional normalized mean ± std plot for parameters ---
+    for param in param_names:
+        if param == "G":
+            continue
+        plt.figure()
+        for G_flag in G_flag_list:
+            raw_means = []
+            raw_stds = []
+            for n_iter in n_iter_list:
+                vals = [p[param] for p in results[G_flag][n_iter]['opt_params_list']]
+                raw_means.append(np.mean(vals))
+                raw_stds.append(np.std(vals))
+            # Normalize means by first entry
+            base = raw_means[0] if raw_means[0] != 0 else 1.0
+            norm_means = [m / base for m in raw_means]
+            # Scale stds by their corresponding raw mean (pre-normalization)
+            scale_stds = [s / m if m != 0 else 0.0 for s, m in zip(raw_stds, raw_means)]
+            plt.errorbar(
+                n_iter_list,
+                norm_means,
+                yerr=scale_stds,
+                marker='o',
+                capsize=5,
+                capthick=1.5,
+                elinewidth=1.2,
+                label=G_flag
+            )
+        plt.xlabel('n_iter')
+        plt.ylabel(f"Normalized {param}")
+        plt.title(f"Parameter '{param}' Normalized Mean ± Std vs n_iter")
+        plt.legend()
+        plt.grid(True)
+        fname = f"param_{param}_normalized_mean_std.jpg"
+        plt.savefig(os.path.join(result_dir, fname), format='jpg')
+        plt.close()
+
+    # 2. Plot training scores' mean ± std
+    plt.figure()
+    for G_flag in G_flag_list:
+        means = []
+        stds = []
+        for n_iter in n_iter_list:
+            scores = results[G_flag][n_iter]['opt_scores']
+            means.append(np.mean(scores))
+            stds.append(np.std(scores))
+        plt.errorbar(
+            n_iter_list,
+            means,
+            yerr=stds,
+            marker='o',
+            capsize=5,
+            capthick=1.5,
+            elinewidth=1.2,
+            label=G_flag
+        )
+    plt.xlabel('n_iter')
+    plt.ylabel('Training Score')
+    plt.title('Training Score Mean ± Std vs n_iter')
+    plt.legend()
+    plt.grid(True)
+    # Save figure
+    plt.savefig(os.path.join(result_dir, 'training_score_mean_std.jpg'), format='jpg')
+    plt.close()
+
+    # 3. Plot test data loss' mean ± std
+    plt.figure()
+    for G_flag in G_flag_list:
+        means = []
+        stds = []
+        for n_iter in n_iter_list:
+            losses_all = results[G_flag][n_iter]['losses_all_list']
+            test_losses = [losses_all[i][i] for i in range(len(losses_all))]
+            means.append(np.mean(test_losses))
+            stds.append(np.std(test_losses))
+        plt.errorbar(
+            n_iter_list,
+            means,
+            yerr=stds,
+            marker='o',
+            capsize=5,
+            capthick=1.5,
+            elinewidth=1.2,
+            label=G_flag
+        )
+    plt.xlabel('n_iter')
+    plt.ylabel('Test Data Loss')
+    plt.title('Test Data Loss Mean ± Std vs n_iter')
+    plt.legend()
+    plt.grid(True)
+    # Save figure
+    plt.savefig(os.path.join(result_dir, 'test_data_loss_mean_std.jpg'), format='jpg')
+    plt.close()
+    
 def visualize_opt_distribution(t_frame=-1, x_uni_exp=None, data_exp=None):
     x_uni, q0, Q0, sum_uni = opt.core.p.return_distribution(t=t_frame, flag='x_uni, qx, Qx,sum_uni', q_type='q0')
     if opt.core.smoothing:
@@ -166,29 +321,47 @@ if __name__ == '__main__':
         "Batch_1800_Q0_post.xlsx",
     ]
     
-    G_flag = "Median_LocalStirrer"
+    G_flag_list = ["Median_Integral", "Median_LocalStirrer", "Mean_Integral", "Mean_LocalStirrer"]
+    # G_flag = "Median_LocalStirrer"
     n_iter = opt.core.n_iter
     n_iter_list = [100, 200, 400, 800]
-    for n_iter in n_iter_list:
-        opt.core.n_iter = int(n_iter)
-        G_flag_list = ["Median_Integral", "Median_LocalStirrer", "Mean_Integral", "Mean_LocalStirrer"]
-        
-        for G_flag in G_flag_list:
-            if G_flag == "Median_Integral":
-                G_datas = [32.0404, 39.1135, 41.4924, 44.7977, 45.6443]
-            elif G_flag == "Median_LocalStirrer":
-                G_datas = [104.014, 258.081, 450.862, 623.357, 647.442]
-            elif G_flag == "Mean_Integral":
-                G_datas = [87.2642, 132.668, 143.68, 183.396, 185.225]
-            elif G_flag == "Mean_LocalStirrer":
-                G_datas = [297.136, 594.268, 890.721, 1167.74, 1284.46]
-            else:
-                raise ValueError(f"Unknown G_flag: {G_flag}")
+    result_dir = os.path.join(base_path, "cv_results")
+    # for n_iter in n_iter_list:
+    #     opt.core.n_iter = int(n_iter)
+    #     for G_flag in G_flag_list:
+    #         if G_flag == "Median_Integral":
+    #             G_datas = [32.0404, 39.1135, 41.4924, 44.7977, 45.6443]
+    #         elif G_flag == "Median_LocalStirrer":
+    #             G_datas = [104.014, 258.081, 450.862, 623.357, 647.442]
+    #         elif G_flag == "Mean_Integral":
+    #             G_datas = [87.2642, 132.668, 143.68, 183.396, 185.225]
+    #         elif G_flag == "Mean_LocalStirrer":
+    #             G_datas = [297.136, 594.268, 890.721, 1167.74, 1284.46]
+    #         else:
+    #             raise ValueError(f"Unknown G_flag: {G_flag}")
                 
-            known_params_list = [{'G': G_val} for G_val in G_datas]
+    #         known_params_list = [{'G': G_val} for G_val in G_datas]
         
-            result_dir = os.path.join(base_path, "cv_results")
-            # cross_validation(data_names_list, known_params_list, result_dir)
+    #         cross_validation(data_names_list, known_params_list, result_dir, G_flag)
     
-    # opt_params_list, opt_scores, losses_all_list = load_cross_validation_results(result_dir, n_iter, data_dir)
-    # calc_delta_test(known_params_list, data_names_list, opt_params_list[0], visual=True)
+    # Load everything
+    result_dir = os.path.join(r"C:\Users\px2030\Code\Ergebnisse\Batch_opt\opt_results", "group1")
+    results = load_all_cv_results(result_dir, n_iter_list, data_dir, G_flag_list)
+    
+    # Analyze & visualize
+    # analyze_and_plot_cv_results(results, n_iter_list, G_flag_list, result_dir)
+    
+    G_flag = "Mean_LocalStirrer"
+    if G_flag == "Median_Integral":
+        G_datas = [32.0404, 39.1135, 41.4924, 44.7977, 45.6443]
+    elif G_flag == "Median_LocalStirrer":
+        G_datas = [104.014, 258.081, 450.862, 623.357, 647.442]
+    elif G_flag == "Mean_Integral":
+        G_datas = [87.2642, 132.668, 143.68, 183.396, 185.225]
+    elif G_flag == "Mean_LocalStirrer":
+        G_datas = [297.136, 594.268, 890.721, 1167.74, 1284.46]
+    else:
+        raise ValueError(f"Unknown G_flag: {G_flag}")
+    known_params_list = [{'G': G_val} for G_val in G_datas]
+    opt_params = results[G_flag][800]['opt_params_list'][0]
+    calc_delta_test(known_params_list, data_names_list, opt_params, visual=True)
