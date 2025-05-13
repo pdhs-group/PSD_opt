@@ -29,3 +29,4 @@ poetry.lock
 /dist
 *.7z
 
+*.jpg

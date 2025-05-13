@@ -323,6 +323,9 @@ class OptBase():
         if data_names == None:
             raise ValueError("Please specify the name of the experiment data without labels!")
 
+        self.print_highlighted(f"Now the flag of resume tuning is: {self.core.resume_unfinished}", 
+                               title="INFO", color="cyan")
+        
         # Helper function to construct full file paths for the data files
         def join_paths(names):
             if isinstance(names, list):
