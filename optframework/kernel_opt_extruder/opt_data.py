@@ -98,18 +98,26 @@ def get_all_synth_data(self, exp_data_path):
 
 ## test only for 1d batch exp data
 def get_all_exp_data(self, exp_data_path):
-    self.p.calc_R()
-    x_uni = self.p.calc_x_uni()
-    Q3_init_exp, x_uni_exp = self.read_exp(exp_data_path, self.t_vec[self.delta_t_start_step:]) 
-    len_t = x_uni_exp.shape[1]
-    Q3_init_mod = np.zeros((len(x_uni), len_t))
-    for i in range(len_t):
-        inter_grid = interp1d(x_uni_exp[:, i], Q3_init_exp, kind='linear', fill_value="extrapolate")
-        Q3_init_mod_tem = inter_grid(x_uni)
-        Q3_init_mod_tem = Q3_init_mod_tem / Q3_init_mod_tem.max()
-        Q3_init_mod[:, i] = Q3_init_mod_tem
-    Q3_init_mod[np.where(Q3_init_mod < 0)] = 0.0
-    return x_uni, Q3_init_mod
+    if self.sample_num == 1:
+        x_uni_exp, data_exp = self.read_exp(exp_data_path, self.t_vec[self.delta_t_start_step:]) 
+        x_uni_exp = np.insert(x_uni_exp, 0, 0.0)
+        zero_row = np.zeros((1, data_exp.shape[1]))
+        data_exp = np.insert(data_exp, 0, zero_row, axis=0)
+        
+    else:
+        x_uni_exp = []
+        data_exp = []
+        zero_row = np.zeros((1, data_exp.shape[1]))
+        for i in range (0, self.sample_num):
+            # Read and process experimental data for each sample
+            exp_data_path = self.traverse_path(i, exp_data_path)
+            x_uni_exp_tem, data_exp_tem = self.read_exp(exp_data_path, self.t_vec[self.delta_t_start_step:])
+            x_uni_exp_tem = np.insert(x_uni_exp_tem, 0, 0.0)
+            data_exp_tem = np.insert(data_exp_tem, 0, zero_row, axis=0)
+            x_uni_exp.append(x_uni_exp_tem)
+            data_exp.append(data_exp_tem)
+        
+    return x_uni_exp, data_exp
 
 def function_noise(self, ori_data):
     """

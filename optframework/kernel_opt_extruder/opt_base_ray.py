@@ -155,7 +155,7 @@ def optimierer_ray(self, opt_params=None, exp_data_paths=None,known_params=None)
                 x_uni_exp_tem, data_exp_tem = self.core.get_all_synth_data(exp_data_paths_tem)
             x_uni_exp.append(x_uni_exp_tem)
             data_exp.append(data_exp_tem)
-        data_name = os.path.basename(exp_data_paths[0])
+        data_name = getattr(self.core, 'data_name_tune', os.path.basename(exp_data_paths[0]))
     else:
         # When not set to multi or optimization of 1d-data, the exp_data_paths contain the name of that data.
         if self.core.exp_data:
@@ -202,25 +202,48 @@ def optimierer_ray(self, opt_params=None, exp_data_paths=None,known_params=None)
     #     {"cpu": self.core.cpus_per_trail}, 
     # )
     
-    # Set up the Ray Tune Tuner
-    tuner = tune.Tuner(
-        trainable_with_resources,
-        param_space=self.RT_space,
-        tune_config=tune.TuneConfig(
-            num_samples=self.core.n_iter,
-            search_alg=algo,
-            reuse_actors=True,
-            trial_dirname_creator=trial_dirname_creator,
-        ),
-        run_config=tune.RunConfig(
-        storage_path =self.core.tune_storage_path,
-        name = data_name,
-        verbose = self.core.verbose, # verbose=0: no trial info, 1: basic info, 2: detailed info
-        stop={"training_iteration": 1},
+    resume_unfinished = getattr(self.core, 'resume_unfinished', False)
+    checkpoint_path = os.path.join(self.core.tune_storage_path, data_name, "my-checkpoint.pkl")
+    if resume_unfinished:
+        # Resume tuning
+        algo.restore(checkpoint_path)
+        # Set up a new Ray Tune Tuner
+        tuner = tune.Tuner(
+            trainable_with_resources,
+            tune_config=tune.TuneConfig(
+                num_samples=self.core.n_iter,
+                search_alg=algo,
+                reuse_actors=True,
+                trial_dirname_creator=trial_dirname_creator,
+            ),
+            run_config=tune.RunConfig(
+            storage_path =self.core.tune_storage_path,
+            name = data_name,
+            verbose = self.core.verbose, # verbose=0: no trial info, 1: basic info, 2: detailed info
+            stop={"training_iteration": 1},
+            )
         )
-    )
+    else:
+        # Set up a new Ray Tune Tuner
+        tuner = tune.Tuner(
+            trainable_with_resources,
+            param_space=self.RT_space,
+            tune_config=tune.TuneConfig(
+                num_samples=self.core.n_iter,
+                search_alg=algo,
+                reuse_actors=True,
+                trial_dirname_creator=trial_dirname_creator,
+            ),
+            run_config=tune.RunConfig(
+            storage_path =self.core.tune_storage_path,
+            name = data_name,
+            verbose = self.core.verbose, # verbose=0: no trial info, 1: basic info, 2: detailed info
+            stop={"training_iteration": 1},
+            )
+        )
     # Run the optimization process
     results = tuner.fit()
+    algo.save(checkpoint_path)
 
     # Get the best result from the optimization
     opt_result = results.get_best_result(metric="loss", mode="min")

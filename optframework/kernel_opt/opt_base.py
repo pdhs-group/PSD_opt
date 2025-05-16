@@ -356,10 +356,8 @@ class OptBase():
             exp_data_paths = join_paths(data_names)
         # Initialize ray for parallel computation
         log_to_driver = True if self.core.verbose != 0 else False
-        ray.init(log_to_driver=log_to_driver, runtime_env={
-            "env_vars": {"PYTHONPATH": os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))}})
-        # ray.init(address=os.environ["ip_head"], log_to_driver=False, runtime_env={
-        #     "env_vars": {"PYTHONPATH": os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))}})
+        ray.init(log_to_driver=log_to_driver)
+        # ray.init(address=os.environ["ip_head"], log_to_driver=log_to_driver)
         if method == 'kernels':
             # Currently, this method is not implemented
             self.print_highlighted("not coded yet", title="ERROR", color="red")

@@ -321,64 +321,67 @@ class OptBase():
             warnings.warn('Initial PBE parameters have not been set')
         # Warn if data_names are not provided    
         if data_names == None:
-            warnings.warn("Please specify the name of the experiment data without labels!")
-        else:
-            # Helper function to construct full file paths for the data files
-            def join_paths(names):
-                if isinstance(names, list):
-                    return [os.path.join(self.data_path, name) for name in names]
-                return os.path.join(self.data_path, names)
-            
-            exp_data_paths = []
-            if isinstance(known_params, dict) and not known_params:
-                known_params = None
-            # Handle multi-flag (whether auxiliary 1D data is used for 2D-PBE)
-            if self.multi_flag:
-                # We are dealing with multiple datasets
-                if not self.single_case:
-                    # Ensure known_params is of the same length as data_names, even if empty
-                    if known_params is None:
-                        known_params = [None] * len(data_names)
-                    # Generate file paths for multiple datasets
-                    for data_names_ex in data_names:
-                        exp_data_paths.append(join_paths(data_names_ex))
-                else:
-                    # Single dataset optimization
-                    exp_data_paths = join_paths(data_names)
+            raise ValueError("Please specify the name of the experiment data without labels!")
+
+        self.print_highlighted(f"Now the flag of resume tuning is: {self.core.resume_unfinished}", 
+                               title="INFO", color="cyan")
+        
+        # Helper function to construct full file paths for the data files
+        def join_paths(names):
+            if isinstance(names, list):
+                return [os.path.join(self.data_path, name) for name in names]
+            return os.path.join(self.data_path, names)
+        
+        exp_data_paths = []
+        if isinstance(known_params, dict) and not known_params:
+            known_params = None
+        # Handle multi-flag (whether auxiliary 1D data is used for 2D-PBE)
+        if self.multi_flag:
+            # We are dealing with multiple datasets
+            if not self.single_case:
+                # Ensure known_params is of the same length as data_names, even if empty
+                if known_params is None:
+                    known_params = [None] * len(data_names)
+                # Generate file paths for multiple datasets
+                for data_names_ex in data_names:
+                    exp_data_paths.append(join_paths(data_names_ex))
             else:
-                if not self.single_case:
-                    if known_params is None:
-                        known_params = [None] * len(data_names)
-                            
+                # Single dataset optimization
                 exp_data_paths = join_paths(data_names)
-            # Initialize ray for parallel computation
-            log_to_driver = True if self.core.verbose != 0 else False
-            ray.init(log_to_driver=log_to_driver)
-            # ray.init(address=os.environ["ip_head"], log_to_driver=False)
-            if method == 'kernels':
-                # Currently, this method is not implemented
-                self.print_highlighted("not coded yet", title="ERROR", color="red")
-            elif method == 'delta':
-                # Perform multi-job optimization if enabled
-                if self.core.multi_jobs:
-                    result_dict = self.multi_optimierer_ray(self.opt_params,exp_data_paths=exp_data_paths, 
-                                                                   known_params=known_params)
-                else:
-                    # Perform sequential optimization for multiple datasets
-                    result_dict = []
-                    if not self.single_case:
-                        for exp_data_paths_tem, known_params_tem in zip(exp_data_paths, known_params):
-                            result_dict_tem = self.optimierer_ray(self.opt_params,exp_data_paths=exp_data_paths_tem,
-                                                                        known_params=known_params_tem)
-                            result_dict.append(result_dict_tem)
-                    else:
-                        # Perform optimization for a single dataset
-                        result_dict = self.optimierer_ray(self.opt_params,exp_data_paths=exp_data_paths,
+        else:
+            if not self.single_case:
+                if known_params is None:
+                    known_params = [None] * len(data_names)
+                        
+            exp_data_paths = join_paths(data_names)
+        # Initialize ray for parallel computation
+        log_to_driver = True if self.core.verbose != 0 else False
+        ray.init(log_to_driver=log_to_driver)
+        # ray.init(address=os.environ["ip_head"], log_to_driver=False)
+        if method == 'kernels':
+            # Currently, this method is not implemented
+            self.print_highlighted("not coded yet", title="ERROR", color="red")
+        elif method == 'delta':
+            # Perform multi-job optimization if enabled
+            if self.core.multi_jobs:
+                result_dict = self.multi_optimierer_ray(self.opt_params,exp_data_paths=exp_data_paths, 
                                                                known_params=known_params)
-            # Print the current actors (for debugging purposes) and shut down ray   
-            # self.print_current_actors()
-            ray.shutdown()
-            return result_dict
+            else:
+                # Perform sequential optimization for multiple datasets
+                result_dict = []
+                if not self.single_case:
+                    for exp_data_paths_tem, known_params_tem in zip(exp_data_paths, known_params):
+                        result_dict_tem = self.optimierer_ray(self.opt_params,exp_data_paths=exp_data_paths_tem,
+                                                                    known_params=known_params_tem)
+                        result_dict.append(result_dict_tem)
+                else:
+                    # Perform optimization for a single dataset
+                    result_dict = self.optimierer_ray(self.opt_params,exp_data_paths=exp_data_paths,
+                                                           known_params=known_params)
+        # Print the current actors (for debugging purposes) and shut down ray   
+        # self.print_current_actors()
+        ray.shutdown()
+        return result_dict
             
     def calc_PSD_delta(self, params, exp_data_path):
         """

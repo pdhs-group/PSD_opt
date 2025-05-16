@@ -109,6 +109,11 @@ config = {
         'weight_2d': 1,  
         # Weight applied to the error (delta) of 2D particle populations, giving it 
         # more importance during optimization.
+        
+        'dist_type': 'q0',
+        # - 'q0': Number-based PSD (weight = N, i.e., V^0 × N)
+        # - 'q3': Volume-based PSD (weight = V * N, i.e., V^1 × N)
+        # - 'q6': Square-volume PSD (weight = V^2 * N)
     
         'delta_flag': [('q3','MSE'), 
                        # ('Q3','RMSE'), 

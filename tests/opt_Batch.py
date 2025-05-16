@@ -318,51 +318,52 @@ if __name__ == '__main__':
     data_names_list = [
         "Batch_600_Q0_post.xlsx",
         "Batch_900_Q0_post.xlsx",
-        "Batch_1200_Q0_post.xlsx",
-        "Batch_1500_Q0_post.xlsx",
-        "Batch_1800_Q0_post.xlsx",
+        # "Batch_1200_Q0_post.xlsx",
+        # "Batch_1500_Q0_post.xlsx",
+        # "Batch_1800_Q0_post.xlsx",
     ]
     
     G_flag_list = [
-        "Median_Integral", 
-        "Median_LocalStirrer", 
+        # "Median_Integral", 
+        # "Median_LocalStirrer", 
         "Mean_Integral", 
-        "Mean_LocalStirrer"
+        # "Mean_LocalStirrer"
     ]
     n_iter = opt.core.n_iter
-    n_iter_list = [100, 200, 400, 800, 1200, 2400, 4800, 9600]
-    # n_iter_list = [10, 20, 30]
+    # n_iter_list = [100, 200, 400, 800, 1200, 2400, 4800, 9600]
+    n_iter_list = [10]
     prev = 0
     result_dir = os.path.join(base_path, "cv_results")
-    # for n_iter in n_iter_list:
-    #     inc = n_iter - prev
-    #     opt.core.n_iter = int(inc)
-    #     # flag for optimierer_ray
-    #     resume_flag = (prev > 0)
-    #     opt.core.resume_unfinished = resume_flag
-    #     prev = n_iter
-    #     for G_flag in G_flag_list:
-    #         if G_flag == "Median_Integral":
-    #             G_datas = [32.0404, 39.1135, 41.4924, 44.7977, 45.6443]
-    #         elif G_flag == "Median_LocalStirrer":
-    #             G_datas = [104.014, 258.081, 450.862, 623.357, 647.442]
-    #         elif G_flag == "Mean_Integral":
-    #             G_datas = [87.2642, 132.668, 143.68, 183.396, 185.225]
-    #         elif G_flag == "Mean_LocalStirrer":
-    #             G_datas = [297.136, 594.268, 890.721, 1167.74, 1284.46]
-    #         else:
-    #             raise ValueError(f"Unknown G_flag: {G_flag}")
+    for n_iter in n_iter_list:
+        inc = n_iter - prev
+        opt.core.n_iter = int(inc)
+        # flag for optimierer_ray
+        resume_flag = (prev > 0)
+        opt.core.resume_unfinished = resume_flag
+        prev = n_iter
+        for G_flag in G_flag_list:
+            if G_flag == "Median_Integral":
+                G_datas = [32.0404, 39.1135, 41.4924, 44.7977, 45.6443]
+            elif G_flag == "Median_LocalStirrer":
+                G_datas = [104.014, 258.081, 450.862, 623.357, 647.442]
+            elif G_flag == "Mean_Integral":
+                # G_datas = [87.2642, 132.668, 143.68, 183.396, 185.225]
+                G_datas = [87.2642, 132.668]
+            elif G_flag == "Mean_LocalStirrer":
+                G_datas = [297.136, 594.268, 890.721, 1167.74, 1284.46]
+            else:
+                raise ValueError(f"Unknown G_flag: {G_flag}")
                 
-    #         known_params_list = [{'G': G_val} for G_val in G_datas]
+            known_params_list = [{'G': G_val} for G_val in G_datas]
         
-    #         cross_validation(data_names_list, known_params_list, result_dir, G_flag)
+            cross_validation(data_names_list, known_params_list, result_dir, G_flag)
     
     # Load everything
-    result_dir = os.path.join(r"C:\Users\px2030\Code\Ergebnisse\Batch_opt\opt_results", "group6+10")
-    results = load_all_cv_results(result_dir, n_iter_list, data_dir, G_flag_list)
+    # result_dir = os.path.join(r"C:\Users\px2030\Code\Ergebnisse\Batch_opt\opt_results", "group6+10")
+    # results = load_all_cv_results(result_dir, n_iter_list, data_dir, G_flag_list)
     
     # Analyze & visualize
-    analyze_and_plot_cv_results(results, n_iter_list, G_flag_list, result_dir)
+    # analyze_and_plot_cv_results(results, n_iter_list, G_flag_list, result_dir)
     
     ## calculate PBE 
     # G_flag = "Mean_LocalStirrer"
