@@ -1,28 +1,28 @@
 import numpy as np
 
 config = {
-    "NS": 100,  
+    "NS": 25,  
     # Number of size classes for discretizing particle populations (grid points).
 
-    "S": 1.2,  
+    "S": 1.5,  
     # Geometric ratio used to define the spacing in the size grid for 'geo' discretization. 
 
     # "R01": 8.677468940430804e-07,
     # "R03": 8.677468940430804e-07,
-    "R01": 3.7e-8/2,  
+    "R01": 3.7e-8/10,  
     # Radius of primary NM1 particles (in meters) for uni-grid.
     # In a geometric grid, volumes are calculated as midpoints between volume edges (V_e).
     # Therefore, when using a geo-grid, the specified value here corresponds to the radius
     # of the left edge of the grid, V_e[1]. The actual primary particle size is given by 
     # V_e[1] * (1 + S) / 2, where S is the geometric spacing factor.
     
-    "R03": 3.7e-8/2,  
+    "R03": 3.7e-8/10,  
     # Radius of primary M particles (in meters).
 
-    "t_total": 45*60+1,  
+    "t_total": 11*60+1,  
     # Total simulation time in seconds.
 
-    "t_write": 5*60,  
+    "t_write": 1*60,  
     # Interval (in time steps) for writing output data (e.g., simulation results).
 
     "process_type": "mix",  
@@ -102,9 +102,9 @@ config = {
     # "V3_mean": 1e-15,  
     # Mean volume of M particles (in cubic meters).
     
-    "pl_P1": 1e-6,  
-    "pl_P2": 1,  
-    "pl_P3": 1e-6,  
+    "pl_P1": 1e-5,  
+    "pl_P2": 2,  
+    "pl_P3": 1e-5,  
     "pl_P4": 1,  
     # Parameters for breakage rate kernel.
     "G": 1,

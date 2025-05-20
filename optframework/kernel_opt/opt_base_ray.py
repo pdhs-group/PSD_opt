@@ -206,10 +206,13 @@ def optimierer_ray(self, opt_params=None, exp_data_paths=None,known_params=None)
     # )
     
     resume_unfinished = getattr(self.core, 'resume_unfinished', False)
-    checkpoint_path = os.path.join(self.core.tune_storage_path, data_name, "my-checkpoint.pkl")
+    n_prev = getattr(self.core, 'n_iter_prev', 0)
+    n_save = self.core.n_iter + n_prev
+    checkpoint_path_save = os.path.join(self.core.tune_storage_path, data_name, f"checkpoint_{n_save}.pkl")
     if resume_unfinished:
+        checkpoint_path_re = os.path.join(self.core.tune_storage_path, data_name, f"checkpoint_{n_prev}.pkl")
         # Resume tuning
-        algo.restore(checkpoint_path)
+        algo.restore(checkpoint_path_re)
         # Set up a new Ray Tune Tuner
         tuner = tune.Tuner(
             trainable_with_resources,
@@ -246,7 +249,7 @@ def optimierer_ray(self, opt_params=None, exp_data_paths=None,known_params=None)
         )
     # Run the optimization process
     results = tuner.fit()
-    algo.save(checkpoint_path)
+    algo.save(checkpoint_path_save)
 
     # Get the best result from the optimization
     opt_result = results.get_best_result(metric="loss", mode="min")

@@ -30,3 +30,4 @@ poetry.lock
 *.7z
 
 *.jpg
+/optframework/utils/func_temp/config

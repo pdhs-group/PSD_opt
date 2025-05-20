@@ -54,7 +54,7 @@ config = {
         'exp_data' : True, 
         # Whether to use experimental data (True) or synthetic data (False) during optimization.
         
-        'sheet_name' : 'q_x_int1', 
+        'sheet_name' : 'Q_x_int', 
         # Name of the sheet in the experimental data file (if applicable).
          
         'method': 'Cmaes',
@@ -113,9 +113,9 @@ config = {
         # - 'q3': Volume-based PSD (weight = V * N, i.e., V^1 × N)
         # - 'q6': Square-volume PSD (weight = V^2 * N)
         
-        'delta_flag': [('qx','MSE'), 
-                       # ('Qx','RMSE'), 
-                       #('x_50','MSE')
+        'delta_flag': [# ('qx','MSE'), 
+                       # ('Qx','MSE'), 
+                       ('x_50','MSE')
                        ],
         # Specifies which particle size distribution (PSD) and cost function to use 
         # during optimization. Options for PSD include:

@@ -514,12 +514,28 @@ def plot_xQ_profiles(x_Q_df, Q_x_int_df, qx_int_df):
     plt.tight_layout()
     plt.show()
 
+def plot_Qx_time_G_profiles(Q_x_int_df_list):
+    for label in Q_x_int_df_list[1].columns:
+        plt.figure(figsize=(7, 5))
+        for i, Q_x_int_df in enumerate(Q_x_int_df_list):
+            x_loc = Q_x_int_df.index
+            y_loc = Q_x_int_df[label]
+            plt.plot(x_loc, y_loc, label=batch_files[i], linewidth=1)
+        plt.xscale('log')
+        plt.xlabel("x")
+        plt.ylabel("Q(x)")
+        plt.title(f"Q(x) profiles over data at {label}")
+        plt.legend(fontsize="small", loc="upper right")
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
+            
 if __name__ == '__main__':
     len_data = 201 
     interpolation_method = "int1d"     #'int1d', 'pchip', 'isotonic', 'lognormal'
-    fit_lognormal_method = "zscore" #'curve_fit', 'zscore', 'global_opt'
+    fit_lognormal_method = "curve_fit" #'curve_fit', 'zscore', 'global_opt'
     # Usage
-    base_path = r"C:\Users\px2030\Code\Ergebnisse\BatchDatenL1L2"
+    base_path = r"C:\Users\px2030\Code\Ergebnisse\BatchDaten"
     # raw_file = "Batch_1800_Q0.xlsx"
     batch_files = [
         "Batch_600_Q0.xlsx",
@@ -529,6 +545,7 @@ if __name__ == '__main__':
         "Batch_1800_Q0.xlsx",
     ]
     x_int_list = []
+    Q_x_int_df_list = []
     for raw_file in batch_files:
         filename_base, ext = os.path.splitext(os.path.basename(raw_file))
         file_path = os.path.join(base_path, raw_file)
@@ -540,8 +557,11 @@ if __name__ == '__main__':
         x_avg_array, Q_x_ref, sorted_time_labels = process_data_xQ(data, measurement_count)
         x_int_list.append(x_avg_array[0,:])
         x_Q_df, Q_x_int_df, qx_int_df = save_average_xQ_data(x_avg_array, Q_x_ref, sorted_time_labels)
+        Q_x_int_df_list.append(Q_x_int_df)
         plot_xQ_profiles(x_Q_df, Q_x_int_df, qx_int_df)
-   
+        
+    plot_Qx_time_G_profiles(Q_x_int_df_list)
+    
     x_int_avg = np.mean(x_int_list, axis=0) * 1e-6     # convert the unit from um to m
     dist_path = os.path.join(base_path, "Batch_int_PSD.npy")
     dict_Qx={'Q_PSD':Q_x_ref,'x_PSD':x_int_avg, 'r0_001':x_int_avg[0], 'r0_005':x_int_avg[1], 'r0_01':x_int_avg[2]}

@@ -98,11 +98,20 @@ def get_all_synth_data(self, exp_data_path):
 
 ## test only for 1d batch exp data
 def get_all_exp_data(self, exp_data_path):
+    (flag, cost_func_type) = self.delta_flag[0]
     if self.sample_num == 1:
         x_uni_exp, data_exp = self.read_exp(exp_data_path, self.t_vec[self.delta_t_start_step:]) 
         x_uni_exp = np.insert(x_uni_exp, 0, 0.0)
         zero_row = np.zeros((1, data_exp.shape[1]))
         data_exp = np.insert(data_exp, 0, zero_row, axis=0)
+        if flag == 'x_50':
+            if self.sheet_name != 'Q_x_int':
+                raise ValueError("sheet name must be Q_x_int for using x_50")
+            else:
+                data_exp_x50 = np.zeros(data_exp.shape[1])
+                for i in range(len(data_exp_x50)):
+                    data_exp_x50[i] = np.interp(0.5, data_exp[:, i], x_uni_exp)
+            data_exp = data_exp_x50
         
     else:
         x_uni_exp = []
@@ -114,6 +123,14 @@ def get_all_exp_data(self, exp_data_path):
             x_uni_exp_tem, data_exp_tem = self.read_exp(exp_data_path, self.t_vec[self.delta_t_start_step:])
             x_uni_exp_tem = np.insert(x_uni_exp_tem, 0, 0.0)
             data_exp_tem = np.insert(data_exp_tem, 0, zero_row, axis=0)
+            if flag == 'x_50':
+                if self.sheet_name != 'Q_x_int':
+                    raise ValueError("sheet name must be Q_x_int for using x_50")
+                else:
+                    data_exp_x50 = np.zeros(data_exp_tem.shape[1])
+                    for i in range(len(data_exp_x50)):
+                        data_exp_x50[i] = np.interp(0.5, data_exp_tem[:, i], x_uni_exp)
+                data_exp_tem = data_exp_x50
             x_uni_exp.append(x_uni_exp_tem)
             data_exp.append(data_exp_tem)
         
