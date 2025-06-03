@@ -160,6 +160,8 @@ def init_pbe_params(self, dim, t_total, t_write, t_vec, disc, **attr):
     self.Psi_c2_exp = 1                   # Concentration ratio component 2 (V_NM2/V_M) [-] 
     self.G = 1                            # Shear rate [1/s]. Can be defined dependent on rotary speed, 
                                         # e.g. G=(1400-354)*(n_exp-100)/(250-100)+354
+    self.G_agg_corr = 1
+    self.G_break_corr = 1                                    
     
     self.JIT_DN = True                    # Define wheter or not the DN calculation (timeloop) should be precompiled
     self.JIT_FM = True                    # Define wheter or not the FM calculation should be precompiled
@@ -417,7 +419,7 @@ def calc_R(self):
     #                     self.X3_a[i,j,k] = A3[k]/(A1[i]+A2[j]+A3[k])
 
 ## Initialize concentration matrix N
-def init_N(self, reset_N=True, N01=None, N02=None, N03=None): 
+def init_N(self, reset_N=True, reset_path=True, N01=None, N02=None, N03=None): 
     """Initialize discrete number concentration array. 
     
     Creates the following class attributes: 
@@ -442,7 +444,11 @@ def init_N(self, reset_N=True, N01=None, N02=None, N03=None):
             self.N03 = 3*self.V03/(4*math.pi*self.R03**3)     # Total number concentration of primary particles component 1 [1/m³] - M (if no PSD) 
         else:
             self.N03 = N03 * self.V_unit 
-            
+    if reset_path:
+        self.DIST1 = os.path.join(self.DIST1_path,self.DIST1_name)
+        self.DIST2 = os.path.join(self.DIST2_path,self.DIST2_name)
+        self.DIST3 = os.path.join(self.DIST3_path,self.DIST3_name)  
+        
     if self.t_vec is not None:
         self.t_num = len(self.t_vec) 
     # 1-D case
@@ -499,6 +505,7 @@ def calc_F_M(self):
     Creates the following class attributes: 
         * ``pop.F_M``: (2D)Agglomeration frequency between two classes ij and ab is stored in ``F_M[i,j,a,b]`` 
     """
+    G_corr = self.G ** self.G_agg_corr
     # 1-D case
     if self.dim == 1:
         self.alpha_prim = self.alpha_prim.item() if isinstance(self.alpha_prim, np.ndarray) else self.alpha_prim
@@ -507,65 +514,71 @@ def calc_F_M(self):
         self.F_M = np.zeros((self.NS-1,self.NS-1))
         if self.process_type == 'breakage':
             return  
-        # Go through all agglomeration partners 1 [a] and 2 [i]
-        # The current index tuple idx stores them as (a,i)
-        for idx, tmp in np.ndenumerate(self.F_M):
-            # Indices [a]=[0] and [i]=[0] not allowed!
-            if idx[0]==0 or idx[1]==0:
-                continue
-            
-            # Calculate the corresponding agglomeration efficiency
-            # Add one to indices to account for borders
-            a = idx[0] ; i = idx[1]
-            
-            # Calculate collision frequency beta depending on COLEVAL
-            if self.COLEVAL == 1:
-                # Chin 1998 (shear induced flocculation in stirred tanks)
-                # Optional reduction factor.
-                # corr_beta=1;
-                beta_ai = self.CORR_BETA*self.G*2.3*(self.R[a]+self.R[i])**3 # [m^3/s]
-            elif self.COLEVAL == 2:
-                # Tsouris 1995 Brownian diffusion as controlling mechanism
-                # Optional reduction factor
-                # corr_beta=1;
-                beta_ai = self.CORR_BETA*2*self.KT*(self.R[a]+self.R[i])**2/(3*self.MU_W*(self.R[a]*self.R[i])) #[m^3/s]
-            elif self.COLEVAL == 3:
-                # Use a constant collision frequency given by CORR_BETA
-                beta_ai = self.CORR_BETA
-            elif self.COLEVAL == 4:
-                # Sum-Kernal (for validation) scaled by CORR_BETA
-                beta_ai = self.CORR_BETA*4*math.pi*(self.R[a]**3+self.R[i]**3)/3
-                            
-            # Calculate collision effiecieny depending on EFFEVAL. 
-            # Case(1): "Correct" calculation for given indices. Accounts for size effects in int_fun_2d
-            # Case(2): Reduced model. Calculation only based on primary particles
-            # Case(3): Alphas are pre-fed from ANN or other source.
-            if self.EFFEVAL == 1:
-                # Not coded here
-                alpha_ai = self.alpha_prim
-            elif self.EFFEVAL == 2:
-                alpha_ai = self.alpha_prim
-            
-            # Calculate a correction factor to account for size dependency of alpha, depending on SIZEEVAL
-            # Calculate lam
-            if self.R[a]<=self.R[i]:
-                lam = self.R[a]/self.R[i]
-            else:
-                lam = self.R[i]/self.R[a]
+        if self.JIT_FM:
+            self.F_M = jit_kernel_agg.calc_F_M_1D(self.NS,self.COLEVAL,self.CORR_BETA,
+                                       G_corr,self.R,self.alpha_prim,
+                                       self.EFFEVAL,self.SIZEEVAL,
+                                       self.X_SEL,self.Y_SEL)/self.V_unit
+        else:
+            # Go through all agglomeration partners 1 [a] and 2 [i]
+            # The current index tuple idx stores them as (a,i)
+            for idx, tmp in np.ndenumerate(self.F_M):
+                # Indices [a]=[0] and [i]=[0] not allowed!
+                if idx[0]==0 or idx[1]==0:
+                    continue
                 
-            if self.SIZEEVAL == 1:
-                # No size dependency of alpha
-                corr_size = 1
-            if self.SIZEEVAL == 2:
-                # Case 3: Soos2007 (developed from Selomuya 2003). Empirical Equation
-                # with model parameters x and y. corr_size is lowered with lowered
-                # value of lambda (numerator) and with increasing particles size (denominator)
-                corr_size = np.exp(-self.X_SEL*(1-lam)**2)/((self.R[a]*self.R[i]/(self.R01**2))**self.Y_SEL)
-            
-            # Store result
-            # self.alpha[idx] = alpha_ai
-            # self.beta[idx] = beta_ai
-            self.F_M[idx] = beta_ai*alpha_ai*corr_size/self.V_unit
+                # Calculate the corresponding agglomeration efficiency
+                # Add one to indices to account for borders
+                a = idx[0] ; i = idx[1]
+                
+                # Calculate collision frequency beta depending on COLEVAL
+                if self.COLEVAL == 1:
+                    # Chin 1998 (shear induced flocculation in stirred tanks)
+                    # Optional reduction factor.
+                    # corr_beta=1;
+                    beta_ai = self.CORR_BETA*G_corr*2.3*(self.R[a]+self.R[i])**3 # [m^3/s]
+                elif self.COLEVAL == 2:
+                    # Tsouris 1995 Brownian diffusion as controlling mechanism
+                    # Optional reduction factor
+                    # corr_beta=1;
+                    beta_ai = self.CORR_BETA*2*self.KT*(self.R[a]+self.R[i])**2/(3*self.MU_W*(self.R[a]*self.R[i])) #[m^3/s]
+                elif self.COLEVAL == 3:
+                    # Use a constant collision frequency given by CORR_BETA
+                    beta_ai = self.CORR_BETA
+                elif self.COLEVAL == 4:
+                    # Sum-Kernal (for validation) scaled by CORR_BETA
+                    beta_ai = self.CORR_BETA*4*math.pi*(self.R[a]**3+self.R[i]**3)/3
+                                
+                # Calculate collision effiecieny depending on EFFEVAL. 
+                # Case(1): "Correct" calculation for given indices. Accounts for size effects in int_fun_2d
+                # Case(2): Reduced model. Calculation only based on primary particles
+                # Case(3): Alphas are pre-fed from ANN or other source.
+                if self.EFFEVAL == 1:
+                    # Not coded here
+                    alpha_ai = self.alpha_prim
+                elif self.EFFEVAL == 2:
+                    alpha_ai = self.alpha_prim
+                
+                # Calculate a correction factor to account for size dependency of alpha, depending on SIZEEVAL
+                # Calculate lam
+                if self.R[a]<=self.R[i]:
+                    lam = self.R[a]/self.R[i]
+                else:
+                    lam = self.R[i]/self.R[a]
+                    
+                if self.SIZEEVAL == 1:
+                    # No size dependency of alpha
+                    corr_size = 1
+                if self.SIZEEVAL == 2:
+                    # Case 3: Soos2007 (developed from Selomuya 2003). Empirical Equation
+                    # with model parameters x and y. corr_size is lowered with lowered
+                    # value of lambda (numerator) and with increasing particles size (denominator)
+                    corr_size = np.exp(-self.X_SEL*(1-lam)**2)/((self.R[a]*self.R[i]/(self.R01**2))**self.Y_SEL)
+                
+                # Store result
+                # self.alpha[idx] = alpha_ai
+                # self.beta[idx] = beta_ai
+                self.F_M[idx] = beta_ai*alpha_ai*corr_size/self.V_unit
             
     # 2-D case.
     elif self.dim == 2:
@@ -577,7 +590,7 @@ def calc_F_M(self):
             return
         if self.JIT_FM:
             self.F_M = jit_kernel_agg.calc_F_M_2D(self.NS,self.COLEVAL,self.CORR_BETA,
-                                       self.G,self.R,self.X1_vol,self.X3_vol,
+                                       G_corr,self.R,self.X1_vol,self.X3_vol,
                                        self.EFFEVAL,self.alpha_prim,self.SIZEEVAL,
                                        self.X_SEL,self.Y_SEL)/self.V_unit
         
@@ -598,7 +611,7 @@ def calc_F_M(self):
                     # Chin 1998 (shear induced flocculation in stirred tanks)
                     # Optional reduction factor.
                     # corr_beta=1;
-                    beta_ai = self.CORR_BETA*self.G*2.3*(self.R[a,b]+self.R[i,j])**3 # [m^3/s]
+                    beta_ai = self.CORR_BETA*G_corr*2.3*(self.R[a,b]+self.R[i,j])**3 # [m^3/s]
                 if self.COLEVAL == 2:
                     # Tsouris 1995 Brownian diffusion as controlling mechanism
                     # Optional reduction factor
@@ -663,7 +676,7 @@ def calc_F_M(self):
     #         return
     #     if self.JIT_FM: 
     #         self.F_M = jit.calc_F_M_3D(self.NS,self.disc,self.COLEVAL,self.CORR_BETA,
-    #                                    self.G,self.R,self.X1_vol,self.X2_vol,self.X3_vol,
+    #                                    G_corr,self.R,self.X1_vol,self.X2_vol,self.X3_vol,
     #                                    self.EFFEVAL,self.alpha_prim,self.SIZEEVAL,
     #                                    self.X_SEL,self.Y_SEL)/self.V_unit
         
@@ -690,7 +703,7 @@ def calc_F_M(self):
     #                 # Chin 1998 (shear induced flocculation in stirred tanks)
     #                 # Optional reduction factor.
     #                 # corr_beta=1;
-    #                 beta_ai = self.CORR_BETA*self.G*2.3*(self.R[a,b,c]+self.R[i,j,k])**3 # [m^3/s]
+    #                 beta_ai = self.CORR_BETA*G_corr*2.3*(self.R[a,b,c]+self.R[i,j,k])**3 # [m^3/s]
     #             if self.COLEVAL == 2:
     #                 # Tsouris 1995 Brownian diffusion as controlling mechanism
     #                 # Optional reduction factor
@@ -766,6 +779,7 @@ def calc_B_R(self):
     Creates the following class attributes: 
         * ``pop.B_R``: (2D)Breakage rate for class ab. The result is stored in ``B_R[a,b]`` 
     """
+    G_corr = self.G ** self.G_break_corr
     self.B_R = np.zeros_like(self.V)
     # 1-D case
     if self.dim == 1:
@@ -774,12 +788,12 @@ def calc_B_R(self):
         ##       calculation with V requires (index+1)
         if self.process_type == 'agglomeration':
             return
-        self.B_R = jit_kernel_break.breakage_rate_1d(self.V, self.V1_mean, self.pl_P1, self.pl_P2, self.G, self.BREAKRVAL)          
+        self.B_R = jit_kernel_break.breakage_rate_1d(self.V, self.V1_mean, self.pl_P1, self.pl_P2, G_corr, self.BREAKRVAL)          
     # 2-D case            
     if self.dim == 2:
         if self.process_type == 'agglomeration':
             return
-        self.B_R = jit_kernel_break.breakage_rate_2d(self.V, self.V1, self.V3, self.V1_mean, self.V3_mean, self.G, self.pl_P1, self.pl_P2, self.pl_P3, self.pl_P4, self.BREAKRVAL, self.BREAKFVAL)
+        self.B_R = jit_kernel_break.breakage_rate_2d(self.V, self.V1, self.V3, self.V1_mean, self.V3_mean, G_corr, self.pl_P1, self.pl_P2, self.pl_P3, self.pl_P4, self.BREAKRVAL, self.BREAKFVAL)
                     
 ## Calculate integrated breakage function matrix.         
 def calc_int_B_F(self):

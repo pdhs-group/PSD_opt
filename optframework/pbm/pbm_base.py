@@ -45,7 +45,7 @@ class PBMSolver:
 
         ## Parameters in breakage kernels
         self.BREAKRVAL = 3                    # Case for calculation breakage rate. 1 = constant, 2 = size dependent
-        self.BREAKFVAL = 3                    # Case for calculation breakage function. 1 = conservation of Hypervolume, 2 = conservation of 0 Moments 
+        self.BREAKFVAL = 3                    # Case for calculation breakage function. 1 = conservation of Hypervolume, 2 = conservation of 1 Moments 
         self.process_type = "breakage"        # Process type: "agglomeration", "breakage", or "mix"
         self.pl_v = 1                         # Number of fragments in product function of power law
         self.pl_q = 1                         # Parameter describing the breakage type in product function of power law

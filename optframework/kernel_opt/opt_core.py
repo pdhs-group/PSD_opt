@@ -38,6 +38,7 @@ class OptCore():
         self.init_N_M = None
         self.init_N_2D = None
         self.init_N = None
+        self.mean_delta = True
         
  
     def init_attr(self, core_params):
@@ -190,7 +191,7 @@ class OptCore():
                     qx_mod_tem = self.KDE_score(kde_list[idt], x_uni_exp[1:])
                     qx_mod[1:, idt] = qx_mod_tem
                 else:
-                    qx_mod[:, idt] = pop.return_distribution(t=idt+self.delta_t_start_step, flag='qx')[0]
+                    qx_mod[:, idt] = pop.return_distribution(t=idt+self.delta_t_start_step, flag='qx', q_type=self.dist_type)[0]
                 Qx = self.calc_Qx(x_uni_exp, qx_mod[:, idt]) 
                 qx_mod[:, idt] = qx_mod[:, idt] / Qx.max() 
             # Calculate the delta for each cost function type, if is defined.
@@ -198,10 +199,8 @@ class OptCore():
                 data_mod = pop.re_calc_distribution(x_uni_exp, qx=qx_mod, flag=flag)[0]
                 delta = self.cost_fun(data_exp, data_mod, cost_func_type, flag)
                 delta_sum += delta 
-                
-            # Average the delta over the number of particle sizes
-            x_uni_num = len(x_uni_exp)
-            return delta / x_uni_num
+            
+            return delta
         
         # Multiple sample case
         else:
@@ -220,11 +219,9 @@ class OptCore():
                     data_mod = pop.re_calc_distribution(x_uni_exp[i], qx=qx_mod, flag=flag)[0]
                     delta = self.cost_fun(data_exp[i], data_mod, cost_func_type, flag)
                     delta_sum += delta 
-                    
-            # Average the delta over the number of samples and particle sizes
+                
             delta_sum /= self.sample_num
-            x_uni_num = len(x_uni_exp[i])  
-            return delta_sum / x_uni_num
+            return delta_sum
         
     def check_corr_agg(self, params_in):
         """
@@ -282,7 +279,7 @@ class OptCore():
         power = np.ceil(power)
         return 10**power
     
-    def array_dict_transform(self, array_dict):
+    def array_dict_transform(self, array_dict_in):
         """
         Transform the dictionary to handle `corr_agg` arrays based on the dimensionality.
         
@@ -301,6 +298,7 @@ class OptCore():
         dict
             The transformed dictionary with `corr_agg` as an array.
         """
+        array_dict = array_dict_in.copy()
         if self.p.dim == 1:
             array_dict['corr_agg'] = np.array([array_dict['corr_agg_0']])
             del array_dict["corr_agg_0"]

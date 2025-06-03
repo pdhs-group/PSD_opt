@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "optframework"
-version = "0.5.0"
+version = "0.6.0"
 description = "A dPBE solver based framework used to find kernel parameters."
 authors = ["HR94 <haoran.ji@kit.edu>"]
 license = "GPL-3.0-only"
@@ -21,7 +21,7 @@ matplotlib = "^3.10.0"
 openpyxl = "^3.1.5"
 optuna = "^4.1.0"
 cmaes = "^0.11.1"
-ray = {extras = ["all"], version = "^2.40.0"}
+ray = {extras = ["default,train,tune"], version = "^2.40.0"}
 
 
 [build-system]

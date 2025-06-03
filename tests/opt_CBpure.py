@@ -13,7 +13,7 @@ from optframework.kernel_opt.opt_base import OptBase
 import matplotlib.pyplot as plt
 import optframework.utils.plotter.plotter as pt
 
-def calc_delta_test(known_params_list, exp_data_paths, init_core=True, opt_params=None, visual=False,
+def calc_delta_test(known_params_list, exp_data_paths, t_vec=None, init_core=True, opt_params=None, visual=False,
                     ax=None, fig=None, index=''):
     if opt_params is None:
         pop_params =  {
@@ -25,10 +25,11 @@ def calc_delta_test(known_params_list, exp_data_paths, init_core=True, opt_param
     else:
         if 'corr_agg_0' in opt_params:
             opt_params = opt.core.array_dict_transform(opt_params)
+
         pop_params = opt_params.copy()
-        
     exp_data_paths = [os.path.join(opt.data_path, name) for name in exp_data_paths]
-    if init_core:        
+    
+    if init_core:
         opt.core.init_attr(opt.core_params)
         opt.core.init_pbe(opt.pop_params, opt.data_path) 
 
@@ -57,74 +58,143 @@ def calc_delta_test(known_params_list, exp_data_paths, init_core=True, opt_param
 
     return losses
 
-def cross_validation(data_names_list, known_params_list, result_dir, G_flag):
+def cross_validation(data_names_list, known_params_list, result_dir, G_flag, prev, 
+                     one_train_data=False, use_all_as_train=False):
     os.makedirs(result_dir, exist_ok=True)
     N = len(data_names_list)
-    for i in range(N):
-        print(f"Running cross-validation iteration {i+1}/{N}")
-        opt.core.data_name_index = i
-        train_data = [data_names_list[j] for j in range(N) if j != i]
-        train_known = [known_params_list[j] for j in range(N) if j != i]
-        test_data = [data_names_list[i]]
-        opt.core.data_name_tune = test_data[0]
-        # test_known = [known_params_list[i]]
 
-        # === NEW LOGIC: load previous opt_params for warm start ===
+    if use_all_as_train:
+        print("Running single iteration with ALL data as train set")
+        opt.core.data_name_index = 0  
+        train_data  = data_names_list[:]      
+        train_known = known_params_list[:]     
+        test_data   = ['']                    
+        # warm start
         if getattr(opt.core, 'resume_unfinished', False):
-            prev_result_name = f'cv_iter_{prev}_{i}_{data_dir}_{G_flag}.npz'
+            prev_result_name = f'cv_iter_{prev}_{0}_{G_flag}.npz'
             prev_path = os.path.join(result_dir, prev_result_name)
             if os.path.exists(prev_path):
                 try:
-                    prev_data = np.load(prev_path, allow_pickle=True)
-                    opt.core.evaluated_params = list(prev_data['all_params'])
-                    # opt.core.evaluated_rewards = list(prev_data['all_score'])
-                    
+                    prev = np.load(prev_path, allow_pickle=True)
+                    opt.core.evaluated_params = list(prev['all_params'])
                     print(f"Loaded previous opt_params for warm start: {prev_result_name}")
                 except Exception as e:
-                    print(f"Warning: Failed to load previous opt_params: {e}")
+                    print(f"Warning: failed to load previous opt_params: {e}")
                     opt.core.evaluated_params = None
-                    opt.core.evaluated_rewards = None
-                    
             else:
-                print(f"Warning: Previous result not found: {prev_path}")
                 opt.core.evaluated_params = None
-                opt.core.evaluated_rewards = None
         else:
             opt.core.init_params_suggest = None
-            
+
         start_time = time.time()
-        result = opt.find_opt_kernels(method='delta', data_names=train_data, known_params=train_known)    
+        result = opt.find_opt_kernels(method='delta',
+                                      data_names=train_data,
+                                      known_params=train_known)
         end_time = time.time()
 
         opt_params = result['opt_params']
-        opt_score = result['opt_score']
+        opt_score  = result['opt_score']
         all_params = result['all_params']
-        all_score = result['all_score']
-        elapsed_time = end_time - start_time
+        all_score  = result['all_score']
+        elapsed    = end_time - start_time
 
-        losses_all = calc_delta_test(known_params_list, data_names_list, False, opt_params)
+        losses_all = calc_delta_test(known_params_list,
+                                     data_names_list,
+                                     None,
+                                     False,
+                                     opt_params)
 
         result_dict = {
-            'cv_index': i,
-            'train_data': train_data,
-            'test_data': test_data,
-            'opt_params': opt_params,
-            'opt_score_train': opt_score,
-            'losses_all': losses_all,
-            'elapsed_time': elapsed_time,
-            'all_params': all_params,
-            'all_score': all_score
+            'cv_index'        : 0,
+            'train_data'      : train_data,
+            'test_data'       : test_data,
+            'opt_params'      : opt_params,
+            'opt_score_train' : opt_score,
+            'losses_all'      : losses_all,
+            'elapsed_time'    : elapsed,
+            'all_params'      : all_params,
+            'all_score'       : all_score
         }
 
-        result_name =  f'cv_iter_{n_iter}_{i}_{data_dir}_{G_flag}.npz'  
-        file_path = os.path.join(result_dir, result_name)
+        result_name = f'cv_iter_{n_iter}_{0}_{G_flag}.npz'
+        file_path   = os.path.join(result_dir, result_name)
+        np.savez(file_path, **result_dict)
+        print(f"Saved result to {file_path}\n")
+        return
+
+    for i in range(N):
+        print(f"Running cross-validation iteration {i+1}/{N}")
+        opt.core.data_name_index = i
+
+        if one_train_data:
+            train_data  = [data_names_list[i]]
+            train_known = [known_params_list[i]]
+            test_data   = [data_names_list[j] for j in range(N) if j != i]
+        else:
+            train_data  = [data_names_list[j] for j in range(N) if j != i]
+            train_known = [known_params_list[j] for j in range(N) if j != i]
+            test_data   = [data_names_list[i]]
+
+        opt.core.data_name_tune = test_data[0] if test_data else ''
+
+        # warm start
+        if getattr(opt.core, 'resume_unfinished', False):
+            prev_result_name = f'cv_iter_{prev}_{i}_{G_flag}.npz'
+            prev_path = os.path.join(result_dir, prev_result_name)
+            if os.path.exists(prev_path):
+                try:
+                    prev = np.load(prev_path, allow_pickle=True)
+                    opt.core.evaluated_params = list(prev['all_params'])
+                    print(f"Loaded previous opt_params for warm start: {prev_result_name}")
+                except Exception as e:
+                    print(f"Warning: failed to load previous opt_params: {e}")
+                    opt.core.evaluated_params = None
+                # opt.core.evaluated_rewards = None
+            else:
+                opt.core.evaluated_params = None
+        else:
+            opt.core.init_params_suggest = None
+
+
+        start_time = time.time()
+        result = opt.find_opt_kernels(method='delta',
+                                      data_names=train_data,
+                                      known_params=train_known)
+        end_time = time.time()
+
+        opt_params = result['opt_params']
+        opt_score  = result['opt_score']
+        all_params = result['all_params']
+        all_score  = result['all_score']
+        elapsed    = end_time - start_time
+
+        losses_all = calc_delta_test(known_params_list,
+                                     data_names_list,
+                                     None,
+                                     False,
+                                     opt_params)
+
+        result_dict = {
+            'cv_index'        : i,
+            'train_data'      : train_data,
+            'test_data'       : test_data,
+            'opt_params'      : opt_params,
+            'opt_score_train' : opt_score,
+            'losses_all'      : losses_all,
+            'elapsed_time'    : elapsed,
+            'all_params'      : all_params,
+            'all_score'       : all_score
+        }
+
+        result_name = f'cv_iter_{n_iter}_{i}_{G_flag}.npz'
+        file_path   = os.path.join(result_dir, result_name)
         np.savez(file_path, **result_dict)
         print(f"Saved result to {file_path}\n")
 
 # Modified load function to include G_flag as parameter
-def load_cross_validation_results(result_dir, n_iter, data_dir, G_flag):
+def load_cross_validation_results(result_dir, n_iter, G_flag):
     """
-    Load and assemble cross-validation results for a specific (n_iter, data_dir, G_flag).
+    Load and assemble cross-validation results for a specific (n_iter, G_flag).
     Returns lists of optimized parameters, training scores, and all losses.
     """
     opt_params_list = []
@@ -133,7 +203,7 @@ def load_cross_validation_results(result_dir, n_iter, data_dir, G_flag):
 
     # Build filename patterns
     prefix = f"cv_iter_{n_iter}_"
-    suffix = f"_{data_dir}_{G_flag}.npz"
+    suffix = f"_{G_flag}.npz"
     files = sorted([
         f for f in os.listdir(result_dir)
         if f.startswith(prefix) and f.endswith(suffix)
@@ -152,7 +222,7 @@ def load_cross_validation_results(result_dir, n_iter, data_dir, G_flag):
     return opt_params_list, opt_scores, losses_all_list, evaluated_params, evaluated_rewards
 
 
-def load_all_cv_results(result_dir, n_iter_list, data_dir, G_flag_list):
+def load_all_cv_results(result_dir, n_iter_list, G_flag_list):
     """
     Load results across all combinations of n_iter and G_flag.
     Returns a nested dict: results[G_flag][n_iter] = {...}
@@ -162,7 +232,7 @@ def load_all_cv_results(result_dir, n_iter_list, data_dir, G_flag_list):
         results[G_flag] = {}
         for n_iter in n_iter_list:
             opt_params, scores, losses, evaluated_params, evaluated_rewards = load_cross_validation_results(
-                result_dir, n_iter, data_dir, G_flag
+                result_dir, n_iter, G_flag
             )
             results[G_flag][n_iter] = {
                 'opt_params_list': opt_params,
@@ -458,43 +528,36 @@ def analyze_and_plot_cv_results(results, n_iter_list, G_flag_list, result_dir, l
     plt.savefig(os.path.join(result_dir, 'relative_error_test_vs_train.jpg'), format='jpg')
     plt.close()
 
-def add_opt_params_mean(results):
-    for G_flag in results:
-        for n_iter in results[G_flag]:
-            opt_list = results[G_flag][n_iter]["opt_params_list"]
-            keys = opt_list[0].keys()
-            means = {key: np.mean([d[key] for d in opt_list]) for key in keys}
-            results[G_flag][n_iter]["opt_params_mean"] = means
-    return results
+
     
-def visualize_opt_distribution(t_frame=-1, x_uni_exp=None, data_exp=None, 
+def visualize_opt_distribution(t_frame=-2, x_uni_exp=None, data_exp=None, 
                                ax=None, fig=None, index=0):
-    x_uni, q0, Q0, sum_uni = opt.core.p.return_distribution(t=t_frame, flag='x_uni, qx, Qx,sum_uni', q_type='q0')
+    x_uni, q3, Q3, sum_uni = opt.core.p.return_distribution(t=t_frame, flag='x_uni, qx, Qx,sum_uni', q_type='q3')
     if opt.core.smoothing:
         kde = opt.core.KDE_fit(x_uni[1:], sum_uni[1:])
-        q0 = opt.core.KDE_score(kde, x_uni_exp[1:])
-        q0 = np.insert(q0, 0, 0.0)
-        Q0 = opt.core.calc_Qx(x_uni_exp, q0)
-        q0 = q0 / Q0.max()
+        q3 = opt.core.KDE_score(kde, x_uni_exp[1:])
+        q3 = np.insert(q3, 0, 0.0)
+        Q3 = opt.core.calc_Qx(x_uni_exp, q3)
+        q3 = q3 / Q3.max()
         x_uni = x_uni_exp
     fig, ax = plt.subplots()
-    ax, fig = pt.plot_data(x_uni[:30], Q0[:30], fig=fig, ax=ax,
+    ax, fig = pt.plot_data(x_uni, q3, fig=fig, ax=ax,
                            xlbl=r'Agglomeration size $x_\mathrm{A}$ / $-$',
-                           ylbl='number distribution of agglomerates $q0$ / $-$',
+                           ylbl='number distribution of agglomerates $q3$ / $-$',
                            lbl='opt',clr='b',mrk='o')
-    ax, fig = pt.plot_data(x_uni_exp[:30], data_exp[:30, t_frame], fig=fig, ax=ax,
+    ax, fig = pt.plot_data(x_uni_exp, data_exp[:, t_frame], fig=fig, ax=ax,
                            xlbl=r'Agglomeration size $x_\mathrm{A}$ / $-$',
-                           ylbl='number distribution of agglomerates $q0$ / $-$',
+                           ylbl='number distribution of agglomerates $q3$ / $-$',
                            lbl='exp',clr='r',mrk='^')
     
     # color_list = ['b', 'gold', 'g', 'r', 'violet']
-    # ax, fig = pt.plot_data(x_uni[:30], Q0[:30], fig=fig, ax=ax, plt_type='scatter', 
+    # ax, fig = pt.plot_data(x_uni[:30], Q3[:30], fig=fig, ax=ax, plt_type='scatter', 
     #                        xlbl=r'Agglomeration size $x_\mathrm{A}$ / $-$',
-    #                        ylbl='number distribution of agglomerates $q0$ / $-$',
+    #                        ylbl='number distribution of agglomerates $q3$ / $-$',
     #                        lbl=f'opt_{index}',clr=color_list[i],mrk='o')
     # ax, fig = pt.plot_data(x_uni_exp[:30], data_exp[:30, t_frame], fig=fig, ax=ax,
     #                        xlbl=r'Agglomeration size $x_\mathrm{A}$ / $-$',
-    #                        ylbl='number distribution of agglomerates $q0$ / $-$',
+    #                        ylbl='number distribution of agglomerates $q3$ / $-$',
     #                        lbl=f'exp_{index}',clr=color_list[i],mrk='^')
     
     ax.grid('minor')
@@ -505,30 +568,30 @@ def visualize_opt_distribution(t_frame=-1, x_uni_exp=None, data_exp=None,
 
 if __name__ == '__main__':
     base_path = Path(os.getcwd()).resolve()
-    config_path = os.path.join(base_path, "config", "opt_Batch_config.py")
-    data_dir = "int1d"  ## "int1d", "lognormal_curvefit", "lognormal_zscore"
+    config_path = os.path.join(base_path, "config", "opt_CBpure_config.py")
     # tmp_path = os.environ.get('TMP_PATH')
     # test_group = os.environ.get('TEST_GROUP')
-    # data_path = os.path.join(tmp_path, "data", data_dir)
-    data_path = os.path.join(base_path, "data", data_dir)
+    # data_path = os.path.join(tmp_path, "data")
+    data_path = os.path.join(base_path, "data")
     opt = OptBase(config_path=config_path, data_path=data_path)
     data_names_list = [
-        "Batch_600_Q0_post.xlsx",
-        "Batch_900_Q0_post.xlsx",
-        "Batch_1200_Q0_post.xlsx",
-        "Batch_1500_Q0_post.xlsx",
-        "Batch_1800_Q0_post.xlsx",
+        "Stufe1.xlsx",
+        "Stufe3.xlsx",
+        "Stufe4.xlsx",
     ]
     
+    PSD_filenames = [
+        "Stufe1_int.npy", 
+        "Stufe3_int.npy", 
+        "Stufe4_int.npy"]
+    
     G_flag_list = [
-        # "Median_Integral", 
-        # "Median_LocalStirrer", 
-        # "Mean_Integral", 
-        "Mean_LocalStirrer"
+        "Handbuch", 
+        "Experimentell", 
     ]
     n_iter = opt.core.n_iter
-    n_iter_list = [400, 800, 1600]
-    # n_iter_list = [800]
+    n_iter_list = [200, 400, 800, 1200, 2400]
+    # n_iter_list = [200, 400, 800, 1200]
     prev = 0
     result_dir = os.path.join(base_path, "cv_results")
     # result_dir = os.path.join(os.environ.get('STORAGE_PATH'), f"cv_results_{test_group}")
@@ -543,92 +606,63 @@ if __name__ == '__main__':
     #     # flag for optimierer_ray
     #     resume_flag = (prev > 0)
     #     opt.core.resume_unfinished = resume_flag
-        # for G_flag in G_flag_list:
-        #     if G_flag == "Median_Integral":
-        #         n = 3.3700
-        #         G_datas = [32.0404, 39.1135, 41.4924, 44.7977, 45.6443]
-        #         # Estimated n = 3.3700  (95 % CI: 0.7892 – 5.9507)
-        #         # without 1800: Estimated n = 4.0104  (95 % CI: 0.6065 – 7.4143)
-        #     elif G_flag == "Median_LocalStirrer":
-        #         n = 0.6417
-        #         G_datas = [104.014, 258.081, 450.862, 623.357, 647.442]
-        #         # Estimated n = 0.6417  (95 % CI: 0.1699 – 1.1135)
-        #         # without 1800: Estimated n = 0.7435  (95 % CI: 0.1290 – 1.3580)
-        #     elif G_flag == "Mean_Integral":
-        #         n = 1.6477
-        #         G_datas = [87.2642, 132.668, 143.68, 183.396, 185.225]
-        #         # Estimated n = 1.6477  (95 % CI: 0.5048 – 2.7906)
-        #         # without 1800: Estimated n = 1.9767  (95 % CI: 0.4946 – 3.4588)
-        #     elif G_flag == "Mean_LocalStirrer":
-        #         n = 0.8154
-        #         G_datas = [297.136, 594.268, 890.721, 1167.74, 1284.46]
-        #         # G_datas = [297.136, 594.268]
-        #         # Estimated n = 0.8154  (95 % CI: 0.2074 – 1.4235)
-        #         # without 1800: Estimated n = 0.9892  (95 % CI: 0.1878 – 1.7905)
-        #     else:
-        #         raise ValueError(f"Unknown G_flag: {G_flag}")
-        #     known_params_list = [{'G': G_val**n} for G_val in G_datas]
-            # known_params_list = [{'G': G_val} for G_val in G_datas]
+    #     for G_flag in G_flag_list:
+    #         if G_flag == "Handbuch":
+    #             n = 0.646
+    #             G_datas = [7, 16.5, 27.5]
+    #         elif G_flag == "Experimentell":
+    #             n = 0.964
+    #             G_datas = [12.45, 31.48, 35.77]
+    #         else:
+    #             raise ValueError(f"Unknown G_flag: {G_flag}")
+                
+    #         known_params_list = [
+    #             {'G': G_val**n, 'DIST1_name': fname}
+    #             for G_val, fname in zip(G_datas, PSD_filenames)
+    #         ]
         
-    #         cross_validation(data_names_list, known_params_list, result_dir, G_flag)
+    #         cross_validation(data_names_list, known_params_list, result_dir, G_flag, prev, False, True)
     #     prev = n_iter
     # ray.shutdown()
     
     # Load everything
-    result_dir = os.path.join(r"C:\Users\px2030\Code\Ergebnisse\Batch_opt\opt_results", "cv_results_group3")
-    # result_dir = r"C:\Users\px2030\Code\PSD_opt\tests\cv_results"
-    results = load_all_cv_results(result_dir, n_iter_list, data_dir, G_flag_list)
-    add_opt_params_mean(results)
-    # # Analyze & visualize
+    result_dir = os.path.join(r"C:\Users\px2030\Code\Ergebnisse\Simon_Messung\opt_results", "cv_results_group1")
+    results = load_all_cv_results(result_dir, n_iter_list, G_flag_list)
+    
+    # Analyze & visualize
     # analyze_and_plot_cv_results(results, n_iter_list, G_flag_list, result_dir)
     
     # calculate PBE 
-    G_flag = "Mean_LocalStirrer"
-    if G_flag == "Median_Integral":
-        n = 3.3700
-        G_datas = [32.0404, 39.1135, 41.4924, 44.7977, 45.6443]
-        # Estimated n = 3.3700  (95 % CI: 0.7892 – 5.9507)
-        # without 1800: Estimated n = 4.0104  (95 % CI: 0.6065 – 7.4143)
-    elif G_flag == "Median_LocalStirrer":
-        n = 0.6417
-        G_datas = [104.014, 258.081, 450.862, 623.357, 647.442]
-        # Estimated n = 0.6417  (95 % CI: 0.1699 – 1.1135)
-        # without 1800: Estimated n = 0.7435  (95 % CI: 0.1290 – 1.3580)
-    elif G_flag == "Mean_Integral":
-        n = 1.6477
-        G_datas = [87.2642, 132.668, 143.68, 183.396, 185.225]
-        # Estimated n = 1.6477  (95 % CI: 0.5048 – 2.7906)
-        # without 1800: Estimated n = 1.9767  (95 % CI: 0.4946 – 3.4588)
-    elif G_flag == "Mean_LocalStirrer":
-        n = 0.8154
-        G_datas = [297.136, 594.268, 890.721, 1167.74, 1284.46]
-        # G_datas = [297.136, 594.268, 890.721, 1167.74]
-        # Estimated n = 0.8154  (95 % CI: 0.2074 – 1.4235)
-        # without 1800: Estimated n = 0.9892  (95 % CI: 0.1878 – 1.7905)
+    G_flag = "Experimentell"
+    if G_flag == "Handbuch":
+        n = 0.646
+        G_datas = [7, 16.5, 27.5]
+    elif G_flag == "Experimentell":
+        n = 0.964
+        G_datas = [12.45, 31.48, 35.77]
     else:
         raise ValueError(f"Unknown G_flag: {G_flag}")
-    known_params_list = [{'G': G_val**n} for G_val in G_datas]
-    # known_params_list = [{'G': G_val} for G_val in G_datas]
+    # known_params_list = [{'G': G_val**n} for G_val in G_datas]
+    known_params_list = [
+        {'G': G_val**n, 'DIST1_name': fname}
+        for G_val, fname in zip(G_datas, PSD_filenames)]
     
     # Read the results of a specific group in the cross-validation, then compare all the data in that group
-    # opt_params = results[G_flag][1600]['opt_params_list'][0]
-    opt_params = results[G_flag][1600]['opt_params_mean']
-    losses_mean = calc_delta_test(known_params_list, data_names_list, init_core=True, opt_params=opt_params, visual=True)
+    # opt_params = results[G_flag][2400]['opt_params_list'][1]
+    # losses = calc_delta_test(known_params_list, data_names_list, init_core=True, opt_params=opt_params, visual=True)
     
     # Read the results of all groups in the cross-validation and compare the test data from each group.
-    # opt_params_list = results[G_flag][1600]['opt_params_list']
-    # losses = []
-    # fig, ax = plt.subplots()
-    # for i in range(len(known_params_list)):
-    #     test_data = [data_names_list[i]]
-    #     known_i = [known_params_list[i]]
-    #     opt_params = opt_params_list[i]
-    #     loss_i = calc_delta_test(known_i, test_data, init_core=True, opt_params=opt_params, 
-    #                              visual=True, fig=fig, ax=ax, index=i)
-    #     losses.append(loss_i)
-    # ax.grid('minor')
-    # # ax.set_xscale('log')
-    # plt.tight_layout()  
-    # plt.show()
-    
-    
+    opt_params_list = results[G_flag][2400]['opt_params_list']
+    losses = []
+    fig, ax = plt.subplots()
+    for i in range(len(known_params_list)):
+        test_data = [data_names_list[i]]
+        known_i = [known_params_list[i]]
+        opt_params = opt_params_list[i]
+        loss_i = calc_delta_test(known_i, test_data, init_core=True, opt_params=opt_params, 
+                                 visual=True, fig=fig, ax=ax, index=i)
+        losses.append(loss_i)
+    ax.grid('minor')
+    # ax.set_xscale('log')
+    plt.tight_layout()  
+    plt.show()

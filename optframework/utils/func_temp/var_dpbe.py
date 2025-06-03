@@ -101,41 +101,65 @@ def visualize_N():
     N_t.grid('minor')
     plt.tight_layout()  
 
+def plot_x_50(t_vec):
+    x_50 = np.zeros_like(t_vec)
+    for frame in range(len(t_vec)):
+        x_50[frame] = p.return_distribution(t=frame, flag='x_50', q_type='q3')[0]
+    fig=plt.figure()    
+    ax_x50 = fig.add_subplot(1,1,1)
+    ax_x50, fig = pt.plot_data(t_vec, x_50, fig=fig, ax=ax_x50,
+                            xlbl='time  / $s$',
+                            ylbl='x_50',
+                            lbl='median particle size',
+                            clr='b',mrk='o')
+    
+    ax_x50.grid('minor')
+    plt.tight_layout()  
+    return x_50
+    
 #%% MAIN   
 if __name__ == "__main__":
     dim=1
     p = DPBESolver(dim=dim)
     smoothing = False
     t_start = time.time()
-    p.full_init(calc_alpha=False)
-    t = time.time() - t_start
-    print(f"initilization takes {t} second")
     t_vec = p.t_vec
-    ## solve the PBE
-    p.solve_PBE()
-    ## View number concentration of partikel
-    N = p.N
-    if p.solver == "radau":
-        N_res_tem = p.N_res_tem
-        t_res_tem = p.t_res_tem
-        rate_res_tem = p.rate_res_tem
-        error_res_tem = p.error_res_tem
-    V_p = p.V
-    
-    if dim == 2:
-        N0 = N[:,:,0]
-        NE = N[:,:,-1]
-    elif dim == 1:
-       N0 = N[:,0]
-       NE = N[:,-1]
-    print('### Total Volume before and after..')
-    print(np.sum(N0*V_p), np.sum(NE*V_p))
-    
-    ## Visualize particle distribution at the first and the last time point 
-    ## Visualize the convergence rate and error_norm
-    pt.plot_init(scl_a4=1,figsze=[12.8,6.4*1.5],lnewdth=0.8,mrksze=5,use_locale=True,scl=1.2)
-    visualize_distribution(t_frame=-1)
-    visualize_N()
-    animation_distribution(t_vec,fps=5)
-    if p.solver == "radau":
-        visualize_convergence()
+    G_list = [1, 2, 3, 4, 5]
+    x_50_list = np.zeros((len(t_vec), len(G_list)))
+    N_E_list = np.zeros((len(t_vec), len(G_list)))
+    for i, G in enumerate(G_list):
+        p.G = G
+        p.full_init(calc_alpha=False)
+        t = time.time() - t_start
+        print(f"initilization takes {t} second")
+        ## solve the PBE
+        p.solve_PBE()
+        ## View number concentration of partikel
+        N = p.N
+        if p.solver == "radau":
+            N_res_tem = p.N_res_tem
+            t_res_tem = p.t_res_tem
+            rate_res_tem = p.rate_res_tem
+            error_res_tem = p.error_res_tem
+        V_p = p.V
+        
+        if dim == 2:
+            N0 = N[:,:,0]
+            NE = N[:,:,-1]
+        elif dim == 1:
+           N0 = N[:,0]
+           NE = N[:,-1]
+        print('### Total Volume before and after..')
+        print(np.sum(N0*V_p), np.sum(NE*V_p))
+        
+        ## Visualize particle distribution at the first and the last time point 
+        ## Visualize the convergence rate and error_norm
+        # pt.plot_init(scl_a4=1,figsze=[12.8,6.4*1.5],lnewdth=0.8,mrksze=5,use_locale=True,scl=1.2)
+        # visualize_distribution(t_frame=-1)
+        visualize_N()
+        # animation_distribution(t_vec,fps=5)
+        x_50 = plot_x_50(t_vec)
+        x_50_list[:, i] = x_50
+        N_E_list[:, i] = np.sum(N,axis=0)
+        if p.solver == "radau":
+            visualize_convergence()

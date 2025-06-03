@@ -66,9 +66,10 @@ def interpolate_psd(d,psd_data,v0,x_init=None,Q_init=None):
     # Interpolate Q on d grid and normalize it to 1 (account for numerical error)
     # If the ranges don't match well, insert 0. This is legit since it is the density
     # distribution
-    f_Q = interp1d(x,Q,bounds_error=False,fill_value=0)
+    f_Q_tem = interp1d(x,Q,bounds_error=False,fill_value=np.nan)
+    f_Q = wrap_with_linear_extrapolation(f_Q_tem, x, Q)
     Q_d = np.zeros(len(d)+1)
-    Q_d[1:] = f_Q(d)
+    Q_d[1:] = np.clip(f_Q(d), 0.0, 1.0)
             
     #Q_d(math.isnan(Q_d)) = 0
     Q_d = Q_d/Q_d.max()
@@ -83,6 +84,42 @@ def interpolate_psd(d,psd_data,v0,x_init=None,Q_init=None):
     # n[n<thr*np.mean(n)] = 0
     
     return n    
+
+def wrap_with_linear_extrapolation(f_raw, x_sub, y_sub):
+    """
+    Wrap a given interpolator with linear extrapolation on both ends.
+    
+    Parameters:
+        f_raw (callable): Base interpolator function f(x)
+        x_sub, y_sub (array-like): Original data points used for interpolation
+
+    Returns:
+        f(x): Interpolated + linearly extrapolated function
+    """
+    x_sub = np.asarray(x_sub)
+    y_sub = np.asarray(y_sub)
+
+    # Compute boundary slopes
+    slope_left  = (y_sub[1] - y_sub[0]) / (x_sub[1] - x_sub[0])
+    slope_right = (y_sub[-1] - y_sub[-2]) / (x_sub[-1] - x_sub[-2])
+    x0, y0 = x_sub[0], y_sub[0]
+    x1, y1 = x_sub[-1], y_sub[-1]
+
+    def f(x):
+        x = np.asarray(x)
+        y = f_raw(x)
+
+        mask_left  = x < x0
+        mask_right = x > x1
+
+        # Apply linear extrapolation on both ends
+        y[mask_left]  = y0 + slope_left  * (x[mask_left]  - x0)
+        y[mask_right] = y1 + slope_right * (x[mask_right] - x1)
+
+        return y
+
+    return f
+
 ## Plot 2D-distribution:
 def plot_N2D(N,V,V0_tot,ax=None,fig=None,close_all=False,scl_a4=1,figsze=[12.8*1.05,12.8],THR_N=1e-4,
              exp_file=None,t_stamp=None):

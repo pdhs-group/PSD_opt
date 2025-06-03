@@ -7,7 +7,6 @@ Created on Thu Jan 18 15:42:20 2024
 import numpy as np
 import os
 ## Config for Optimization
-# _config_opt_path = os.environ.get('TMP_PATH')
 _config_opt_path = os.path.dirname(__file__)
 config = {
     ## Use only 2D Data or 1D+2D
@@ -24,7 +23,7 @@ config = {
         # Note: The first value in t_init must be zero.
         
         # 't_vec' : np.array([0, 0]),
-        't_vec' : np.array([0, 5, 10, 45])*60,
+        't_vec' : np.array([0, 2, 4, 9, 14, 29])*60,
         # Time vector for the entire simulation, specifying the time points at which 
         # calculations are performed.
         
@@ -55,7 +54,7 @@ config = {
         'exp_data' : True, 
         # Whether to use experimental data (True) or synthetic data (False) during optimization.
         
-        'sheet_name' : 'Q_x_int', 
+        'sheet_name' : 'qq3_int', 
         # Name of the sheet in the experimental data file (if applicable).
          
         'method': 'Cmaes',
@@ -91,31 +90,31 @@ config = {
         'R03_0' : 'r0_001',
         # Radius of M primary particles corresponding to the 1% position (Q3) in the PSD data.
 
-        'R_01': 3.7e-8/2,
-        'R_03': 3.7e-8/2,
+        'R_01': 7.3e-8/2,
+        'R_03': 7.3e-8/2,
         'R01_0_scl': 1,
         # Scaling factor for the NM1 primary particle radius.
         
         'R03_0_scl': 1,
         # Scaling factor for the M primary particle radius.
         
-        'PSD_R01' : 'Batch_int_PSD.npy',
+        'PSD_R01' : 'Stufe1_int.npy',
         # File name for the PSD data for NM1 particles.
         
-        'PSD_R03': 'Batch_int_PSD.npy',  
+        'PSD_R03': 'Stufe1_int.npy',  
         # File name for the PSD data for M particles.
     
         'weight_2d': 1,  
         # Weight applied to the error (delta) of 2D particle populations, giving it 
         # more importance during optimization.
         
-        'dist_type': 'q0',
+        'dist_type': 'q3',
         # - 'q0': Number-based PSD (weight = N, i.e., V^0 × N)
         # - 'q3': Volume-based PSD (weight = V * N, i.e., V^1 × N)
         # - 'q6': Square-volume PSD (weight = V^2 * N)
         
-        'delta_flag': [# ('qx','MSE'), 
-                       ('Qx','MSE'), 
+        'delta_flag': [('qx','MSE'), 
+                       # ('Qx','MSE'), 
                        # ('x_50','MSE')
                        ],
         # Specifies which particle size distribution (PSD) and cost function to use 
@@ -154,8 +153,8 @@ config = {
     ## PBE parameters
     ## For a detailed explanation of the PBE parameters, please refer to the `PBE_config.py` file.
     'pop_params': {
-        'NS' : 101,
-        'S' : 1.2,
+        'NS' : 30,
+        'S' : 1.42,
         "SIZEEVAL": 1,
         "COLEVAL": 1,
         "EFFEVAL": 1,
@@ -165,9 +164,9 @@ config = {
         'aggl_crit' : 100,
         'process_type' : "mix",
 
-        ## density of CB(with CMC and SBR): 1245.46kg/m3, mass 6.02g
-        ## density of battery slurry: 1300kg/m3, mass 200g
-        'c_mag_exp': 0.00602/1245.46/(0.2/1300),
+        ## density of CB: 1800kg/m3, mass 0.005%
+        ## density of water: 1000kg/m3
+        'c_mag_exp': 5e-5*1000/1800,
         'V_unit': 1e-12,
         
         ## When True, use distribution data simulated using MC-bond-break methods
@@ -187,11 +186,11 @@ config = {
     
     ## Parameters which should be optimized
     'opt_params' : {
-        'corr_agg_0': {'bounds': (-8.0, -1.0), 'log_scale': True},
+        'corr_agg_0': {'bounds': (-10.0, -1.0), 'log_scale': True},
         # 'corr_agg_1': {'bounds': (-4.0, 0.0), 'log_scale': True},
         # 'corr_agg_2': {'bounds': (-4.0, 0.0), 'log_scale': True},
         'pl_v': {'bounds': (0.1, 2.0), 'log_scale': False},
-        'pl_P1': {'bounds': (-8.0, 2.0), 'log_scale': True},
+        'pl_P1': {'bounds': (-15.0, -2.0), 'log_scale': True},
         'pl_P2': {'bounds': (0.1, 5.0), 'log_scale': False},
         # 'pl_P3': {'bounds': (-5.0, -1.0), 'log_scale': True},
         # 'pl_P4': {'bounds': (0.3, 3.0), 'log_scale': False},

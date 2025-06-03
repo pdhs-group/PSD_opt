@@ -7,7 +7,7 @@ from sklearn.neighbors import KernelDensity
 from scipy.interpolate import interp1d
 from optframework.utils.func.func_read_exp import write_read_exp
 
-def read_exp(self, exp_data_path, t_vec):  
+def read_exp(self, exp_data_path, t_vec, sheet_name=None):  
     """
     Reads experimental data from a specified path and processes it for use in the optimization.
 
@@ -24,9 +24,11 @@ def read_exp(self, exp_data_path, t_vec):
         - x_uni_exp: An array of unique particle sizes from the experimental data.
         - sumN_uni_exp: An array of the sum of number concentrations for the unique particle sizes.
     """
+    if sheet_name is None:
+        sheet_name = self.sheet_name
     # Instantiate the write_read_exp class to handle reading and writing PSD data,
     # and initialize the time format for the experimental data
-    exp_data = write_read_exp(exp_data_path, read=True, sheet_name=self.sheet_name, exp_data=self.exp_data)
+    exp_data = write_read_exp(exp_data_path, read=True, sheet_name=sheet_name, exp_data=self.exp_data)
     
     # Extract the experimental data corresponding to the given time vector
     df = exp_data.get_exp_data(t_vec)

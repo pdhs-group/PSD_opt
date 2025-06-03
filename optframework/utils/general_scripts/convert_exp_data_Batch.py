@@ -14,6 +14,7 @@ from sklearn.isotonic import IsotonicRegression
 from scipy.stats import norm
 from scipy.optimize import curve_fit, differential_evolution
 from scipy.special import erf
+import statsmodels.formula.api as smf
 
 def load_excel_data(file_path):
     # Load the Excel file
@@ -238,10 +239,11 @@ def save_average_xQ_data(x_avg_array, Q_x_ref, sorted_time_labels):
     # x_m = x_avg_array.mean(axis=0)
     x_m = generate_nonuniform_grid(x_min=0.037, x_max=1, num_points=101, gamma=1.2)
     Q_x_int = np.zeros((x_avg_array.shape[0], len(x_m)))
+    x_volume_mean =  np.zeros(x_avg_array.shape[0])
 
     # Interpolate Q(x), normalize to [0, 1]
     for i in range(x_avg_array.shape[0]):
-        Q_x_int[i, 1:] = interpolate_Qx(
+        Q_x_int[i, 1:], x_volume_mean[i] = interpolate_Qx(
             x_vals=x_avg_array[i, :],
             Q_vals=Q_x_ref,
             x_target=x_m[1:],
@@ -280,7 +282,7 @@ def save_average_xQ_data(x_avg_array, Q_x_ref, sorted_time_labels):
         qx_int_df.to_excel(writer, sheet_name='q_x_int')
 
     # Optional: return for external usage
-    return x_Q_df, Q_x_int_df, qx_int_df
+    return x_Q_df, Q_x_int_df, qx_int_df, x_volume_mean
 
 def generate_nonuniform_grid(x_min, x_max, num_points, gamma=2.0, reverse=False):
     """
@@ -333,19 +335,19 @@ def interpolate_Qx(x_vals, Q_vals, x_target, method="pchip", fraction=0.9):
 
     if method == "int1d":
         f_base  = interp1d(x_sub, Q_sub, bounds_error=False, fill_value=np.nan)
-    elif method == "pchip":
-        f_base = PchipInterpolator(x_sub, Q_sub, extrapolate=False)
+    # elif method == "pchip":
+    #     f_base = PchipInterpolator(x_sub, Q_sub, extrapolate=False)
     # elif method == "akima":
     #     f = Akima1DInterpolator(x_sub, Q_sub)
     # elif method == "spline_monotonic":
     #     # Smoothing spline with positive weights (approx monotonicity)
     #     f = UnivariateSpline(x_sub, Q_sub, s=1e-6)  # s 可调
-    elif method == "isotonic":
-        ir = IsotonicRegression(y_min=0.0, y_max=1.0, out_of_bounds='nan')
-        Q_iso = ir.fit_transform(x_sub, Q_sub)
-        f_base = interp1d(x_sub, Q_iso, bounds_error=False, fill_value=np.nan)
+    # elif method == "isotonic":
+    #     ir = IsotonicRegression(y_min=0.0, y_max=1.0, out_of_bounds='nan')
+    #     Q_iso = ir.fit_transform(x_sub, Q_sub)
+    #     f_base = interp1d(x_sub, Q_iso, bounds_error=False, fill_value=np.nan)
     elif method == "lognormal":
-        f, _ = fit_lognormal_cdf(x_sub, Q_sub, method=fit_lognormal_method, weight_mode='uniform')
+        f, (sigma, mu) = fit_lognormal_cdf(x_sub, Q_sub, method=fit_lognormal_method, weight_mode='uniform')
     else:
         raise ValueError(f"Unknown interpolation method: {method}")
 
@@ -358,8 +360,18 @@ def interpolate_Qx(x_vals, Q_vals, x_target, method="pchip", fraction=0.9):
     # Qx_vals[Qx_vals < 0] = 0.0
     # Qx_vals /= Qx_vals[-1]
     Qx_vals = np.clip(Qx_vals, 0.0, 1.0)
-
-    return Qx_vals
+    if method != "lognormal":
+        dQ = np.diff(np.insert(Qx_vals, 0, 0.0))
+        x_volume_mean_val = np.sum(dQ*x_target**3)**(1/3)
+        
+        # dx = np.diff(x_target)
+        # num = (Qx_vals[1:] - Qx_vals[:-1]) * (x_target[1:]**4 - x_target[:-1]**4) / (4.0*dx)
+        # x_volume_mean_val = np.sum(num)**(1/3)
+    else:
+        x_volume_mean_val = np.exp( mu + 1.5*sigma**2 )
+    
+    ## Warning: The calculation of x_volume_mean provided by interpolate_Qx is based on Q_vals as Q0.
+    return Qx_vals, x_volume_mean_val
 
 def fit_lognormal_cdf(x, Q, method='zscore', weight_mode='uniform', clip_eps=1e-6):
     """
@@ -529,10 +541,70 @@ def plot_Qx_time_G_profiles(Q_x_int_df_list):
         plt.grid(True)
         plt.tight_layout()
         plt.show()
-            
+         
+def calc_n_for_G(x_log_mean, G_flag):
+    if G_flag == "Median_Integral":
+        G_datas = [32.0404, 39.1135, 41.4924, 44.7977]
+    elif G_flag == "Median_LocalStirrer":
+        G_datas = [104.014, 258.081, 450.862, 623.357]
+    elif G_flag == "Mean_Integral":
+        G_datas = [87.2642, 132.668, 143.68, 183.396]
+    elif G_flag == "Mean_LocalStirrer":
+        G_datas = [297.136, 594.268, 890.721, 1167.74]
+    else:
+        raise ValueError(f"Unknown G_flag: {G_flag}")
+        
+    G_values = np.array(G_datas, dtype=float)
+    times = np.array([0, 5, 10, 45], dtype=float)     
+    x_mean_array = np.zeros((5,4))
+    for i, x_mean in enumerate(x_log_mean):
+        x_mean_array[i, :] = x_mean[:4]
+        
+    records = []
+    for i, G in enumerate(G_values):
+        for j in range(1, len(times)):               # 5,10,45 min
+            dt   = times[j] - times[0]               # always 0→t_j
+            rate = - (x_mean_array[i, j] - x_mean_array[i, 0]) / dt
+            records.append({
+                'group': i,             
+                'time' : times[j],       # 5 / 10 / 45
+                'G'    : G,
+                'rate' : rate
+            })
+    df = pd.DataFrame(records)
+    df = df[df['rate'] > 0].copy()
+    df['log_rate'] = np.log(df['rate'])
+    df['log_G']    = np.log(df['G'])
+    model = smf.ols("log_rate ~ log_G + C(time)", data=df).fit()
+    print(model.summary())
+    n_est = model.params['log_G']
+    ci_lo, ci_hi = model.conf_int().loc['log_G']
+    print(f"\nEstimated n = {n_est:.4f}  (95 % CI: {ci_lo:.4f} – {ci_hi:.4f})")
+    
+    return df, x_mean_array
+        
+def Q0_to_Q3(d, Q0, use_bin_average_volume=False):
+    Q0_ext = np.concatenate([[0.0], Q0])
+    dQ0    = np.diff(Q0_ext)               # length m
+    
+    if use_bin_average_volume:
+        d3_prev = np.concatenate([[0.0], d**3])[:-1]
+        v_rep   = (d3_prev + d**3) / 2 * (np.pi/6)
+    else:
+        v_rep   = (np.pi/6) * d**3
+    
+    vol_bin   = dQ0 * v_rep
+    total_vol = vol_bin.sum()
+    if total_vol <= 0:
+        raise ValueError("total volume is zero!")
+    dQ3 = vol_bin / total_vol       
+    Q3 = np.cumsum(dQ3)
+    
+    return Q3
+
 if __name__ == '__main__':
     len_data = 201 
-    interpolation_method = "int1d"     #'int1d', 'pchip', 'isotonic', 'lognormal'
+    interpolation_method = "lognormal"     #'int1d', 'pchip', 'isotonic', 'lognormal'
     fit_lognormal_method = "curve_fit" #'curve_fit', 'zscore', 'global_opt'
     # Usage
     base_path = r"C:\Users\px2030\Code\Ergebnisse\BatchDaten"
@@ -546,6 +618,9 @@ if __name__ == '__main__':
     ]
     x_int_list = []
     Q_x_int_df_list = []
+    Vmean_list = []
+    Vmean2_list = []
+    x_log_mean = []
     for raw_file in batch_files:
         filename_base, ext = os.path.splitext(os.path.basename(raw_file))
         file_path = os.path.join(base_path, raw_file)
@@ -556,14 +631,44 @@ if __name__ == '__main__':
         
         x_avg_array, Q_x_ref, sorted_time_labels = process_data_xQ(data, measurement_count)
         x_int_list.append(x_avg_array[0,:])
-        x_Q_df, Q_x_int_df, qx_int_df = save_average_xQ_data(x_avg_array, Q_x_ref, sorted_time_labels)
+        x_Q_df, Q_x_int_df, qx_int_df, x_volume_mean = save_average_xQ_data(x_avg_array, Q_x_ref, sorted_time_labels)
         Q_x_int_df_list.append(Q_x_int_df)
         plot_xQ_profiles(x_Q_df, Q_x_int_df, qx_int_df)
         
+        # right side integration with original data
+        # dQ = np.diff(np.insert(Q_x_ref, 0, 0.0))
+        # Vmean = (np.pi/6.0) * np.sum( dQ * x_avg_array**3, axis=1 )
+        # Vmean_list.append(Vmean)
+        # hight precise with original data
+        # dx  = np.diff(x_avg_array)
+        # num = (Q_x_ref[1:] - Q_x_ref[:-1]) * (x_avg_array[:, 1:]**4 - x_avg_array[:, :-1]**4) / (4.0*dx)
+        # Vmean2 = (np.pi/6.0) * np.sum(num, axis=1)
+        # Vmean2_list.append(Vmean2)
+        
+        
+        # log-normal form
+        x_log_mean.append(x_volume_mean)
+        
+        
     plot_Qx_time_G_profiles(Q_x_int_df_list)
     
-    x_int_avg = np.mean(x_int_list, axis=0) * 1e-6     # convert the unit from um to m
-    dist_path = os.path.join(base_path, "Batch_int_PSD.npy")
-    dict_Qx={'Q_PSD':Q_x_ref,'x_PSD':x_int_avg, 'r0_001':x_int_avg[0], 'r0_005':x_int_avg[1], 'r0_01':x_int_avg[2]}
-    np.save(dist_path,dict_Qx)
+    # x_int_avg = np.mean(x_int_list, axis=0) * 1e-6     # convert the unit from um to m
+    # Q3_ref = Q0_to_Q3(x_int_avg, Q_x_ref, False)
+    # dict_Qx={'Q_PSD':Q3_ref,'x_PSD':x_int_avg, 'r0_001':x_int_avg[0], 'r0_005':x_int_avg[1], 'r0_01':x_int_avg[2]}
+    
+    Q_columns = [df["0:00:00"] for df in Q_x_int_df_list]
+    Q_concat = pd.concat(Q_columns, axis=1)
+    Q_x_int_mean = np.array(Q_concat.mean(axis=1))
+    x_int = np.array(Q_concat.index) * 1e-6
+    Q3_ref = Q0_to_Q3(x_int, Q_x_int_mean, False)
+    dict_Qx={'Q_PSD':Q3_ref,'x_PSD':x_int, 'r0_001':x_int[0], 'r0_005':x_int[1], 'r0_01':x_int[2]}
+    
+    # dist_path = os.path.join(base_path, "Batch_int_PSD.npy")
+    # np.save(dist_path,dict_Qx)
+    
+    # G_flag = "Mean_LocalStirrer"
+    # df, x_mean_array = calc_n_for_G(x_log_mean, G_flag)
+    
+    
+    
 

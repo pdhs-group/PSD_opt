@@ -28,6 +28,7 @@ class OptCoreRay(OptCore, tune.Trainable):
     def __init__(self, *args, **kwargs):
         # Initialize tune.Trainable to prepare the class as a Ray Tune actor
         tune.Trainable.__init__(self, *args, **kwargs)
+        OptCore.__init__(self)
         
     def setup(self, config, core_params, pop_params, data_path, 
               exp_data_paths, x_uni_exp, data_exp, known_params, exp_case):
@@ -62,11 +63,6 @@ class OptCoreRay(OptCore, tune.Trainable):
         # Initialize the number concentration N if required
         if self.calc_init_N:
             self.set_init_N(exp_data_paths, init_flag='mean')
-        else:
-            self.init_N_NM = None
-            self.init_N_M = None
-            self.init_N_2D = None
-            self.init_N = None
             
         # Store experimental data and known parameters
         self.known_params = known_params
@@ -75,7 +71,7 @@ class OptCoreRay(OptCore, tune.Trainable):
         self.exp_data_paths = exp_data_paths
         self.exp_case = exp_case
         self.reuse_num=0
-        self.actor_wait=False
+        self.actor_wait=True
     
     def step(self):
         """
@@ -95,7 +91,7 @@ class OptCoreRay(OptCore, tune.Trainable):
         if 'corr_agg_0' in self.config:
             transformed_params = self.array_dict_transform(self.config)
         else:
-            transformed_params = self.config
+            transformed_params = self.config.copy()
             
         if not self.exp_case:
             # Apply known parameters to override any conflicting optimization parameters
@@ -114,6 +110,8 @@ class OptCoreRay(OptCore, tune.Trainable):
                 known_i = self.known_params[i]
                 for key, value in known_i.items():
                     transformed_params[key] = value
+                    
+                # print(f"The paramters actually entered calc_delta are {transformed_params}")
                 x_i = self.x_uni_exp[i]
                 data_i = self.data_exp[i]
                 loss_i = self.calc_delta(transformed_params, x_i, data_i)

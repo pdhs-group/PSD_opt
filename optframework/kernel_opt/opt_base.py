@@ -355,8 +355,8 @@ class OptBase():
                         
             exp_data_paths = join_paths(data_names)
         # Initialize ray for parallel computation
-        log_to_driver = True if self.core.verbose != 0 else False
-        ray.init(log_to_driver=log_to_driver)
+        # log_to_driver = True if self.core.verbose != 0 else False
+        # ray.init(log_to_driver=log_to_driver)
         # ray.init(address=os.environ["ip_head"], log_to_driver=log_to_driver)
         if method == 'kernels':
             # Currently, this method is not implemented
@@ -380,7 +380,7 @@ class OptBase():
                                                            known_params=known_params)
         # Print the current actors (for debugging purposes) and shut down ray   
         # self.print_current_actors()
-        ray.shutdown()
+        # ray.shutdown()
         return result_dict
             
     def calc_PSD_delta(self, params, exp_data_path):

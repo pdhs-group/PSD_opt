@@ -16,7 +16,7 @@ from matplotlib.animation import FuncAnimation
 
 def visualize_distribution(t_frame=-1, axq3=None,fig=None, clr='b', q3lbl='q3'):
     # x_uni, q3, Q3, sumvol_uni = p.return_distribution(t=t_frame, flag='x_uni, q3, Q3,sumvol_uni')
-    x_uni, q3, Q3, sumvol_uni = p.return_distribution(t=t_frame, flag='x_uni, qx, Qx,sum_uni', q_type='q0')
+    x_uni, q3, Q3, sumvol_uni = p.return_distribution(t=t_frame, flag='x_uni, qx, Qx,sum_uni', q_type='q3')
     if smoothing:
         core_ins = core.OptCore()
         kde = core_ins.KDE_fit(x_uni[1:],sumvol_uni[1:],bandwidth='scott', kernel_func='epanechnikov')

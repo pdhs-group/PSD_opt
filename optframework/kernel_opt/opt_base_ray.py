@@ -143,6 +143,13 @@ def optimierer_ray(self, opt_params=None, exp_data_paths=None,known_params=None)
             - "opt_params": The optimized parameters from the search space.
             - "file_path": The path(s) to the experimental data used for optimization.
     """
+    
+    # resume_unfinished = getattr(self.core, 'resume_unfinished', False)
+    evaluated_params = getattr(self.core, 'evaluated_params', None)
+    evaluated_rewards = getattr(self.core, 'evaluated_rewards', None)
+    # n_prev = getattr(self.core, 'n_iter_prev', 0)
+    # n_save = self.core.n_iter + n_prev
+    
     # Prepare experimental data (either for 1D or 2D)
     if isinstance(exp_data_paths, list):
         # When set to multi, the exp_data_paths entered here is a list containing one 2d data name and two 1d data names.
@@ -177,7 +184,7 @@ def optimierer_ray(self, opt_params=None, exp_data_paths=None,known_params=None)
             else:
                 self.RT_space[param] = tune.uniform(bounds[0], bounds[1])
     # Create the search algorithm
-    algo = self.create_algo()
+    algo = self.create_algo(evaluated_params=evaluated_params, evaluated_rewards=evaluated_rewards)
     # Clean up the data name for output storage    
     if data_name.startswith("Sim_"):
         data_name = data_name[len("Sim_"):]
@@ -205,51 +212,60 @@ def optimierer_ray(self, opt_params=None, exp_data_paths=None,known_params=None)
     #     {"cpu": self.core.cpus_per_trail}, 
     # )
     
-    resume_unfinished = getattr(self.core, 'resume_unfinished', False)
-    n_prev = getattr(self.core, 'n_iter_prev', 0)
-    n_save = self.core.n_iter + n_prev
-    checkpoint_path_save = os.path.join(self.core.tune_storage_path, data_name, f"checkpoint_{n_save}.pkl")
-    if resume_unfinished:
-        checkpoint_path_re = os.path.join(self.core.tune_storage_path, data_name, f"checkpoint_{n_prev}.pkl")
-        # Resume tuning
-        algo.restore(checkpoint_path_re)
-        # Set up a new Ray Tune Tuner
-        tuner = tune.Tuner(
-            trainable_with_resources,
-            tune_config=tune.TuneConfig(
-                num_samples=self.core.n_iter,
-                search_alg=algo,
-                reuse_actors=True,
-                trial_dirname_creator=trial_dirname_creator,
-            ),
-            run_config=tune.RunConfig(
-            storage_path =self.core.tune_storage_path,
-            name = data_name,
-            verbose = self.core.verbose, # verbose=0: no trial info, 1: basic info, 2: detailed info
-            stop={"training_iteration": 1},
-            )
+    # checkpoint_path_save = os.path.join(self.core.tune_storage_path, f"{data_name}_checkpoint_{n_save}.pkl")
+    # if resume_unfinished:
+    #     # checkpoint_path_re = os.path.join(self.core.tune_storage_path, f"{data_name}_checkpoint_{n_prev}.pkl")
+    #     # Resume tuning
+    #     # algo.restore_from_dir(
+    #     #     os.path.join(self.core.tune_storage_path, data_name))
+    #     # algo.restore(checkpoint_path_re)
+    #     # Set up a new Ray Tune Tuner
+    #     tuner = tune.Tuner(
+    #         trainable_with_resources,
+    #         param_space=self.RT_space,
+    #         tune_config=tune.TuneConfig(
+    #             num_samples=self.core.n_iter,
+    #             search_alg=algo,
+    #             reuse_actors=True,
+    #             trial_dirname_creator=trial_dirname_creator,
+    #         ),
+    #         run_config=tune.RunConfig(
+    #         storage_path =self.core.tune_storage_path,
+    #         name = data_name,
+    #         verbose = self.core.verbose, # verbose=0: no trial info, 1: basic info, 2: detailed info
+    #         stop={"training_iteration": 1},
+    #         )
+    #     )
+    # else:
+    # Set up a new Ray Tune Tuner
+    tuner = tune.Tuner(
+        trainable_with_resources,
+        param_space=self.RT_space,
+        tune_config=tune.TuneConfig(
+            num_samples=self.core.n_iter,
+            search_alg=algo,
+            reuse_actors=True,
+            trial_dirname_creator=trial_dirname_creator,
+        ),
+        run_config=tune.RunConfig(
+        storage_path =self.core.tune_storage_path,
+        name = data_name,
+        verbose = self.core.verbose, # verbose=0: no trial info, 1: basic info, 2: detailed info
+        stop={"training_iteration": 1},
         )
-    else:
-        # Set up a new Ray Tune Tuner
-        tuner = tune.Tuner(
-            trainable_with_resources,
-            param_space=self.RT_space,
-            tune_config=tune.TuneConfig(
-                num_samples=self.core.n_iter,
-                search_alg=algo,
-                reuse_actors=True,
-                trial_dirname_creator=trial_dirname_creator,
-            ),
-            run_config=tune.RunConfig(
-            storage_path =self.core.tune_storage_path,
-            name = data_name,
-            verbose = self.core.verbose, # verbose=0: no trial info, 1: basic info, 2: detailed info
-            stop={"training_iteration": 1},
-            )
-        )
+    )
     # Run the optimization process
     results = tuner.fit()
-    algo.save(checkpoint_path_save)
+    # algo.save(checkpoint_path_save)
+    
+    all_params = []
+    all_score = []
+    for trial in results:
+        config = trial.config
+        score = trial.metrics.get("loss", None)
+        if score is not None:
+            all_params.append(config)
+            all_score.append(score)
 
     # Get the best result from the optimization
     opt_result = results.get_best_result(metric="loss", mode="min")
@@ -259,12 +275,14 @@ def optimierer_ray(self, opt_params=None, exp_data_paths=None,known_params=None)
     result_dict = {
         "opt_score": opt_score,
         "opt_params": opt_params,
-        "file_path": opt_exp_data_paths
+        "file_path": opt_exp_data_paths,
+        "all_score": all_score,
+        "all_params": all_params
     }
 
     return result_dict
     
-def create_algo(self, batch=False):
+def create_algo(self, batch=False, evaluated_params=None, evaluated_rewards=None):
     """
     Create and return the search algorithm to be used for hyperparameter optimization.
 
@@ -297,15 +315,20 @@ def create_algo(self, batch=False):
     # if self.core.method == 'HEBO': 
     #     search_alg = HEBOSearch(metric="loss", mode="min", random_state_seed=self.core.random_seed)
     if self.core.method == 'GP': 
-        search_alg = OptunaSearch(metric="loss", mode="min", sampler=GPSampler(seed=self.core.random_seed))
+        search_alg = OptunaSearch(metric="loss", mode="min", sampler=GPSampler(seed=self.core.random_seed), 
+                                  points_to_evaluate=evaluated_params, evaluated_rewards=evaluated_rewards)
     elif self.core.method == 'TPE': 
-        search_alg = OptunaSearch(metric="loss", mode="min", sampler=TPESampler(seed=self.core.random_seed))
+        search_alg = OptunaSearch(metric="loss", mode="min", sampler=TPESampler(seed=self.core.random_seed), 
+                                  points_to_evaluate=evaluated_params, evaluated_rewards=evaluated_rewards)
     elif self.core.method == 'Cmaes':    
-        search_alg = OptunaSearch(metric="loss", mode="min", sampler=CmaEsSampler(seed=self.core.random_seed))
+        search_alg = OptunaSearch(metric="loss", mode="min", sampler=CmaEsSampler(seed=self.core.random_seed), 
+                                  points_to_evaluate=evaluated_params, evaluated_rewards=evaluated_rewards)
     elif self.core.method == 'NSGA':    
-        search_alg = OptunaSearch(metric="loss", mode="min", sampler=NSGAIIISampler(seed=self.core.random_seed))
+        search_alg = OptunaSearch(metric="loss", mode="min", sampler=NSGAIIISampler(seed=self.core.random_seed), 
+                                  points_to_evaluate=evaluated_params, evaluated_rewards=evaluated_rewards)
     elif self.core.method == 'QMC':    
-        search_alg = OptunaSearch(metric="loss", mode="min", sampler=QMCSampler(scramble=True, seed=self.core.random_seed))
+        search_alg = OptunaSearch(metric="loss", mode="min", sampler=QMCSampler(scramble=True, seed=self.core.random_seed), 
+                                  points_to_evaluate=evaluated_params, evaluated_rewards=evaluated_rewards)
     else:
         raise ValueError(f"Unsupported sampler detected: {self.core.method}")
     # If no concurrency limit is set, return the search algorithm directly    
