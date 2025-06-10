@@ -6,16 +6,15 @@ Created on Mon Jan 15 12:41:37 2024
 """
 
 import sys, os
-sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),"../../.."))
-import config.opt_config as conf
-from pypbe.kernel_opt.opt_base import OptBase
+import opt_config as conf
+from optframework.kernel_opt.opt_base import OptBase
 import numpy as np
 import pandas as pd
 import copy
 from sklearn.linear_model import LinearRegression
 ## For plots
 import matplotlib.pyplot as plt
-import pypbe.utils.plotter.plotter as pt  
+import optframework.utils.plotter.plotter as pt  
 import itertools
 import multiprocessing
 from matplotlib.animation import FuncAnimation
@@ -310,20 +309,20 @@ def calc_save_PSD_delta(results, data_paths):
                 file_names = [os.path.basename(file_path) for file_path in variable[3]]
                 exp_data_paths = [os.path.join(data_path, file_name) for file_name in file_names]
                 func_list.append((variable[1], exp_data_paths))
-                delta, path = opt.calc_PSD_delta(variable[1], exp_data_paths)
-                return delta,opt
-        # pool = multiprocessing.Pool(processes=8)
-        # try:
-        #     delta = pool.starmap(opt.calc_PSD_delta, func_list)
-        # except KeyboardInterrupt:
-        #     print("Caught KeyboardInterrupt, terminating workers")
-        #     pool.terminate()
-        # finally:
-        #     pool.close()
-        #     pool.join() 
-        # new_result = np.column_stack((result, delta))
-        # np.savez(data_paths[i], results=new_result)
-    # return new_result
+                # delta, path = opt.calc_PSD_delta(variable[1], exp_data_paths)
+                # return delta,opt
+        pool = multiprocessing.Pool(processes=8)
+        try:
+            delta = pool.starmap(opt.calc_PSD_delta, func_list)
+        except KeyboardInterrupt:
+            print("Caught KeyboardInterrupt, terminating workers")
+            pool.terminate()
+        finally:
+            pool.close()
+            pool.join() 
+        new_result = np.column_stack((result, delta))
+        np.savez(data_paths[i], results=new_result)
+    return new_result
         
 def calc_ori_mse():
     # tmpdir = os.environ.get('TMP_PATH')

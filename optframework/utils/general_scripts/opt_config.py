@@ -7,7 +7,6 @@ Created on Thu Jan 18 15:42:20 2024
 import numpy as np
 import os
 ## Config for Optimization
-# _config_opt_path = os.environ.get('TMP_PATH')
 _config_opt_path = os.path.dirname(__file__)
 config = {
     ## Use only 2D Data or 1D+2D
@@ -24,18 +23,18 @@ config = {
         # Note: The first value in t_init must be zero.
         
         # 't_vec' : np.array([0, 0]),
-        't_vec' : np.array([0, 5, 10, 45])*60,
+        't_vec' : np.array([0, 5, 10, 15, 20, 25, 30])*60,
         # Time vector for the entire simulation, specifying the time points at which 
         # calculations are performed.
         
-        'delta_t_start_step' : 0,
+        'delta_t_start_step' : 1,
         # Specifies the number of initial time steps to skip during optimization, 
         # often useful to avoid the impact of initialization errors.
         
         'add_noise': True,
         # Whether to add noise to the generated data.
         
-        'smoothing': False,
+        'smoothing': True,
         # Whether to apply smoothing to the simulated data, usually performed using 
         # kernel density estimation (KDE).
         
@@ -49,13 +48,13 @@ config = {
         'noise_strength': 0.1,
         # The strength of the added noise.
         
-        'sample_num': 1,
+        'sample_num': 3,
         # Number of experimental or synthetic data samples used during the optimization process.
-            
-        'exp_data' : True, 
+        
+        'exp_data' : False, 
         # Whether to use experimental data (True) or synthetic data (False) during optimization.
         
-        'sheet_name' : 'Q_x_int', 
+        'sheet_name' : None, 
         # Name of the sheet in the experimental data file (if applicable).
          
         'method': 'Cmaes',
@@ -71,7 +70,7 @@ config = {
         # This value will change global random states for numpy and torch on 
         # initalization and loading from checkpoint.
         
-        'n_iter': 800,
+        'n_iter': 10,
         # Number of iterations for the optimization process.
 
         'calc_init_N': False,
@@ -91,18 +90,18 @@ config = {
         'R03_0' : 'r0_001',
         # Radius of M primary particles corresponding to the 1% position (Q3) in the PSD data.
 
-        'R_01': 3.7e-8/2,
-        'R_03': 3.7e-8/2,
+        'R_01': 2.9e-7,
+        'R_03': 2.9e-7,
         'R01_0_scl': 1,
         # Scaling factor for the NM1 primary particle radius.
         
         'R03_0_scl': 1,
         # Scaling factor for the M primary particle radius.
         
-        'PSD_R01' : 'Batch_int_PSD.npy',
+        'PSD_R01' : 'PSD_x50_2.0E-5_RelSigmaV_2.0E-1.npy',
         # File name for the PSD data for NM1 particles.
         
-        'PSD_R03': 'Batch_int_PSD.npy',  
+        'PSD_R03': 'PSD_x50_2.0E-5_RelSigmaV_2.0E-1.npy',  
         # File name for the PSD data for M particles.
     
         'weight_2d': 1,  
@@ -114,10 +113,9 @@ config = {
         # - 'q3': Volume-based PSD (weight = V * N, i.e., V^1 × N)
         # - 'q6': Square-volume PSD (weight = V^2 * N)
         
-        'delta_flag': [# ('qx','MSE'), 
-                       ('Qx','MSE'), 
-                       # ('x_50','MSE'),
-                       # ('y_weibull','MSE'),
+        'delta_flag': [('qx','MSE'), 
+                       # ('Qx','RMSE'), 
+                       #('x_50','MSE')
                        ],
         # Specifies which particle size distribution (PSD) and cost function to use 
         # during optimization. Options for PSD include:
@@ -148,15 +146,15 @@ config = {
         'cpus_per_trail': 3,  
         # Number of CPU cores allocated to each optimization trial.
     
-        'max_concurrent': 2,  
+        'max_concurrent': 4,  
         # Maximum number of trials that can be run concurrently.
         },
     
     ## PBE parameters
     ## For a detailed explanation of the PBE parameters, please refer to the `PBE_config.py` file.
     'pop_params': {
-        'NS' : 30,
-        'S' : 1.5,
+        'NS' : 10,
+        'S' : 4,
         "SIZEEVAL": 1,
         "COLEVAL": 1,
         "EFFEVAL": 1,
@@ -165,19 +163,20 @@ config = {
         ## aggl_crit: The sequence number of the particle that allows further agglomeration
         'aggl_crit' : 100,
         'process_type' : "mix",
-
-        ## density of CB(with CMC and SBR): 1245.46kg/m3, mass 6.02g
-        ## density of battery slurry: 1300kg/m3, mass 200g
-        'c_mag_exp': 0.00602/1245.46/(0.2/1300),
+        ## The "average volume" of the two elemental particles in the system.
+        ## Used to scale the particle volume in calculation of the breakage rate.
+        'V1_mean' : 1e-15,
+        'V3_mean' : 1e-15,
+        ## Reduce particle number desity concentration to improve calculation stability
+        ## Default value = 1e14 
         'V_unit': 1e-12,
-        
         ## When True, use distribution data simulated using MC-bond-break methods
         'USE_MC_BOND' : False,
         'solver' : "ivp",
         
         "CORR_BETA": 1,
-        # 'alpha_prim': np.array([1e-2, 1e-2, 1e-2]),
-        'alpha_prim': np.array([1]),
+        'alpha_prim': np.array([1e-2, 1e-2, 1e-2]),
+        # 'alpha_prim': np.array([1]),
         "pl_v": 2,
         "pl_P1": 1e-2,
         "pl_P2": 1,
@@ -188,12 +187,12 @@ config = {
     
     ## Parameters which should be optimized
     'opt_params' : {
-        'corr_agg_0': {'bounds': (-8.0, -1.0), 'log_scale': True},
+        'corr_agg_0': {'bounds': (-4.0, 0.0), 'log_scale': True},
         # 'corr_agg_1': {'bounds': (-4.0, 0.0), 'log_scale': True},
         # 'corr_agg_2': {'bounds': (-4.0, 0.0), 'log_scale': True},
-        'pl_v': {'bounds': (0.1, 2.0), 'log_scale': False},
-        'pl_P1': {'bounds': (-8.0, 2.0), 'log_scale': True},
-        'pl_P2': {'bounds': (0.1, 5.0), 'log_scale': False},
+        'pl_v': {'bounds': (0.5, 2.0), 'log_scale': False},
+        'pl_P1': {'bounds': (-5.0, -1.0), 'log_scale': True},
+        'pl_P2': {'bounds': (0.3, 3.0), 'log_scale': False},
         # 'pl_P3': {'bounds': (-5.0, -1.0), 'log_scale': True},
         # 'pl_P4': {'bounds': (0.3, 3.0), 'log_scale': False},
     },

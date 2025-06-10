@@ -69,8 +69,8 @@ class OptCore():
         self.num_t_init = len(self.t_init)
         self.num_t_steps = len(self.t_vec)
         # Validate the delta_t_start_step value
-        if self.delta_t_start_step < 1 or self.delta_t_start_step >= self.num_t_steps:
-            raise Exception("The value of delta_t_start_step must be within the indices range of t_vec! and >0")
+        if self.delta_t_start_step >= self.num_t_steps:
+            raise Exception("The value of delta_t_start_step must be within the indices range of {self.t_vec}!")
         # Combine the initialization and main time vectors into a single array
         self.t_all = np.concatenate((self.t_init, self.t_vec))
         self.t_all = np.unique(self.t_all)

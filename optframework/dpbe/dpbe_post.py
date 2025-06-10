@@ -66,7 +66,7 @@ def calc_qx(self, Qx, x_uni):
     qx[1:] = np.diff(Qx) / np.diff(x_uni)
     return qx
     
-def re_calc_distribution(self, x_uni, qx=None, sum_uni=None, flag='all'):
+def re_calc_distribution(self, x_uni, qx=None, Qx=None, sum_uni=None, flag='all'):
     """
     Recalculate distribution metrics for a given DPBESolver and distribution data.
     
@@ -97,11 +97,16 @@ def re_calc_distribution(self, x_uni, qx=None, sum_uni=None, flag='all'):
                                  self.calc_Qx(x_uni, qx=qx_slice), 0, qx)
 
     else:
-        Qx_new = np.apply_along_axis(lambda sum_uni_slice: 
-                                 self.calc_Qx(x_uni, sum_uni=sum_uni_slice), 0, sum_uni)
+        if Qx is None:
+            Qx_new = np.apply_along_axis(lambda sum_uni_slice: 
+                                     self.calc_Qx(x_uni, sum_uni=sum_uni_slice), 0, sum_uni)
+        else:
+            Qx_new = Qx
         qx_new = np.apply_along_axis(lambda Qx_slice: 
                                       self.calc_qx(Qx_slice, x_uni), 0, Qx_new)
-    
+            
+    x_weibull, y_weibull = np.apply_along_axis(lambda Qx_slice: 
+                                  self.calc_weibull(Qx_slice, x_uni), 0, Qx_new)
     dim = qx_new.shape[1]
     x_10_new = np.zeros(dim)
     x_50_new = np.zeros(dim)
@@ -110,120 +115,15 @@ def re_calc_distribution(self, x_uni, qx=None, sum_uni=None, flag='all'):
         x_10_new[idx] = np.interp(0.1, Qx_new[:, idx], x_uni)
         x_50_new[idx] = np.interp(0.5, Qx_new[:, idx], x_uni)
         x_90_new[idx] = np.interp(0.9, Qx_new[:, idx], x_uni)
+        
     outputs = {
     'qx': qx_new,
     'Qx': Qx_new,
     'x_10': x_10_new,
     'x_50': x_50_new,
     'x_90': x_90_new,
-    }
-    
-    if flag == 'all':
-        return outputs.values()
-    else:
-        flags = flag.split(',')
-        return tuple(outputs[f.strip()] for f in flags if f.strip() in outputs)
-    
-## Return particle size distribution on fixed grid 
-def return_distribution_old(self, comp='all', t=0, N=None, flag='all', rel_q=False):
-    """
-    Returns the results of Volume-based PSD(Particle density distribution) of a time step.
-    
-    Parameters
-    ----------
-    comp : `str`, optional
-        Which particles are counted. The case for a specific component has not yet been coded.
-    t : `int`, optional
-        Time step to return.
-    N : `array_like`, optional
-        Array holding the calculated particle number distribution. 
-        If is not provided, use the one from the class instance * ``pop.N( )``.
-    flag: `str`, optional
-        Which data form the PSD is returned. Default is 'all'. Options include:
-        - 'x_uni': Unique particle diameters(unique particle size class)
-        - 'q3': Volumen density distribution
-        - 'Q3': Cumulative distribution
-        - 'x_10': Particle size corresponding to 10% cumulative distribution
-        - 'x_50': Particle size corresponding to 50% cumulative distribution
-        - 'x_90': Particle size corresponding to 90% cumulative distribution
-        - 'sumvol_uni': Cumulative particle volumen on each particle size class
-        - 'all': Returns all the above data
-    
-    """
-    def unique_with_tolerance(V, tol=1e-3):
-        ## When using `uni_grid`, it was found that some particles with the same volume are 
-        ## treated as having different volumes due to floating-point precision issues. 
-        ## Therefore, `np.isclose` needs to be used for comparing floating-point numbers.
-        V_sorted = np.sort(V)
-        V_unique = [V_sorted[0]]
-        
-        for V_val in V_sorted[1:]:
-            if not np.isclose(V_val, V_unique[-1], atol=tol*V_sorted[0], rtol=0):
-                V_unique.append(V_val)
-        return np.array(V_unique)
-    # If no N is provided use the one from the class instance
-    if N is None:
-        N = self.N
-    
-    # Extract unique values that are NOT -1 (border)
-    if self.disc == 'geo':
-        v_uni = np.setdiff1d(self.V,[-1])
-    else:
-        v_uni = unique_with_tolerance(v_uni)
-    q3 = np.zeros(len(v_uni))
-    x_uni = np.zeros(len(v_uni))
-    sumvol_uni = np.zeros(len(v_uni))
-    
-    if comp == 'all':
-        # Loop through all entries in V and add volume concentration to specific entry in sumvol_uni
-        if self.dim == 1:
-            for i in range(self.NS):
-                # if self.V[i] in v_uni:
-                sumvol_uni[v_uni == self.V[i]] += self.V[i]*N[i,t] 
-                    
-        if self.dim == 2:
-            for i in range(self.NS):
-                for j in range(self.NS):
-                    # if self.V[i,j] in v_uni:
-                    sumvol_uni[v_uni == self.V[i,j]] += self.V[i,j]*N[i,j,t]
-
-        if self.dim == 3:
-            for i in range(self.NS):
-                for j in range(self.NS):
-                    for k in range(self.NS):
-                        # if self.V[i,j,k] in v_uni:
-                        sumvol_uni[v_uni == self.V[i,j,k]] += self.V[i,j,k]*N[i,j,k,t]
-        ## Preventing division by zero
-        sumvol_uni[sumvol_uni<0] = v_uni[1] * 1e-3
-        ## Convert unit m into um
-        sumvol_uni *= 1e18
-        sumV = np.sum(sumvol_uni)
-        # Calculate diameter array
-        x_uni[1:]=(6*v_uni[1:]/np.pi)**(1/3)*1e6
-        
-        # Calculate sum and density distribution
-        Q3 = np.cumsum(sumvol_uni)/sumV
-        q3[1:] = np.diff(Q3) / np.diff(x_uni)
-        
-        # Retrieve x10, x50 and x90 through interpolation
-        x_10=np.interp(0.1, Q3, x_uni)
-        x_50=np.interp(0.5, Q3, x_uni)
-        x_90=np.interp(0.9, Q3, x_uni)
-    else:
-        print('Case for comp not coded yet. Exiting')
-        return
-    if rel_q:
-        max_q3 = max(q3)
-        if max_q3 != 0:
-            q3 = q3/max_q3
-    outputs = {
-    'x_uni': x_uni,
-    'q3': q3,
-    'Q3': Q3,
-    'x_10': x_10,
-    'x_50': x_50,
-    'x_90': x_90,
-    'sumvol_uni': sumvol_uni,
+    'x_weibull': x_weibull,
+    'y_weibull': y_weibull,
     }
     
     if flag == 'all':
@@ -382,6 +282,8 @@ def return_distribution(self, comp='all', t=0, N=None, flag='all', rel_q=False, 
     x_50 = np.interp(0.5, Qx, x_uni)
     x_90 = np.interp(0.9, Qx, x_uni)
     
+    x_weibull, y_weibull = self.calc_weibull(Qx, x_uni)
+    
     if rel_q:
         max_qx = np.max(qx)
         if max_qx != 0:
@@ -395,114 +297,8 @@ def return_distribution(self, comp='all', t=0, N=None, flag='all', rel_q=False, 
         'x_50': x_50,
         'x_90': x_90,
         'sum_uni': sum_uni,
-    }
-    
-    if flag == 'all':
-        return outputs.values()
-    else:
-        flags = flag.split(',')
-        return tuple(outputs[f.strip()] for f in flags if f.strip() in outputs)
-
-
-def return_num_distribution(self, comp='all', t=0, N=None, flag='all', rel_q=False):
-    """
-    Returns the results of Number-based PSD(Particle density distribution) of a time step.
-    
-    Parameters
-    ----------
-    comp : `str`, optional
-        Which particles are counted. The case for a specific component has not yet been coded.
-    t : `int`, optional
-        Time step to return.
-    N : `array_like`, optional
-        Array holding the calculated particle number distribution. 
-        If is not provided, use the one from the class instance * ``pop.N( )``.
-    flag: `str`, optional
-        Which data form the PSD is returned. Default is 'all'. Options include:
-        - 'x_uni': Unique particle diameters(unique particle size class)
-        - 'q0': Number density distribution
-        - 'Q0': Cumulative distribution
-        - 'x_10': Particle size corresponding to 10% cumulative distribution
-        - 'x_50': Particle size corresponding to 50% cumulative distribution
-        - 'x_90': Particle size corresponding to 90% cumulative distribution
-        - 'sumN_uni': Cumulative particle concentration on each particle size class
-        - 'all': Returns all the above data
-    
-    """
-    def unique_with_tolerance(V, tol=1e-3):
-        ## When using `uni_grid`, it was found that some particles with the same volume are 
-        ## treated as having different volumes due to floating-point precision issues. 
-        ## Therefore, `np.isclose` needs to be used for comparing floating-point numbers.
-        V_sorted = np.sort(V)
-        V_unique = [V_sorted[0]]
-        
-        for V_val in V_sorted[1:]:
-            if not np.isclose(V_val, V_unique[-1], atol=tol*V_sorted[0], rtol=0):
-                V_unique.append(V_val)
-        return np.array(V_unique)
-    # If no N is provided use the one from the class instance
-    if N is None:
-        N = self.N
-    
-    # Extract unique values that are NOT -1 (border)
-    if self.disc == 'geo':
-        v_uni = np.setdiff1d(self.V,[-1])
-    else:
-        v_uni = unique_with_tolerance(v_uni)
-
-    q0 = np.zeros(len(v_uni))
-    x_uni = np.zeros(len(v_uni))
-    sumN_uni = np.zeros(len(v_uni))
-    
-    if comp == 'all':
-        # Loop through all entries in V and add number concentration to specific entry in sumN_uni
-        if self.dim == 1:
-            for i in range(self.NS):
-                if float_in_list(self.V[i], v_uni) and (not N[i,t] < 0):
-                    sumN_uni[v_uni == self.V[i]] += N[i,t] 
-                    
-        if self.dim == 2:
-            for i in range(self.NS):
-                for j in range(self.NS):
-                    if float_in_list(self.V[i,j], v_uni) and (not N[i,j,t] < 0):
-                        sumN_uni[v_uni == self.V[i,j]] += N[i,j,t]
-
-        if self.dim == 3:
-            for i in range(self.NS):
-                for j in range(self.NS):
-                    for k in range(self.NS):
-                        if float_in_list(self.V[i,j,k], v_uni) and (not N[i,j,t] < 0):
-                            sumN_uni[v_uni == self.V[i,j,k]] += N[i,j,k,t]
-        sumN_uni[sumN_uni<0] = 0                    
-        sumN = np.sum(sumN_uni)
-        # Calculate diameter array and convert into mm
-        x_uni[1:]=(6*v_uni[1:]/np.pi)**(1/3)*1e6
-        
-        # Calculate sum and density distribution
-        Q0 = np.cumsum(sumN_uni)/sumN
-        q0[1:] = np.diff(Q0) / np.diff(x_uni)
-        
-        # Retrieve x10, x50 and x90 through interpolation
-        x_10=np.interp(0.1, Q0, x_uni)
-        x_50=np.interp(0.5, Q0, x_uni)
-        x_90=np.interp(0.9, Q0, x_uni)
-        
-    else:
-        print('Case for comp not coded yet. Exiting')
-        return
-    if rel_q:
-        max_q0 = max(q0)
-        if max_q0 != 0:
-            q0 = q0/max_q0
-            
-    outputs = {
-    'x_uni': x_uni,
-    'q0': q0,
-    'Q0': Q0,
-    'x_10': x_10,
-    'x_50': x_50,
-    'x_90': x_90,
-    'sumN_uni': sumN_uni,
+        'x_weibull': x_weibull,
+        'y_weibull': y_weibull
     }
     
     if flag == 'all':
@@ -516,6 +312,7 @@ def return_N_t(self,t=None):
     
     # 1-D case
     if self.dim == 1:
+        self.N[0,:] = 0.0
         if t is None:
             return np.sum(self.N,axis=0)
         else:
@@ -523,6 +320,7 @@ def return_N_t(self,t=None):
         
     # 2-D case    
     elif self.dim == 2:
+        self.N[0,0,:] = 0.0
         if t is None:
             return np.sum(self.N,axis=(0,1))
         else:
@@ -530,6 +328,7 @@ def return_N_t(self,t=None):
     
     # 3-D case    
     elif self.dim == 3:
+        self.N[0,0,0,:] = 0.0
         if t is None:
             return np.sum(self.N,axis=(0,1,2))
         else:
@@ -588,3 +387,26 @@ def calc_mom_r_t(self):
 ## Save Variables to file:
 def save_vars(self,file):
     np.save(file,vars(self))
+    
+## Caculate Weibull distribution
+def calc_weibull(self, Q=None, x=None, ATOL=1e-10):
+    x_ = y_ = None
+
+    if Q is not None:
+        y_ = np.zeros_like(Q)
+        valid_Q = (Q > ATOL) & (Q < 1 - ATOL)
+        y_[valid_Q] = np.log(-np.log(1 - Q[valid_Q]))
+
+    if x is not None:
+        x_ = np.zeros_like(x)
+        valid_x = x > 0
+        x_[valid_x] = np.log(x[valid_x])
+
+    if x is not None and Q is not None:
+        valid = (x > 0) & (Q > ATOL) & (Q < 1 - ATOL)
+        x_ = np.zeros_like(x)
+        y_ = np.zeros_like(Q)
+        x_[valid] = np.log(x[valid])
+        y_[valid] = np.log(-np.log(1 - Q[valid]))
+
+    return x_, y_

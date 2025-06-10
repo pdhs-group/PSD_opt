@@ -99,49 +99,6 @@ def generate_nonuniform_coords(min_val, max_val, num_points):
     log_coords = np.linspace(log_min, log_max, num_points)
     return np.power(10, log_coords)
 
-# def process_data(merged_data, measurement_count):
-#     # Sort the time labels to ensure chronological order
-#     sorted_time_labels = sorted(merged_data.keys(), key=extract_minutes)
-
-#     # Create 3D arrays for each type of measurement
-#     Q_x_array = np.zeros((measurement_count, len(sorted_time_labels), len_data))
-#     q_lnx_array = np.zeros((measurement_count, len(sorted_time_labels), len_data))
-#     q_x_array = np.zeros((measurement_count, len(sorted_time_labels), len_data))
-#     x_array = np.zeros((measurement_count, len(sorted_time_labels), len_data))
-#     xm_array = np.zeros((measurement_count, len(sorted_time_labels), len_data))
-    
-#     for time_label in sorted_time_labels:
-#         measurements = merged_data[time_label]
-#         Q_x = measurements['Q(x)']
-#         q_lnx = measurements['q(lnx)']
-#         x = measurements['x']
-#         xm = measurements['xm']
-
-#         for i in range(measurement_count):
-#             Q_x_array[i, sorted_time_labels.index(time_label), :] = Q_x[i]
-#             q_lnx_array[i, sorted_time_labels.index(time_label), :] = q_lnx[i]
-#             x_array[i, sorted_time_labels.index(time_label), :] = x[i]
-#             xm_array[i, sorted_time_labels.index(time_label), :] = xm[i]
-#     q_x_array[:,:,1:] = q_lnx_array[:,:,1:] / xm_array[:,:,1:]
-#     # Find the global min and max values for x and xm
-#     x_min, x_max = np.min(x_array), np.max(x_array)
-#     xm_min, xm_max = np.min(xm_array[np.nonzero(xm_array)]), np.max(xm_array)
-    
-#     # Generate new coordinates
-#     new_xm_coords = np.zeros(200)
-#     new_x_coords = generate_nonuniform_coords(x_min, x_max, 200)
-#     new_xm_coords[1:] = generate_nonuniform_coords(xm_min, xm_max, 199)
-#     Q_x_int_array = interpolate_data(Q_x_array, x_array, new_x_coords)
-#     q_x_int_array = interpolate_data(q_x_array, xm_array, new_xm_coords)
-#     ## Theoretically, q_x also needs to be normalized, 
-#     ## but it needs to be integrated, which will cause a larger error!!!
-#     for i in range(Q_x_int_array.shape[0]):
-#         for j in range(Q_x_int_array.shape[1]):
-#             scale = Q_x_int_array[i,j,199]
-#             Q_x_int_array[i,j,:] /= scale
-    
-#     return Q_x_int_array, q_x_int_array, new_x_coords, new_xm_coords, sorted_time_labels
-
 def process_data_xQ(merged_data, measurement_count):
     # Sort the time labels to ensure chronological order
     sorted_time_labels = sorted(merged_data.keys(), key=extract_minutes)
@@ -164,68 +121,6 @@ def process_data_xQ(merged_data, measurement_count):
     
     return x_avg_array, Q_x_ref, sorted_time_labels
 
-# def save_interpolated_data(Q_x_int_array, q_x_int_array, x_arrays, xm_arrays, sorted_time_labels, measurement_count):
-#     # Extract minutes from sorted_time_labels and convert to '%H:%M:%S' format
-#     sorted_minutes = [extract_minutes(label) for label in sorted_time_labels]
-#     formatted_time_labels = [str(timedelta(minutes=minutes)) for minutes in sorted_minutes]
-    
-#     # Create a list to store dataframes
-#     Q_x_dfs = []
-#     q_x_dfs = []
-
-#     for i in range(measurement_count):
-#         # Create dataframe for Q_x_int_array
-#         Q_x_df = pd.DataFrame(Q_x_int_array[i].T, index=x_arrays, columns=formatted_time_labels)
-#         Q_x_df.index.name = 'Circular Equivalent Diameter'
-#         Q_x_dfs.append(Q_x_df)
-
-#         # Create dataframe for q_x_int_array
-#         q_x_df = pd.DataFrame(q_x_int_array[i].T, index=xm_arrays, columns=formatted_time_labels)
-#         q_x_df.index.name = 'Circular Equivalent Diameter'
-#         q_x_dfs.append(q_x_df)
-#         save_path = os.path.join(r"C:\Users\px2030\Code\Ergebnisse\BatchDaten\post", f"Batch_600_Q3_Graphite_{i}.xlsx")
-#         with pd.ExcelWriter(save_path) as writer:
-#             Q_x_df.to_excel(writer, sheet_name='Q_x')
-#             q_x_df.to_excel(writer, sheet_name='q_x')
-#     return Q_x_dfs, q_x_dfs
-
-def save_average_xQ_data_old(x_avg_array, Q_x_ref, sorted_time_labels):
-    # Extract minutes from sorted_time_labels and convert to '%H:%M:%S' format
-    sorted_minutes = [extract_minutes(label) for label in sorted_time_labels]
-    formatted_time_labels = [str(timedelta(minutes=minutes)) for minutes in sorted_minutes]
-    
-    # Create dataframe for Q_x_int_array
-    x_Q_df = pd.DataFrame(x_avg_array.T, index=Q_x_ref, columns=formatted_time_labels)
-    x_Q_df.index.name = 'Circular Equivalent Diameter'
-    
-    x_m = np.zeros_like(x_avg_array)
-    qx = np.zeros_like(x_avg_array)
-    x_m[:, 1:] = (x_avg_array[:, :-1] + x_avg_array[:, 1:]) / 2
-    for i in range(x_m.shape[0]):
-        qx[i, 1:] = (Q_x_ref[1:] - Q_x_ref[:-1]) / (x_avg_array[i, 1:] - x_avg_array[i, :-1])
-    xmm = x_m.mean(axis=0)    
-    q_x_df = pd.DataFrame(qx.T, index=xmm, columns=formatted_time_labels)    
-    q_x_df.index.name = 'Circular Equivalent Diameter'
-    
-    qx_int = np.zeros((qx.shape[0], len(xmm)))
-    x_mmm = x_avg_array.mean(axis=0)
-    for i in range(x_m.shape[0]):
-        f = interp1d(x_m[i, 1:], qx[i, 1:], bounds_error=False, fill_value="extrapolate")
-        qx_int[i, 1:] = f(xmm[1:])
-    qx_int[np.where(qx_int<0)] = 0.0
-    for i in range(x_m.shape[0]):
-        qx_sum = sum(qx_int[i, 1:] * (x_mmm[1:] - x_mmm[:-1]))
-        qx_int[i, 1:] = qx_int[i, 1:] / qx_sum
-    qx_int_df = pd.DataFrame(qx_int.T, index=xmm, columns=formatted_time_labels)    
-    qx_int_df.index.name = 'Circular Equivalent Diameter'
-        
-    save_path = os.path.join(r"C:\Users\px2030\Code\Ergebnisse\BatchDaten\post", "Batch_600_Q0_post.xlsx")
-    with pd.ExcelWriter(save_path) as writer:
-        x_Q_df.to_excel(writer, sheet_name='Q_x')
-        q_x_df.to_excel(writer, sheet_name='q_x')
-        qx_int_df.to_excel(writer, sheet_name='q_x_int')
-    return x_Q_df
-
 def save_average_xQ_data(x_avg_array, Q_x_ref, sorted_time_labels):
     # Convert time labels from minutes to formatted string
     sorted_minutes = [extract_minutes(label) for label in sorted_time_labels]
@@ -237,7 +132,7 @@ def save_average_xQ_data(x_avg_array, Q_x_ref, sorted_time_labels):
 
     # Use mean x values as common interpolation points
     # x_m = x_avg_array.mean(axis=0)
-    x_m = generate_nonuniform_grid(x_min=0.037, x_max=1, num_points=101, gamma=1.2)
+    x_m = generate_nonuniform_grid(x_min=0.037, x_max=1, num_points=30, gamma=1.5)
     Q_x_int = np.zeros((x_avg_array.shape[0], len(x_m)))
     x_volume_mean =  np.zeros(x_avg_array.shape[0])
 
@@ -248,7 +143,7 @@ def save_average_xQ_data(x_avg_array, Q_x_ref, sorted_time_labels):
             Q_vals=Q_x_ref,
             x_target=x_m[1:],
             method=interpolation_method,     #'int1d', 'pchip', 'isotonic', 'lognormal'
-            fraction=1.0
+            fraction=1
         )
 
     Q_x_int_df = pd.DataFrame(Q_x_int[:, 1:].T, index=x_m[1:], columns=formatted_time_labels)
@@ -314,7 +209,7 @@ def generate_nonuniform_grid(x_min, x_max, num_points, gamma=2.0, reverse=False)
     
     return x
 
-def interpolate_Qx(x_vals, Q_vals, x_target, method="pchip", fraction=0.9):
+def interpolate_Qx(x_vals, Q_vals, x_target, method="int1d", fraction=1):
     """
     Interpolate Q(x) with various methods, and clip to [0, 1].
 
@@ -347,7 +242,7 @@ def interpolate_Qx(x_vals, Q_vals, x_target, method="pchip", fraction=0.9):
     #     Q_iso = ir.fit_transform(x_sub, Q_sub)
     #     f_base = interp1d(x_sub, Q_iso, bounds_error=False, fill_value=np.nan)
     elif method == "lognormal":
-        f, (sigma, mu) = fit_lognormal_cdf(x_sub, Q_sub, method=fit_lognormal_method, weight_mode='uniform')
+        f, (sigma, mu) = fit_lognormal_cdf(x_sub, Q_sub, method="curve_fit", weight_mode='uniform')
     else:
         raise ValueError(f"Unknown interpolation method: {method}")
 
@@ -358,15 +253,15 @@ def interpolate_Qx(x_vals, Q_vals, x_target, method="pchip", fraction=0.9):
     # print(np.mean(abs(Q_sub-Q_test)))
     # Clip to [0, 1]
     # Qx_vals[Qx_vals < 0] = 0.0
-    # Qx_vals /= Qx_vals[-1]
+    Qx_vals /= Qx_vals[-1]
     Qx_vals = np.clip(Qx_vals, 0.0, 1.0)
     if method != "lognormal":
-        dQ = np.diff(np.insert(Qx_vals, 0, 0.0))
-        x_volume_mean_val = np.sum(dQ*x_target**3)**(1/3)
+        # dQ = np.diff(np.insert(Qx_vals, 0, 0.0))
+        # x_volume_mean_val = np.sum(dQ*x_target**3)**(1/3)
         
-        # dx = np.diff(x_target)
-        # num = (Qx_vals[1:] - Qx_vals[:-1]) * (x_target[1:]**4 - x_target[:-1]**4) / (4.0*dx)
-        # x_volume_mean_val = np.sum(num)**(1/3)
+        dx = np.diff(x_target)
+        num = (Qx_vals[1:] - Qx_vals[:-1]) * (x_target[1:]**4 - x_target[:-1]**4) / (4.0*dx)
+        x_volume_mean_val = np.sum(num)**(1/3)
     else:
         x_volume_mean_val = np.exp( mu + 1.5*sigma**2 )
     
@@ -544,43 +439,90 @@ def plot_Qx_time_G_profiles(Q_x_int_df_list):
          
 def calc_n_for_G(x_log_mean, G_flag):
     if G_flag == "Median_Integral":
-        G_datas = [32.0404, 39.1135, 41.4924, 44.7977]
+        G_datas = [32.0404, 39.1135, 41.4924, 44.7977, 45.6443]
     elif G_flag == "Median_LocalStirrer":
-        G_datas = [104.014, 258.081, 450.862, 623.357]
+        G_datas = [104.014, 258.081, 450.862, 623.357, 647.442]
     elif G_flag == "Mean_Integral":
-        G_datas = [87.2642, 132.668, 143.68, 183.396]
+        G_datas = [87.2642, 132.668, 143.68, 183.396, 185.225]
     elif G_flag == "Mean_LocalStirrer":
-        G_datas = [297.136, 594.268, 890.721, 1167.74]
+        G_datas = [297.136, 594.268, 890.721, 1167.74, 1284.46]
     else:
         raise ValueError(f"Unknown G_flag: {G_flag}")
         
     G_values = np.array(G_datas, dtype=float)
     times = np.array([0, 5, 10, 45], dtype=float)     
-    x_mean_array = np.zeros((5,4))
+    x_mean_array = np.zeros((5, 4))
     for i, x_mean in enumerate(x_log_mean):
         x_mean_array[i, :] = x_mean[:4]
         
     records = []
     for i, G in enumerate(G_values):
-        for j in range(1, len(times)):               # 5,10,45 min
-            dt   = times[j] - times[0]               # always 0→t_j
+        for j in range(1, len(times)):  # 5, 10, 45 min
+            dt = times[j] - times[0]
             rate = - (x_mean_array[i, j] - x_mean_array[i, 0]) / dt
+            # rate = - (x_mean_array[i, j] - x_mean_array[:, 0]).mean() / dt
             records.append({
-                'group': i,             
-                'time' : times[j],       # 5 / 10 / 45
-                'G'    : G,
-                'rate' : rate
+                'group': i,
+                'time': times[j],
+                'G': G,
+                'rate': rate
             })
+
     df = pd.DataFrame(records)
     df = df[df['rate'] > 0].copy()
     df['log_rate'] = np.log(df['rate'])
-    df['log_G']    = np.log(df['G'])
+    df['log_G'] = np.log(df['G'])
+
     model = smf.ols("log_rate ~ log_G + C(time)", data=df).fit()
     print(model.summary())
+
     n_est = model.params['log_G']
     ci_lo, ci_hi = model.conf_int().loc['log_G']
     print(f"\nEstimated n = {n_est:.4f}  (95 % CI: {ci_lo:.4f} – {ci_hi:.4f})")
-    
+
+    # === Plotting ===
+    plt.figure(figsize=(8, 6), dpi=150)
+    time_markers = {5: 'o', 10: 's', 45: 'D'}
+    time_colors = {5: 'tab:blue', 10: 'tab:orange', 45: 'tab:green'}
+
+    # Plot scatter points
+    for time_val in [5, 10, 45]:
+        sub_df = df[df['time'] == time_val]
+        plt.scatter(
+            sub_df['log_G'], sub_df['log_rate'],
+            label=f"{time_val} min",
+            marker=time_markers[time_val],
+            color=time_colors[time_val]
+        )
+
+    # Plot regression lines for each time
+    x_fit = np.linspace(df['log_G'].min() - 0.2, df['log_G'].max() + 0.2, 200)
+
+    # Time 5 min: baseline
+    intercept_5 = model.params['Intercept']
+    y_fit_5 = n_est * x_fit + intercept_5
+    plt.plot(x_fit, y_fit_5, linestyle='--', color=time_colors[5], label="Fit: 5 min")
+
+    # Time 10 min
+    offset_10 = model.params.get('C(time)[T.10.0]', 0.0)
+    intercept_10 = intercept_5 + offset_10
+    y_fit_10 = n_est * x_fit + intercept_10
+    plt.plot(x_fit, y_fit_10, linestyle='--', color=time_colors[10], label="Fit: 10 min")
+
+    # Time 45 min
+    offset_45 = model.params.get('C(time)[T.45.0]', 0.0)
+    intercept_45 = intercept_5 + offset_45
+    y_fit_45 = n_est * x_fit + intercept_45
+    plt.plot(x_fit, y_fit_45, linestyle='--', color=time_colors[45], label="Fit: 45 min")
+
+    plt.xlabel("log(G)")
+    plt.ylabel("log(rate)")
+    plt.title(f"log(rate) vs log(G) — {G_flag}")
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
     return df, x_mean_array
         
 def Q0_to_Q3(d, Q0, use_bin_average_volume=False):
@@ -604,8 +546,8 @@ def Q0_to_Q3(d, Q0, use_bin_average_volume=False):
 
 if __name__ == '__main__':
     len_data = 201 
-    interpolation_method = "lognormal"     #'int1d', 'pchip', 'isotonic', 'lognormal'
-    fit_lognormal_method = "curve_fit" #'curve_fit', 'zscore', 'global_opt'
+    interpolation_method = "int1d"     #'int1d', 'pchip', 'isotonic', 'lognormal'
+    # fit_lognormal_method = "curve_fit" #'curve_fit', 'zscore', 'global_opt'
     # Usage
     base_path = r"C:\Users\px2030\Code\Ergebnisse\BatchDaten"
     # raw_file = "Batch_1800_Q0.xlsx"
@@ -616,7 +558,17 @@ if __name__ == '__main__':
         "Batch_1500_Q0.xlsx",
         "Batch_1800_Q0.xlsx",
     ]
+    
     x_int_list = []
+    for raw_file in batch_files:
+        filename_base, ext = os.path.splitext(os.path.basename(raw_file))
+        file_path = os.path.join(base_path, raw_file)
+        data, measurement_count = load_excel_data(file_path)
+        x_avg_array, Q_x_ref, sorted_time_labels = process_data_xQ(data, measurement_count)
+        x_int_list.append(x_avg_array[0,:])
+        
+    x_int_avg = np.mean(x_int_list, axis=0)    
+    
     Q_x_int_df_list = []
     Vmean_list = []
     Vmean2_list = []
@@ -625,12 +577,8 @@ if __name__ == '__main__':
         filename_base, ext = os.path.splitext(os.path.basename(raw_file))
         file_path = os.path.join(base_path, raw_file)
         data, measurement_count = load_excel_data(file_path)
-        # Q_x_arrays, q_x_array, x_arrays, xm_arrays, sorted_time_labels = process_data(data, measurement_count)
-        # Q_x_dfs, q_x_dfs = save_interpolated_data(Q_x_arrays, q_x_array, x_arrays, xm_arrays, sorted_time_labels,measurement_count)
-        # Now `data` contains all the extracted information
-        
         x_avg_array, Q_x_ref, sorted_time_labels = process_data_xQ(data, measurement_count)
-        x_int_list.append(x_avg_array[0,:])
+        x_avg_array[0, :] = x_int_avg
         x_Q_df, Q_x_int_df, qx_int_df, x_volume_mean = save_average_xQ_data(x_avg_array, Q_x_ref, sorted_time_labels)
         Q_x_int_df_list.append(Q_x_int_df)
         plot_xQ_profiles(x_Q_df, Q_x_int_df, qx_int_df)
@@ -650,24 +598,24 @@ if __name__ == '__main__':
         x_log_mean.append(x_volume_mean)
         
         
-    plot_Qx_time_G_profiles(Q_x_int_df_list)
+    # plot_Qx_time_G_profiles(Q_x_int_df_list)
     
     # x_int_avg = np.mean(x_int_list, axis=0) * 1e-6     # convert the unit from um to m
     # Q3_ref = Q0_to_Q3(x_int_avg, Q_x_ref, False)
     # dict_Qx={'Q_PSD':Q3_ref,'x_PSD':x_int_avg, 'r0_001':x_int_avg[0], 'r0_005':x_int_avg[1], 'r0_01':x_int_avg[2]}
     
-    Q_columns = [df["0:00:00"] for df in Q_x_int_df_list]
-    Q_concat = pd.concat(Q_columns, axis=1)
-    Q_x_int_mean = np.array(Q_concat.mean(axis=1))
-    x_int = np.array(Q_concat.index) * 1e-6
-    Q3_ref = Q0_to_Q3(x_int, Q_x_int_mean, False)
-    dict_Qx={'Q_PSD':Q3_ref,'x_PSD':x_int, 'r0_001':x_int[0], 'r0_005':x_int[1], 'r0_01':x_int[2]}
+    # Q_columns = [df["0:00:00"] for df in Q_x_int_df_list]
+    # Q_concat = pd.concat(Q_columns, axis=1)
+    # Q_x_int_mean = np.array(Q_concat.mean(axis=1))
+    # x_int = np.array(Q_concat.index) * 1e-6
+    # Q3_ref = Q0_to_Q3(x_int, Q_x_int_mean, False)
+    # dict_Qx={'Q_PSD':Q3_ref,'x_PSD':x_int, 'r0_001':x_int[0], 'r0_005':x_int[1], 'r0_01':x_int[2]}
     
     # dist_path = os.path.join(base_path, "Batch_int_PSD.npy")
     # np.save(dist_path,dict_Qx)
     
-    # G_flag = "Mean_LocalStirrer"
-    # df, x_mean_array = calc_n_for_G(x_log_mean, G_flag)
+    G_flag = "Mean_LocalStirrer"
+    df, x_mean_array = calc_n_for_G(x_log_mean, G_flag)
     
     
     

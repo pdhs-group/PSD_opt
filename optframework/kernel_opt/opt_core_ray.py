@@ -125,8 +125,8 @@ class OptCoreRay(OptCore, tune.Trainable):
         # This is done because Ray Tune introduces a delay when managing and communicating between actors.
         # If the iteration is too fast, it may cause unknown errors where actors are repeatedly created
         # and discarded, leading to a large number of ineffective operations and impacting system performance.
-        if execution_time < 2 and self.actor_wait:
-            time.sleep(2 - execution_time)
+        if execution_time < 5 and self.actor_wait:
+            time.sleep(5 - execution_time)
         return {"loss": loss, "reuse_num": self.reuse_num, "exp_paths": self.exp_data_paths}
     def save_checkpoint(self, checkpoint_dir):
         """

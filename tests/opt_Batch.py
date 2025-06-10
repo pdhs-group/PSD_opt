@@ -468,8 +468,12 @@ def add_opt_params_mean(results):
     return results
     
 def visualize_opt_distribution(t_frame=-1, x_uni_exp=None, data_exp=None, 
-                               ax=None, fig=None, index=0):
-    x_uni, q0, Q0, sum_uni = opt.core.p.return_distribution(t=t_frame, flag='x_uni, qx, Qx,sum_uni', q_type='q0')
+                               ax=None, fig=None, index=0, plot='Qx'):
+    x_uni, q0, Q0, sum_uni, x_weibull, y_weibull = opt.core.p.return_distribution(t=t_frame, 
+                                                            flag='x_uni, qx, Qx,sum_uni, x_weibull, y_weibull', q_type='q0')
+    x_weibull_exp, _ = opt.core.calc_weibull(x=x_uni_exp)
+    valid_mod = y_weibull != 0
+    valid_exp = data_exp[:, t_frame] != 0
     if opt.core.smoothing:
         kde = opt.core.KDE_fit(x_uni[1:], sum_uni[1:])
         q0 = opt.core.KDE_score(kde, x_uni_exp[1:])
@@ -478,11 +482,25 @@ def visualize_opt_distribution(t_frame=-1, x_uni_exp=None, data_exp=None,
         q0 = q0 / Q0.max()
         x_uni = x_uni_exp
     fig, ax = plt.subplots()
-    ax, fig = pt.plot_data(x_uni[:30], Q0[:30], fig=fig, ax=ax,
+    if plot == 'weibull':
+        x_mod = x_weibull[valid_mod]
+        y_mod = y_weibull[valid_mod]
+        x_exp = x_weibull_exp[valid_exp]
+        y_exp = data_exp[valid_exp, t_frame]
+    else:
+        x_mod = x_uni
+        x_exp = x_uni_exp
+        y_exp = data_exp[:, t_frame]
+        if plot == 'qx':
+            y_mod = q0
+        elif plot == 'Qx':
+            y_mod = Q0
+
+    ax, fig = pt.plot_data(x_mod,y_mod, fig=fig, ax=ax,
                            xlbl=r'Agglomeration size $x_\mathrm{A}$ / $-$',
                            ylbl='number distribution of agglomerates $q0$ / $-$',
                            lbl='opt',clr='b',mrk='o')
-    ax, fig = pt.plot_data(x_uni_exp[:30], data_exp[:30, t_frame], fig=fig, ax=ax,
+    ax, fig = pt.plot_data(x_exp, y_exp, fig=fig, ax=ax,
                            xlbl=r'Agglomeration size $x_\mathrm{A}$ / $-$',
                            ylbl='number distribution of agglomerates $q0$ / $-$',
                            lbl='exp',clr='r',mrk='^')
@@ -506,11 +524,11 @@ def visualize_opt_distribution(t_frame=-1, x_uni_exp=None, data_exp=None,
 if __name__ == '__main__':
     base_path = Path(os.getcwd()).resolve()
     config_path = os.path.join(base_path, "config", "opt_Batch_config.py")
-    data_dir = "int1d"  ## "int1d", "lognormal_curvefit", "lognormal_zscore"
+    data_dir = "lognormal_curvefit"  ## "int1d", "lognormal_curvefit", "lognormal_zscore"
     # tmp_path = os.environ.get('TMP_PATH')
     # test_group = os.environ.get('TEST_GROUP')
     # data_path = os.path.join(tmp_path, "data", data_dir)
-    data_path = os.path.join(base_path, "data", data_dir)
+    data_path = os.path.join(base_path, "data", "lognormal_curvefit")
     opt = OptBase(config_path=config_path, data_path=data_path)
     data_names_list = [
         "Batch_600_Q0_post.xlsx",
@@ -523,12 +541,12 @@ if __name__ == '__main__':
     G_flag_list = [
         # "Median_Integral", 
         # "Median_LocalStirrer", 
-        # "Mean_Integral", 
-        "Mean_LocalStirrer"
+        "Mean_Integral", 
+        # "Mean_LocalStirrer"
     ]
     n_iter = opt.core.n_iter
-    n_iter_list = [400, 800, 1600]
-    # n_iter_list = [800]
+    # n_iter_list = [400, 800, 1600]
+    n_iter_list = [200, 400, 800, 1600, 2400, 4000, 6400]
     prev = 0
     result_dir = os.path.join(base_path, "cv_results")
     # result_dir = os.path.join(os.environ.get('STORAGE_PATH'), f"cv_results_{test_group}")
@@ -545,22 +563,22 @@ if __name__ == '__main__':
     #     opt.core.resume_unfinished = resume_flag
         # for G_flag in G_flag_list:
         #     if G_flag == "Median_Integral":
-        #         n = 3.3700
+        #         n = 2.6428
         #         G_datas = [32.0404, 39.1135, 41.4924, 44.7977, 45.6443]
         #         # Estimated n = 3.3700  (95 % CI: 0.7892 – 5.9507)
         #         # without 1800: Estimated n = 4.0104  (95 % CI: 0.6065 – 7.4143)
         #     elif G_flag == "Median_LocalStirrer":
-        #         n = 0.6417
+        #         n = 0.4723
         #         G_datas = [104.014, 258.081, 450.862, 623.357, 647.442]
         #         # Estimated n = 0.6417  (95 % CI: 0.1699 – 1.1135)
         #         # without 1800: Estimated n = 0.7435  (95 % CI: 0.1290 – 1.3580)
         #     elif G_flag == "Mean_Integral":
-        #         n = 1.6477
+        #         n = 1.1746
         #         G_datas = [87.2642, 132.668, 143.68, 183.396, 185.225]
         #         # Estimated n = 1.6477  (95 % CI: 0.5048 – 2.7906)
         #         # without 1800: Estimated n = 1.9767  (95 % CI: 0.4946 – 3.4588)
         #     elif G_flag == "Mean_LocalStirrer":
-        #         n = 0.8154
+        #         n = 0.5917
         #         G_datas = [297.136, 594.268, 890.721, 1167.74, 1284.46]
         #         # G_datas = [297.136, 594.268]
         #         # Estimated n = 0.8154  (95 % CI: 0.2074 – 1.4235)
@@ -575,36 +593,28 @@ if __name__ == '__main__':
     # ray.shutdown()
     
     # Load everything
-    result_dir = os.path.join(r"C:\Users\px2030\Code\Ergebnisse\Batch_opt\opt_results", "cv_results_group3")
+    result_dir = os.path.join(r"C:\Users\px2030\Code\Ergebnisse\Batch_opt\opt_results", "cv_results_group8")
     # result_dir = r"C:\Users\px2030\Code\PSD_opt\tests\cv_results"
     results = load_all_cv_results(result_dir, n_iter_list, data_dir, G_flag_list)
     add_opt_params_mean(results)
     # # Analyze & visualize
-    # analyze_and_plot_cv_results(results, n_iter_list, G_flag_list, result_dir)
+    analyze_and_plot_cv_results(results, n_iter_list, G_flag_list, result_dir)
     
     # calculate PBE 
-    G_flag = "Mean_LocalStirrer"
+    G_flag = "Mean_Integral"
     if G_flag == "Median_Integral":
-        n = 3.3700
+        n = 2.6428 if data_dir == "lognormal_curvefit" else 3.1896
         G_datas = [32.0404, 39.1135, 41.4924, 44.7977, 45.6443]
-        # Estimated n = 3.3700  (95 % CI: 0.7892 – 5.9507)
-        # without 1800: Estimated n = 4.0104  (95 % CI: 0.6065 – 7.4143)
     elif G_flag == "Median_LocalStirrer":
-        n = 0.6417
+        n = 0.4723 if data_dir == "lognormal_curvefit" else 0.5560
         G_datas = [104.014, 258.081, 450.862, 623.357, 647.442]
-        # Estimated n = 0.6417  (95 % CI: 0.1699 – 1.1135)
-        # without 1800: Estimated n = 0.7435  (95 % CI: 0.1290 – 1.3580)
     elif G_flag == "Mean_Integral":
-        n = 1.6477
+        n = 1.1746 if data_dir == "lognormal_curvefit" else 1.3457
         G_datas = [87.2642, 132.668, 143.68, 183.396, 185.225]
-        # Estimated n = 1.6477  (95 % CI: 0.5048 – 2.7906)
-        # without 1800: Estimated n = 1.9767  (95 % CI: 0.4946 – 3.4588)
     elif G_flag == "Mean_LocalStirrer":
-        n = 0.8154
+        n = 0.5917 if data_dir == "lognormal_curvefit" else 0.7020
         G_datas = [297.136, 594.268, 890.721, 1167.74, 1284.46]
         # G_datas = [297.136, 594.268, 890.721, 1167.74]
-        # Estimated n = 0.8154  (95 % CI: 0.2074 – 1.4235)
-        # without 1800: Estimated n = 0.9892  (95 % CI: 0.1878 – 1.7905)
     else:
         raise ValueError(f"Unknown G_flag: {G_flag}")
     known_params_list = [{'G': G_val**n} for G_val in G_datas]
@@ -612,23 +622,23 @@ if __name__ == '__main__':
     
     # Read the results of a specific group in the cross-validation, then compare all the data in that group
     # opt_params = results[G_flag][1600]['opt_params_list'][0]
-    opt_params = results[G_flag][1600]['opt_params_mean']
-    losses_mean = calc_delta_test(known_params_list, data_names_list, init_core=True, opt_params=opt_params, visual=True)
+    # opt_params = results[G_flag][1600]['opt_params_mean']
+    # losses_mean = calc_delta_test(known_params_list, data_names_list, init_core=True, opt_params=opt_params, visual=True)
     
     # Read the results of all groups in the cross-validation and compare the test data from each group.
-    # opt_params_list = results[G_flag][1600]['opt_params_list']
-    # losses = []
-    # fig, ax = plt.subplots()
-    # for i in range(len(known_params_list)):
-    #     test_data = [data_names_list[i]]
-    #     known_i = [known_params_list[i]]
-    #     opt_params = opt_params_list[i]
-    #     loss_i = calc_delta_test(known_i, test_data, init_core=True, opt_params=opt_params, 
-    #                              visual=True, fig=fig, ax=ax, index=i)
-    #     losses.append(loss_i)
-    # ax.grid('minor')
-    # # ax.set_xscale('log')
-    # plt.tight_layout()  
-    # plt.show()
+    opt_params_list = results[G_flag][6400]['opt_params_list']
+    losses = []
+    fig, ax = plt.subplots()
+    for i in range(len(known_params_list)):
+        test_data = [data_names_list[i]]
+        known_i = [known_params_list[i]]
+        opt_params = opt_params_list[i]
+        loss_i = calc_delta_test(known_i, test_data, init_core=True, opt_params=opt_params, 
+                                 visual=True, fig=fig, ax=ax, index=i)
+        losses.append(loss_i)
+    ax.grid('minor')
+    # ax.set_xscale('log')
+    plt.tight_layout()  
+    plt.show()
     
     
