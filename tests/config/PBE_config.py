@@ -4,28 +4,28 @@ config = {
     "NS": 30,  
     # Number of size classes for discretizing particle populations (grid points).
 
-    "S": 1.42,  
+    "S": 1.5,  
     # Geometric ratio used to define the spacing in the size grid for 'geo' discretization. 
 
     # "R01": 8.677468940430804e-07,
     # "R03": 8.677468940430804e-07,
-    "R01": 7.3e-8/2,  
+    "R01": 3.7e-8/2,  
     # Radius of primary NM1 particles (in meters) for uni-grid.
     # In a geometric grid, volumes are calculated as midpoints between volume edges (V_e).
     # Therefore, when using a geo-grid, the specified value here corresponds to the radius
     # of the left edge of the grid, V_e[1]. The actual primary particle size is given by 
     # V_e[1] * (1 + S) / 2, where S is the geometric spacing factor.
     
-    "R03": 7.3e-8/2,  
+    "R03": 3.7e-8/2,  
     # Radius of primary M particles (in meters).
 
-    "t_total": 20*60+1,  
+    "t_total": 120*60+1,  
     # Total simulation time in seconds.
 
-    "t_write": 1*60,  
+    "t_write": 5*60,  
     # Interval (in time steps) for writing output data (e.g., simulation results).
 
-    "process_type": "breakage",  
+    "process_type": "mix",  
     # Type of process being simulated.
     # "agglomeration": pure agglomeration
     # "breakage": pure breakage
@@ -33,8 +33,8 @@ config = {
 
     "solver": "ivp",  
     # Numerical solver used to integrate the PBE.
-    'c_mag_exp': 5e-5*1000/1800,
-    "V_unit": 1e-6,  
+    'c_mag_exp': 0.00602/1245.46/(0.2/1300),
+    "V_unit": 1e-12,  
     # Volume unit used for normalization of N (particle number concentration). 
     # Setting a smaller value generally does not affect the relative relationships between N (i.e., the PSD),
     # but helps reduce the stiffness of matrices during calculations, leading to faster solver convergence.
@@ -54,10 +54,10 @@ config = {
     "DIST3_path": None,  
     # File path to the PSD data for M particles. If None, default location will be used.
 
-    "DIST1_name": "Stufe1_int.npy",  
+    "DIST1_name": "Batch_int_PSD.npy",  
     # Name of the file containing the PSD for NM1 particles.
 
-    "DIST3_name": "Stufe1_int.npy",  
+    "DIST3_name": "Batch_int_PSD.npy",  
     # Name of the file containing the PSD for M particles.
 
     "COLEVAL": 1,  
@@ -75,7 +75,7 @@ config = {
     "aggl_crit": 100,  
     # Critical particle size for agglomeration. Agglomeration will be limited to particles larger than this size.
 
-    "CORR_BETA": 0,
+    "CORR_BETA": 0.0016014176378017458,
     # Correction factor for the collision frequency kernel, controlling the rate of aggregation.
 
     # 'alpha_prim': np.array([1,1,1,1]),  
@@ -91,7 +91,7 @@ config = {
     # Flag that determines which model to use for calculating the fragment distribution function.
     # Can be checked in dpbe_core.py's `calc_int_B_F`.
 
-    "pl_v": 2.0,  
+    "pl_v": 0.4448641118858375,  
     # Parameter in fragment distribution function.
 
     ### To ensure the monotonicity of the breakage rate, this setting has been deprecated, 
@@ -102,11 +102,11 @@ config = {
     # "V3_mean": 1e-15,  
     # Mean volume of M particles (in cubic meters).
     
-    "pl_P1": 1e-10,  
-    "pl_P2": 0.33,  
+    "pl_P1": 1.4492871908582287e-05,  
+    "pl_P2": 0.3001930649938739,  
     "pl_P3": 1e-5,  
     "pl_P4": 1,  
     # Parameters for breakage rate kernel.
-    "G": 12.45,
+    "G": 50,
 
 }

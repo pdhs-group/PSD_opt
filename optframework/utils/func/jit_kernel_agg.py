@@ -261,7 +261,7 @@ def calc_beta(COLEVAL, CORR_BETA, G, R, idx1, idx2):
         return 0.0
     # Collision frequency calculation based on COLEVAL
     if COLEVAL == 1:
-        beta = CORR_BETA * G * 2.3 * (r1 + r2) ** 3
+        beta = CORR_BETA * G * (r1 + r2) ** 3
     elif COLEVAL == 2:
         beta = CORR_BETA * 2 * 1.38e-23 * 293 * (r1 + r2) ** 2 / (3e-3 * (r1 * r2))
     elif COLEVAL == 3:

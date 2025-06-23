@@ -468,7 +468,7 @@ def add_opt_params_mean(results):
     return results
     
 def visualize_opt_distribution(t_frame=-1, x_uni_exp=None, data_exp=None, 
-                               ax=None, fig=None, index=0, plot='Qx'):
+                               ax=None, fig=None, index=0, plot='weibull'):
     x_uni, q0, Q0, sum_uni, x_weibull, y_weibull = opt.core.p.return_distribution(t=t_frame, 
                                                             flag='x_uni, qx, Qx,sum_uni, x_weibull, y_weibull', q_type='q0')
     x_weibull_exp, _ = opt.core.calc_weibull(x=x_uni_exp)
@@ -528,7 +528,7 @@ if __name__ == '__main__':
     # tmp_path = os.environ.get('TMP_PATH')
     # test_group = os.environ.get('TEST_GROUP')
     # data_path = os.path.join(tmp_path, "data", data_dir)
-    data_path = os.path.join(base_path, "data", "lognormal_curvefit")
+    data_path = os.path.join(base_path, "data", data_dir)
     opt = OptBase(config_path=config_path, data_path=data_path)
     data_names_list = [
         "Batch_600_Q0_post.xlsx",
@@ -538,12 +538,13 @@ if __name__ == '__main__':
         "Batch_1800_Q0_post.xlsx",
     ]
     
-    G_flag_list = [
-        # "Median_Integral", 
-        # "Median_LocalStirrer", 
-        "Mean_Integral", 
-        # "Mean_LocalStirrer"
-    ]
+    # G_flag_list = [
+    #     # "Median_Integral", 
+    #     "Median_LocalStirrer", 
+    #     # "Mean_Integral", 
+    #     # "Mean_LocalStirrer"
+    # ]
+    G_flag_list = ["Median_LocalStirrer"] if data_dir == "int1d" else ["Mean_Integral"]
     n_iter = opt.core.n_iter
     # n_iter_list = [400, 800, 1600]
     n_iter_list = [200, 400, 800, 1600, 2400, 4000, 6400]
@@ -593,7 +594,7 @@ if __name__ == '__main__':
     # ray.shutdown()
     
     # Load everything
-    result_dir = os.path.join(r"C:\Users\px2030\Code\Ergebnisse\Batch_opt\opt_results", "cv_results_group8")
+    result_dir = os.path.join(r"C:\Users\px2030\Code\Ergebnisse\Batch_opt\opt_results", "cv_results_group17")
     # result_dir = r"C:\Users\px2030\Code\PSD_opt\tests\cv_results"
     results = load_all_cv_results(result_dir, n_iter_list, data_dir, G_flag_list)
     add_opt_params_mean(results)
@@ -601,7 +602,7 @@ if __name__ == '__main__':
     analyze_and_plot_cv_results(results, n_iter_list, G_flag_list, result_dir)
     
     # calculate PBE 
-    G_flag = "Mean_Integral"
+    G_flag = "Median_LocalStirrer" if data_dir == "int1d" else "Mean_Integral"
     if G_flag == "Median_Integral":
         n = 2.6428 if data_dir == "lognormal_curvefit" else 3.1896
         G_datas = [32.0404, 39.1135, 41.4924, 44.7977, 45.6443]

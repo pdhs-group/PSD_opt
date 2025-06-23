@@ -15,6 +15,9 @@ from scipy.stats import norm
 from scipy.optimize import curve_fit, differential_evolution
 from scipy.special import erf
 import statsmodels.formula.api as smf
+from scipy.optimize   import minimize_scalar
+import numdifftools as nd
+from scipy.stats import chi2
 
 def load_excel_data(file_path):
     # Load the Excel file
@@ -525,6 +528,54 @@ def calc_n_for_G(x_log_mean, G_flag):
 
     return df, x_mean_array
         
+def calc_n_for_G_new(x_log_mean, G_flag):
+    if G_flag == "Median_Integral":
+        G_datas = [32.0404, 39.1135, 41.4924, 44.7977, 45.6443]
+    elif G_flag == "Median_LocalStirrer":
+        G_datas = [104.014, 258.081, 450.862, 623.357, 647.442]
+    elif G_flag == "Mean_Integral":
+        G_datas = [87.2642, 132.668, 143.68, 183.396, 185.225]
+    elif G_flag == "Mean_LocalStirrer":
+        G_datas = [297.136, 594.268, 890.721, 1167.74, 1284.46]
+    else:
+        raise ValueError(f"Unknown G_flag: {G_flag}")
+        
+    G_values = np.array(G_datas, dtype=float)
+    times = np.array([5, 10, 45], dtype=float)    
+    x_mean_array = np.zeros((5, 3))
+    for i, x_mean in enumerate(x_log_mean):
+        x_mean_array[i, :] = x_mean[1:4]
+    
+    ref_idx = -1
+    t_ref = times
+    D_ref = x_mean_array[ref_idx]
+    G_ref = G_values[ref_idx]
+    interp_ref = interp1d(t_ref, D_ref, kind='linear', fill_value='extrapolate')
+    def sse(n):
+        tot = 0.0
+        # Construct the residual sum of squares function for all points (after stretching/compression) across all groups.
+        for i in range(len(G_values)):
+            if i == ref_idx: continue
+            factor = (G_values[i]/G_ref)**n
+            t_scaled = times * factor
+            D_est = interp_ref(t_scaled)
+            tot += np.sum((x_mean_array[i] - D_est)**2)
+        return tot
+    
+    res = minimize_scalar(sse, bounds=(-100,100), method='bounded')
+    
+    n_star = res.x
+    hessian_func = nd.Hessian(sse)
+    second_derivative = hessian_func([n_star])[0, 0]
+    alpha = 0.95
+    delta_S = chi2.ppf(alpha, df=1)
+    half_width = np.sqrt(2 * delta_S / second_derivative)
+    ci_lower = n_star - half_width
+    ci_upper = n_star + half_width
+    
+    print(f"\nEstimated n = {n_star:.4f}  (95 % CI: {ci_lower:.4f} – {ci_upper:.4f})")
+    return res.x, res.fun
+
 def Q0_to_Q3(d, Q0, use_bin_average_volume=False):
     Q0_ext = np.concatenate([[0.0], Q0])
     dQ0    = np.diff(Q0_ext)               # length m
@@ -615,7 +666,7 @@ if __name__ == '__main__':
     # np.save(dist_path,dict_Qx)
     
     G_flag = "Mean_LocalStirrer"
-    df, x_mean_array = calc_n_for_G(x_log_mean, G_flag)
+    df, x_mean_array = calc_n_for_G_new(x_log_mean, G_flag)
     
     
     
