@@ -70,7 +70,7 @@ class OptBase():
         self.print_highlighted(f'Current operating mode: single_case = {self.single_case}, multi_flag = {self.multi_flag}.',
                                title="INFO", color="cyan")
         
-        self.opt_params = config['opt_params']
+        self.opt_params_space = config['opt_params']
         self.dim = self.core_params.get('dim', None)
         # Set the data path, use default if not provided
         if data_path is None:
@@ -264,7 +264,7 @@ class OptBase():
                 q3 = self.core.KDE_score(kde, x_uni[1:])
                 q3 = np.insert(q3, 0, 0.0)
                 # Calculate and normalize Q3 values
-                Q3 = self.core.calc_Q3(x_uni, q3)
+                Q3 = self.core.calc_Qx(x_uni, q3)
                 Q3 = Q3 / Q3.max()
                 # Calculate the final smoothed particle volume distribution
                 sumvol_uni = self.core.calc_sum_uni(Q3, sumvol_uni.sum())
@@ -272,10 +272,10 @@ class OptBase():
                 sumN_uni[:, idt] = sumvol_uni[1:] / v_uni[1:]
             else:
                 # Use the unsmoothed distribution for this time step
-                sumN_uni[:, idt] = pop.return_num_distribution(t=idt, flag='sumN_uni')[0][1:]
+                sumN_uni[:, idt] = pop.return_distribution(t=idt, flag='sum_uni', q_type='q0')[0][1:]
         # For initialization data, do not apply smoothing
         for idt in self.core.idt_init:
-            sumN_uni[:, idt] = pop.return_num_distribution(t=idt, flag='sumN_uni')[0][1:]
+            sumN_uni[:, idt] = pop.return_distribution(t=idt, flag='sum_uni', q_type='q0')[0][1:]
         # Apply noise to the data if noise is enabled
         if self.core.add_noise:
             sumN_uni = self.core.function_noise(sumN_uni)
@@ -364,19 +364,19 @@ class OptBase():
         elif method == 'delta':
             # Perform multi-job optimization if enabled
             if self.core.multi_jobs:
-                result_dict = self.multi_optimierer_ray(self.opt_params,exp_data_paths=exp_data_paths, 
+                result_dict = self.multi_optimierer_ray(self.opt_params_space,exp_data_paths=exp_data_paths, 
                                                                known_params=known_params)
             else:
                 # Perform sequential optimization for multiple datasets
                 result_dict = []
                 if not self.single_case and not self.core.exp_data:
                     for exp_data_paths_tem, known_params_tem in zip(exp_data_paths, known_params):
-                        result_dict_tem = self.optimierer_ray(self.opt_params,exp_data_paths=exp_data_paths_tem,
+                        result_dict_tem = self.optimierer_ray(self.opt_params_space,exp_data_paths=exp_data_paths_tem,
                                                                     known_params=known_params_tem)
                         result_dict.append(result_dict_tem)
                 else:
                     # Perform optimization for a single dataset
-                    result_dict = self.optimierer_ray(self.opt_params,exp_data_paths=exp_data_paths,
+                    result_dict = self.optimierer_ray(self.opt_params_space,exp_data_paths=exp_data_paths,
                                                            known_params=known_params)
         # Print the current actors (for debugging purposes) and shut down ray   
         # self.print_current_actors()

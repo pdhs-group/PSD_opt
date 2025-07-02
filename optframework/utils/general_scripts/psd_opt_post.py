@@ -327,11 +327,12 @@ def calc_save_PSD_delta(results, data_paths):
 def calc_ori_mse():
     # tmpdir = os.environ.get('TMP_PATH')
     # data_path = os.path.join(tmpdir, "data")
-    data_path = r"C:\Users\px2030\Code\PSD_opt\pypbe\data"
-    opt = OptBase(data_path=data_path)
+    data_path = r"C:\Users\px2030\Code\Ergebnisse\opt_para_study\study_data\data"
+    config_path = r"C:\Users\px2030\Code\PSD_opt\tests\config\opt_config.py"
+    opt = OptBase(config_path=config_path, data_path=data_path)
     
-    var_corr_beta = np.array([1e-3,1e-2,1e-1])
-    values = np.array([0.5, 1.0])
+    var_corr_beta = np.array([1.0])
+    values = np.array([1e-3,1e-1])
     a1, a2, a3 = np.meshgrid(values, values, values, indexing='ij')
     var_alpha_prim = np.column_stack((a1.flatten(), a2.flatten(), a3.flatten()))
     var_alpha_prim = var_alpha_prim[~np.all(var_alpha_prim == 0, axis=1)]
@@ -341,11 +342,11 @@ def calc_ori_mse():
         if not any(np.array_equal(comp, x) or np.array_equal(comp_reversed, x) for x in unique_alpha_prim):
             unique_alpha_prim.append(comp)
     var_alpha_prim = np.array(unique_alpha_prim)
-    var_v = np.array([0.7,1.0,2.0])
-    var_P1 = np.array([1e-3,1e-2,1e-1])
-    var_P2 = np.array([0.5,1.0,2.0])
-    var_P3 = np.array([1e-3,1e-2,1e-1])
-    var_P4 = np.array([0.5,1.0,2.0])
+    var_v = np.array([1.0,1.5])
+    var_P1 = np.array([1e-4,1e-2])
+    var_P2 = np.array([0.5,2.0])
+    var_P3 = np.array([1e-4,1e-2])
+    var_P4 = np.array([0.5,2.0])
     
     func_list = []
     for j,corr_beta in enumerate(var_corr_beta):
@@ -364,7 +365,11 @@ def calc_ori_mse():
                                     'pl_P3' : P3,
                                     'pl_P4' : P4,
                                     }
-                                data_name = f"Sim_Mul_0.1_para_{corr_beta}_{alpha_prim[0]}_{alpha_prim[1]}_{alpha_prim[2]}_{v}_{P1}_{P2}_{P3}_{P4}.xlsx"
+                                if opt.core.add_noise:
+                                    prefix = f"Sim_{opt.core.noise_type}_{opt.core.noise_strength}_para"
+                                else:
+                                    prefix = "Sim_para"
+                                data_name = f"{prefix}_{corr_beta}_{alpha_prim[0]}_{alpha_prim[1]}_{alpha_prim[2]}_{v}_{P1}_{P2}_{P3}_{P4}.xlsx"
                                 exp_data_path = os.path.join(data_path, data_name)
                                 exp_data_paths = [
                                     exp_data_path,
@@ -372,10 +377,10 @@ def calc_ori_mse():
                                     exp_data_path.replace(".xlsx", "_M.xlsx")
                                 ]
                                 # print(data_name)
-                                # results = opt.calc_PSD_delta(ori_params, exp_data_paths)
-                                func_list.append((ori_params,exp_data_paths))
-    pool = multiprocessing.Pool()
-    results = pool.starmap(opt.calc_PSD_delta, func_list) 
+                                results = opt.calc_PSD_delta(ori_params, exp_data_paths)
+                                # func_list.append((ori_params,exp_data_paths))
+    # pool = multiprocessing.Pool()
+    # results = pool.starmap(opt.calc_PSD_delta, func_list) 
     np.savez('ori_mse.npz', 
           results=results, 
           )     
@@ -486,19 +491,19 @@ def which_group(group_flag):
             'iter_3200',
             'iter_6400',
             ]
-    if group_flag == "iter_Cmaes":    
+    elif group_flag == "iter_Cmaes":    
         file_names = [
             'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_50.npz',
             'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_100.npz',
             'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_200.npz',
             'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_400.npz',
             'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_800.npz',
-            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_1600.npz',
-            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_2400.npz',
-            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_3200.npz',
-            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_4000.npz',
-            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_4800.npz',
-            'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_5000.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_1600.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_2400.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_3200.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_4000.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_4800.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_5000.npz',
             # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_6400.npz',
             ]
         labels = [
@@ -507,12 +512,41 @@ def which_group(group_flag):
             'iter_200',
             'iter_400',
             'iter_800',
-            'iter_1600',
-            'iter_2400',
-            'iter_3200',
-            'iter_4000',
-            'iter_4800',
-            'iter_5000',
+            # 'iter_1600',
+            # 'iter_2400',
+            # 'iter_3200',
+            # 'iter_4000',
+            # 'iter_4800',
+            # 'iter_5000',
+            # 'iter_6400',
+            ]
+    elif group_flag == "iter_Cmaes_new":    
+        file_names = [
+            'multi_[(\'qx\', \'MSE\')]_Cmaes_wight_1_iter_50.npz',
+            'multi_[(\'qx\', \'MSE\')]_Cmaes_wight_1_iter_100.npz',
+            'multi_[(\'qx\', \'MSE\')]_Cmaes_wight_1_iter_200.npz',
+            'multi_[(\'qx\', \'MSE\')]_Cmaes_wight_1_iter_400.npz',
+            'multi_[(\'qx\', \'MSE\')]_Cmaes_wight_1_iter_800.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_1600.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_2400.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_3200.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_4000.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_4800.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_5000.npz',
+            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_6400.npz',
+            ]
+        labels = [
+            'iter_50',
+            'iter_100',
+            'iter_200',
+            'iter_400',
+            'iter_800',
+            # 'iter_1600',
+            # 'iter_2400',
+            # 'iter_3200',
+            # 'iter_4000',
+            # 'iter_4800',
+            # 'iter_5000',
             # 'iter_6400',
             ]
     elif group_flag == "sampler400":
@@ -975,7 +1009,10 @@ def get_kernels_form_data_name(data_name):
     converted_params = [float(param) if '.' in param or 'e' in param.lower() else int(param) for param in params]
     CORR_BETA = converted_params[0]
     alpha_prim = np.array(converted_params[1:4])
-    kernels['corr_agg'] = CORR_BETA * alpha_prim
+    # kernels['corr_agg'] = CORR_BETA * alpha_prim
+    kernels['corr_agg_0'] = CORR_BETA * alpha_prim[0]
+    kernels['corr_agg_1'] = CORR_BETA * alpha_prim[1]
+    kernels['corr_agg_2'] = CORR_BETA * alpha_prim[2]
     kernels['pl_v'] = converted_params[4]
     kernels['pl_P1'] = converted_params[5]
     kernels['pl_P2'] = converted_params[6]
@@ -1244,6 +1281,7 @@ if __name__ == '__main__':
     
     # group_flag = "iter"
     # group_flag = "iter_Cmaes"
+    group_flag = "iter_Cmaes_new"
     # group_flag = "sampler400"
     # group_flag = "sampler800"
     # group_flag = "sampler400rand"
@@ -1256,7 +1294,7 @@ if __name__ == '__main__':
     # group_flag = "wight"
     # group_flag = "P1P3"
     # group_flag = "v"
-    group_flag = "v_Cmaes"
+    # group_flag = "v_Cmaes"
     # group_flag = "HEBOseed"
     # group_flag = "GPseed"
     # group_flag = "Cmaesseed"
@@ -1303,7 +1341,7 @@ if __name__ == '__main__':
         
     visualize_diff_mean(results, labels)
     # # kernel: corr_agg_0, corr_agg_1, corr_agg_2, pl_v, pl_P1, pl_P2, pl_P3, pl_P4
-    result_to_analyse = results[-3]
+    result_to_analyse = results[-1]
     # if pbe_type == 'agglomeration' or pbe_type == 'mix':
     #     corr_agg_diff = visualize_diff_kernel_value(result_to_analyse, eval_kernels=['corr_agg_0','corr_agg_1','corr_agg_2'])
     # if pbe_type == 'breakage' or pbe_type == 'mix':

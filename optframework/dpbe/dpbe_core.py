@@ -1103,6 +1103,7 @@ def solve_PBE(self, t_vec=None):
             rhs = jit_dpbe_rhs.get_dNdt_2d_geo
             args=(self.NS,self.V,self.V_e1,self.V_e3,self.F_M,self.B_R,self.int_B_F,
                   self.intx_B_F,self.inty_B_F,self.process_type,self.aggl_crit_id)
+            self.agrs = args
         elif self.disc == 'uni':
             rhs = jit_dpbe_rhs.get_dNdt_2d_uni   
             args=(self.V,self.V1,self.V3,self.F_M,self.NS,self.THR_DN)

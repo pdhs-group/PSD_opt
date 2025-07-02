@@ -153,8 +153,8 @@ config = {
     ## PBE parameters
     ## For a detailed explanation of the PBE parameters, please refer to the `PBE_config.py` file.
     'pop_params': {
-        'NS' : 30,
-        'S' : 1.42,
+        'NS' : 40,
+        'S' : 1.295,
         "SIZEEVAL": 1,
         "COLEVAL": 1,
         "EFFEVAL": 1,

@@ -7,6 +7,7 @@ Created on Thu Jan 18 15:42:20 2024
 import numpy as np
 import os
 ## Config for Optimization
+# _config_opt_path = os.environ.get('TMP_PATH')
 _config_opt_path = os.path.dirname(__file__)
 config = {
     ## Use only 2D Data or 1D+2D
@@ -15,15 +16,15 @@ config = {
     'single_case': False,
     
     'algo_params': {
-        'dim': 1,
+        'dim': 2,
         # The dimensionality of the PBE
         't_init' : np.array([0, 0]),
         # Initial time points for simulation. 
         # These values are used to initialize N in dPBE wenn calc_init_N is True.
         # Note: The first value in t_init must be zero.
         
-        # 't_vec' : np.array([0, 0]),
-        't_vec' : np.array([0, 5, 10, 15, 20, 25, 30])*60,
+        't_vec' : np.arange(0, 601, 10, dtype=float),
+        # 't_vec' : np.array([0, 5, 10, 15, 20, 25, 30])*60,
         # Time vector for the entire simulation, specifying the time points at which 
         # calculations are performed.
         
@@ -48,7 +49,7 @@ config = {
         'noise_strength': 0.1,
         # The strength of the added noise.
         
-        'sample_num': 3,
+        'sample_num': 5,
         # Number of experimental or synthetic data samples used during the optimization process.
         
         'exp_data' : False, 
@@ -80,7 +81,7 @@ config = {
         # Whether to use PSD (particle size distribution) data for setting the initial conditions 
         # of N.
         
-        'USE_PSD_R': False,
+        'USE_PSD_R': True,
         # Whether to use R01_0 and R03_0 below to get the particle size in the PSD data as 
         # the starting coordinates for PBE. If False, the values ​​of R_01 and R_03 are used.
         
@@ -90,12 +91,13 @@ config = {
         'R03_0' : 'r0_001',
         # Radius of M primary particles corresponding to the 1% position (Q3) in the PSD data.
 
-        'R_01': 2.9e-7,
-        'R_03': 2.9e-7,
-        'R01_0_scl': 1,
+        # 'R_01': 2.9e-7,
+        # 'R_03': 2.9e-7,
+        
+        'R01_0_scl': 1e-1,
         # Scaling factor for the NM1 primary particle radius.
         
-        'R03_0_scl': 1,
+        'R03_0_scl': 1e-1,
         # Scaling factor for the M primary particle radius.
         
         'PSD_R01' : 'PSD_x50_2.0E-5_RelSigmaV_2.0E-1.npy',
@@ -108,7 +110,7 @@ config = {
         # Weight applied to the error (delta) of 2D particle populations, giving it 
         # more importance during optimization.
         
-        'dist_type': 'q0',
+        'dist_type': 'q3',
         # - 'q0': Number-based PSD (weight = N, i.e., V^0 × N)
         # - 'q3': Volume-based PSD (weight = V * N, i.e., V^1 × N)
         # - 'q6': Square-volume PSD (weight = V^2 * N)
@@ -116,6 +118,7 @@ config = {
         'delta_flag': [('qx','MSE'), 
                        # ('Qx','RMSE'), 
                        #('x_50','MSE')
+                       # ('y_weibull','MSE'),
                        ],
         # Specifies which particle size distribution (PSD) and cost function to use 
         # during optimization. Options for PSD include:
@@ -134,13 +137,13 @@ config = {
         'tune_storage_path': os.path.join(_config_opt_path, "Ray_Tune"),   
         # Path to store Ray Tune optimization infomation.
         
-        'verbose': 1,
+        'verbose': 0,
     
-        'multi_jobs': False,  
+        'multi_jobs': True,  
         # Whether to run multiple optimization tasks (Tune jobs) concurrently. 
         # If True, multiple PSD datasets should be provided.
     
-        'num_jobs': 3,  
+        'num_jobs': 6,  
         # Number of parallel optimization jobs to run.
     
         'cpus_per_trail': 3,  
@@ -182,19 +185,19 @@ config = {
         "pl_P2": 1,
         "pl_P3": 1e-2,
         "pl_P4": 1,
-        "G": 80,
+        "G": 1,
         },
     
     ## Parameters which should be optimized
     'opt_params' : {
         'corr_agg_0': {'bounds': (-4.0, 0.0), 'log_scale': True},
-        # 'corr_agg_1': {'bounds': (-4.0, 0.0), 'log_scale': True},
-        # 'corr_agg_2': {'bounds': (-4.0, 0.0), 'log_scale': True},
+        'corr_agg_1': {'bounds': (-4.0, 0.0), 'log_scale': True},
+        'corr_agg_2': {'bounds': (-4.0, 0.0), 'log_scale': True},
         'pl_v': {'bounds': (0.5, 2.0), 'log_scale': False},
         'pl_P1': {'bounds': (-5.0, -1.0), 'log_scale': True},
         'pl_P2': {'bounds': (0.3, 3.0), 'log_scale': False},
-        # 'pl_P3': {'bounds': (-5.0, -1.0), 'log_scale': True},
-        # 'pl_P4': {'bounds': (0.3, 3.0), 'log_scale': False},
+        'pl_P3': {'bounds': (-5.0, -1.0), 'log_scale': True},
+        'pl_P4': {'bounds': (0.3, 3.0), 'log_scale': False},
     },
 
 }

@@ -34,7 +34,7 @@ def print_current_actors(self):
         print(f"Actor ID: {actor_id}, State: {actor_info['State']}")
 
 
-def multi_optimierer_ray(self, opt_params, exp_data_paths=None, known_params=None):
+def multi_optimierer_ray(self, opt_params_space, exp_data_paths=None, known_params=None):
     """
     Optimize PBE parameters using multiple Ray Tuners, managed via Ray multiprocessing.
 
@@ -45,7 +45,7 @@ def multi_optimierer_ray(self, opt_params, exp_data_paths=None, known_params=Non
 
     Parameters
     ----------
-    opt_params : dict
+    opt_params_space : dict
         A dictionary of optimization parameters, where each key corresponds to a parameter name 
         and its value contains information about the bounds and scaling (logarithmic or linear).
     exp_data_paths : list of str, optional
@@ -59,44 +59,63 @@ def multi_optimierer_ray(self, opt_params, exp_data_paths=None, known_params=Non
         A list of dictionaries, where each dictionary contains the optimized parameters and 
         the corresponding objective score (delta).
     """
+    # --- build the Ray Tune search space once ---
     self.RT_space = {}
-    
-    for param, info in opt_params.items():
-        bounds = info['bounds']
-        log_scale = info.get('log_scale', False)
-        
-        if log_scale:
-            self.RT_space[param] = tune.loguniform(10**bounds[0], 10**bounds[1])
+    for param, info in opt_params_space.items():
+        low, high = info['bounds']
+        if info.get('log_scale', False):
+            self.RT_space[param] = tune.loguniform(10**low, 10**high)
         else:
-            self.RT_space[param] = tune.uniform(bounds[0], bounds[1])
+            self.RT_space[param] = tune.uniform(low, high)
 
-    # Create the job queue, with experimental data paths and known parameters
-    job_queue = [(paths, params) for paths, params in zip(exp_data_paths, known_params)]
+    # Build the job queue
+    job_queue = list(zip(exp_data_paths or [], known_params or []))
     queue_length = len(job_queue)
 
-    # Adjust the number of jobs if the queue length is smaller than the user-defined number of jobs
+    # Ensure num_jobs does not exceed queue length
     self.check_num_jobs(queue_length)
-    num_jobs_max = self.core.num_jobs
-    results = []
-    # Worker function for processing jobs in parallel
+    num_workers = self.core.num_jobs
+
+    # Build a map from data-file basename → previously evaluated params
+    evaluated_params_map = {}
+    prev_results = getattr(self.core, 'evaluated_results', None)
+    if prev_results is not None:
+        for res in prev_results:
+            paths = res.get('file_path')
+            # normalize to always pick first path if list
+            first = paths[0] if isinstance(paths, (list, tuple)) else paths
+            key = os.path.basename(first)
+            evaluated_params_map[key] = res.get('all_params', [])
+
+    # The worker will pull its slice of the queue, look up warm-start params,
+    # and pass them into optimierer_ray
     def worker(job_queue_slice):
         job_results = []
         for paths, params in job_queue_slice:
-            result = self.optimierer_ray(exp_data_paths=paths, known_params=params)
+            # determine the lookup key
+            first = paths[0] if isinstance(paths, (list, tuple)) else paths
+            key = os.path.basename(first)
+            warm_params = evaluated_params_map.get(key, None)
+
+            # call optimierer_ray with warm start
+            result = self.optimierer_ray(
+                exp_data_paths=paths,
+                known_params=params,
+                evaluated_params=warm_params
+            )
             job_results.append(result)
         return job_results
-    
-    # Split the job queue into slices for each worker   
-    job_slices = [job_queue[i::num_jobs_max] for i in range(num_jobs_max)]
-    
-    # Use multiprocessing pool to distribute the jobs across available cores
-    with mp.Pool(num_jobs_max) as pool:
-        results_batches = pool.map(worker, job_slices)
 
-    # Flatten the list of results
-    for batch in results_batches:
+    # split into roughly equal slices
+    job_slices = [job_queue[i::num_workers] for i in range(num_workers)]
+
+    # dispatch with multiprocessing
+    results = []
+    with mp.Pool(num_workers) as pool:
+        batches = pool.map(worker, job_slices)
+    for batch in batches:
         results.extend(batch)
-   
+
     return results
 
 def check_num_jobs(self, queue_length):
@@ -115,7 +134,7 @@ def check_num_jobs(self, queue_length):
     if queue_length < self.core.num_jobs:
         self.core.num_jobs = queue_length
 
-def optimierer_ray(self, opt_params=None, exp_data_paths=None,known_params=None):
+def optimierer_ray(self, opt_params_space=None, exp_data_paths=None,known_params=None, evaluated_params=None):
     """
     Optimize PBE parameters using Ray's Tune module, based on the delta calculated by the method `calc_delta_agg`.
 
@@ -126,7 +145,7 @@ def optimierer_ray(self, opt_params=None, exp_data_paths=None,known_params=None)
 
     Parameters
     ----------
-    opt_params : dict, optional
+    opt_params_space : dict, optional
         A dictionary of optimization parameters, where each key corresponds to a parameter name 
         and its value contains information about the bounds and scaling (logarithmic or linear).
     exp_data_paths : list of str, optional
@@ -140,7 +159,7 @@ def optimierer_ray(self, opt_params=None, exp_data_paths=None,known_params=None)
     dict
         A dictionary containing:
             - "opt_score": The optimized objective score (delta value).
-            - "opt_params": The optimized parameters from the search space.
+            - "opt_params_space": The optimized parameters from the search space.
             - "file_path": The path(s) to the experimental data used for optimization.
     """
     
@@ -172,10 +191,10 @@ def optimierer_ray(self, opt_params=None, exp_data_paths=None,known_params=None)
         data_name = os.path.basename(exp_data_paths)
         
     # Set up the Ray Tune search space    
-    if opt_params is not None:    
+    if opt_params_space is not None:    
         self.RT_space = {}
         
-        for param, info in opt_params.items():
+        for param, info in opt_params_space.items():
             bounds = info['bounds']
             log_scale = info.get('log_scale', False)
             # Use logarithmic or linear scaling for the search space

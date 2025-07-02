@@ -11,7 +11,9 @@
 #SBATCH --constraint=BEEOND
 
 module purge
-module load devel/python/3.11.7_intel_2021.4.0
+module load devel/python/3.11.7-gnu-14.2
+export TMP_PATH=$TMPDIR
+export STORAGE_PATH="$(ws_find ws)/Synth_Opt"
 
 export TMP_PATH="/mnt/odfs/${SLURM_JOB_ID}/stripe_1"
 tar -C $TMP_PATH -xzf $(ws_find MC_train)/mix_data_shear.tar.gz

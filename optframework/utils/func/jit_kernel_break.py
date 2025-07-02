@@ -187,7 +187,7 @@ def calc_int_B_F_2D_GL(NS,V1,V3,V_e1,V_e3,BREAKFVAL,v,q):
         for j in range(b,NS):
             if j == 0:
                 continue
-            args = (V3[i],v,q,BREAKFVAL)
+            args = (V3[j],v,q,BREAKFVAL)
             argsk = (V3[j],v,q,BREAKFVAL,1)
             if b == j:
                 int_B_F[0,b,0,j] = gauss_legendre(breakage_func_1d,V_e3_tem[b],V3[b],xs3,ws3,args=args)

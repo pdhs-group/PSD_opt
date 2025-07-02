@@ -190,7 +190,7 @@ def plot_x_mean(results, G_flag):
     else:
         raise ValueError(f"Unknown G_flag: {G_flag}")
     
-    known_params_list = [{'G': G_val**n} for G_val in G_datas]
+    known_params_list = [{'G': G_val} for G_val in G_datas]
     n_iter_list = [200, 800, 6400]
     time_points = [0, 5, 10, 45]
     linestyles = {200: '-', 800: '--', 6400: ':'}
@@ -292,7 +292,7 @@ def plot_x_50(results, G_flag):
     else:
         raise ValueError(f"Unknown G_flag: {G_flag}")
 
-    known_params_list = [{'G': G_val**n} for G_val in G_datas]
+    known_params_list = [{'G': G_val} for G_val in G_datas]
     n_iter_list = [200, 800, 6400]
     time_points = [0, 5, 10, 45]
     linestyles = {200: '-', 800: '--', 6400: ':'}
@@ -391,7 +391,7 @@ def re_calc_lognormal_results():
                 # G_datas = [297.136, 594.268, 890.721, 1167.74]
             else:
                 raise ValueError(f"Unknown G_flag: {G_flag}")
-            known_params_list = [{'G': G_val**n} for G_val in G_datas]
+            known_params_list = [{'G': G_val} for G_val in G_datas]
             
             # Build filename patterns
             prefix = f"cv_iter_{n_iter}_"
@@ -476,7 +476,7 @@ if __name__ == '__main__':
     n_iter_list = [200, 400, 800, 1600, 2400, 4000, 6400]
 
     marker_styles = ['o', 's', 'D', '^', 'v', 'P', '*', 'X']
-    result_dir = os.path.join(r"C:\Users\px2030\Code\Ergebnisse\Batch_opt\opt_results", "cv_results_group16")
+    result_dir = os.path.join(r"C:\Users\px2030\Code\Ergebnisse\Batch_opt\opt_results", "cv_results_group31")
     
     if data_dir == "lognormal_curvefit":
         x_exp_mean = np.array([[0.08523817, 0.08326844, 0.08579775, 0.07277097],
@@ -487,13 +487,21 @@ if __name__ == '__main__':
         G_flag_list = ["Mean_Integral"]
         
     elif data_dir == "int1d":
-        x_exp_mean = np.array([[0.11826945, 0.12083028, 0.11184293, 0.21994005],
+        x_exp_mean = np.array([
+            [0.11826945, 0.12083028, 0.11184293, 0.21994005],
                [0.11826945, 0.12277321, 0.09504571, 0.08820781],
                [0.11826945, 0.09741461, 0.09254452, 0.28119003],
                [0.11826945, 0.0992418 , 0.09677272, 0.09395102],
-               [0.11826945, 0.09177996, 0.08894885, 0.08688184]]) * 1e-6
+               [0.11826945, 0.09177996, 0.08894885, 0.08688184]
+               ]) * 1e-6
         G_flag_list = ["Median_LocalStirrer"]
 
+        G_flag_list = [
+            "Median_Integral", 
+            # "Median_LocalStirrer", 
+            # "Mean_Integral", 
+            # "Mean_LocalStirrer"
+        ]
     # re_calc_lognormal_results()
     
     results = main()

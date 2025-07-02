@@ -6,6 +6,7 @@ Created on Thu Jan  4 16:14:15 2024
 """
 import sys
 import os
+from pathlib import Path
 import numpy as np
 import runpy
 import multiprocessing
@@ -30,10 +31,10 @@ def calc_function(conf_params, data_path, config_path):
     find.generate_data(conf_params, add_info=add_info)
     
 if __name__ == '__main__':
+    base_path = Path(os.getcwd()).resolve()
     generate_new_psd = True
     # pth = '/pfs/work7/workspace/scratch/px2030-MC_train'
-    # data_path = os.path.join(pth,"mix", "data")
-    data_path = r"C:\Users\px2030\Code\PSD_opt\tests\data"
+    data_path = os.path.join(base_path,"mix", "data")
     config_path = r"C:\Users\px2030\Code\PSD_opt\tests\config\opt_config.py"
     conf = runpy.run_path(config_path)
     
@@ -56,7 +57,7 @@ if __name__ == '__main__':
     ## define the range of corr_beta
     var_corr_beta = np.array([1.0])
     ## define the range of alpha_prim 27x3
-    values = np.array([1e-3,1e-1])
+    values = np.array([1e-3])
     a1, a2, a3 = np.meshgrid(values, values, values, indexing='ij')
     var_alpha_prim = np.column_stack((a1.flatten(), a2.flatten(), a3.flatten()))
     ## The case of all zero α is meaningless, that means no Agglomeration occurs
@@ -108,11 +109,12 @@ if __name__ == '__main__':
                                         'pl_P3' : P3,
                                         'pl_P4' : P4,
                                         }
-                                    func_list.append(conf_params)
+                                    calc_function(conf_params, data_path, config_path)
+                                    # func_list.append(conf_params)
     # pool = multiprocessing.Pool(processes=16)
     # pool.starmap(calc_function, func_list)                        
     # pool.close()
     # pool.join()        
-    with multiprocessing.Pool(processes=2) as pool:
-        pool.starmap(calc_function, [(conf, data_path, config_path) for conf in func_list])             
+    # with multiprocessing.Pool(processes=2) as pool:
+    #     pool.starmap(calc_function, [(conf, data_path, config_path) for conf in func_list])             
                    

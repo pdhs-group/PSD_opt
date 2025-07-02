@@ -103,9 +103,10 @@ def visualize_N():
 
 #%% MAIN   
 if __name__ == "__main__":
-    dim=1
-    p = DPBESolver(dim=dim)
-    smoothing = False
+    dim=2
+    config_path = r"C:\Users\px2030\Code\PSD_opt-old version\config\PBE_config.py"
+    p = DPBESolver(dim=dim, config_path=config_path)
+    smoothing = True
     t_start = time.time()
     p.full_init(calc_alpha=False)
     t = time.time() - t_start

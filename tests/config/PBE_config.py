@@ -1,28 +1,28 @@
 import numpy as np
 
 config = {
-    "NS": 30,  
+    "NS": 10,  
     # Number of size classes for discretizing particle populations (grid points).
 
-    "S": 1.5,  
+    "S": 4,  
     # Geometric ratio used to define the spacing in the size grid for 'geo' discretization. 
 
     # "R01": 8.677468940430804e-07,
     # "R03": 8.677468940430804e-07,
-    "R01": 3.7e-8/2,  
+    "R01": 1e-6,  
     # Radius of primary NM1 particles (in meters) for uni-grid.
     # In a geometric grid, volumes are calculated as midpoints between volume edges (V_e).
     # Therefore, when using a geo-grid, the specified value here corresponds to the radius
     # of the left edge of the grid, V_e[1]. The actual primary particle size is given by 
-    # V_e[1] * (1 + S) / 2, where S is the geometric spacing factor.
+    # V_e[1] * (1 + S) / 2, where S is the geometric spacing factor. R[1] = ((1+S)/2)**(1/3)*R01
     
-    "R03": 3.7e-8/2,  
+    "R03": 1e-6,  
     # Radius of primary M particles (in meters).
 
-    "t_total": 120*60+1,  
+    "t_total": 10*60+1,  
     # Total simulation time in seconds.
 
-    "t_write": 5*60,  
+    "t_write": 10,  
     # Interval (in time steps) for writing output data (e.g., simulation results).
 
     "process_type": "mix",  
@@ -78,8 +78,8 @@ config = {
     "CORR_BETA": 0.0016014176378017458,
     # Correction factor for the collision frequency kernel, controlling the rate of aggregation.
 
-    # 'alpha_prim': np.array([1,1,1,1]),  
-    'alpha_prim': np.array([1]),
+    'alpha_prim': np.array([1,1,1,1]),  
+    # 'alpha_prim': np.array([1]),
     # Factors for collision efficiency.
     # The length of the alpha_prim array must be the square of the dpbe's dimensionality (dim^2).
 
