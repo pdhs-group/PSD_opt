@@ -3,6 +3,7 @@
 PBE-related calculations during optimization
 """
 import os
+import gc
 import numpy as np
 from scipy.interpolate import interp1d
 from optframework.dpbe import DPBESolver
@@ -25,7 +26,18 @@ def create_1d_pop(self, t_vec, disc='geo'):
     """
     self.p_NM = DPBESolver(dim=1,disc=disc, t_vec=t_vec, load_attr=False)
     self.p_M = DPBESolver(dim=1,disc=disc, t_vec=t_vec, load_attr=False)
+       
+def close_pbe(self):
+    self.p._close()
+    del self.p
+    if self.dim == 2:
+        self.p_NM._close()
+        self.p_M._close()
+        del self.p_NM
+        del self.p_M
+    gc.collect()
         
+    
 def calc_pop(self, pop, params=None, t_vec=None, init_N=None):
     """
     Configure and calculate the PBE.

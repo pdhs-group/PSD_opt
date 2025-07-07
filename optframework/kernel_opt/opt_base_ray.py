@@ -4,6 +4,9 @@ Optimization algorithm based on ray-Tune
 """
 # import uuid
 import os
+import sqlite3
+from filelock import FileLock
+import json
 # import numpy as np
 # import math
 # import ray
@@ -61,12 +64,16 @@ def multi_optimierer_ray(self, opt_params_space, exp_data_paths=None, known_para
     """
     # --- build the Ray Tune search space once ---
     self.RT_space = {}
-    for param, info in opt_params_space.items():
-        low, high = info['bounds']
-        if info.get('log_scale', False):
-            self.RT_space[param] = tune.loguniform(10**low, 10**high)
+    for name, info in opt_params_space.items():
+        if "fixed" in info:
+            # just hand back the literal value
+            self.RT_space[name] = info["fixed"]
         else:
-            self.RT_space[param] = tune.uniform(low, high)
+            lo, hi = info["bounds"]
+            if info.get("log_scale", False):
+                self.RT_space[name] = tune.loguniform(10**lo, 10**hi)
+            else:
+                self.RT_space[name] = tune.uniform(lo, hi)
 
     # Build the job queue
     job_queue = list(zip(exp_data_paths or [], known_params or []))
@@ -76,32 +83,15 @@ def multi_optimierer_ray(self, opt_params_space, exp_data_paths=None, known_para
     self.check_num_jobs(queue_length)
     num_workers = self.core.num_jobs
 
-    # Build a map from data-file basename → previously evaluated params
-    evaluated_params_map = {}
-    prev_results = getattr(self.core, 'evaluated_results', None)
-    if prev_results is not None:
-        for res in prev_results:
-            paths = res.get('file_path')
-            # normalize to always pick first path if list
-            first = paths[0] if isinstance(paths, (list, tuple)) else paths
-            key = os.path.basename(first)
-            evaluated_params_map[key] = res.get('all_params', [])
-
     # The worker will pull its slice of the queue, look up warm-start params,
     # and pass them into optimierer_ray
     def worker(job_queue_slice):
         job_results = []
         for paths, params in job_queue_slice:
-            # determine the lookup key
-            first = paths[0] if isinstance(paths, (list, tuple)) else paths
-            key = os.path.basename(first)
-            warm_params = evaluated_params_map.get(key, None)
-
             # call optimierer_ray with warm start
             result = self.optimierer_ray(
                 exp_data_paths=paths,
                 known_params=params,
-                evaluated_params=warm_params
             )
             job_results.append(result)
         return job_results
@@ -134,6 +124,51 @@ def check_num_jobs(self, queue_length):
     if queue_length < self.core.num_jobs:
         self.core.num_jobs = queue_length
 
+def _save_warm_params(db_path, data_name, all_params, all_score):
+    assert len(all_params) == len(all_score)
+    lock_path = db_path + ".lock"
+
+    with FileLock(lock_path):  # Ensure concurrent safety
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        # Create a table（if not exist）
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS warm_params (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            data_name TEXT,
+            param_json TEXT,
+            score REAL
+        )
+        """)
+
+        # delete the old data_name (if exist)
+        cursor.execute("DELETE FROM warm_params WHERE data_name = ?", (data_name,))
+
+        # insert new values
+        records = [(data_name, json.dumps(p), s) for p, s in zip(all_params, all_score)]
+        cursor.executemany("INSERT INTO warm_params (data_name, param_json, score) VALUES (?, ?, ?)", records)
+
+        conn.commit()
+        conn.close()
+
+        
+def _load_warm_params(db_path, data_name):
+    if not os.path.exists(db_path):
+        return [], []
+
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT param_json, score FROM warm_params WHERE data_name = ?", (data_name,))
+    rows = cursor.fetchall()
+    conn.close()
+
+    all_params = [json.loads(p) for p, _ in rows]
+    all_score = [s for _, s in rows]
+    return all_params, all_score
+
+
 def optimierer_ray(self, opt_params_space=None, exp_data_paths=None,known_params=None, evaluated_params=None):
     """
     Optimize PBE parameters using Ray's Tune module, based on the delta calculated by the method `calc_delta_agg`.
@@ -163,11 +198,10 @@ def optimierer_ray(self, opt_params_space=None, exp_data_paths=None,known_params
             - "file_path": The path(s) to the experimental data used for optimization.
     """
     
-    # resume_unfinished = getattr(self.core, 'resume_unfinished', False)
-    evaluated_params = getattr(self.core, 'evaluated_params', None)
-    evaluated_rewards = getattr(self.core, 'evaluated_rewards', None)
-    # n_prev = getattr(self.core, 'n_iter_prev', 0)
-    # n_save = self.core.n_iter + n_prev
+    # evaluated_params = getattr(self.core, 'evaluated_params', None)
+    # evaluated_rewards = getattr(self.core, 'evaluated_rewards', None)
+    evaluated_params = None
+    evaluated_rewards = None
     
     # Prepare experimental data (either for 1D or 2D)
     if isinstance(exp_data_paths, list):
@@ -190,21 +224,30 @@ def optimierer_ray(self, opt_params_space=None, exp_data_paths=None,known_params
             x_uni_exp, data_exp = self.core.get_all_synth_data(exp_data_paths)
         data_name = os.path.basename(exp_data_paths)
         
+    # Reuse the previous parameters as warm-up for new optimization
+    resume_unfinished = getattr(self.core, 'resume_unfinished', False)
+    result_dir = getattr(self.core, 'result_dir', self.core.tune_storage_path)
+    if resume_unfinished:
+        n_prev = getattr(self.core, 'n_iter_prev', 0)
+        warm_params_path = os.path.join(result_dir, f"{n_prev}.sqlite")
+        evaluated_params, evaluated_rewards = _load_warm_params(warm_params_path, data_name)
+        evaluated_rewards = None
+            
     # Set up the Ray Tune search space    
-    if opt_params_space is not None:    
-        self.RT_space = {}
-        
-        for param, info in opt_params_space.items():
-            bounds = info['bounds']
-            log_scale = info.get('log_scale', False)
-            # Use logarithmic or linear scaling for the search space
-            if log_scale:
-                self.RT_space[param] = tune.loguniform(10**bounds[0], 10**bounds[1])
+    self.RT_space = {}
+    for name, info in opt_params_space.items():
+        if "fixed" in info:
+            # just hand back the literal value
+            self.RT_space[name] = info["fixed"]
+        else:
+            lo, hi = info["bounds"]
+            if info.get("log_scale", False):
+                self.RT_space[name] = tune.loguniform(10**lo, 10**hi)
             else:
-                self.RT_space[param] = tune.uniform(bounds[0], bounds[1])
+                self.RT_space[name] = tune.uniform(lo, hi)
     # Create the search algorithm
     algo = self.create_algo(evaluated_params=evaluated_params, evaluated_rewards=evaluated_rewards)
-    # Clean up the data name for output storage    
+    # Clean up the data name for output storage 
     if data_name.startswith("Sim_"):
         data_name = data_name[len("Sim_"):]
     if data_name.endswith(".xlsx"):
@@ -286,6 +329,8 @@ def optimierer_ray(self, opt_params_space=None, exp_data_paths=None,known_params
             all_params.append(config)
             all_score.append(score)
 
+    warm_params_path = os.path.join(result_dir, f"{self.core.n_iter}.sqlite")
+    _save_warm_params(warm_params_path, data_name, all_params, all_score)
     # Get the best result from the optimization
     opt_result = results.get_best_result(metric="loss", mode="min")
     opt_params = opt_result.config
@@ -295,8 +340,6 @@ def optimierer_ray(self, opt_params_space=None, exp_data_paths=None,known_params
         "opt_score": opt_score,
         "opt_params": opt_params,
         "file_path": opt_exp_data_paths,
-        "all_score": all_score,
-        "all_params": all_params
     }
 
     return result_dict

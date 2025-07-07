@@ -16,7 +16,7 @@ if __name__ == '__main__':
     # tmpdir = os.environ.get('TMP_PATH')
     # data_path = os.path.join(tmpdir, "data")
     # test_group = os.environ.get('TEST_GROUP')
-    data_path = r"C:\Users\px2030\Code\Ergebnisse\opt_para_study\study_data\mix_data_no_noise\data"
+    data_path = r"C:\Users\px2030\Code\Ergebnisse\opt_para_study\study_data\data"
     result_dir = os.path.join(base_path, "opt_results")
     # result_dir = os.path.join(os.environ.get('STORAGE_PATH'), f"opt_results_{test_group}")
     os.makedirs(result_dir, exist_ok=True)
@@ -33,15 +33,15 @@ if __name__ == '__main__':
     method = opt.core.method
     n_iter = opt.core.n_iter
     
-    n_iter_list = [50, 100, 200, 400, 800, 1600]
-    # n_iter_list = [10, 20]
+    # n_iter_list = [50, 100, 200, 400, 800, 1600]
+    n_iter_list = [10, 20]
     prev_iter = 0
     
     #%% Prepare paths of test data set
     ## define the range of corr_beta
     var_corr_beta = np.array([1.0])
     ## define the range of alpha_prim 27x3
-    values = np.array([1e-3,1e-1])
+    values = np.array([1e-3])
     a1, a2, a3 = np.meshgrid(values, values, values, indexing='ij')
     var_alpha_prim = np.column_stack((a1.flatten(), a2.flatten(), a3.flatten()))
     ## The case of all zero α is meaningless, that means no Agglomeration occurs
@@ -59,10 +59,10 @@ if __name__ == '__main__':
     ## define the range of v(breakage function)
     var_v = np.array([1.0,1.5])
     # var_v = np.array([0.01])    ## define the range of P1, P2 for power law breakage rate
-    var_P1 = np.array([1e-4,1e-2])
-    var_P2 = np.array([0.5,2.0])
-    var_P3 = np.array([1e-4,1e-2])
-    var_P4 = np.array([0.5,2.0])
+    var_P1 = np.array([1e-4])
+    var_P2 = np.array([0.5])
+    var_P3 = np.array([1e-4])
+    var_P4 = np.array([0.5])
 
     ## define the range of particle size scale and minimal size
     
@@ -115,7 +115,7 @@ if __name__ == '__main__':
             ]
             data_names_list_tem.append(data_name_ex)
         data_names_list = data_names_list_tem
-        
+    opt.core.result_dir = result_dir
     ray.init(log_to_driver=True)
     for n_iter in n_iter_list:
         if n_iter <= prev_iter:
@@ -124,26 +124,13 @@ if __name__ == '__main__':
         opt.core.n_iter = int(n_iter)
         opt.core.n_iter_prev = int(prev_iter)
         opt.core.resume_unfinished = prev_iter > 0
+        
         if getattr(opt.core, 'resume_unfinished', False):
-            if multi_flag:
-                prev_result_name = f'multi_{delta_flag}_{method}_wight_{weight_2d}_iter_{prev_iter}.npz'
-            else:
-                result_name =  f'{delta_flag}_{method}_wight_{weight_2d}_iter_{prev_iter}.npz'
-            prev_path = os.path.join(result_dir, prev_result_name)
+            prev_path = os.path.join(result_dir, f"{opt.core.n_iter_prev}.sqlite")
             if os.path.exists(prev_path):
-                try:
-                    prev_data = np.load(prev_path, allow_pickle=True)
-                    opt.core.evaluated_results = prev_data['results']
-                    
-                    print(f"Loaded previous opt_params for warm start: {prev_result_name}")
-                except Exception as e:
-                    print(f"Warning: Failed to load previous opt_params: {e}")
-                    opt.core.evaluated_params = None
-                    
+                print(f"Loaded previous opt_params for warm start: {prev_path}")
             else:
-                print(f"Warning: Previous result not found: {prev_path}")
-                opt.core.evaluated_params = None
-            
+                print(f"Warning: Previous result not found: {prev_path}") 
         result = opt.find_opt_kernels(method='delta', data_names=data_names_list, known_params=known_params_list)   
 
         ## save the results in npz
@@ -151,18 +138,18 @@ if __name__ == '__main__':
             result_name = f'multi_{delta_flag}_{method}_wight_{weight_2d}_iter_{n_iter}'
         else:
             result_name =  f'{delta_flag}_{method}_wight_{weight_2d}_iter_{n_iter}'
-            
+        
         file_path = os.path.join(result_dir, f'{result_name}.npz')
-        if os.path.exists(file_path):
-            timestamp = time.strftime("%Y%m%d_%H%M%S")
-            file_path = f'{result_name}_{timestamp}.npz'
+        # if os.path.exists(file_path):
+        #     timestamp = time.strftime("%Y%m%d_%H%M%S")
+        #     file_path = os.path.join(result_dir, f'{result_name}_{timestamp}.npz')
     
         np.savez(file_path,
               results=result,
               )
         
         prev_iter = n_iter
-
+    ray.shutdown()
     end_time = time.time()
     elapsed_time = end_time - start_time
     print(f"elapsed_time = {elapsed_time} s")

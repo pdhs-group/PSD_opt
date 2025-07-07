@@ -28,7 +28,7 @@ config = {
         # Time vector for the entire simulation, specifying the time points at which 
         # calculations are performed.
         
-        'delta_t_start_step' : 0,
+        'delta_t_start_step' : 1,
         # Specifies the number of initial time steps to skip during optimization, 
         # often useful to avoid the impact of initialization errors.
         
@@ -196,6 +196,9 @@ config = {
         'pl_P2': {'bounds': (0.1, 5.0), 'log_scale': False},
         # 'pl_P3': {'bounds': (-5.0, -1.0), 'log_scale': True},
         # 'pl_P4': {'bounds': (0.3, 3.0), 'log_scale': False},
+        'actor_wait': {"fixed": True},
+        'wait_time': {"fixed": 1},
+        'max_reuse': {"fixed": 10}
     },
 
 }

@@ -11,7 +11,7 @@ import os
 _config_opt_path = os.path.dirname(__file__)
 config = {
     ## Use only 2D Data or 1D+2D
-    'multi_flag': False,
+    'multi_flag': True,
     ## Input only one/one set of PSD data
     'single_case': False,
     
@@ -143,7 +143,7 @@ config = {
         # Whether to run multiple optimization tasks (Tune jobs) concurrently. 
         # If True, multiple PSD datasets should be provided.
     
-        'num_jobs': 6,  
+        'num_jobs': 2,  
         # Number of parallel optimization jobs to run.
     
         'cpus_per_trail': 3,  

@@ -67,13 +67,13 @@ def cross_validation(data_names_list, known_params_list, result_dir, G_flag, one
         if one_train_data:
             train_data  = [data_names_list[i]]
             train_known = [known_params_list[i]]
-            # test_data   = [data_names_list[j] for j in range(N) if j != i]
+            test_data   = [data_names_list[j] for j in range(N) if j != i]
         else:
             train_data  = [data_names_list[j] for j in range(N) if j != i]
             train_known = [known_params_list[j] for j in range(N) if j != i]
             test_data   = [data_names_list[i]]
         
-        # opt.core.data_name_tune = test_data[0]
+        opt.core.data_name_tune = test_data[0]
         # test_known = [known_params_list[i]]
 
         # === NEW LOGIC: load previous opt_params for warm start ===
@@ -105,8 +105,8 @@ def cross_validation(data_names_list, known_params_list, result_dir, G_flag, one
 
         opt_params = result['opt_params']
         opt_score = result['opt_score']
-        # all_params = result['all_params']
-        # all_score = result['all_score']
+        all_params = result['all_params']
+        all_score = result['all_score']
         elapsed_time = end_time - start_time
 
         losses_all = calc_delta_test(known_params_list, data_names_list, False, opt_params)
@@ -114,13 +114,13 @@ def cross_validation(data_names_list, known_params_list, result_dir, G_flag, one
         result_dict = {
             'cv_index': i,
             'train_data': train_data,
-            # 'test_data': test_data,
+            'test_data': test_data,
             'opt_params': opt_params,
             'opt_score_train': opt_score,
             'losses_all': losses_all,
             'elapsed_time': elapsed_time,
-            # 'all_params': all_params,
-            # 'all_score': all_score
+            'all_params': all_params,
+            'all_score': all_score
         }
 
         result_name =  f'cv_iter_{n_iter}_{i}_{data_dir}_{G_flag}.npz'  
@@ -532,17 +532,17 @@ if __name__ == '__main__':
     base_path = Path(os.getcwd()).resolve()
     config_path = os.path.join(base_path, "config", "opt_Batch_config.py")
     data_dir = "int1d"  ## "int1d", "lognormal_curvefit", "lognormal_zscore"
-    # tmp_path = os.environ.get('TMP_PATH')
-    # test_group = os.environ.get('TEST_GROUP')
-    # data_path = os.path.join(tmp_path, "data", data_dir)
-    data_path = os.path.join(base_path, "data", data_dir)
+    tmp_path = os.environ.get('TMP_PATH')
+    test_group = os.environ.get('TEST_GROUP')
+    data_path = os.path.join(tmp_path, "data", data_dir)
+    # data_path = os.path.join(base_path, "data", data_dir)
     opt = OptBase(config_path=config_path, data_path=data_path)
     data_names_list = [
         # "Batch_600_Q0_post.xlsx",
-        # "Batch_900_Q0_post.xlsx",
+        "Batch_900_Q0_post.xlsx",
         "Batch_1200_Q0_post.xlsx",
-        # "Batch_1500_Q0_post.xlsx",
-        # "Batch_1800_Q0_post.xlsx",
+        "Batch_1500_Q0_post.xlsx",
+        "Batch_1800_Q0_post.xlsx",
     ]
     
     G_flag_list = [
@@ -553,88 +553,87 @@ if __name__ == '__main__':
     ]
     # G_flag_list = ["Median_LocalStirrer"] if data_dir == "int1d" else ["Mean_Integral"]
     n_iter = opt.core.n_iter
-    n_iter_list = [50]
-    # n_iter_list = [200, 400, 800, 1600, 2400, 4000, 6400]
+    # n_iter_list = [200, 400, 800]
+    n_iter_list = [200, 400, 800, 1600, 2400, 4000, 6400]
     prev = 0
     result_dir = os.path.join(base_path, "cv_results")
-    # result_dir = os.path.join(os.environ.get('STORAGE_PATH'), f"cv_results_{test_group}")
+    result_dir = os.path.join(os.environ.get('STORAGE_PATH'), f"cv_results_{test_group}")
     
-    ray.init(log_to_driver=True)
-    for n_iter in n_iter_list:
-        if n_iter <= prev:
-            continue
-        inc = n_iter - prev
-        opt.core.n_iter = int(n_iter)
-        opt.core.n_iter_prev = int(prev)
-        # flag for optimierer_ray
-        resume_flag = (prev > 0)
-        opt.core.resume_unfinished = resume_flag
-        for G_flag in G_flag_list:
-            if G_flag == "Median_Integral":
-                n = 2.6428
-                G_datas = [32.0404, 39.1135, 41.4924, 44.7977, 45.6443]
-                G_datas = [41.4924]
-                # Estimated n = 3.3700  (95 % CI: 0.7892 – 5.9507)
-                # without 1800: Estimated n = 4.0104  (95 % CI: 0.6065 – 7.4143)
-            elif G_flag == "Median_LocalStirrer":
-                n = 0.4723
-                G_datas = [104.014, 258.081, 450.862, 623.357, 647.442]
-                # Estimated n = 0.6417  (95 % CI: 0.1699 – 1.1135)
-                # without 1800: Estimated n = 0.7435  (95 % CI: 0.1290 – 1.3580)
-            elif G_flag == "Mean_Integral":
-                n = 1.1746
-                G_datas = [87.2642, 132.668, 143.68, 183.396, 185.225]
-                # Estimated n = 1.6477  (95 % CI: 0.5048 – 2.7906)
-                # without 1800: Estimated n = 1.9767  (95 % CI: 0.4946 – 3.4588)
-            elif G_flag == "Mean_LocalStirrer":
-                n = 0.5917
-                G_datas = [297.136, 594.268, 890.721, 1167.74, 1284.46]
-                # G_datas = [297.136, 594.268]
-                # Estimated n = 0.8154  (95 % CI: 0.2074 – 1.4235)
-                # without 1800: Estimated n = 0.9892  (95 % CI: 0.1878 – 1.7905)
-            else:
-                raise ValueError(f"Unknown G_flag: {G_flag}")
-            known_params_list = [{'G': G_val**n} for G_val in G_datas]
-            known_params_list = [{'G': G_val} for G_val in G_datas]
+    # ray.init(log_to_driver=True)
+    # for n_iter in n_iter_list:
+    #     if n_iter <= prev:
+    #         continue
+    #     inc = n_iter - prev
+        # opt.core.n_iter = int(n_iter)
+        # opt.core.n_iter_prev = int(prev)
+    #     # flag for optimierer_ray
+    #     resume_flag = (prev > 0)
+    #     opt.core.resume_unfinished = resume_flag
+        # for G_flag in G_flag_list:
+        #     if G_flag == "Median_Integral":
+        #         n = 2.6428
+        #         G_datas = [32.0404, 39.1135, 41.4924, 44.7977, 45.6443]
+        #         # Estimated n = 3.3700  (95 % CI: 0.7892 – 5.9507)
+        #         # without 1800: Estimated n = 4.0104  (95 % CI: 0.6065 – 7.4143)
+        #     elif G_flag == "Median_LocalStirrer":
+        #         n = 0.4723
+        #         G_datas = [104.014, 258.081, 450.862, 623.357, 647.442]
+        #         # Estimated n = 0.6417  (95 % CI: 0.1699 – 1.1135)
+        #         # without 1800: Estimated n = 0.7435  (95 % CI: 0.1290 – 1.3580)
+        #     elif G_flag == "Mean_Integral":
+        #         n = 1.1746
+        #         G_datas = [87.2642, 132.668, 143.68, 183.396, 185.225]
+        #         # Estimated n = 1.6477  (95 % CI: 0.5048 – 2.7906)
+        #         # without 1800: Estimated n = 1.9767  (95 % CI: 0.4946 – 3.4588)
+        #     elif G_flag == "Mean_LocalStirrer":
+        #         n = 0.5917
+        #         G_datas = [297.136, 594.268, 890.721, 1167.74, 1284.46]
+        #         # G_datas = [297.136, 594.268]
+        #         # Estimated n = 0.8154  (95 % CI: 0.2074 – 1.4235)
+        #         # without 1800: Estimated n = 0.9892  (95 % CI: 0.1878 – 1.7905)
+        #     else:
+        #         raise ValueError(f"Unknown G_flag: {G_flag}")
+        #     known_params_list = [{'G': G_val**n} for G_val in G_datas]
+            # known_params_list = [{'G': G_val} for G_val in G_datas]
         
-            cross_validation(data_names_list, known_params_list, result_dir, G_flag, one_train_data=True)
-        prev = n_iter
-    ray.shutdown()
+    #         cross_validation(data_names_list, known_params_list, result_dir, G_flag)
+    #     prev = n_iter
+    # ray.shutdown()
     
-    # # Load everything
-    # result_dir = os.path.join(r"C:\Users\px2030\Code\Ergebnisse\Batch_opt\opt_results", "cv_results_group41")
-    # # result_dir = r"C:\Users\px2030\Code\PSD_opt\tests\cv_results"
-    # results = load_all_cv_results(result_dir, n_iter_list, data_dir, G_flag_list)
+    # Load everything
+    # result_dir = os.path.join(r"C:\Users\px2030\Code\Ergebnisse\Batch_opt\opt_results", "cv_results_group38")
+    # result_dir = r"C:\Users\px2030\Code\PSD_opt\tests\cv_results"
+    results = load_all_cv_results(result_dir, n_iter_list, data_dir, G_flag_list)
     # add_opt_params_mean(results)
-    # # # Analyze & visualize
+    # # Analyze & visualize
     # analyze_and_plot_cv_results(results, n_iter_list, G_flag_list, result_dir)
     
-    # # calculate PBE 
-    # G_flag = "Median_LocalStirrer" if data_dir == "int1d" else "Mean_Integral"
-    # G_flag = "Median_Integral"
-    # if G_flag == "Median_Integral":
-    #     n = 2.6428 if data_dir == "lognormal_curvefit" else 3.1896
-    #     G_datas = [39.1135, 41.4924, 44.7977, 45.6443]
-    # elif G_flag == "Median_LocalStirrer":
-    #     n = 0.4723 if data_dir == "lognormal_curvefit" else 0.5560
-    #     G_datas = [104.014, 258.081, 450.862, 623.357, 647.442]
-    # elif G_flag == "Mean_Integral":
-    #     n = 1.1746 if data_dir == "lognormal_curvefit" else 1.3457
-    #     G_datas = [87.2642, 132.668, 143.68, 183.396, 185.225]
-    # elif G_flag == "Mean_LocalStirrer":
-    #     n = 0.5917 if data_dir == "lognormal_curvefit" else 0.7020
-    #     G_datas = [297.136, 594.268, 890.721, 1167.74, 1284.46]
-    #     # G_datas = [297.136, 594.268, 890.721, 1167.74]
-    # else:
-    #     raise ValueError(f"Unknown G_flag: {G_flag}")
-    # # known_params_list = [{'G': G_val**n} for G_val in G_datas]
-    # known_params_list = [{'G': G_val} for G_val in G_datas]
+    # calculate PBE 
+    G_flag = "Median_LocalStirrer" if data_dir == "int1d" else "Mean_Integral"
+    G_flag = "Median_Integral"
+    if G_flag == "Median_Integral":
+        n = 2.6428 if data_dir == "lognormal_curvefit" else 3.1896
+        G_datas = [39.1135, 41.4924, 44.7977, 45.6443]
+    elif G_flag == "Median_LocalStirrer":
+        n = 0.4723 if data_dir == "lognormal_curvefit" else 0.5560
+        G_datas = [104.014, 258.081, 450.862, 623.357, 647.442]
+    elif G_flag == "Mean_Integral":
+        n = 1.1746 if data_dir == "lognormal_curvefit" else 1.3457
+        G_datas = [87.2642, 132.668, 143.68, 183.396, 185.225]
+    elif G_flag == "Mean_LocalStirrer":
+        n = 0.5917 if data_dir == "lognormal_curvefit" else 0.7020
+        G_datas = [297.136, 594.268, 890.721, 1167.74, 1284.46]
+        # G_datas = [297.136, 594.268, 890.721, 1167.74]
+    else:
+        raise ValueError(f"Unknown G_flag: {G_flag}")
+    # known_params_list = [{'G': G_val**n} for G_val in G_datas]
+    known_params_list = [{'G': G_val} for G_val in G_datas]
     
     # Read the results of a specific group in the cross-validation, then compare all the data in that group
-    # opt_params = results[G_flag][6400]['opt_params_list'][0]
+    opt_params = results[G_flag][6400]['opt_params_list'][0]
     # opt_params = results[G_flag][1600]['opt_params_mean']
-    # losses_mean = calc_delta_test(known_params_list, data_names_list, init_core=True, opt_params=opt_params, visual=False)
-    # print(losses_mean/results[G_flag][6400]['losses_all_list'][0])
+    losses_mean = calc_delta_test(known_params_list, data_names_list, init_core=True, opt_params=opt_params, visual=False)
+    print(losses_mean/results[G_flag][6400]['losses_all_list'][0])
     # Read the results of all groups in the cross-validation and compare the test data from each group.
     # opt_params_list = results[G_flag][6400]['opt_params_list']
     # losses = []

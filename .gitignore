@@ -31,3 +31,4 @@ poetry.lock
 
 *.jpg
 /optframework/utils/func_temp/config
+*.sqlite

@@ -1168,3 +1168,10 @@ def solve_PBE(self, t_vec=None):
         self.rate_res_tem = rate_res_tem
         self.error_res_tem = error_res_tem
 
+def _close(self, gc_clean=True):
+    big_attrs = ("N", "F_M", "B_R", "intx_B_F", "inty_B_F", "int_B_F", "RES")
+    for name in big_attrs:
+            setattr(self, name, None)
+    if gc_clean:
+        import gc
+        gc.collect()
