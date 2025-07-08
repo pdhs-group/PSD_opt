@@ -148,7 +148,7 @@ config = {
         'cpus_per_trail': 3,  
         # Number of CPU cores allocated to each optimization trial.
     
-        'max_concurrent': 2,  
+        'max_concurrent': 1,  
         # Maximum number of trials that can be run concurrently.
         },
     

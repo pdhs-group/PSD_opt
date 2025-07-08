@@ -234,17 +234,18 @@ def optimierer_ray(self, opt_params_space=None, exp_data_paths=None,known_params
         evaluated_rewards = None
             
     # Set up the Ray Tune search space    
-    self.RT_space = {}
-    for name, info in opt_params_space.items():
-        if "fixed" in info:
-            # just hand back the literal value
-            self.RT_space[name] = info["fixed"]
-        else:
-            lo, hi = info["bounds"]
-            if info.get("log_scale", False):
-                self.RT_space[name] = tune.loguniform(10**lo, 10**hi)
+    if opt_params_space is not None:   
+        self.RT_space = {}
+        for name, info in opt_params_space.items():
+            if "fixed" in info:
+                # just hand back the literal value
+                self.RT_space[name] = info["fixed"]
             else:
-                self.RT_space[name] = tune.uniform(lo, hi)
+                lo, hi = info["bounds"]
+                if info.get("log_scale", False):
+                    self.RT_space[name] = tune.loguniform(10**lo, 10**hi)
+                else:
+                    self.RT_space[name] = tune.uniform(lo, hi)
     # Create the search algorithm
     algo = self.create_algo(evaluated_params=evaluated_params, evaluated_rewards=evaluated_rewards)
     # Clean up the data name for output storage 
