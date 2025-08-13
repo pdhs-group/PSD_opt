@@ -455,7 +455,7 @@ def main():
     add_opt_params_mean(results)
     
     plot_summary_two_charts(results, n_iter_list, G_flag_list, result_dir)
-    plot_x_mean(results, G_flag_list[0])
+    # plot_x_mean(results, G_flag_list[0])
     plot_x_50(results, G_flag_list[0])
     
     return results
@@ -476,7 +476,7 @@ if __name__ == '__main__':
     n_iter_list = [200, 400, 800, 1600, 2400, 4000, 6400]
 
     marker_styles = ['o', 's', 'D', '^', 'v', 'P', '*', 'X']
-    result_dir = os.path.join(r"C:\Users\px2030\Code\Ergebnisse\Batch_opt\opt_results", "cv_results_group41")
+    result_dir = os.path.join(r"C:\Users\px2030\Code\Ergebnisse\Batch_opt\opt_results", "cv_results_group51")
     
     if data_dir == "lognormal_curvefit":
         x_exp_mean = np.array([
@@ -498,10 +498,10 @@ if __name__ == '__main__':
         G_flag_list = ["Median_LocalStirrer"]
 
         G_flag_list = [
-            # "Median_Integral", 
+            "Median_Integral", 
             # "Median_LocalStirrer", 
             # "Mean_Integral", 
-            "Mean_LocalStirrer"
+            # "Mean_LocalStirrer"
         ]
     # re_calc_lognormal_results()
     

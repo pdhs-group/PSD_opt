@@ -57,11 +57,11 @@ config = {
     "DIST3_name": "PSD_x50_2.0E-5_RelSigmaV_2.0E-1.npy",  
     # Name of the file containing the PSD for M particles.
 
-    "COLEVAL": 4,  
+    "COLEVAL": 1,  
     # Flag that determines which model to use for calculating collision frequency.
     # Can be checked in dpbe_core.py's `calc_F_M`.
 
-    "EFFEVAL": 2,  
+    "EFFEVAL": 1,  
     # Flag that determines which model to use for calculating collision efficiency.
     # Can be checked in dpbe_core.py's `calc_F_M`.
 
@@ -72,16 +72,16 @@ config = {
     "CORR_BETA": 1e-1,
     # Correction factor for the collision frequency kernel, controlling the rate of aggregation.
 
-    'alpha_prim': np.array([1,1,1,1]),  
-    # 'alpha_prim': np.array([1]),
+    # 'alpha_prim': np.array([1,1,1,1]),  
+    'alpha_prim': np.array([1]),
     # Factors for collision efficiency.
     # The length of the alpha_prim array must be the square of the dpbe's dimensionality (dim^2).
 
-    "BREAKRVAL": 2,  
+    "BREAKRVAL": 4,  
     # Flag that determines which model to use for calculating breakage rate.
     # Can be checked in dpbe_core.py's `calc_B_R`.
 
-    "BREAKFVAL": 2,  
+    "BREAKFVAL": 5,  
     # Flag that determines which model to use for calculating the fragment distribution function.
     # Can be checked in dpbe_core.py's `calc_int_B_F`.
 
