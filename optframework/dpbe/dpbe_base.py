@@ -14,6 +14,9 @@ import numpy as np
 import optframework.dpbe.dpbe_core as dpbe_core
 import optframework.dpbe.dpbe_visualization as dpbe_visualization
 import optframework.dpbe.dpbe_post as dpbe_post
+from optframework.dpbe.dpbe_core import PBECore
+from optframework.dpbe.dpbe_visualization import PBEVisual
+from optframework.dpbe.dpbe_post import PBEPost
 # import optframework.dpbe.dpbe_mag_sep as dpbe_mag_sep
 # from optframework.utils.func.bind_methods import bind_methods_from_module
         
@@ -69,7 +72,7 @@ class DPBESolver():
         self.t_total = t_total                       # total simulation time [second]
         self.t_write = t_write
         self.t_vec = t_vec
-        self.solver = "ivp"                   # "ivp": use integrate.solve_ivp
+        self.solve_algo = "ivp"                   # "ivp": use integrate.solve_ivp
                                               # "radau": use RK.radau_ii_a, only for debug, not recommended  
         
         ## Parameters in agglomeration kernels
@@ -182,10 +185,13 @@ class DPBESolver():
             
             
         # Initialize PBE core, visualization, post-processing, and magnetic separation parameters
-        dpbe_core.init_pbe_params(self, dim, t_total, t_write, t_vec, disc, **attr)
-        dpbe_visualization.init_visual_params(self)
-        dpbe_post.init_post_params(self)
+        # dpbe_core.init_pbe_params(self, dim, t_total, t_write, t_vec, disc, **attr)
+        # dpbe_visualization.init_visual_params(self)
+        # dpbe_post.init_post_params(self)
         # dpbe_mag_sep.init_mag_sep_params(self)
+        self.core = PBECore(self)
+        self.post = PBEPost(self)
+        self.visualization = PBEVisual(self)
         
         # Load the configuration file, if available
         if config_path is None and load_attr:

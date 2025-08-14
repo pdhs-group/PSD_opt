@@ -13,7 +13,7 @@ config = {
     ## Use only 2D Data or 1D+2D
     'multi_flag': True,
     ## Input only one/one set of PSD data
-    'single_case': False,
+    'single_case': True,
     
     'algo_params': {
         'dim': 2,
@@ -74,7 +74,7 @@ config = {
         'n_iter': 10,
         # Number of iterations for the optimization process.
 
-        'calc_init_N': False,
+        'calc_init_N': True,
         # Whether to initialize the PBE using the first few time points of experimental data (True).
     
         'USE_PSD' : True,
@@ -139,7 +139,7 @@ config = {
         
         'verbose': 0,
     
-        'multi_jobs': True,  
+        'multi_jobs': False,  
         # Whether to run multiple optimization tasks (Tune jobs) concurrently. 
         # If True, multiple PSD datasets should be provided.
     

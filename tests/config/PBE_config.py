@@ -91,7 +91,7 @@ config = {
     # Flag that determines which model to use for calculating the fragment distribution function.
     # Can be checked in dpbe_core.py's `calc_int_B_F`.
 
-    "pl_v": 0.4448641118858375,  
+    "pl_v": 2,  
     # Parameter in fragment distribution function.
 
     ### To ensure the monotonicity of the breakage rate, this setting has been deprecated, 

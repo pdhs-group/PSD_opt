@@ -29,7 +29,7 @@ def normal_test():
     print(f"The execution of optimierer takes：{elapsed_time} seconds")
     
     ## Calculate PBE with synth-data and parameter from optimization in 2D
-    opt.core.set_init_N(exp_data_paths, 'mean')
+    opt.core.opt_pbe.set_init_N(exp_data_paths, 'mean')
     opt.core.calc_all_pop(result_dict["opt_params"], opt.core.t_vec)
     x_uni, Q3 = return_pop_distribution()
     
@@ -37,10 +37,10 @@ def normal_test():
 
 def return_pop_distribution():
     # Berechne x_uni
-    x_uni = opt.core.p.calc_x_uni()
+    x_uni = opt.core.p.post.calc_x_uni()
     
     # Erstelle eine Liste der Verteilungen für die ersten 12 Zeitschritte
-    Q3 = [np.array(opt.core.p.return_distribution(t=i, flag='Qx')).reshape(len(x_uni)) for i in range(len(opt.core.t_vec))]
+    Q3 = [np.array(opt.core.p.post.return_distribution(t=i, flag='Qx')).reshape(len(x_uni)) for i in range(len(opt.core.t_vec))]
     
     # Zusammenfügen zu einer (52, 12) Matrix
     Q3_matrix = np.column_stack(Q3)
@@ -68,22 +68,22 @@ def calc_delta_test(var_delta=False):
     opt.core.init_attr(opt.core_params)
     opt.core.init_pbe(opt.pop_params, opt.data_path) 
     if opt.core.calc_init_N:
-        opt.core.set_init_N(exp_data_paths, 'mean')
+        opt.core.opt_pbe.set_init_N(exp_data_paths, 'mean')
     if isinstance(exp_data_paths, list):
         x_uni_exp = []
         data_exp = []
         for exp_data_path_tem in exp_data_paths:
             if opt.core.exp_data:
-                x_uni_exp_tem, data_exp_tem = opt.core.get_all_exp_data(exp_data_path_tem)
+                x_uni_exp_tem, data_exp_tem = opt.core.opt_data.get_all_exp_data(exp_data_path_tem)
             else:
-                x_uni_exp_tem, data_exp_tem = opt.core.get_all_synth_data(exp_data_path_tem)
+                x_uni_exp_tem, data_exp_tem = opt.core.opt_data.get_all_synth_data(exp_data_path_tem)
             x_uni_exp.append(x_uni_exp_tem)
             data_exp.append(data_exp_tem)
     else:
         if opt.core.exp_data:
-            x_uni_exp, data_exp = opt.core.get_all_exp_data(exp_data_paths)
+            x_uni_exp, data_exp = opt.core.opt_data.get_all_exp_data(exp_data_paths)
         else:
-            x_uni_exp, data_exp = opt.core.get_all_synth_data(exp_data_paths)    
+            x_uni_exp, data_exp = opt.core.opt_data.get_all_synth_data(exp_data_paths)    
     # corr_agg = pop_params['CORR_BETA'] * pop_params['alpha_prim']
     # pop_params_test = {}
     # pop_params_test['corr_agg'] = corr_agg
@@ -105,7 +105,7 @@ if __name__ == '__main__':
     opt = OptBase()
     multi_flag = opt.multi_flag
     
-    data_name = "CB_n600_Teil1.xlsx"
+    data_name = "Sim_Mul_0.1_para_1.0_0.001_0.001_0.001_1.5_0.01_0.5_0.01_2.0.xlsx"
     
     exp_data_paths = os.path.join(opt.data_path, data_name)
     if multi_flag:
@@ -114,7 +114,7 @@ if __name__ == '__main__':
             exp_data_paths.replace(".xlsx", "_NM.xlsx"),
             exp_data_paths.replace(".xlsx", "_M.xlsx")
         ]
-    
+     
     known_params = {
         # 'CORR_BETA' : 1.0,
         # 'alpha_prim' : [1e-3,1e-3,0.1],

@@ -10,17 +10,17 @@ import numpy as np
 from optframework.dpbe import DPBESolver
 ## for plotter
 import matplotlib.pyplot as plt
-import optframework.kernel_opt.opt_core as core
+# import optframework.kernel_opt.opt_core as core
+from optframework.utils.func.static_method import KDE_fit, KDE_score
 import optframework.utils.plotter.plotter as pt
 from matplotlib.animation import FuncAnimation
 
 def visualize_distribution(t_frame=-1, axq3=None,fig=None, clr='b', q3lbl='q3'):
     # x_uni, q3, Q3, sumvol_uni = p.return_distribution(t=t_frame, flag='x_uni, q3, Q3,sumvol_uni')
-    x_uni, q3, Q3, sumvol_uni = p.return_distribution(t=t_frame, flag='x_uni, qx, Qx,sum_uni', q_type='q3')
+    x_uni, q3, Q3, sumvol_uni = p.post.return_distribution(t=t_frame, flag='x_uni, qx, Qx,sum_uni', q_type='q3')
     if smoothing:
-        core_ins = core.OptCore()
-        kde = core_ins.KDE_fit(x_uni[1:],sumvol_uni[1:],bandwidth='scott', kernel_func='epanechnikov')
-        q3 = core_ins.KDE_score(kde,x_uni[1:])
+        kde = KDE_fit(x_uni[1:],sumvol_uni[1:],bandwidth='scott', kernel_func='epanechnikov')
+        q3 = KDE_score(kde,x_uni[1:])
         q3 = np.insert(q3, 0, 0.0)
     
     axq3, fig = pt.plot_data(x_uni, q3, fig=fig, ax=axq3,
@@ -39,11 +39,10 @@ def animation_distribution(t_vec, fps=10):
         while len(axq3.lines) > 0:
             axq3.lines[0].remove()
         # x_uni, q3, Q3, sumvol_uni = p.return_distribution(t=frame, flag='x_uni, q3, Q3, sumvol_uni')
-        x_uni, q3, Q3, sumvol_uni = p.return_distribution(t=frame, flag='x_uni, qx, Qx, sum_uni', q_type='q0')
+        x_uni, q3, Q3, sumvol_uni = p.post.return_distribution(t=frame, flag='x_uni, qx, Qx, sum_uni', q_type='q0')
         if smoothing:
-            core_ins = core.OptCore()
-            kde = core_ins.KDE_fit(x_uni[1:],sumvol_uni[1:],bandwidth='scott', kernel_func='epanechnikov')
-            q3 = core_ins.KDE_score(kde,x_uni[1:])
+            kde = KDE_fit(x_uni[1:],sumvol_uni[1:],bandwidth='scott', kernel_func='epanechnikov')
+            q3 = KDE_score(kde,x_uni[1:])
             q3 = np.insert(q3, 0, 0.0)
         
         axq3.plot(x_uni, q3, label=q3lbl, color=clr, marker='o')  
@@ -104,16 +103,16 @@ def visualize_N():
 #%% MAIN   
 if __name__ == "__main__":
     dim=2
-    config_path = r"C:\Users\px2030\Code\PSD_opt-old version\config\PBE_config.py"
-    p = DPBESolver(dim=dim, config_path=config_path)
+    # config_path = r"C:\Users\px2030\Code\PSD_opt-old version\config\PBE_config.py"
+    p = DPBESolver(dim=dim)
     smoothing = True
     t_start = time.time()
-    p.full_init(calc_alpha=False)
+    p.core.full_init(calc_alpha=False)
     t = time.time() - t_start
     print(f"initilization takes {t} second")
     t_vec = p.t_vec
     ## solve the PBE
-    p.solve_PBE()
+    p.core.solve_PBE()
     ## View number concentration of partikel
     N = p.N
     if p.solver == "radau":
@@ -137,6 +136,6 @@ if __name__ == "__main__":
     pt.plot_init(scl_a4=1,figsze=[12.8,6.4*1.5],lnewdth=0.8,mrksze=5,use_locale=True,scl=1.2)
     visualize_distribution(t_frame=-1)
     visualize_N()
-    animation_distribution(t_vec,fps=5)
-    if p.solver == "radau":
-        visualize_convergence()
+    # animation_distribution(t_vec,fps=5)
+    # if p.solver == "radau":
+    #     visualize_convergence()

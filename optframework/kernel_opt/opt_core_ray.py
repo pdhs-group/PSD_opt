@@ -27,8 +27,8 @@ class OptCoreRay(OptCore, tune.Trainable):
     """
     def __init__(self, *args, **kwargs):
         # Initialize tune.Trainable to prepare the class as a Ray Tune actor
-        tune.Trainable.__init__(self, *args, **kwargs)
         OptCore.__init__(self)
+        tune.Trainable.__init__(self, *args, **kwargs)
         
     def setup(self, config, core_params, pop_params, data_path, 
               exp_data_paths, x_uni_exp, data_exp, known_params, exp_case):
@@ -62,7 +62,7 @@ class OptCoreRay(OptCore, tune.Trainable):
         
         # Initialize the number concentration N if required
         if self.calc_init_N:
-            self.set_init_N(exp_data_paths, init_flag='mean')
+            self.opt_pbe.set_init_N(exp_data_paths, init_flag='mean')
             
         # Store experimental data and known parameters
         self.pop_params = pop_params
@@ -158,10 +158,10 @@ class OptCoreRay(OptCore, tune.Trainable):
         """
         self.reuse_num += 1
         if self.reuse_num >= self.max_reuse:
-            self.close_pbe()
+            self.opt_pbe.close_pbe()
             self.init_pbe(self.pop_params, self.data_path)
             if self.calc_init_N:
-                self.set_init_N(self.exp_data_paths, init_flag='mean')
+                self.opt_pbe.set_init_N(self.exp_data_paths, init_flag='mean')
             self.reuse_num = 0
         self.config = new_config
         return True

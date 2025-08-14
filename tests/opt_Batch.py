@@ -36,9 +36,9 @@ def calc_delta_test(known_params_list, exp_data_paths, init_core=True, opt_param
     data_exp = []
     for exp_data_path_tem in exp_data_paths:
         if opt.core.exp_data:
-            x_uni_exp_tem, data_exp_tem = opt.core.get_all_exp_data(exp_data_path_tem)
+            x_uni_exp_tem, data_exp_tem = opt.core.opt_data.get_all_exp_data(exp_data_path_tem)
         else:
-            x_uni_exp_tem, data_exp_tem = opt.core.get_all_synth_data(exp_data_path_tem)
+            x_uni_exp_tem, data_exp_tem = opt.core.opt_data.get_all_synth_data(exp_data_path_tem)
         x_uni_exp.append(x_uni_exp_tem)
         data_exp.append(data_exp_tem)
 
