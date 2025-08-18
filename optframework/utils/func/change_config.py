@@ -5,31 +5,27 @@ Created on Mon Aug 18 10:05:01 2025
 @author: px2030
 """
 
-import ast
+import libcst as cst
 from pathlib import Path
 
-def replace_value_for_key_in_py(path: str, key: str, new_value: str) -> int:
+class ReplaceConfig(cst.CSTTransformer):
+    def __init__(self, key: str, new_value: str):
+        self.key = key
+        self.new_value = new_value
+
+    def leave_Dict(self, original_node, updated_node):
+        new_elements = []
+        for elt in updated_node.elements:
+            if (isinstance(elt.key, cst.SimpleString)
+                and elt.key.evaluated_value == self.key):
+                new_val = cst.SimpleString(f"'{self.new_value}'")
+                new_elements.append(elt.with_changes(value=new_val))
+            else:
+                new_elements.append(elt)
+        return updated_node.with_changes(elements=new_elements)
+
+def replace_key_value(path: str, key: str, new_value: str):
     code = Path(path).read_text(encoding="utf-8")
-    tree = ast.parse(code, filename=path)
-
-    class Replacer(ast.NodeTransformer):
-        def __init__(self, key, new_value):
-            self.key = key
-            self.new_node = ast.Constant(value=new_value)
-            self.count = 0
-
-        def visit_Dict(self, node: ast.Dict):
-            for i, k in enumerate(node.keys):
-                if isinstance(k, ast.Constant) and k.value == self.key:
-                    node.values[i] = self.new_node
-                    self.count += 1
-            self.generic_visit(node)
-            return node
-
-    tr = Replacer(key, new_value)
-    new_tree = tr.visit(tree)
-    ast.fix_missing_locations(new_tree)
-
-    new_code = ast.unparse(new_tree)
-    Path(path).write_text(new_code, encoding="utf-8")
-    return tr.count
+    tree = cst.parse_module(code)
+    new_tree = tree.visit(ReplaceConfig(key, new_value))
+    Path(path).write_text(new_tree.code, encoding="utf-8")

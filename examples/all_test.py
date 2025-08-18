@@ -11,7 +11,7 @@ from pathlib import Path
 import ray
 from optframework.kernel_opt.opt_base import OptBase
 from optframework.utils.general_scripts.generate_psd import full_psd
-from optframework.utils.func.change_config import replace_value_for_key_in_py
+from optframework.utils.func.change_config import replace_key_value
 
 if __name__ == '__main__':
     generate_synth_data = False
@@ -41,8 +41,8 @@ if __name__ == '__main__':
     print(f'New psd data has been created and saved in path {dist_path}')
     dist_name = os.path.basename(dist_path)
     # Use the psd data as initial condition
-    replace_value_for_key_in_py(conf_pth, 'PSD_R01', dist_name)
-    replace_value_for_key_in_py(conf_pth, 'PSD_R03', dist_name)
+    replace_key_value(conf_pth, 'PSD_R01', dist_name)
+    replace_key_value(conf_pth, 'PSD_R03', dist_name)
     
     opt = OptBase(config_path=conf_pth)    
     noise_type = opt.core.noise_type

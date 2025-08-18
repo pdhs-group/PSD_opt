@@ -186,7 +186,9 @@ config = {
         "G": 80,
         },
     
-    ## Parameters which should be optimized
+    ## Optimized parameters and their search ranges.
+    # Except for corr_agg, the names of the optimized parameters should be consistent with 
+    # their actual names in the PBE.
     'opt_params' : {
         'corr_agg_0': {'bounds': (-8.0, 2.0), 'log_scale': True},
         # 'corr_agg_1': {'bounds': (-4.0, 0.0), 'log_scale': True},
@@ -196,6 +198,7 @@ config = {
         'pl_P2': {'bounds': (0.1, 5.0), 'log_scale': False},
         # 'pl_P3': {'bounds': (-5.0, -1.0), 'log_scale': True},
         # 'pl_P4': {'bounds': (0.3, 3.0), 'log_scale': False},
+        
         'actor_wait': {"fixed": True},
         'wait_time': {"fixed": 1},
         'max_reuse': {"fixed": 10}

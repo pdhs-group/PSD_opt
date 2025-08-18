@@ -9,3 +9,4 @@ openpyxl==3.1.5
 optuna==4.1.0
 cmaes==0.11.1
 ray[default,train,tune]==2.44.1
+libcst == 1.8.2

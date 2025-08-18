@@ -10,15 +10,10 @@ from pathlib import Path
 import runpy
 import math
 import numpy as np
-# import importlib.util
-import optframework.dpbe.dpbe_core as dpbe_core
-import optframework.dpbe.dpbe_visualization as dpbe_visualization
-import optframework.dpbe.dpbe_post as dpbe_post
 from optframework.dpbe.dpbe_core import PBECore
 from optframework.dpbe.dpbe_visualization import PBEVisual
 from optframework.dpbe.dpbe_post import PBEPost
-# import optframework.dpbe.dpbe_mag_sep as dpbe_mag_sep
-# from optframework.utils.func.bind_methods import bind_methods_from_module
+
         
 class DPBESolver():
     """
@@ -119,9 +114,9 @@ class DPBESolver():
         self.DIST1_path = os.path.join(self.work_dir,'data','PSD_data')
         self.DIST2_path = os.path.join(self.work_dir,'data','PSD_data')
         self.DIST3_path = os.path.join(self.work_dir,'data','PSD_data')
-        self.DIST1_name = 'PSD_x50_1.0E-6_r01_2.9E-7.npy'
-        self.DIST2_name = 'PSD_x50_1.0E-6_r01_2.9E-7.npy'
-        self.DIST3_name = 'PSD_x50_1.0E-6_r01_2.9E-7.npy' 
+        # self.DIST1_name = 'PSD_x50_1.0E-6_r01_2.9E-7.npy'
+        # self.DIST2_name = 'PSD_x50_1.0E-6_r01_2.9E-7.npy'
+        # self.DIST3_name = 'PSD_x50_1.0E-6_r01_2.9E-7.npy' 
         
         self.V_unit = 1                  # The unit volume used to calculate the total particle concentration. 
                                             # It is essentially a parameter used to scale the variabel.
@@ -265,10 +260,11 @@ class DPBESolver():
         # Set the number of time steps based on the time vector
         if self.t_vec is not None:
             self.t_num = len(self.t_vec)  
-            
-        self.DIST1 = os.path.join(self.DIST1_path,self.DIST1_name)
-        self.DIST2 = os.path.join(self.DIST2_path,self.DIST2_name)
-        self.DIST3 = os.path.join(self.DIST3_path,self.DIST3_name)  
+        
+        if getattr(self, "DIST1_name", None):
+            self.DIST1 = os.path.join(self.DIST1_path,self.DIST1_name)
+            self.DIST2 = os.path.join(self.DIST2_path,self.DIST2_name)
+            self.DIST3 = os.path.join(self.DIST3_path,self.DIST3_name)  
         # Recalculate physical constants and particle concentrations
         self.EPS = self.EPSR*self.EPS0
         
@@ -281,8 +277,3 @@ class DPBESolver():
         self.V03 = self.c_mag_exp*self.V_unit        # Total volume concentration of component 3 [unit/unit] - M
         self.N03 = 3*self.V03/(4*math.pi*self.R03**3)     # Total number concentration of primary particles component 1 [1/m³] - M (if no PSD) 
         
-# # Bind methods from different PBE-related modules to DPBESolver            
-# bind_methods_from_module(DPBESolver, 'optframework.dpbe.dpbe_core')
-# bind_methods_from_module(DPBESolver, 'optframework.dpbe.dpbe_visualization')
-# bind_methods_from_module(DPBESolver, 'optframework.dpbe.dpbe_post')
-# bind_methods_from_module(DPBESolver, 'optframework.dpbe.dpbe_mag_sep')

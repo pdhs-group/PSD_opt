@@ -22,6 +22,7 @@ openpyxl = "^3.1.5"
 optuna = "^4.1.0"
 cmaes = "^0.11.1"
 ray = {extras = ["default,train,tune"], version = "^2.40.0"}
+libcst = "^1.8.2"
 
 
 [build-system]
