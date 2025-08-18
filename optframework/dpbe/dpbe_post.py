@@ -182,6 +182,7 @@ class PBEPost:
                - 'q0' for number-based distribution,
                - 'q3' for volume-based distribution,
                - 'q6' for square-volume distribution.
+               
             The default is 'q3'.
         
         Returns
