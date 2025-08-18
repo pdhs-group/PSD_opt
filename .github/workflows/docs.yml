@@ -43,7 +43,7 @@ jobs:
           fi
 
       - name: Generate API stubs
-        run: sphinx-apidoc -o docs/api YOUR_PACKAGE_NAME
+        run: sphinx-apidoc -o docs/api optframework
 
       - name: Build Sphinx HTML
         working-directory: docs    
