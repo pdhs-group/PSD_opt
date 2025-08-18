@@ -47,7 +47,7 @@ class DPBESolver():
         The file path to the configuration file. If None, the default config path is used.
     disc : str, optional
         The discretization scheme to use for the PBE. Defaults to 'geo'.
-    **attr : dict, optional
+    attr : dict, optional
         Additional attributes for PBE initialization.
     """
     def __init__(self, dim, t_total=601, t_write=100, t_vec=None, load_attr=True, config_path=None, disc='geo', **attr):
