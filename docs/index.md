@@ -16,13 +16,13 @@ You may also want to have a look at the {doc}`overview of the most important att
 
 ```{toctree}
 :caption: 'Contents:'
-:maxdepth: 1
+:maxdepth: 2
 
 quickstart
 attributes
 advanced_guide
 references
-modules
+api/modules
 ```
 
 <!-- # Indices and tables

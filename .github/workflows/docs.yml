@@ -53,7 +53,7 @@ jobs:
       - name: Convert RST -> MyST Markdown
         shell: bash
         run: |
-          rst2myst convert -R docs/api
+          rst2myst convert -R docs/api/*.rst
 
       - name: Build Sphinx HTML
         working-directory: docs    
