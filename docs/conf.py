@@ -32,7 +32,8 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 
 # Include all external packages (should not be included in the docs)
 autodoc_mock_imports = ['matplotlib', 'scipy', 'numba', 'plotter','statsmodels',
-                        'bayes_opt', 'sklearn', 'pandas', 'SALib', 'numdifftools']
+                        'bayes_opt', 'sklearn', 'pandas', 'SALib', 'numdifftools',
+                        'originpro']
 autodoc_default_options = {'member-order': 'bysource'}
 nitpick_ignore = [
     ("py:class", "ray.tune.trainable.trainable.Trainable"),
