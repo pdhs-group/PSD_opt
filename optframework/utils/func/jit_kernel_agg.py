@@ -240,14 +240,26 @@ def calc_F_M_3D(NS,COLEVAL,CORR_BETA,G,R,X1,X2,X3,EFFEVAL,alpha_prim,SIZEEVAL,X_
 def calc_beta(COLEVAL, CORR_BETA, G, R, idx1, idx2):
     """
     Calculate beta based on collision model with flexible support for 1D or 2D R arrays.
-    Parameters:
-        COLEVAL : int - Collision model evaluation type.
-        CORR_BETA : float - Correction factor for beta.
-        G : float - Shear rate or related parameter.
-        R : array - Particle radius/size array. Can be 1D or 2D.
-        idx1, idx2 : int - Indices of the two colliding particles.
-    Returns:
-        beta : float - Collision frequency.
+    
+    Parameters
+    ----------
+    COLEVAL : int
+        Collision model evaluation type.
+    CORR_BETA : float
+        Correction factor for beta.
+    G : float
+        Shear rate or related parameter.
+    R : array
+        Particle radius/size array. Can be 1D or 2D.
+    idx1 : int
+        Index of the first colliding particle.
+    idx2 : int
+        Index of the second colliding particle.
+    
+    Returns
+    -------
+    beta : float
+        Collision frequency.
     """
     # Handle 1D case for Monte Carlo: R[idx] directly corresponds to size
     if R.ndim == 1:

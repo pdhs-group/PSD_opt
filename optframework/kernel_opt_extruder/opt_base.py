@@ -234,7 +234,7 @@ class OptBase():
 
         Parameters
         ----------
-        pop : :class:`pop.population`
+        pop : :class:
             The population instance for which data is being generated.
         exp_data_path : str
             The file path where the experimental data will be saved.
@@ -386,10 +386,9 @@ class OptBase():
     def calc_PSD_delta(self, params, exp_data_path):
         """
         Directly calculates the delta value using the input parameters.
-ulated delta by comparing the 
-        particle size distribution (PSD) from the input parameters with the experimental data.
-        It can also be used to compute the theoretical minimum delta 
-        This method is used to validate the accuracy of the calcvalue for synthetically 
+        Culated delta by comparing the PSD from the input parameters with the experimental data.
+        It can also be used to compute the theoretical minimum delta. 
+        This method is used to validate the accuracy of the calcvalue for synthetically. 
         generated data.
 
         Parameters

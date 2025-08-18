@@ -155,7 +155,7 @@ class OptCore():
             The unique particle diameters in experimental data.
         data_exp : array-like
             The experimental PSD data that will be compared with the simulated PSD.
-        pop : :class:`pop.DPBESolver`
+        pop : :class:
             An instance of the PBE solver, which generates the simulated PSD.
  
         Returns

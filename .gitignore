@@ -33,3 +33,4 @@ poetry.lock
 /optframework/utils/func_temp/config
 *.sqlite
 /examples/config/Ray_Tune
+/docs/_build

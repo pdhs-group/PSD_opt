@@ -11,7 +11,7 @@ import numpy as np
 import runpy
 import multiprocessing
 from optframework.kernel_opt.opt_base import OptBase
-from generate_psd import full_psd
+from optframework.utils.general_scripts.generate_psd import full_psd
 
 def calc_function(conf_params, data_path, config_path):
     #%%  Input for Opt 

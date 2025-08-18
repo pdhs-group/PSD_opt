@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="writer-html5" lang="en">
 <head>
-  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Quick Start &mdash; dPBE: Discrete Population Balance Equations 1.0.0 documentation</title>
@@ -13,11 +13,11 @@
     <script src="_static/js/html5shiv.min.js"></script>
   <![endif]-->
   
-        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
         <script src="_static/jquery.js"></script>
-        <script src="_static/underscore.js"></script>
         <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
         <script src="_static/doctools.js"></script>
+        <script src="_static/sphinx_highlight.js"></script>
         <script>window.MathJax = {"options": {"processHtmlClass": "tex2jax_process|mathjax_process|math|output_area"}}</script>
         <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <script src="_static/js/theme.js"></script>
@@ -52,7 +52,6 @@
 <li class="toctree-l1"><a class="reference internal" href="attributes.html">Attributes of the dPBE Class</a></li>
 <li class="toctree-l1"><a class="reference internal" href="advanced_guide.html">Advanced Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="references.html">References</a></li>
-<li class="toctree-l1"><a class="reference internal" href="pop.html">pop module</a></li>
 <li class="toctree-l1"><a class="reference internal" href="modules.html">PSD_opt</a></li>
 </ul>
 
@@ -83,7 +82,7 @@
   <section class="tex2jax_ignore mathjax_ignore" id="quick-start">
 <span id="quickstart"></span><h1>Quick Start<a class="headerlink" href="#quick-start" title="Permalink to this heading"></a></h1>
 <p>First of all, import the population class into your python script. Make sure that your interpreter is able to find the module (i.e. add the path or position the files accordingly)</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">pop</span> <span class="kn">import</span> <span class="n">population</span> <span class="k">as</span> <span class="n">pop</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">pop</span><span class="w"> </span><span class="kn">import</span> <span class="n">population</span> <span class="k">as</span> <span class="n">pop</span>
 </pre></div>
 </div>
 <p>Each calculation is performed as a stand-alone <strong>population</strong>. This is an <em>instance</em> of the population class and contains all relevant methods parameters as attributes. The only attribute that you must define during instancing is the dimension <code class="docutils literal notranslate"><span class="pre">dim</span></code>. All other attributes can either be supplied via the <code class="docutils literal notranslate"><span class="pre">**attr</span></code> keyword or changed manually later. The following code creates two populations (class instances) <code class="docutils literal notranslate"><span class="pre">p1</span></code> and <code class="docutils literal notranslate"><span class="pre">p2</span></code>. The first one is 1D the second one is 2D. For <code class="docutils literal notranslate"><span class="pre">p1</span></code>, some attributes are adjusted during instancing and for <code class="docutils literal notranslate"><span class="pre">p2</span></code> some attributes are adjusted after instancing (both is valid).</p>

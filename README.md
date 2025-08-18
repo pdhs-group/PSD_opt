@@ -11,8 +11,8 @@ This project mainly consists of three fundamental modules:
 
 3. **PBM (Population Balance Moments) Solver - `pbm.PBMSolver`**: The PBM solver uses the Quadrature Method of Moments (QMOM) to solve the PBE. It includes various QMOM algorithms such as HyQMOM, GQMOM, and CQMOM. It supports both single and dual-component systems.
 
-4. **Ray Tune-based Optimization Framework - `kernel_opt`**: This module takes one or more PSD (Particle Size Distribution) data sets as input and uses optimization algorithms to search for kernels in the dPBE model. The `kernel_opt` module requires the use of the `pbe` module mentioned above.  
-   _Note_: **What are kernels?** Kernels are parameters in the dPBE that describe the dynamics of aggregation and breakage processes. They are usually related to material properties and experimental conditions.
+4. **Ray Tune-based Optimization Framework - `kernel_opt`**: This module takes one or more PSD (Particle Size Distribution) data sets as input and uses optimization algorithms to search for kernel parameters in the dPBE model. The `kernel_opt` module requires the use of the `dPBE` module mentioned above.  
+   _Note_: **What are kernel and kernel parameters?** Kernel models refer to the models used in the PBE to describe particle dynamics, such as agglomeration and breakage processes. They are typically mathematical formulas based on internal variables and include multiple parameters. These parameters are called **kernel parameters**.  Kernel parameters essentially represent influencing factors such as material properties, experimental conditions, and other environmental effects.
 5. **dPBE-Extruder Solver (beta) - `pbe.ExtruderPBESolver`**: Extends the calculation of a single-region dPBE to multiple regions, such as an extruder. Essentially, it solves multiple sets of dPBEs with identical dimensions and allows interactions between them through particle mass flow. This module is still in the testing phase.
 
 For a detailed explanation of each module, refer to the respective sections.
@@ -88,11 +88,11 @@ Additionally, the wheel file comes with test scripts that can be executed direct
 
 ### Section 3: Basic Usage
 
-If you downloaded the entire project manually, you can find some test scripts and introductory guidance in the `tests` folder.
+If you downloaded the entire project manually, you can find some example scripts in the `examples` folder.
 
-If you installed the library using the wheel file, please extract the `tests` archive located alongside the wheel file to obtain the same set of scripts.
+If you installed the library using the wheel file, please extract the `examples` archive located alongside the wheel file to obtain the same set of scripts.
 
-These scripts provide examples and a starting point for understanding and testing the project's functionality.
+These scripts provide a starting point for understanding and testing the project's functionality.
 
 ### Section 4: Project File Structure
 

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="writer-html5" lang="en">
 <head>
-  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PSD_opt &mdash; dPBE: Discrete Population Balance Equations 1.0.0 documentation</title>
@@ -13,15 +13,15 @@
     <script src="_static/js/html5shiv.min.js"></script>
   <![endif]-->
   
-        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
         <script src="_static/jquery.js"></script>
-        <script src="_static/underscore.js"></script>
         <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
         <script src="_static/doctools.js"></script>
+        <script src="_static/sphinx_highlight.js"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="pypbe package" href="pypbe.html" />
+    <link rel="next" title="optframework package" href="optframework.html" />
     <link rel="prev" title="References" href="references.html" /> 
 </head>
 
@@ -51,7 +51,7 @@
 <li class="toctree-l1"><a class="reference internal" href="advanced_guide.html">Advanced Guide</a></li>
 <li class="toctree-l1"><a class="reference internal" href="references.html">References</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">PSD_opt</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="pypbe.html">pypbe package</a></li>
+<li class="toctree-l2"><a class="reference internal" href="optframework.html">optframework package</a></li>
 </ul>
 </li>
 </ul>
@@ -84,56 +84,73 @@
 <h1>PSD_opt<a class="headerlink" href="#psd-opt" title="Permalink to this heading"></a></h1>
 <div class="toctree-wrapper compound">
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="pypbe.html">pypbe package</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="pypbe.html#subpackages">Subpackages</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="pypbe.bond_break.html">pypbe.bond_break package</a><ul>
-<li class="toctree-l4"><a class="reference internal" href="pypbe.bond_break.html#submodules">Submodules</a></li>
-<li class="toctree-l4"><a class="reference internal" href="pypbe.bond_break.html#pypbe-bond-break-ann-model-func-module">pypbe.bond_break.ANN_model_func module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="pypbe.bond_break.html#pypbe-bond-break-ann-parameter-study-module">pypbe.bond_break.ANN_parameter_study module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="pypbe.bond_break.html#pypbe-bond-break-ann-tem-module">pypbe.bond_break.ANN_tem module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="pypbe.bond_break.html#pypbe-bond-break-bond-break-module">pypbe.bond_break.bond_break module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="pypbe.bond_break.html#pypbe-bond-break-bond-break-ann-f-module">pypbe.bond_break.bond_break_ANN_F module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="pypbe.bond_break.html#pypbe-bond-break-bond-break-ann-f-volx1x2-module">pypbe.bond_break.bond_break_ANN_F_volX1X2 module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="pypbe.bond_break.html#module-pypbe.bond_break.bond_break_generate_data">pypbe.bond_break.bond_break_generate_data module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="pypbe.bond_break.html#module-pypbe.bond_break.bond_break_jit">pypbe.bond_break.bond_break_jit module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="pypbe.bond_break.html#module-pypbe.bond_break.bond_break_post">pypbe.bond_break.bond_break_post module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="pypbe.bond_break.html#pypbe-bond-break-bond-break-validation-module">pypbe.bond_break.bond_break_validation module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="pypbe.bond_break.html#module-pypbe.bond_break">Module contents</a></li>
+<li class="toctree-l1"><a class="reference internal" href="optframework.html">optframework package</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="optframework.html#subpackages">Subpackages</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="optframework.dpbe.html">optframework.dpbe package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="optframework.dpbe.html#subpackages">Subpackages</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.dpbe.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.dpbe.html#module-optframework.dpbe.dpbe_base">optframework.dpbe.dpbe_base module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.dpbe.html#module-optframework.dpbe.dpbe_core">optframework.dpbe.dpbe_core module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.dpbe.html#module-optframework.dpbe.dpbe_extruder">optframework.dpbe.dpbe_extruder module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.dpbe.html#module-optframework.dpbe.dpbe_mag_sep">optframework.dpbe.dpbe_mag_sep module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.dpbe.html#module-optframework.dpbe.dpbe_post">optframework.dpbe.dpbe_post module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.dpbe.html#module-optframework.dpbe.dpbe_visualization">optframework.dpbe.dpbe_visualization module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.dpbe.html#module-optframework.dpbe">Module contents</a></li>
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="pypbe.kernel_opt.html">pypbe.kernel_opt package</a><ul>
-<li class="toctree-l4"><a class="reference internal" href="pypbe.kernel_opt.html#submodules">Submodules</a></li>
-<li class="toctree-l4"><a class="reference internal" href="pypbe.kernel_opt.html#module-pypbe.kernel_opt.opt_algo_bo">pypbe.kernel_opt.opt_algo_bo module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="pypbe.kernel_opt.html#module-pypbe.kernel_opt.opt_base">pypbe.kernel_opt.opt_base module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="pypbe.kernel_opt.html#module-pypbe.kernel_opt.opt_base_ray">pypbe.kernel_opt.opt_base_ray module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="pypbe.kernel_opt.html#module-pypbe.kernel_opt.opt_core">pypbe.kernel_opt.opt_core module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="pypbe.kernel_opt.html#module-pypbe.kernel_opt.opt_core_multi">pypbe.kernel_opt.opt_core_multi module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="pypbe.kernel_opt.html#module-pypbe.kernel_opt.opt_core_multi_ray">pypbe.kernel_opt.opt_core_multi_ray module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="pypbe.kernel_opt.html#module-pypbe.kernel_opt.opt_core_ray">pypbe.kernel_opt.opt_core_ray module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="pypbe.kernel_opt.html#module-pypbe.kernel_opt.opt_data">pypbe.kernel_opt.opt_data module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="pypbe.kernel_opt.html#module-pypbe.kernel_opt.opt_pbe">pypbe.kernel_opt.opt_pbe module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="pypbe.kernel_opt.html#module-pypbe.kernel_opt">Module contents</a></li>
+<li class="toctree-l3"><a class="reference internal" href="optframework.kernel_opt.html">optframework.kernel_opt package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="optframework.kernel_opt.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.kernel_opt.html#module-optframework.kernel_opt.opt_algo_bo">optframework.kernel_opt.opt_algo_bo module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.kernel_opt.html#module-optframework.kernel_opt.opt_base">optframework.kernel_opt.opt_base module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.kernel_opt.html#module-optframework.kernel_opt.opt_base_ray">optframework.kernel_opt.opt_base_ray module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.kernel_opt.html#module-optframework.kernel_opt.opt_core">optframework.kernel_opt.opt_core module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.kernel_opt.html#module-optframework.kernel_opt.opt_core_multi">optframework.kernel_opt.opt_core_multi module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.kernel_opt.html#module-optframework.kernel_opt.opt_core_multi_ray">optframework.kernel_opt.opt_core_multi_ray module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.kernel_opt.html#module-optframework.kernel_opt.opt_core_ray">optframework.kernel_opt.opt_core_ray module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.kernel_opt.html#module-optframework.kernel_opt.opt_data">optframework.kernel_opt.opt_data module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.kernel_opt.html#module-optframework.kernel_opt.opt_pbe">optframework.kernel_opt.opt_pbe module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.kernel_opt.html#module-optframework.kernel_opt">Module contents</a></li>
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="pypbe.pbe.html">pypbe.pbe package</a><ul>
-<li class="toctree-l4"><a class="reference internal" href="pypbe.pbe.html#submodules">Submodules</a></li>
-<li class="toctree-l4"><a class="reference internal" href="pypbe.pbe.html#module-pypbe.pbe.dpbe_base">pypbe.pbe.dpbe_base module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="pypbe.pbe.html#module-pypbe.pbe.dpbe_core">pypbe.pbe.dpbe_core module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="pypbe.pbe.html#module-pypbe.pbe.dpbe_mag_sep">pypbe.pbe.dpbe_mag_sep module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="pypbe.pbe.html#module-pypbe.pbe.dpbe_post">pypbe.pbe.dpbe_post module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="pypbe.pbe.html#module-pypbe.pbe.dpbe_visualization">pypbe.pbe.dpbe_visualization module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="pypbe.pbe.html#module-pypbe.pbe.mcpbe">pypbe.pbe.mcpbe module</a></li>
-<li class="toctree-l4"><a class="reference internal" href="pypbe.pbe.html#module-pypbe.pbe">Module contents</a></li>
+<li class="toctree-l3"><a class="reference internal" href="optframework.kernel_opt_extruder.html">optframework.kernel_opt_extruder package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="optframework.kernel_opt_extruder.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.kernel_opt_extruder.html#module-optframework.kernel_opt_extruder.opt_algo_bo">optframework.kernel_opt_extruder.opt_algo_bo module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.kernel_opt_extruder.html#module-optframework.kernel_opt_extruder.opt_base">optframework.kernel_opt_extruder.opt_base module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.kernel_opt_extruder.html#module-optframework.kernel_opt_extruder.opt_base_ray">optframework.kernel_opt_extruder.opt_base_ray module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.kernel_opt_extruder.html#module-optframework.kernel_opt_extruder.opt_core">optframework.kernel_opt_extruder.opt_core module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.kernel_opt_extruder.html#module-optframework.kernel_opt_extruder.opt_core_multi">optframework.kernel_opt_extruder.opt_core_multi module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.kernel_opt_extruder.html#module-optframework.kernel_opt_extruder.opt_core_multi_ray">optframework.kernel_opt_extruder.opt_core_multi_ray module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.kernel_opt_extruder.html#module-optframework.kernel_opt_extruder.opt_core_ray">optframework.kernel_opt_extruder.opt_core_ray module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.kernel_opt_extruder.html#module-optframework.kernel_opt_extruder.opt_data">optframework.kernel_opt_extruder.opt_data module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.kernel_opt_extruder.html#module-optframework.kernel_opt_extruder.opt_pbe">optframework.kernel_opt_extruder.opt_pbe module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.kernel_opt_extruder.html#module-optframework.kernel_opt_extruder">Module contents</a></li>
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="pypbe.utils.html">pypbe.utils package</a><ul>
-<li class="toctree-l4"><a class="reference internal" href="pypbe.utils.html#subpackages">Subpackages</a></li>
-<li class="toctree-l4"><a class="reference internal" href="pypbe.utils.html#module-pypbe.utils">Module contents</a></li>
+<li class="toctree-l3"><a class="reference internal" href="optframework.mcpbe.html">optframework.mcpbe package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="optframework.mcpbe.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.mcpbe.html#module-optframework.mcpbe.mcpbe">optframework.mcpbe.mcpbe module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.mcpbe.html#module-optframework.mcpbe.mcpbe_jit">optframework.mcpbe.mcpbe_jit module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.mcpbe.html#module-optframework.mcpbe.mcpbe_new">optframework.mcpbe.mcpbe_new module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.mcpbe.html#module-optframework.mcpbe">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="optframework.pbm.html">optframework.pbm package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="optframework.pbm.html#submodules">Submodules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.pbm.html#module-optframework.pbm.pbm_base">optframework.pbm.pbm_base module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.pbm.html#module-optframework.pbm.pbm_core">optframework.pbm.pbm_core module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.pbm.html#module-optframework.pbm.pbm_post">optframework.pbm.pbm_post module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.pbm.html#module-optframework.pbm.pbm_quick_test">optframework.pbm.pbm_quick_test module</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.pbm.html#module-optframework.pbm">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="optframework.utils.html">optframework.utils package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="optframework.utils.html#subpackages">Subpackages</a></li>
+<li class="toctree-l4"><a class="reference internal" href="optframework.utils.html#module-optframework.utils">Module contents</a></li>
 </ul>
 </li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="pypbe.html#module-pypbe">Module contents</a></li>
+<li class="toctree-l2"><a class="reference internal" href="optframework.html#module-optframework">Module contents</a></li>
 </ul>
 </li>
 </ul>
@@ -145,7 +162,7 @@
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="references.html" class="btn btn-neutral float-left" title="References" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="pypbe.html" class="btn btn-neutral float-right" title="pypbe package" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="optframework.html" class="btn btn-neutral float-right" title="optframework package" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

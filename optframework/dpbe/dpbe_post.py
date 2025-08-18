@@ -179,16 +179,16 @@ class PBEPost:
             If True, the density distribution qx will be normalized by its maximum value.
         q_type : str, optional
             The type of distribution to compute. Should be one of:
-               - 'q0' for number-based distribution,
-               - 'q3' for volume-based distribution,
-               - 'q6' for square-volume distribution.
-               
+                - 'q0' for number-based distribution,
+                - 'q3' for volume-based distribution,
+                - 'q6' for square-volume distribution.
+        
             The default is 'q3'.
         
         Returns
         -------
-        A tuple containing the requested arrays. If flag == 'all' then the order of return is:
-          (x_uni, qx, Qx, x_10, x_50, x_90, sum_uni)
+        A tuple containing the requested arrays. If flag == 'all' then the order of return is: 
+        (x_uni, qx, Qx, x_10, x_50, x_90, sum_uni)
         Otherwise, only the items corresponding to the keys specified in flag (comma-separated) are returned.
         """
         base = self.base

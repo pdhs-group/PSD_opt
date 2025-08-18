@@ -6,7 +6,6 @@ Created on Mon Jan 15 12:41:37 2024
 """
 
 import sys, os
-import opt_config as conf
 from optframework.kernel_opt.opt_base import OptBase
 import numpy as np
 import pandas as pd
@@ -1044,8 +1043,18 @@ def compare_dicts(dict1, dict2):
     return True
 
 def get_search_range(kernel):
+    search_range = {
+        'corr_agg_0': {'bounds': (-4.0, 0.0), 'log_scale': True},
+        'corr_agg_1': {'bounds': (-4.0, 0.0), 'log_scale': True},
+        'corr_agg_2': {'bounds': (-4.0, 0.0), 'log_scale': True},
+        'pl_v': {'bounds': (0.5, 2.0), 'log_scale': False},
+        'pl_P1': {'bounds': (-5.0, -1.0), 'log_scale': True},
+        'pl_P2': {'bounds': (0.3, 3.0), 'log_scale': False},
+        'pl_P3': {'bounds': (-5.0, -1.0), 'log_scale': True},
+        'pl_P4': {'bounds': (0.3, 3.0), 'log_scale': False},
+    }
     # 获取kernel对应的子字典
-    param_info = conf.config["opt_params"][kernel]
+    param_info = search_range[kernel]
     
     # 检查子字典是否存在
     if not param_info:

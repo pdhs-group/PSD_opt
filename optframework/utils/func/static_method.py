@@ -20,7 +20,8 @@ def interpolate_psd(d,psd_data,v0,x_init=None,Q_init=None):
         Particle size grid in the PSD can be manually specified.  
     Q_init : `array_like`, optional
         Manually specify the PSD instead of reading it from the file.
-    Output
+        
+    Returns
     ----------
     n : `array_like`
         NUMBER concentration vector corresponding to d
@@ -222,7 +223,7 @@ def KDE_score(kde, x_uni_new):
     Parameters
     ----------
     kde : sklearn.neighbors.kde.KernelDensity
-        The fitted KDE model from the :meth:`~.KDE_fit` method.
+        The fitted KDE model from the method.
     x_uni_new : array-like
         New unique data points where the KDE model will be evaluated.
 

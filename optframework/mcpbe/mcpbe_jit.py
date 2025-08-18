@@ -796,15 +796,26 @@ class MCPBESolver():
 def calc_betaarray_jit(COLEVAL, a, G, X, beta0, V, V_c):
     """
     Calculate the beta array for Monte Carlo using calc_beta.
-    Parameters:
-        COLEVAL : int - Type of beta calculation model.
-        a : int - Total number of particles.
-        G : float - Shear rate or other related parameter.
-        X : array - Particle size array.
-        beta0 : float - Base collision frequency constant.
-        V : array - Particle volume array.
-    Returns:
-        beta : array - Beta array formatted for Monte Carlo.
+    
+    Parameters
+    ----------
+    COLEVAL : int
+        Type of beta calculation model.
+    a : int
+        Total number of particles.
+    G : float
+        Shear rate or other related parameter.
+    X : array
+        Particle size array.
+    beta0 : float
+        Base collision frequency constant.
+    V : array
+        Particle volume array.
+    
+    Returns
+    -------
+    beta : array
+        Beta array formatted for Monte Carlo.
     """
     num = int(a * (a - 1) / 2)  # Total number of unique collision pairs.
     beta = np.zeros((3, num))

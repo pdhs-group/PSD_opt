@@ -14,7 +14,7 @@ from SALib.analyze import sobol
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.neighbors import KNeighborsRegressor
 sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),"../../.."))
-from pypbe.kernel_opt.opt_base import OptBase
+from optframework.kernel_opt.opt_base import OptBase
 
 def transform_parameters(X):
     """

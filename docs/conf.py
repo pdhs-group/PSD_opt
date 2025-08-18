@@ -31,9 +31,15 @@ myst_enable_extensions = ["dollarmath", "amsmath"]
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 
 # Include all external packages (should not be included in the docs)
-autodoc_mock_imports = ['matplotlib', 'scipy', 'numba', 'plotter',
-                        'bayes_opt', 'sklearn', 'pandas']
+autodoc_mock_imports = ['matplotlib', 'scipy', 'numba', 'plotter','statsmodels',
+                        'bayes_opt', 'sklearn', 'pandas', 'SALib']
 autodoc_default_options = {'member-order': 'bysource'}
+nitpick_ignore = [
+    ("py:class", "ray.tune.trainable.trainable.Trainable"),
+    ("py:class", "ray.tune.trainable.Trainable"),
+    ("py:class", "libcst.CSTTransformer"),
+    ("py:class", "libcst._visitors.CSTTransformer")
+]
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output

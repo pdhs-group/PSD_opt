@@ -164,11 +164,11 @@ class OptData:
         Notes
         -----
         The noise types behave as follows:
-        - Gaussian ('Gaus'): Adds noise with mean 0 and standard deviation `noise_strength`.
-        - Uniform ('Uni'): Adds noise uniformly distributed over [-`noise_strength`/2, `noise_strength`/2).
-        - Poisson ('Po'): Adds Poisson-distributed noise where `noise_strength` serves as lambda.
-        - Multiplicative ('Mul'): Applies Gaussian multiplicative noise with mean 1 and standard deviation 
-          `noise_strength`, multiplying the original data by the generated noise.
+            - Gaussian ('Gaus'): Adds noise with mean 0 and standard deviation `noise_strength`.
+            - Uniform ('Uni'): Adds noise uniformly distributed over [-`noise_strength`/2, `noise_strength`/2).
+            - Poisson ('Po'): Adds Poisson-distributed noise where `noise_strength` serves as lambda.
+            - Multiplicative ('Mul'): Applies Gaussian multiplicative noise with mean 1 and standard deviation 
+              `noise_strength`, multiplying the original data by the generated noise.
     
         The resulting noised data is clipped to ensure no negative values.
         """
@@ -251,7 +251,7 @@ class OptData:
         Parameters
         ----------
         kde : sklearn.neighbors.kde.KernelDensity
-            The fitted KDE model from the :meth:`~.KDE_fit` method.
+            The fitted KDE model from the method.
         x_uni_new : array-like
             New unique data points where the KDE model will be evaluated.
     
