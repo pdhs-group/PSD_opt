@@ -146,7 +146,7 @@ class ExtruderPBESolver():
           2. For each component, it updates the PBE parameters:
              - If same_pbe is True and i > 0, then only update V_unit and recalculate minimal parameters.
              - Otherwise, load the local parameters from the corresponding "local_i" dictionary (after updating with new_local if provided) into self.p.
-               The global parameters (updated by new_global if provided) are applied first.
+             - The global parameters (updated by new_global if provided) are applied first.
           3. For the first component (i == 0), it calls init_comp_params to initialize arrays.
           4. Then, for each component, get_one_comp_params(i) is called to extract that component's parameters.
         
