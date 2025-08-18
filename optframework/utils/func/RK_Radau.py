@@ -11,7 +11,7 @@ A_ij = np.array([
     [37/225+169*S6/1800, 11/45 + 7*S6/360, -2/225-S6/75],
     [4/9-S6/36, 4/9+S6/36, 1/9]
     ])
-E = np.array([-13 - 7 * S6, -13 + 7 * S6, -1]) / 3
+E = np.array([-13 - 7 * S6, -13 + 7 * S6, -1], dtype=float) / 3.0
 
 # Eigendecomposition of A is done: A = T L T**-1. There is 1 real eigenvalue
 # and a complex conjugate pair. They are written below.
