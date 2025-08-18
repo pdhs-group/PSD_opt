@@ -50,6 +50,11 @@ jobs:
       - name: Generate API stubs
         run: sphinx-apidoc -o docs/api optframework
 
+      - name: Convert RST -> MyST Markdown
+        shell: bash
+        run: |
+          rst2myst convert -R docs/api
+
       - name: Build Sphinx HTML
         working-directory: docs    
         run: |
