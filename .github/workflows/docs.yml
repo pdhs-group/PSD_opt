@@ -30,17 +30,22 @@ jobs:
             docs/requirements.txt
             requirements.txt
 
-      - name: Install doc dependencies
+      - name: Install project & docs deps
+        env:
+          MPLBACKEND: Agg
         run: |
           set -e
           python -m pip install --upgrade pip
+          pip install -e .
+
           if [ -f docs/requirements.txt ]; then
             pip install -r docs/requirements.txt
-          elif [ -f requirements.txt ]; then
-            pip install -r requirements.txt
           else
-            pip install sphinx myst-parser furo sphinx-autodoc-typehints
+            pip install sphinx myst-parser sphinx-rtd-theme sphinx-autodoc-typehints
+            pip install numpy scipy pandas matplotlib numba scikit-learn
+            pip install bayesian-optimization
           fi
+
 
       - name: Generate API stubs
         run: sphinx-apidoc -o docs/api optframework

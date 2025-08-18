@@ -31,7 +31,7 @@ myst_enable_extensions = ["dollarmath", "amsmath"]
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 
 # Include all external packages (should not be included in the docs)
-autodoc_mock_imports = ['numpy', 'matplotlib', 'scipy', 'numba', 'math', 'plotter',
+autodoc_mock_imports = ['matplotlib', 'scipy', 'numba', 'plotter',
                         'bayes_opt', 'sklearn', 'pandas']
 autodoc_default_options = {'member-order': 'bysource'}
 
