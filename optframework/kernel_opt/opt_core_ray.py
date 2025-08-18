@@ -27,8 +27,8 @@ class OptCoreRay(OptCore, tune.Trainable):
     """
     def __init__(self, *args, **kwargs):
         # Initialize tune.Trainable to prepare the class as a Ray Tune actor
-        tune.Trainable.__init__(self, *args, **kwargs)
         OptCore.__init__(self)
+        tune.Trainable.__init__(self, *args, **kwargs)
         
     def setup(self, config, core_params, pop_params, data_path, 
               exp_data_paths, x_uni_exp, data_exp, known_params, exp_case):
@@ -62,16 +62,20 @@ class OptCoreRay(OptCore, tune.Trainable):
         
         # Initialize the number concentration N if required
         if self.calc_init_N:
-            self.set_init_N(exp_data_paths, init_flag='mean')
+            self.opt_pbe.set_init_N(exp_data_paths, init_flag='mean')
             
         # Store experimental data and known parameters
+        self.pop_params = pop_params
+        self.data_path = data_path
         self.known_params = known_params
         self.x_uni_exp = x_uni_exp
         self.data_exp = data_exp
         self.exp_data_paths = exp_data_paths
         self.exp_case = exp_case
-        self.reuse_num=0
-        self.actor_wait=True
+        self.reuse_num =  0
+        self.actor_wait = config.get("actor_wait", True)
+        self.wait_time = config.get("wait_time", 5)
+        self.max_reuse = config.get("max_reuse", 10)
     
     def step(self):
         """
@@ -125,9 +129,11 @@ class OptCoreRay(OptCore, tune.Trainable):
         # This is done because Ray Tune introduces a delay when managing and communicating between actors.
         # If the iteration is too fast, it may cause unknown errors where actors are repeatedly created
         # and discarded, leading to a large number of ineffective operations and impacting system performance.
-        if execution_time < 5 and self.actor_wait:
-            time.sleep(5 - execution_time)
-        return {"loss": loss, "reuse_num": self.reuse_num, "exp_paths": self.exp_data_paths}
+        if execution_time < self.wait_time and self.actor_wait:
+            time.sleep(self.wait_time - execution_time)
+            
+        result = {"loss": loss, "reuse_num": self.reuse_num, "exp_paths": self.exp_data_paths}    
+        return result
     def save_checkpoint(self, checkpoint_dir):
         """
         Save the checkpoint. This method is required by Ray Tune but is not used in this implementation.
@@ -151,6 +157,13 @@ class OptCoreRay(OptCore, tune.Trainable):
             Always returns True, indicating successful configuration reset.
         """
         self.reuse_num += 1
+        if self.reuse_num >= self.max_reuse:
+            self.opt_pbe.close_pbe()
+            self.init_pbe(self.pop_params, self.data_path)
+            if self.calc_init_N:
+                self.opt_pbe.set_init_N(self.exp_data_paths, init_flag='mean')
+            self.reuse_num = 0
+        self.config = new_config
         return True
         
 

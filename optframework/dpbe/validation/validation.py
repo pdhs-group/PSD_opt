@@ -22,16 +22,36 @@ class PBEValidation():
     def __init__(self, dim, grid, NS, S, kernel, process,
                  c=1, x=2e-6, beta0=1e-2, t=None, NC=3, Extruder=False,
                  mom_n_order=2, mom_n_add=10, use_psd=False, dist_path=None):
+        ## Required input parameters.
+        self.dim = dim
+        self.grid = grid
+        self.NS = NS
+        self.S = S
+        self.kernel = kernel
+        self.process = process
+    
+        self.c = c
         self.x = x
         self.beta0 = beta0
-        self.kernel = kernel
-        self.Extruder = Extruder
+        self.t = t
         self.NC = NC
-        self.c = c
-        self.n0 = 3*c/(4*math.pi*(x/2)**3)
-        self.mom_order = 2*mom_n_order
+        self.Extruder = Extruder
+    
+        self.n0 = 3 * c / (4 * math.pi * (x / 2) ** 3)
+    
+        self.mom_n_order = mom_n_order
+        self.mom_order = 2 * mom_n_order
+        self.mom_n_add = mom_n_add
+    
         self.use_psd = use_psd
         self.dist_path = dist_path
+        
+        ## Default parameters.
+        self.V_unit = 1
+        self.G = 1
+        # The number of times to repeat the MC-PBE
+        self.N_MC = 10
+        self.mom_a0 = 1000
         ## Check if the psd file is available
         if self.use_psd:
             if self.dist_path is None:
@@ -48,10 +68,12 @@ class PBEValidation():
             ## making the peak of the number density distribution closer to the middle position, 
             ## and will not affect the absolute value of the calculation result.
             self.x = init_psd['r0_001'] * 2 * 1e-1
-        self.init_pbe(NS, S, dim, t, grid, process)
-        self.init_mcpbe(dim, t, process)
-        self.init_pbm(dim, t, process, mom_n_order, mom_n_add)
-
+        
+    def init_all(self):
+        self.init_pbe(self.NS, self.S, self.dim, self.t, self.grid, self.process)
+        self.init_mcpbe(self.dim, self.t, self.process)
+        self.init_pbm(self.dim, self.t, self.process, self.mom_n_order, self.mom_n_add)
+        
     def init_pbe(self, NS, S, dim, t, grid, process):
         if not self.Extruder:
             self.p = DPBESolver(dim=dim, t_vec=t, load_attr=False,f=grid)
@@ -63,30 +85,22 @@ class PBEValidation():
         self.p.R01, self.p.R03 = self.x/2, self.x/2
         self.p.DIST1, self.p.DIST3 = self.dist_path, self.dist_path
         self.p.alpha_prim = np.ones(dim**2)
-        self.p.G = 1.0
+        self.p.G = self.G
+        self.p.V_unit = self.V_unit
         self.p.process_type = process
-        self.p.calc_R()
-        self.p.init_N(reset_N=True, N01=self.n0, N03=self.n0)
-        # self.p.N[2,0] = self.p.N01
+        self.p.core.calc_R()
+        self.p.core.init_N(reset_N=True, N01=self.n0, N03=self.n0)
         
         if dim == 1:
             self.v0 = self.p.V[1]
-            # self.vn = self.p.V[-1]
         elif dim == 2:
             self.v0 = (self.p.V1[1] + self.p.V3[1]) /2
-            ## We use the biggest particle for breakage in 2d
-            # self.vn = (self.p.V1[-1] + self.p.V3[-1]) / 2
-            # self.vn = self.p.V[-1,-1]
-        # self.x0 = (6*self.v0/math.pi)**(1/3)
-        # self.xn = (6*self.vn/math.pi)**(1/3)
     
     def init_mcpbe(self, dim, t, process):
-        ## The number of times to repeat the MC-PBE
-        self.N_MC = 10
         self.p_mc = MCPBESolver(dim=dim, verbose=True, load_attr=False, init=False)
-        self.p_mc.a0 = 2000
+        self.p_mc.a0 = self.mom_a0
         self.p_mc.CDF_method = "disc"
-        self.p.G = 1.0
+        self.p_mc.G = self.G
         self.p_mc.process_type = process
         self.p_mc.alpha_prim = np.ones(dim**2)
         
@@ -109,18 +123,6 @@ class PBEValidation():
                         self.p_mc.V[1, cnt:cnt + a_array[i, j]] = np.full(a_array[i, j], self.p.V[0, j])
                         cnt += a_array[i, j]
         self.p_mc.V[-1, :] = np.sum(self.p_mc.V[:dim, :], axis=0)
-        # self.p_mc.USE_PSD = self.use_psd
-        # if process == "agglomeration" or process == "mix":
-        #     self.p_mc.c = np.full(dim, self.n0*self.v0)   
-        #     self.p_mc.x = np.full(dim, self.x0)
-        # elif process == "breakage":
-        #     self.p_mc.c = np.full(dim, self.n0*self.vn)  
-        #     self.p_mc.x = np.full(dim, self.xn)
-        # self.p_mc.PGV = np.full(dim, "mono")
-        # self.p_mc.x2 = np.full(dim,self.x)
-        # if t is not None:
-        #     self.p_mc.tA = t[-1]
-        #     self.p_mc.savesteps = len(t)
             
     def init_pbm(self, dim, t, process, mom_n_order, mom_n_add):
         self.p_mom = PBMSolver(dim, t_vec=t, load_attr=False)
@@ -130,41 +132,24 @@ class PBEValidation():
         self.p_mom.GQMOM_method = "lognormal"
         self.p_mom.USE_PSD = self.use_psd
         self.p_mom.process_type = process
-        self.p_mom.G = 1.0
+        self.p_mom.G = self.G
         self.p_mom.alpha_prim = np.ones(dim**2)
-        self.p_mom.V_unit = 1
+        self.p_mom.V_unit = self.V_unit
         self.p_mom.DIST1 = self.dist_path
         self.p_mom.DIST3 = self.dist_path
-            # x_range = (0.0, self.p.V[-1])
-            # if process == "agglomeration" or process == "mix":
-            #     size = self.p.V[1]
-            # elif process == "breakage":
-            #     size = self.p.V[-1]
-            ## 
-            # x_range = (0.0, self.p.V[-1])
-            # self.p_mom.init_moments(NDF_shape="mono",N0=self.n0, x_range=x_range, V0=self.p.V01)
-            ## To better match the initial conditions of dPBE, manually initialize pbm.
-            # self.p_mom.x_max = self.p.V[-1]
         if dim == 1:
             self.p_mom.x_max = 1
             self.p_mom.moments = np.zeros((self.p_mom.n_order*2,self.p_mom.t_num))
             self.p_mom.moments[:,0] = np.array([np.sum(self.p.V**k*self.p.N[:,0]) for k in range(2*self.p_mom.n_order)])
             self.p_mom.normalize_mom()
         elif dim == 2:
-            # x1 = self.p.V[:,0]
-            # NDF1 = self.p.N[:,0,0]
-            # x2 = self.p.V[0,:]
-            # NDF2 = self.p.N[0,:,0]
             self.p.N[0,0,:] = 0.0
             self.p_mom.moment_2d_indices_c()
             mu_num = len(self.p_mom.indices)
             self.p_mom.moments = np.zeros((mu_num, self.p_mom.t_num))
-            ## 注意： 因为dPBE中的N是颗粒数量密度而不是常说的NDF(它们之间存在一个类似NDF=dN/dx的关系)
-            ## 所以由dPBE的初始条件得到PBM初始条件的时候不是对N积分，而是直接求和！
             for idx in range(mu_num):
                 k = self.p_mom.indices[idx][0]
                 l = self.p_mom.indices[idx][1]
-            #     self.p_mom.moments[idx,0] = self.p_mom.trapz_2d(NDF1, NDF2, x1, x2, k, l) * self.p_mom.V_unit
                 self.p_mom.moments[idx,0] = np.sum((self.p.X1_vol*self.p.V)**k
                                                    *(self.p.X3_vol*self.p.V)**l
                                                    *self.p.N[:,:,0]) * self.p_mom.V_unit
@@ -195,9 +180,9 @@ class PBEValidation():
             solver.EFFEVAL = 2  
             solver.SIZEEVAL = 1
             solver.CORR_BETA = self.beta0
-            
             solver.BREAKRVAL = 1
             solver.BREAKFVAL = 2
+            
         elif self.kernel == "sum":
             solver.COLEVAL = 4                          
             solver.EFFEVAL = 2  
@@ -207,12 +192,11 @@ class PBEValidation():
             solver.BREAKFVAL = 2
             
     def calculate_pbe(self):
-        self.p.calc_F_M()
-        self.p.calc_B_R()
-        self.p.calc_int_B_F()
-        self.p.solve_PBE()
-        self.mu_pbe = self.p.calc_mom_t()
-        
+        self.p.core.calc_F_M()
+        self.p.core.calc_B_R()
+        self.p.core.calc_int_B_F()
+        self.p.core.solve_PBE()
+        self.mu_pbe = self.p.post.calc_mom_t()
         
     def calculate_mc_pbe(self):
         mu_tmp = []

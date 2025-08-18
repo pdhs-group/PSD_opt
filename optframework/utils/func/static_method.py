@@ -1,6 +1,7 @@
     ### ------ Static Methods ------ ### 
     
 import numpy as np
+from sklearn.neighbors import KernelDensity
 ## Interpolate PSD
 def interpolate_psd(d,psd_data,v0,x_init=None,Q_init=None):
     """
@@ -174,3 +175,81 @@ def plot_N2D(N,V,V0_tot,ax=None,fig=None,close_all=False,scl_a4=1,figsze=[12.8*1
     if exp_file is not None: pt.plot_export(exp_file)
     
     return ax, cb, fig
+
+def KDE_fit(x_uni_ori, data_ori, bandwidth='scott', kernel_func='epanechnikov'):
+    """
+    Fit a Kernel Density Estimation (KDE) model to the original data using the 
+    specified kernel function and bandwidth. 
+
+    Parameters
+    ----------
+    x_uni_ori : array-like
+        The unique values of the data variable. Must be a one-dimensional array.
+    data_ori : array-like
+        The original data corresponding to `x_uni_ori`. Should be absolute values, not relative.
+    bandwidth : float or {'scott', 'silverman'}, optional
+        The bandwidth of the kernel. If a float is provided, it defines the bandwidth directly. 
+        If a string ('scott' or 'silverman') is provided, the bandwidth is estimated using one 
+        of these methods. Defaults to 'scott'.
+    kernel_func : {'gaussian', 'tophat', 'epanechnikov', 'exponential', 'linear', 'cosine'}, optional
+        The kernel to use for the density estimation. Defaults to 'epanechnikov'.
+
+    Returns
+    -------
+    sklearn.neighbors.kde.KernelDensity
+        The fitted KDE model.
+    
+    Notes
+    -----
+    - `x_uni_ori` must be reshaped into a column vector for compatibility with the KernelDensity class.
+    - Any values in `data_ori` that are zero or less are adjusted to a small positive value (1e-20) to 
+      avoid numerical issues during KDE fitting.
+    """  
+    # Reshape the input data to be compatible with KernelDensity
+    x_uni_ori_re = x_uni_ori.reshape(-1, 1)
+    # Avoid divide-by-zero errors by adjusting very small or zero data points
+    data_ori_adjested = np.where(data_ori <= 0, 1e-20, data_ori) 
+    # Create and fit the KDE model with the specified kernel and bandwidth     
+    kde = KernelDensity(kernel=kernel_func, bandwidth=bandwidth)
+    kde.fit(x_uni_ori_re, sample_weight=data_ori_adjested)  
+    return kde
+
+def KDE_score(kde, x_uni_new):
+    """
+    Evaluate and normalize the KDE model on new data points based on the 
+    cumulative distribution function (Q3).
+
+    Parameters
+    ----------
+    kde : sklearn.neighbors.kde.KernelDensity
+        The fitted KDE model from the :meth:`~.KDE_fit` method.
+    x_uni_new : array-like
+        New unique data points where the KDE model will be evaluated.
+
+    Returns
+    -------
+    array-like
+        The smoothed and normalized data based on the KDE model.
+
+    Notes
+    -----
+    - The KDE model is evaluated on the new data points by calculating the log density, which is 
+      then exponentiated to get the actual density values.
+    - The smoothed data is normalized by dividing by the last value of the cumulative distribution (Q3).
+    """
+    # Reshape the new data points to match the input format expected by the KDE model
+    x_uni_new_re = x_uni_new.reshape(-1, 1) 
+    
+    # Evaluate the KDE model to get the smoothed density values
+    data_smoothing = np.exp(kde.score_samples(x_uni_new_re))
+    
+    # Flatten a column vector into a one-dimensional array
+    data_smoothing = data_smoothing.ravel()
+    
+    # Normalize the smoothed data using the cumulative distribution function (Q3)
+    Qx = np.zeros_like(data_smoothing)
+    for i in range(1, len(Qx)):
+        Qx[i] = Qx[i-1] + data_smoothing[i] * (x_uni_new[i] - x_uni_new[i-1])
+    data_smoothing = data_smoothing / Qx[-1]
+    
+    return data_smoothing

@@ -9,21 +9,11 @@ config = {
 
     # "R01": 8.677468940430804e-07,
     # "R03": 8.677468940430804e-07,
-    "R01": 1e-6,  
-    # Radius of primary NM1 particles (in meters) for uni-grid.
-    # In a geometric grid, volumes are calculated as midpoints between volume edges (V_e).
-    # Therefore, when using a geo-grid, the specified value here corresponds to the radius
-    # of the left edge of the grid, V_e[1]. The actual primary particle size is given by 
-    # V_e[1] * (1 + S) / 2, where S is the geometric spacing factor. R[1] = ((1+S)/2)**(1/3)*R01
-    
-    "R03": 1e-6,  
+    "R01": 8.116913897613351e-07,  
+    # Radius of primary NM1 particles (in meters).
+
+    "R03": 8.116913897613351e-07,  
     # Radius of primary M particles (in meters).
-
-    "t_total": 10*60+1,  
-    # Total simulation time in seconds.
-
-    "t_write": 10,  
-    # Interval (in time steps) for writing output data (e.g., simulation results).
 
     "process_type": "mix",  
     # Type of process being simulated.
@@ -33,8 +23,8 @@ config = {
 
     "solver": "ivp",  
     # Numerical solver used to integrate the PBE.
-    'c_mag_exp': 0.00602/1245.46/(0.2/1300),
-    "V_unit": 1e-12,  
+
+    # "V_unit": 1e-7,  
     # Volume unit used for normalization of N (particle number concentration). 
     # Setting a smaller value generally does not affect the relative relationships between N (i.e., the PSD),
     # but helps reduce the stiffness of matrices during calculations, leading to faster solver convergence.
@@ -42,11 +32,6 @@ config = {
     "USE_PSD": True,  
     # Flag indicating whether a particle size distribution (PSD) should be used. If True, 
     # the solver will use the provided PSD files to initialize N.
-    # If False, N will be initialized in a quasi-monodisperse form based on process_type:
-    # - For process_type="agglomeration", the initial state assumes only the smallest particles (primary particles) are present.
-    # - For process_type="breakage", the initial state assumes only the largest particles are present.
-    # - For process_type="mix", the initial state assumes both the smallest and largest particles are present.
-    # Specific configurations can be found in the init_N() function.
 
     "DIST1_path": None,  
     # File path to the PSD data for NM1 particles. If None, default location(pypbe/data/PSD_data) will be used.
@@ -54,10 +39,10 @@ config = {
     "DIST3_path": None,  
     # File path to the PSD data for M particles. If None, default location will be used.
 
-    "DIST1_name": "Batch_int_PSD.npy",  
+    "DIST1_name": "PSD_x50_2.0E-5_RelSigmaV_2.0E-1.npy",  
     # Name of the file containing the PSD for NM1 particles.
 
-    "DIST3_name": "Batch_int_PSD.npy",  
+    "DIST3_name": "PSD_x50_2.0E-5_RelSigmaV_2.0E-1.npy",  
     # Name of the file containing the PSD for M particles.
 
     "COLEVAL": 1,  
@@ -75,7 +60,7 @@ config = {
     "aggl_crit": 100,  
     # Critical particle size for agglomeration. Agglomeration will be limited to particles larger than this size.
 
-    "CORR_BETA": 0.0016014176378017458,
+    "CORR_BETA": 1,
     # Correction factor for the collision frequency kernel, controlling the rate of aggregation.
 
     'alpha_prim': np.array([1,1,1,1]),  
@@ -91,7 +76,7 @@ config = {
     # Flag that determines which model to use for calculating the fragment distribution function.
     # Can be checked in dpbe_core.py's `calc_int_B_F`.
 
-    "pl_v": 2,  
+    "pl_v": 2.0,  
     # Parameter in fragment distribution function.
 
     ### To ensure the monotonicity of the breakage rate, this setting has been deprecated, 
@@ -102,11 +87,10 @@ config = {
     # "V3_mean": 1e-15,  
     # Mean volume of M particles (in cubic meters).
     
-    "pl_P1": 1.4492871908582287e-05,  
-    "pl_P2": 0.3001930649938739,  
-    "pl_P3": 1e-5,  
+    "pl_P1": 1e-2,  
+    "pl_P2": 1,  
+    "pl_P3": 1e-2,  
     "pl_P4": 1,  
     # Parameters for breakage rate kernel.
-    "G": 50,
 
 }

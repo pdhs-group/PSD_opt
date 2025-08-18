@@ -177,16 +177,16 @@ def plot_summary_two_charts(results, n_iter_list, G_flag_list, result_dir):
 def plot_x_mean(results, G_flag):
     if G_flag == "Median_Integral":
         n = 3.3700
-        G_datas = [39.1135, 41.4924, 44.7977, 45.6443]
+        G_datas = [32.0404, 39.1135, 41.4924, 44.7977, 45.6443]
     elif G_flag == "Median_LocalStirrer":
         n = 0.6417
-        G_datas = [258.081, 450.862, 623.357, 647.442]
+        G_datas = [104.014, 258.081, 450.862, 623.357, 647.442]
     elif G_flag == "Mean_Integral":
         n = 1.6477
-        G_datas = [132.668, 143.68, 183.396, 185.225]
+        G_datas = [87.2642, 132.668, 143.68, 183.396, 185.225]
     elif G_flag == "Mean_LocalStirrer":
         n = 0.8154
-        G_datas = [594.268, 890.721, 1167.74, 1284.46]
+        G_datas = [297.136, 594.268, 890.721, 1167.74, 1284.46]
     else:
         raise ValueError(f"Unknown G_flag: {G_flag}")
     
@@ -194,7 +194,7 @@ def plot_x_mean(results, G_flag):
     n_iter_list = [200, 800, 6400]
     time_points = [0, 5, 10, 45]
     linestyles = {200: '-', 800: '--', 6400: ':'}
-    sample_names = ["n=900", "n=1200", "n=1500", "n=1800"]
+    sample_names = ["n=600", "n=900", "n=1200", "n=1500", "n=1800"]
     
     excel_path = os.path.join(result_dir, "x_mean.xlsx")
     writer = pd.ExcelWriter(excel_path, engine='openpyxl')
@@ -279,16 +279,16 @@ def calc_delta_test(known_params_list, exp_data_paths, init_core=True, opt_param
 def plot_x_50(results, G_flag):
     if G_flag == "Median_Integral":
         n = 3.3700
-        G_datas = [39.1135, 41.4924, 44.7977, 45.6443]
+        G_datas = [32.0404, 39.1135, 41.4924, 44.7977, 45.6443]
     elif G_flag == "Median_LocalStirrer":
         n = 0.6417
-        G_datas = [258.081, 450.862, 623.357, 647.442]
+        G_datas = [104.014, 258.081, 450.862, 623.357, 647.442]
     elif G_flag == "Mean_Integral":
         n = 1.6477
-        G_datas = [132.668, 143.68, 183.396, 185.225]
+        G_datas = [87.2642, 132.668, 143.68, 183.396, 185.225]
     elif G_flag == "Mean_LocalStirrer":
         n = 0.8154
-        G_datas = [594.268, 890.721, 1167.74, 1284.46]
+        G_datas = [297.136, 594.268, 890.721, 1167.74, 1284.46]
     else:
         raise ValueError(f"Unknown G_flag: {G_flag}")
 
@@ -296,7 +296,7 @@ def plot_x_50(results, G_flag):
     n_iter_list = [200, 800, 6400]
     time_points = [0, 5, 10, 45]
     linestyles = {200: '-', 800: '--', 6400: ':'}
-    sample_names = ["n=900", "n=1200", "n=1500", "n=1800"]
+    sample_names = ["n=600", "n=900", "n=1200", "n=1500", "n=1800"]
     
     excel_path = os.path.join(result_dir, "x_50.xlsx")
     writer = pd.ExcelWriter(excel_path, engine='openpyxl')
@@ -467,7 +467,7 @@ if __name__ == '__main__':
     data_path = os.path.join(base_path, "data", data_dir)
     opt = OptBase(config_path=config_path, data_path=data_path)
     data_names_list = [
-        # "Batch_600_Q0_post.xlsx",
+        "Batch_600_Q0_post.xlsx",
         "Batch_900_Q0_post.xlsx",
         "Batch_1200_Q0_post.xlsx",
         "Batch_1500_Q0_post.xlsx",
@@ -476,11 +476,11 @@ if __name__ == '__main__':
     n_iter_list = [200, 400, 800, 1600, 2400, 4000, 6400]
 
     marker_styles = ['o', 's', 'D', '^', 'v', 'P', '*', 'X']
-    result_dir = os.path.join(r"C:\Users\px2030\Code\Ergebnisse\Batch_opt\opt_results", "cv_results_group41")
+    result_dir = os.path.join(r"C:\Users\px2030\Code\Ergebnisse\Batch_opt\opt_results", "cv_results_group38")
     
     if data_dir == "lognormal_curvefit":
         x_exp_mean = np.array([
-            # [0.08523817, 0.08326844, 0.08579775, 0.07277097],
+            [0.08523817, 0.08326844, 0.08579775, 0.07277097],
                [0.08523817, 0.07365923, 0.07167854, 0.07170555],
                [0.08523817, 0.07324782, 0.07380572, 0.06823556],
                [0.08523817, 0.07450765, 0.07019528, 0.06936281],
@@ -489,7 +489,7 @@ if __name__ == '__main__':
         
     elif data_dir == "int1d":
         x_exp_mean = np.array([
-            # [0.11826945, 0.12083028, 0.11184293, 0.21994005],
+            [0.11826945, 0.12083028, 0.11184293, 0.21994005],
                [0.11826945, 0.12277321, 0.09504571, 0.08820781],
                [0.11826945, 0.09741461, 0.09254452, 0.28119003],
                [0.11826945, 0.0992418 , 0.09677272, 0.09395102],
@@ -498,10 +498,10 @@ if __name__ == '__main__':
         G_flag_list = ["Median_LocalStirrer"]
 
         G_flag_list = [
-            # "Median_Integral", 
+            "Median_Integral", 
             # "Median_LocalStirrer", 
             # "Mean_Integral", 
-            "Mean_LocalStirrer"
+            # "Mean_LocalStirrer"
         ]
     # re_calc_lognormal_results()
     

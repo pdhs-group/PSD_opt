@@ -8,6 +8,8 @@ from scipy.stats import entropy
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 from optframework.dpbe.dpbe_base import DPBESolver
 from optframework.utils.func.bind_methods import bind_methods_from_module , unbind_methods_from_class
+from .opt_data import OptData
+from .opt_pbe import OptPBE
 
 class OptCore():
     """
@@ -39,6 +41,10 @@ class OptCore():
         self.init_N_2D = None
         self.init_N = None
         self.mean_delta = True
+        self.resume_unfinished = False
+        
+        self.opt_data = OptData(self)
+        self.opt_pbe = OptPBE(self)
         
  
     def init_attr(self, core_params):
@@ -96,10 +102,10 @@ class OptCore():
         self.p = DPBESolver(dim=self.dim, disc='geo', t_vec=self.t_vec, load_attr=False)
         # If the dimension is 2, also create a 1D population for initialization
         if self.dim == 2:
-            self.create_1d_pop(self.t_vec, disc='geo')
+            self.opt_pbe.create_1d_pop(self.t_vec, disc='geo')
         # Set the initial population parameters and component parameters
-        self.set_init_pop_para(pop_params)
-        self.set_comp_para(data_path)
+        self.opt_pbe.set_init_pop_para(pop_params)
+        self.opt_pbe.set_comp_para(data_path)
         self.p.reset_params()
         if self.dim == 2:
             self.p_NM.reset_params()
@@ -131,7 +137,7 @@ class OptCore():
         params = self.check_corr_agg(params_in)
         
         # Run the PBE calculations using the provided parameters
-        self.calc_pop(self.p, params, self.t_vec, init_N=self.init_N)
+        self.opt_pbe.calc_pop(self.p, params, self.t_vec, init_N=self.init_N)
         
         # If the PBE calculation is successful, calculate the delta
         if self.p.calc_status:
@@ -168,14 +174,14 @@ class OptCore():
             kde_list = []
             
         # Get the unique particle size in PBE
-        x_uni = pop.calc_x_uni()
+        x_uni = pop.post.calc_x_uni()
         
         # Loop through time steps to collect the simulation results and convert to PSD
         for idt in range(self.delta_t_start_step, self.num_t_steps):
             if self.smoothing:
-                sum_uni = pop.return_distribution(t=idt, flag='sum_uni', q_type=self.dist_type)[0]
+                sum_uni = pop.post.return_distribution(t=idt, flag='sum_uni', q_type=self.dist_type)[0]
                 # Volume of particles with index=0 is 0; in theory, such particles do not exist
-                kde = self.KDE_fit(x_uni[1:], sum_uni[1:])
+                kde = self.opt_data.KDE_fit(x_uni[1:], sum_uni[1:])
                 # The qx distribution measured by the Lumisizer is typically matched using the 
                 # average values of two measurement nodes, so the corresponding conversion has also been performed here.
                 # x_uni_m = (x_uni[:-1]+x_uni[1:]) / 2
@@ -188,15 +194,15 @@ class OptCore():
             qx_mod = np.zeros((len(x_uni_exp), self.num_t_steps-self.delta_t_start_step))
             for idt in range(self.num_t_steps-self.delta_t_start_step):
                 if self.smoothing:
-                    qx_mod_tem = self.KDE_score(kde_list[idt], x_uni_exp[1:])
+                    qx_mod_tem = self.opt_data.KDE_score(kde_list[idt], x_uni_exp[1:])
                     qx_mod[1:, idt] = qx_mod_tem
                 else:
-                    qx_mod[:, idt] = pop.return_distribution(t=idt+self.delta_t_start_step, flag='qx', q_type=self.dist_type)[0]
-                Qx = self.calc_Qx(x_uni_exp, qx_mod[:, idt]) 
+                    qx_mod[:, idt] = pop.post.return_distribution(t=idt+self.delta_t_start_step, flag='qx', q_type=self.dist_type)[0]
+                Qx = self.opt_pbe.calc_Qx(x_uni_exp, qx_mod[:, idt]) 
                 qx_mod[:, idt] = qx_mod[:, idt] / Qx.max() 
             # Calculate the delta for each cost function type, if is defined.
             for flag, cost_func_type in self.delta_flag:
-                data_mod = pop.re_calc_distribution(x_uni_exp, qx=qx_mod, flag=flag)[0]
+                data_mod = pop.post.re_calc_distribution(x_uni_exp, qx=qx_mod, flag=flag)[0]
                 delta = self.cost_fun(data_exp, data_mod, cost_func_type, flag)
                 delta_sum += delta 
             
@@ -208,15 +214,15 @@ class OptCore():
                 qx_mod = np.zeros((len(x_uni_exp[i]), self.num_t_steps-self.delta_t_start_step))
                 for idt in range(self.num_t_steps-self.delta_t_start_step):
                     if self.smoothing:
-                        qx_mod_tem = self.KDE_score(kde_list[idt], x_uni_exp[i][1:])
+                        qx_mod_tem = self.opt_data.KDE_score(kde_list[idt], x_uni_exp[i][1:])
                         qx_mod[1:, idt] = qx_mod_tem
                     else:
-                        qx_mod[:, idt] = pop.return_distribution(t=idt+self.delta_t_start_step, flag='qx')[0]
-                    Qx = self.calc_Qx(x_uni_exp[i], qx_mod[:, idt]) 
+                        qx_mod[:, idt] = pop.post.return_distribution(t=idt+self.delta_t_start_step, flag='qx')[0]
+                    Qx = self.opt_pbe.calc_Qx(x_uni_exp[i], qx_mod[:, idt]) 
                     qx_mod[:, idt] = qx_mod[:, idt] / Qx.max()
                 # Calculate delta for each cost function type, if is defined.    
                 for flag, cost_func_type in self.delta_flag:
-                    data_mod = pop.re_calc_distribution(x_uni_exp[i], qx=qx_mod, flag=flag)[0]
+                    data_mod = pop.post.re_calc_distribution(x_uni_exp[i], qx=qx_mod, flag=flag)[0]
                     delta = self.cost_fun(data_exp[i], data_mod, cost_func_type, flag)
                     delta_sum += delta 
                 
@@ -378,11 +384,11 @@ class OptCore():
 
 # Bind methods from other modules into this class
 bind_methods_from_module(OptCore, 'optframework.kernel_opt.opt_algo_bo')
-bind_methods_from_module(OptCore, 'optframework.kernel_opt.opt_data')
-bind_methods_from_module(OptCore, 'optframework.kernel_opt.opt_pbe')
-bind_methods_from_module(OptCore, 'optframework.dpbe.dpbe_post')
-methods_to_remove = ['calc_v_uni','calc_x_uni', 'return_distribution',
-                     'return_N_t','calc_mom_t']
-unbind_methods_from_class(OptCore, methods_to_remove)
+# bind_methods_from_module(OptCore, 'optframework.kernel_opt.opt_data')
+# bind_methods_from_module(OptCore, 'optframework.kernel_opt.opt_pbe')
+# bind_methods_from_module(OptCore, 'optframework.dpbe.dpbe_post')
+# methods_to_remove = ['calc_v_uni','calc_x_uni', 'return_distribution',
+#                      'return_N_t','calc_mom_t']
+# unbind_methods_from_class(OptCore, methods_to_remove)
 
 

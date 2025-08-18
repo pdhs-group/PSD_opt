@@ -14,6 +14,7 @@ from .opt_core import OptCore
 from .opt_core_multi import OptCoreMulti
 from optframework.utils.func.func_read_exp import write_read_exp
 from optframework.utils.func.bind_methods import bind_methods_from_module
+from .opt_base_ray import OptBaseRay
 ## For plots
 # import matplotlib.pyplot as plt
 # from ..utils.plotter import plotter as pt        
@@ -55,6 +56,7 @@ class OptBase():
         Exception
             If the requirements file for ray is not found.
         """
+        self.base_ray = OptBaseRay(self)
         # Get the current script directory and the requirements file path
         # self.pth = os.path.dirname( __file__ )
         self.work_dir = Path(os.getcwd()).resolve()
@@ -70,7 +72,7 @@ class OptBase():
         self.print_highlighted(f'Current operating mode: single_case = {self.single_case}, multi_flag = {self.multi_flag}.',
                                title="INFO", color="cyan")
         
-        self.opt_params = config['opt_params']
+        self.opt_params_space = config['opt_params']
         self.dim = self.core_params.get('dim', None)
         # Set the data path, use default if not provided
         if data_path is None:
@@ -217,7 +219,7 @@ class OptBase():
                 for i in range(0, self.core.sample_num):
                     if self.core.sample_num != 1:
                         # Traverse the file paths for multiple samples
-                        exp_data_paths = self.core.traverse_path(i, exp_data_paths)
+                        exp_data_paths = self.core.opt_data.traverse_path(i, exp_data_paths)
                     # Write data for each dimension to separate files
                     self.write_new_data(self.core.p, exp_data_paths[0])
                     self.write_new_data(self.core.p_NM, exp_data_paths[1])
@@ -247,8 +249,8 @@ class OptBase():
         if not pop.calc_status:
             return
         # Get particle size and volume in the dPBE grid
-        x_uni = pop.calc_x_uni()
-        v_uni = pop.calc_v_uni()
+        x_uni = pop.post.calc_x_uni()
+        v_uni = pop.post.calc_v_uni()
         # Format the simulation times for the output file
         formatted_times = write_read_exp.convert_seconds_to_time(self.core.t_all)
         # Initialize the sumN_uni array to store particle count distributions
@@ -257,28 +259,28 @@ class OptBase():
         for idt in self.idt_vec[1:]:
             if self.core.smoothing:
                 # Get the volume distribution at the current time step
-                sumvol_uni = pop.return_distribution(t=idt, flag='sum_uni')[0]
+                sumvol_uni = pop.post.return_distribution(t=idt, flag='sum_uni')[0]
                 # Skip index=0, as particles with volume 0 theoretically do not exist
-                kde = self.core.KDE_fit(x_uni[1:], sumvol_uni[1:])
+                kde = self.core.opt_data.KDE_fit(x_uni[1:], sumvol_uni[1:])
                 # Smooth the distribution using KDE and insert a zero for the first entry
-                q3 = self.core.KDE_score(kde, x_uni[1:])
+                q3 = self.core.opt_data.KDE_score(kde, x_uni[1:])
                 q3 = np.insert(q3, 0, 0.0)
                 # Calculate and normalize Q3 values
-                Q3 = self.core.calc_Q3(x_uni, q3)
+                Q3 = self.core.opt_pbe.calc_Qx(x_uni, q3)
                 Q3 = Q3 / Q3.max()
                 # Calculate the final smoothed particle volume distribution
-                sumvol_uni = self.core.calc_sum_uni(Q3, sumvol_uni.sum())
+                sumvol_uni = self.core.opt_pbe.calc_sum_uni(Q3, sumvol_uni.sum())
                 # Store the particle count distribution
                 sumN_uni[:, idt] = sumvol_uni[1:] / v_uni[1:]
             else:
                 # Use the unsmoothed distribution for this time step
-                sumN_uni[:, idt] = pop.return_num_distribution(t=idt, flag='sumN_uni')[0][1:]
+                sumN_uni[:, idt] = pop.post.return_distribution(t=idt, flag='sum_uni', q_type='q0')[0][1:]
         # For initialization data, do not apply smoothing
         for idt in self.core.idt_init:
-            sumN_uni[:, idt] = pop.return_num_distribution(t=idt, flag='sumN_uni')[0][1:]
+            sumN_uni[:, idt] = pop.post.return_distribution(t=idt, flag='sum_uni', q_type='q0')[0][1:]
         # Apply noise to the data if noise is enabled
         if self.core.add_noise:
-            sumN_uni = self.core.function_noise(sumN_uni)
+            sumN_uni = self.core.opt_data.function_noise(sumN_uni)
             
         # Create a DataFrame for the distribution data and set the index name
         df = pd.DataFrame(data=sumN_uni, index=x_uni[1:], columns=formatted_times)
@@ -364,19 +366,19 @@ class OptBase():
         elif method == 'delta':
             # Perform multi-job optimization if enabled
             if self.core.multi_jobs:
-                result_dict = self.multi_optimierer_ray(self.opt_params,exp_data_paths=exp_data_paths, 
+                result_dict = self.base_ray.multi_optimierer_ray(self.opt_params_space,exp_data_paths=exp_data_paths, 
                                                                known_params=known_params)
             else:
                 # Perform sequential optimization for multiple datasets
                 result_dict = []
                 if not self.single_case and not self.core.exp_data:
                     for exp_data_paths_tem, known_params_tem in zip(exp_data_paths, known_params):
-                        result_dict_tem = self.optimierer_ray(self.opt_params,exp_data_paths=exp_data_paths_tem,
+                        result_dict_tem = self.base_ray.optimierer_ray(self.opt_params_space,exp_data_paths=exp_data_paths_tem,
                                                                     known_params=known_params_tem)
                         result_dict.append(result_dict_tem)
                 else:
                     # Perform optimization for a single dataset
-                    result_dict = self.optimierer_ray(self.opt_params,exp_data_paths=exp_data_paths,
+                    result_dict = self.base_ray.optimierer_ray(self.opt_params_space,exp_data_paths=exp_data_paths,
                                                            known_params=known_params)
         # Print the current actors (for debugging purposes) and shut down ray   
         # self.print_current_actors()

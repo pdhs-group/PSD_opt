@@ -56,7 +56,8 @@ def recalc_qx_and_Qx(file_path):
     x_ori = Q_df_ori.index.to_numpy()
     Q_ori = Q_df_ori.to_numpy() / 100
 
-    x = generate_nonuniform_grid(x_min=0.073, x_max=2, num_points=30, gamma=1.42)
+    # x = generate_nonuniform_grid(x_min=0.073, x_max=2, num_points=30, gamma=1.42)
+    x = generate_nonuniform_grid(x_min=0.073, x_max=2, num_points=40, gamma=1.295)
     Q = np.zeros((len(x), len(labels)))
     q = np.zeros_like(Q)
     x_volume_mean = np.zeros(len(labels))
@@ -162,7 +163,7 @@ if __name__ == '__main__':
         # dict_Qx = {'Q_PSD':Q_ori[:, 0],'x_PSD':x_ori, 'r0_001':x_ori[0], 'r0_005':x_ori[1], 'r0_01':x_ori[2]}
         # np.save(dist_path, dict_Qx)
 
-    # n_opt, sse_min = calc_n_for_E(np.array(x_volume_mean_list), 'Handbuch')
-    # print(f"Best n = {n_opt:.3f}, SSE = {sse_min:.3e}")
+    n_opt, sse_min = calc_n_for_E(np.array(x_volume_mean_list), 'Handbuch')
+    print(f"Best n = {n_opt:.3f}, SSE = {sse_min:.3e}")
     
     

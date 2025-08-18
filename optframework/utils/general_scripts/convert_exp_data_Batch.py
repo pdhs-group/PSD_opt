@@ -546,7 +546,7 @@ def calc_n_for_G_new(x_log_mean, G_flag):
     for i, x_mean in enumerate(x_log_mean):
         x_mean_array[i, :] = x_mean[1:4]
     
-    ref_idx = -1
+    ref_idx = 3
     t_ref = times
     D_ref = x_mean_array[ref_idx]
     G_ref = G_values[ref_idx]
@@ -562,7 +562,7 @@ def calc_n_for_G_new(x_log_mean, G_flag):
             tot += np.sum((x_mean_array[i] - D_est)**2)
         return tot
     
-    res = minimize_scalar(sse, bounds=(-100,100), method='bounded')
+    res = minimize_scalar(sse, bounds=(-5,5), method='bounded')
     
     n_star = res.x
     hessian_func = nd.Hessian(sse)

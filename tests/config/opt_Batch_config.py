@@ -28,7 +28,7 @@ config = {
         # Time vector for the entire simulation, specifying the time points at which 
         # calculations are performed.
         
-        'delta_t_start_step' : 0,
+        'delta_t_start_step' : 1,
         # Specifies the number of initial time steps to skip during optimization, 
         # often useful to avoid the impact of initialization errors.
         
@@ -148,7 +148,7 @@ config = {
         'cpus_per_trail': 3,  
         # Number of CPU cores allocated to each optimization trial.
     
-        'max_concurrent': 2,  
+        'max_concurrent': 1,  
         # Maximum number of trials that can be run concurrently.
         },
     
@@ -186,16 +186,22 @@ config = {
         "G": 80,
         },
     
-    ## Parameters which should be optimized
+    ## Optimized parameters and their search ranges.
+    # Except for corr_agg, the names of the optimized parameters should be consistent with 
+    # their actual names in the PBE.
     'opt_params' : {
-        'corr_agg_0': {'bounds': (-8.0, -1.0), 'log_scale': True},
+        'corr_agg_0': {'bounds': (-8.0, 2.0), 'log_scale': True},
         # 'corr_agg_1': {'bounds': (-4.0, 0.0), 'log_scale': True},
         # 'corr_agg_2': {'bounds': (-4.0, 0.0), 'log_scale': True},
         'pl_v': {'bounds': (0.1, 2.0), 'log_scale': False},
-        'pl_P1': {'bounds': (-8.0, 2.0), 'log_scale': True},
+        'pl_P1': {'bounds': (-10.0, -2.0), 'log_scale': True},
         'pl_P2': {'bounds': (0.1, 5.0), 'log_scale': False},
         # 'pl_P3': {'bounds': (-5.0, -1.0), 'log_scale': True},
         # 'pl_P4': {'bounds': (0.3, 3.0), 'log_scale': False},
+        
+        'actor_wait': {"fixed": True},
+        'wait_time': {"fixed": 1},
+        'max_reuse': {"fixed": 10}
     },
 
 }

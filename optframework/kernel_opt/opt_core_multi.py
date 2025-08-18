@@ -77,7 +77,7 @@ class OptCoreMulti(OptCore):
         t_vec : array-like, optional
             The time vector for the PBE calculations.
         """
-        self.calc_pop(self.p_NM, params, t_vec, self.init_N_NM)
-        self.calc_pop(self.p_M, params, t_vec, self.init_N_M)
-        self.calc_pop(self.p, params, t_vec, self.init_N_2D)           
+        self.opt_pbe.calc_pop(self.p_NM, params, t_vec, self.init_N_NM)
+        self.opt_pbe.calc_pop(self.p_M, params, t_vec, self.init_N_M)
+        self.opt_pbe.calc_pop(self.p, params, t_vec, self.init_N_2D)           
         
