@@ -34,3 +34,4 @@ poetry.lock
 *.sqlite
 /examples/config/Ray_Tune
 /docs/_build
+/optframework/examples/config/Ray_Tune

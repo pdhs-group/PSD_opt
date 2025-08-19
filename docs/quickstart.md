@@ -1,54 +1,74 @@
 (quickstart)= 
 # Quick Start
 
-First of all, import the population class into your python script. Make sure that your interpreter is able to find the module (i.e. add the path or position the files accordingly)
+The fastest way to get started is by adapting the example scripts provided in the `optframework/examples` folder.  
+Each script demonstrates the basic usage of one or more core classes, and you can quickly modify them to fit your own needs.
+
+All classes in this library are built following a consistent design philosophy, so their usage is very similar.  
+Here we use `DPBESolver` (see `optframework/examples/simple_dpbe.py`) as an example.
+
+### 1. Importing the Class
+
 ```python
-from pop import population as pop
-```
-Each calculation is performed as a stand-alone **population**. This is an *instance* of the population class and contains all relevant methods parameters as attributes. The only attribute that you must define during instancing is the dimension ``dim``. All other attributes can either be supplied via the ``**attr`` keyword or changed manually later. The following code creates two populations (class instances) ``p1`` and ``p2``. The first one is 1D the second one is 2D. For ``p1``, some attributes are adjusted during instancing and for ``p2`` some attributes are adjusted after instancing (both is valid).
-> Note: For more information on the attributes see the [the overview of most important attributes](attributes_overview)
-> During instancing, the ``__init__( )`` of the population class is executed (look there for more information)
+from optframework.dpbe import DPBESolver
+````
+
+### 2. Instantiating the Solver
+
+Each instance represents an independent PBE solver with its own set of parameters.
+During initialization, only the PBE dimension `dim` must be specified manually.
+All other parameters have default values but can be customized in three ways:
+
+1. **Pass parameters directly to `__init__()`**
+2. **Use a config file (recommended)**
+
+   * A config file is simply a Python script that defines a dictionary, where each key corresponds to a class attribute.
+   * The config is loaded at the end of `__init__()`.
+   * If no config path is provided, the solver attempts to load `config/PBM_config.py` from the current working directory.
+3. **Modify attributes manually after initialization** (not recommended)
+
+   * Since initialization may compute intermediate variables based on attributes, manual changes can desynchronize values unless recalculations are also done.
+
+**Priority:** `manual modification (3) > config file (2) > init arguments (1)`
+
+Example:
+
 ```python
-p1 = pop(1, NS=5, S=1.2)
-p2 = pop(2)
-p2.NS, p2.S = 15, 1.3
-p2.alpha_prim = np.array([0.1, 0.2, 0.2, 1])
+p = DPBESolver(dim=dim, NS=10, S=1.2) 
+# In PBM_config.py, "S": 1.3
+p.S = 1.4
 ```
 
-Currently, both instances only contain the initialized attributes and methods of the class. For calculation, the volume grid ``V`` (``R`` for radii), number density array ``N``, collision frequency array ``alpha_prim`` (optional), agglomeration efficiency array ``F_M`` and (not fully implemented) breakage rate array ``B_M`` need to be set up. This can either be done manually by calling each function individually or by simply calling ``full_init( )``.
-> Note: ``alpha_prim`` is initialized with ones (fully destabilized). You can either define the $\alpha$ values statically (see code above) or estimate them from material data (not predictive and not recommended) by calling ``calc_alpha_prim( )``. If you want to use ``full_init( )`` with statically set ``alpha_prim`` set the parameter ``calc_alpha=False``.
-```python
-# Calling the methods individually
-p1.calc_R()
-p1.init_N()
-# p1.calc_alpha_prim() # Not recommended
-p1.calc_F_M()
-p1.calc_B_M()
+In this case:
 
-# Using the full_init method
-p2.full_init(calc_alpha=False)
+* `S = 1.2` (from init args) is first applied.
+* It is overridden by the config file value `S = 1.3`.
+* Finally, it is manually updated to `S = 1.4`.
+
+### 3. Running the Solver
+
+By default, the solver instance contains only parameters and basic initialization methods.
+The actual computational methods are grouped in namespaces:
+
+* `p.core` → methods for matrix construction and PBE solving
+* `p.post` → post-processing methods
+* `p.visualization` → visualization methods
+
+All intermediate results are still stored in the base solver instance `p`, making them easy to access.
+
+Example workflow:
+
+```python
+p.core.full_init(calc_alpha=False)
+p.core.solve_PBE()
+N = p.N
 ```
 
-Let's solve the PBE with the default settings. Use ``solve_PBE( )``. It is advised to provide the time points at which the solution should be returned via the ``t_vec`` argument. The ODE is solved with [``scipy.solve_ivp( )``](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.solve_ivp.html).
-```python
-# Calculate for 600 seconds and return the solution every 2 seconds.
-t_vec_def = np.arange(0,600,2)
-p1.solve_PBE(t_vec = t_vec_def)
-p2.solve_PBE(t_vec = t_vec_def)
-```
+Now, `N` contains the computed particle number density distribution on the discretized grid.
 
-Congratulations, you solved the PBE for the provided parameters. The solution is stored inside ``p.N``, where the last index specifies the time index. To manually inspect this array (or any other attribute of ``p1`` and ``p2``), you can *"bring them into your workspace"* as shown in the following code block.
-> Note: When using Spyder, ``n1`` and ``n2`` should now show up under the *Variable Explorer*.
-```python
-n1 = p1.N
-print(n1)
-n2 = p2.N
-print(n[:,:,-1])
-```
+---
 
- You can also use some built-in methods to visualize the results:
-```python
-p2.visualize_distN_t()
-p2.visualize_qQ_t()
-p2.visualize_sumN_t()
-```
+### 4. Using Other Classes
+
+Other solvers (e.g., `ExtruderPBESolver`, `PBMSolver`, `MCPBESolver`) follow the same usage pattern.
+Please refer to the corresponding example scripts in the `examples` folder for details.

@@ -4,17 +4,11 @@ Created on Thu Jan  4 14:53:00 2024
 
 @author: px2030
 """
-import sys
 import os
 import ray
 from optframework.kernel_opt.opt_base import OptBase
-import config.opt_config as conf
 import numpy as np
-import pandas as pd
 import time
-## For plots
-import matplotlib.pyplot as plt
-import optframework.utils.plotter.plotter as pt  
 
 def normal_test():
     start_time = time.time()

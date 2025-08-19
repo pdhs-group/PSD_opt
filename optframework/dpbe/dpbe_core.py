@@ -259,7 +259,9 @@ class PBECore:
                 base.N03 = N03 * base.V_unit 
         if reset_path and getattr(base, "DIST1_name", None):
             base.DIST1 = os.path.join(base.DIST1_path,base.DIST1_name)
+        if reset_path and getattr(base, "DIST2_name", None):
             base.DIST2 = os.path.join(base.DIST2_path,base.DIST2_name)
+        if reset_path and getattr(base, "DIST3_name", None):
             base.DIST3 = os.path.join(base.DIST3_path,base.DIST3_name)  
             
         if base.t_vec is not None:
@@ -275,8 +277,8 @@ class PBECore:
                 elif base.process_type == "breakage":
                     base.N[-1,0] = base.N01
                 elif base.process_type == "mix":
-                    base.N[1,0] = base.N01
-                    # base.N[-1,0] = base.N01
+                    mid = 1 + (base.NS - 1) // 2
+                    base.N[mid, 0] = base.N01
                 else:
                     raise Exception("Current process_type not allowed!")
         
@@ -293,9 +295,8 @@ class PBECore:
                 elif base.process_type == "breakage":
                     base.N[-1,-1,0] = base.N01
                 elif base.process_type == "mix":
-                    base.N[1,0,0] = base.N01
-                    base.N[0,1,0] = base.N03  
-                    # base.N[-1,-1,0] = base.N01
+                    mid = 1 + (base.NS - 1) // 2
+                    base.N[mid, mid, 0] = base.N01
                 
         
         # 3-D case

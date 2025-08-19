@@ -5,7 +5,7 @@
 
 # dPBE: Discrete Population Balance Equation Solver
 
-![Logo](logo_dpbe.png)
+![Logo](bild/logo_dpbe.png)
 
 **Repo**: [On Github](https://github.com/adin888/PSD_opt)  (``https://github.com/adin888/PSD_opt``) \
 **Authors**: Frank Rhein ([frank.rhein@kit.edu](mailto:frank.rhein@kit.edu)), Haoran Ji ([haoran.ji@kit.edu](mailto:haoran.ji@kit.edu)). \
