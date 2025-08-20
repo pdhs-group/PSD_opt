@@ -23,6 +23,7 @@ attributes
 advanced_guide
 references
 api/modules
+overview/model_overview
 ```
 
 <!-- # Indices and tables
