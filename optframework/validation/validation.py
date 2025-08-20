@@ -47,10 +47,12 @@ class PBEValidation():
         self.dist_path = dist_path
         
         ## Default parameters.
-        self.V_unit = 1
+        self.V_unit = 1.0
         self.G = 1
+        self.P1 = 1e-2
+        self.P2 = 1
         # The number of times to repeat the MC-PBE
-        self.N_MC = 10
+        self.N_MC = 5
         self.mom_a0 = 1000
         ## Check if the psd file is available
         if self.use_psd:
@@ -182,6 +184,11 @@ class PBEValidation():
             solver.CORR_BETA = self.beta0
             solver.BREAKRVAL = 1
             solver.BREAKFVAL = 2
+            solver.pl_P1 = self.P1
+            solver.pl_P2 = self.P2
+            solver.pl_P3 = self.P1
+            solver.pl_P4 = self.P2
+            
             
         elif self.kernel == "sum":
             solver.COLEVAL = 4                          
@@ -190,6 +197,10 @@ class PBEValidation():
             solver.CORR_BETA = self.beta0 / self.v0
             solver.BREAKRVAL = 2
             solver.BREAKFVAL = 2
+            solver.pl_P1 = self.P1
+            solver.pl_P2 = self.P2
+            solver.pl_P3 = self.P1
+            solver.pl_P4 = self.P2
             
     def calculate_pbe(self):
         self.p.core.calc_F_M()

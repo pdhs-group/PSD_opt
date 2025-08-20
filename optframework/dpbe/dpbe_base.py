@@ -85,13 +85,13 @@ class DPBESolver():
         self.BREAKRVAL = 3                    # Case for calculation breakage rate. 1 = constant, 2 = size dependent
         self.BREAKFVAL = 3                    # Case for calculation breakage function. 1 = conservation of Hypervolume, 2 = conservation of 0 Moments 
         self.process_type = "breakage"    # "agglomeration": only calculate agglomeration, "breakage": only calculate breakage, "mix": calculate both agglomeration and breakage
-        self.pl_v = 4                         # number of fragments in product function of power law
+        self.pl_v = 2                         # number of fragments in product function of power law
                                               # or (v+1)/v: number of fragments in simple power law  
         self.pl_q = 1                         # parameter describes the breakage type(in product function of power law) 
-        self.pl_P1 = 1e-6                     # 1. parameter in power law for breakage rate  1d/2d
-        self.pl_P2 = 0.5                      # 2. parameter in power law for breakage rate  1d/2d
-        self.pl_P3 = 1e-6                     # 3. parameter in power law for breakage rate  2d
-        self.pl_P4 = 0.5                      # 4. parameter in power law for breakage rate  2d
+        self.pl_P1 = 1e-2                     # 1. parameter in power law for breakage rate  1d/2d
+        self.pl_P2 = 1                      # 2. parameter in power law for breakage rate  1d/2d
+        self.pl_P3 = 1e-2                     # 3. parameter in power law for breakage rate  2d
+        self.pl_P4 = 1                      # 4. parameter in power law for breakage rate  2d
         
         ### To ensure the monotonicity of the breakage rate, this setting has been deprecated, 
         ### and all particle volumes are scaled by the volume of the smallest particle.
@@ -263,7 +263,9 @@ class DPBESolver():
         
         if getattr(self, "DIST1_name", None):
             self.DIST1 = os.path.join(self.DIST1_path,self.DIST1_name)
+        if getattr(self, "DIST2_name", None):
             self.DIST2 = os.path.join(self.DIST2_path,self.DIST2_name)
+        if getattr(self, "DIST3_name", None):
             self.DIST3 = os.path.join(self.DIST3_path,self.DIST3_name)  
         # Recalculate physical constants and particle concentrations
         self.EPS = self.EPSR*self.EPS0

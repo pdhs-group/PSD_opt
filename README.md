@@ -87,18 +87,30 @@ This method installs the project as a Python library into the environment, makin
 Additionally, the wheel file comes with test scripts that can be executed directly to verify that the installation was successful.
 
 ### Section 3: Basic Usage
+After installation, you can run the script `optframework/examples/all_test.py`, which tests the basic functionality of all core classes.  If the program finishes without errors, it indicates that the essential modules have been correctly installed.
 
-If you downloaded the entire project manually, you can find some example scripts in the `examples` folder.
+The project provides example scripts directly within the `optframework/examples` folder.  
 
-If you installed the library using the wheel file, please extract the `examples` archive located alongside the wheel file to obtain the same set of scripts.
+They serve as a starting point for understanding and testing the functionality of `DPBESolver`, `ExtruderPBESolver`, `PBMSolver`, `MCPBESolver`, and related modules.
 
-These scripts provide a starting point for understanding and testing the project's functionality.
 
 ### Section 4: Project File Structure
 
-- **docs**: Contains documentation for all classes, variables, and functions.
-- **optframework**: Includes the core code of the modules and some scripts for extended use.
-- **tests**: Contains examples of direct usage for each module. These examples should be able to run directly.
+- **docs**: Contains scripts for building documentation.
+- **optframework**: The core project library, including all computational kernels and some utility scripts.
+  - **dpbe**: Includes the class `DPBESolver`, a discrete PBE solver. Also contains `ExtruderPBESolver`, an extension for multi-region PBE.
+  - **pbm**: Contains the class `PBMSolver`, a PBE solver based on the QMOM method.
+  - **mcpbe**: Contains the class `MCPBESolver`, a PBE solver based on the Monte Carlo method.
+  - **kernel_opt**: The class of kernel parameter optimizer `OptBase`. Built on Ray Tune, it supports highly parallel large-scale computations. Calls `DPBESolver` for PSD evaluations.
+  - **kernel_opt_extruder**: Similar to `kernel_opt` but extended to multi-region applications with `ExtruderPBESolver`.
+  - **validation**: Provides validation classes `PBEValidation` for `DPBESolver`, `PBMSolver`, and `MCPBESolver`, comparing them with analytical solutions where available.
+  - **utils**: Contains other low-level functions, preprocessing and postprocessing scripts, such as pre-compiled JIT-accelerated scripts for large matrix operations in particle dynamics.
+  - **examples**: Contains basic usage and postprocessing examples for `DPBESolver`, `ExtruderPBESolver`, `PBMSolver`, `MCPBESolver`, `OptBase`, and `PBEValidation`.
+
+> **Note**: Except for `ExtruderPBESolver`, all solvers are limited to a single closed PBE computational domain.
+
+📖 For detailed documentation of each class and script, please refer to: [http://pdhs-group.com/PSD_opt/](http://pdhs-group.com/PSD_opt/)
+
   - **config**: This project requires a large number of parameters for simulation and optimization processes. To handle this complexity, all parameter settings are defined in `config.py` scripts containing Python dictionaries. Using Python scripts instead of JSON files allows direct definition of numpy arrays and offers simpler and more intuitive type control.  
 
     1. These config scripts are typically automatically read during the instantiation of classes. The keys in the dictionary correspond to class attribute names, and the values are the content of those attributes.  

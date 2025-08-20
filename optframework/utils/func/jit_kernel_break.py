@@ -312,11 +312,11 @@ def calc_B_R_1d(V, V1_mean, pl_P1, pl_P2, G, BREAKRVAL, i):
     if BREAKRVAL == 1:
         # Size independent breakage rate --> See Leong2023 (10)
         # only for validation with analytical results
-        B_R = 1.0
+        B_R = pl_P1
     elif BREAKRVAL == 2:
         # Size dependent breakage rate --> See Leong2023 (10)
         # only for validation with analytical results
-        B_R = V[i]
+        B_R = pl_P1 * V[i]
     elif BREAKRVAL == 3:
         # Power Law Pandy and Spielmann --> See Jeldres2018 (28)
         # Scale particle volume using the average volume of all possible fragments produced
@@ -380,12 +380,12 @@ def breakage_rate_2d_flat(V, V1, V3, V1_mean, V3_mean, G, pl_P1, pl_P2, pl_P3, p
 def calc_B_R_2d(V, V1, V3, V1_mean, V3_mean, V_mean, G, 
                 pl_P1, pl_P2, pl_P3, pl_P4, BREAKRVAL, BREAKFVAL, i, j):
     if BREAKRVAL == 1:
-        B_R = 1.0
+        B_R = (pl_P1 + pl_P3) / 2.0
     elif BREAKRVAL == 2:
         if BREAKFVAL == 1:
-            B_R = V1[i]*V3[j]
+            B_R = (pl_P1 + pl_P3) / 2.0 * V1[i]*V3[j]
         elif BREAKFVAL == 2:
-            B_R = V1[i] + V3[j]
+            B_R = (pl_P1 + pl_P3) / 2.0 * (V1[i] + V3[j])
     elif BREAKRVAL == 3:
         B_R = pl_P1 * G * (V[i, j] / V_mean) ** pl_P2
     elif BREAKRVAL == 4:
@@ -396,12 +396,12 @@ def calc_B_R_2d(V, V1, V3, V1_mean, V3_mean, V_mean, G,
 def calc_B_R_2d_flat(V, V1, V3, V1_mean, V3_mean, V_mean, G, 
                 pl_P1, pl_P2, pl_P3, pl_P4, BREAKRVAL, BREAKFVAL, i):
     if BREAKRVAL == 1:
-        B_R = 1.0
+        B_R = (pl_P1 + pl_P3) / 2.0
     elif BREAKRVAL == 2:
         if BREAKFVAL == 1:
-            B_R = V1[i]*V3[i]
+            B_R = (pl_P1 + pl_P3) / 2.0 * V1[i]*V3[i]
         elif BREAKFVAL == 2:
-            B_R = V1[i] + V3[i]
+            B_R = (pl_P1 + pl_P3) / 2.0 * (V1[i] + V3[i])
     elif BREAKRVAL == 3:
         B_R = pl_P1 * G * (V[i] / V_mean) ** pl_P2
     elif BREAKRVAL == 4:

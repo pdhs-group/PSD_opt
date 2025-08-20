@@ -80,8 +80,8 @@ config = {
         'R01_0_scl': 1, 
         'R03_0_scl': 1, 
         # # File name for the PSD data for initialization.
-        'PSD_R01': 'PSD_x50_3.0E-5_RelSigmaV_2.0E-1.npy', 
-        'PSD_R03': 'PSD_x50_3.0E-5_RelSigmaV_2.0E-1.npy', 
+        'PSD_R01': 'PSD_x50_2.0E-5_RelSigmaV_2.0E-1.npy', 
+        'PSD_R03': 'PSD_x50_2.0E-5_RelSigmaV_2.0E-1.npy', 
         # Weight applied to the error (delta) of 2D particle populations, giving it 
         # more importance during optimization.
         'weight_2d': 1, 

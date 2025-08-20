@@ -167,9 +167,9 @@ def get_dMdt_1d(t, moments, x_max, GQMOM, GQMOM_method,
         n += n_add
 
     # Check for negative nodes (debugging)
-    if np.any(xi<0):
-        print(f"t = {t}")
-        print(f"xi = {xi}, wi = {wi}")
+    # if np.any(xi<0):
+    #     print(f"t = {t}")
+    #     print(f"xi = {xi}, wi = {wi}")
         
     # Scale nodes back to original domain
     xi *= x_max
@@ -299,8 +299,8 @@ def get_dMdt_2d(t, moments, n, indices, COLEVAL, CORR_BETA, G, alpha_prim, EFFEV
     # print(np.mean(abs(moments_cqmom-moments)/moments))
 
     # Print warning if number of nodes was reduced
-    if n0 > n:
-        print(f"Warning: At t = {t}, the moments are NOT realizable, abscissas reduced to {n}.")
+    # if n0 > n:
+    #     print(f"Warning: At t = {t}, the moments are NOT realizable, abscissas reduced to {n}.")
     
     # Initialize volume arrays
     V = np.ones((n, n))
@@ -322,9 +322,9 @@ def get_dMdt_2d(t, moments, n, indices, COLEVAL, CORR_BETA, G, alpha_prim, EFFEV
             X3[i+1,j+1] = V3[i*n+j] / V[i,j]
     
     # Debug output for negative volumes
-    if np.any(V<0):
-        print(f"t = {t}")
-        print(f"xi = {xi}, wi = {wi}")
+    # if np.any(V<0):
+    #     print(f"t = {t}")
+    #     print(f"xi = {xi}, wi = {wi}")
     
     # Convert volume to radius
     R[1:, 1:] = (V*3/(4*math.pi))**(1/3)
