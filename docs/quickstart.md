@@ -7,13 +7,13 @@ Each script demonstrates the basic usage of one or more core classes, and you ca
 All classes in this library are built following a consistent design philosophy, so their usage is very similar.  
 Here we use `DPBESolver` (see `optframework/examples/simple_dpbe.py`) as an example.
 
-### 1. Importing the Class
+## 1. Importing the Class
 
 ```python
 from optframework.dpbe import DPBESolver
-````
+```
 
-### 2. Instantiating the Solver
+## 2. Instantiating the Solver
 
 Each instance represents an independent PBE solver with its own set of parameters.
 During initialization, only the PBE dimension `dim` must be specified manually.
@@ -45,7 +45,7 @@ In this case:
 * It is overridden by the config file value `S = 1.3`.
 * Finally, it is manually updated to `S = 1.4`.
 
-### 3. Running the Solver
+## 3. Running the Solver
 
 By default, the solver instance contains only parameters and basic initialization methods.
 The actual computational methods are grouped in namespaces:
@@ -68,7 +68,7 @@ Now, `N` contains the computed particle number density distribution on the discr
 
 ---
 
-### 4. Using Other Classes
+## 4. Using Other Classes
 
 Other solvers (e.g., `ExtruderPBESolver`, `PBMSolver`, `MCPBESolver`) follow the same usage pattern.
 Please refer to the corresponding example scripts in the `examples` folder for details.

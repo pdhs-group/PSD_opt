@@ -210,3 +210,7 @@ In practice:
 - **PBM** is often preferred for efficient simulations in engineering applications where approximate distributions are acceptable.  
 - **MCPBE** serves as a high-fidelity reference solver, best suited for validation or small-scale studies where accuracy is prioritized over speed.
 
+```{toctree}
+:maxdepth: 1
+
+```

@@ -11,15 +11,6 @@
    :show-inheritance:
 ```
 
-## optframework.examples.config.All_Test_config_back module
-
-```{eval-rst}
-.. automodule:: optframework.examples.config.All_Test_config_back
-   :members:
-   :undoc-members:
-   :show-inheritance:
-```
-
 ## optframework.examples.config.Extruder0_config module
 
 ```{eval-rst}
