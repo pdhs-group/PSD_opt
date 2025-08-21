@@ -110,25 +110,3 @@ They serve as a starting point for understanding and testing the functionality o
 > **Note**: Except for `ExtruderPBESolver`, all solvers are limited to a single closed PBE computational domain.
 
 📖 For detailed documentation of each class and script, please refer to: [http://pdhs-group.com/PSD_opt/](http://pdhs-group.com/PSD_opt/)
-
-  - **config**: This project requires a large number of parameters for simulation and optimization processes. To handle this complexity, all parameter settings are defined in `config.py` scripts containing Python dictionaries. Using Python scripts instead of JSON files allows direct definition of numpy arrays and offers simpler and more intuitive type control.  
-
-    1. These config scripts are typically automatically read during the instantiation of classes. The keys in the dictionary correspond to class attribute names, and the values are the content of those attributes.  
-    **Note**: If a key name is entered incorrectly, it will still be read as a class attribute without raising an error! (A validation mechanism is needed.)  
-
-    2. For the functions used in the examples below, if a config file path is not explicitly specified, the method will attempt to locate the parameter file in the `config` folder within the current directory. The expected file names for each example are listed in the descriptions below.  
-
-  - **data**: Similar to the `config` folder, if the save path for the initial condition PSD or the PSD dataset used for optimization is not explicitly specified, they will be saved in this folder. The same applies to reading these files.
-  - **all_test.py**: This script tests the main functionality of the project's modules. At the beginning of the main function, there are four keywords corresponding to the tests of each module. You can set them to `False` to skip the respective module tests. The testing sequence for each module in the script is as follows:
-    1. The script first generates a PSD normal distribution for particle volumes, which will serve as the initial condition for all subsequent dPBE-related calculations.
-    2. It generates a time-dependent PSD dataset that can be used for optimization. This step essentially calculates one or more dPBEs.
-    3. The dataset generated in step 2 is used for optimization. By default, the optimization only performs 20 iterations, so it is normal for there to be significant differences between the optimized kernel parameters and the original kernel parameters.
-    4. Tests a single iteration from the optimization process. This step does not launch the optimization framework but calculates the optimization objective once (directly using the original kernel parameters, so the result should be small). This process is typically used for debugging.
-   
-    The script reads parameters from `config/opt_config_all_test.py` for computation.  
-    **Note**: If you modify the dPBE parameters in `opt_config_all_test.py`, you must re-run step 2 to regenerate the PSD dataset before running steps 3 or 4.
-  - **simple_dpbe.py**: Independently tests the functionality of the dPBE module. It reads parameters from `config/PBE_config.py` and generates a PSD animation as well as a PSD plot for the final time step.
-  - **simple_extruder.py**: Tests the `dPBE-Extruder` extension module (beta). By default, it reads parameters for all regions from `config/Extruder0_config.py`. To assign different parameters for each region, refer to the annotations within the script.
-  - **simple_opt.py**: Independently tests the optimization framework module. It reads parameters from `config/opt_config.py`.
-  - **simple_mcpbe.py**: Tests the `MCPBESolver`.
-  - **simple_pbm**: Tests the `PBMSolver`.
