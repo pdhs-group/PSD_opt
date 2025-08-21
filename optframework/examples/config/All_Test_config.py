@@ -22,7 +22,7 @@ config = {
         't_init': np.array([0, 0]), 
         # Time vector for the entire simulation, specifying the time points at which 
         # calculations are performed.
-        't_vec': np.array([0, 5, 10, 15, 20, 25, 30]) * 60, 
+        't_vec' : np.arange(0, 601, 10, dtype=float),
         # Specifies the number of initial time steps to skip during optimization, 
         # often useful to avoid the impact of initialization errors.
         'delta_t_start_step': 1, 
@@ -144,9 +144,9 @@ config = {
         'CORR_BETA': 1, 
         'alpha_prim': np.array([0.01, 0.01, 0.01]), 
         'pl_v': 2, 
-        'pl_P1': 0.01, 
+        'pl_P1': 1e13, 
         'pl_P2': 1, 
-        'pl_P3': 0.01, 
+        'pl_P3': 1e13, 
         'pl_P4': 1, 
         'G': 80
         },
@@ -159,9 +159,9 @@ config = {
         'corr_agg_1': {'bounds': (-4.0, 0.0), 'log_scale': True}, 
         'corr_agg_2': {'bounds': (-4.0, 0.0), 'log_scale': True}, 
         'pl_v': {'bounds': (0.5, 2.0), 'log_scale': False}, 
-        'pl_P1': {'bounds': (-5.0, -1.0), 'log_scale': True}, 
+        'pl_P1': {'bounds': (10.0, 15.0), 'log_scale': True}, 
         'pl_P2': {'bounds': (0.3, 3.0), 'log_scale': False}, 
-        'pl_P3': {'bounds': (-5.0, -1.0), 'log_scale': True}, 
+        'pl_P3': {'bounds': (10.0, 15.0), 'log_scale': True}, 
         'pl_P4': {'bounds': (0.3, 3.0), 'log_scale': False},
         
         ## Fixed parameters passed to the internal optimizer Actor.

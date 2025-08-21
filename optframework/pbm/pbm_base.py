@@ -64,9 +64,6 @@ class PBMSolver:
         
         ## MATERIAL parameters:
         # NOTE: component 3 is defined as the magnetic component (both in 2D and 3D case)
-        self.R01 = 2.9e-7                     # Radius primary particle component 1 [m] - NM1
-        self.R02 = 2.9e-7                     # Radius primary particle component 2 [m] - NM2
-        self.R03 = 2.9e-7                     # Radius primary particle component 3 [m] - M3
         self.USE_PSD = True                   # Flag to initialize PSD (False = monodisperse primary particles)
         
         # Set default initial PSD file paths
@@ -173,12 +170,9 @@ class PBMSolver:
         self.cv_1 = self.c_mag_exp*self.Psi_c1_exp   # Volume concentration of NM1 particles [Vol-%] 
         self.cv_2 = self.c_mag_exp*self.Psi_c2_exp   # Volume concentration of NM2 particles [Vol-%] 
         self.V01 = self.cv_1*self.V_unit             # Total volume concentration of component 1 [unit/unit] - NM1
-        self.N01 = 3*self.V01/(4*math.pi*self.R01**3)     # Total number concentration of primary particles component 1 [1/m³] - NM1 (if no PSD)
         self.V02 = self.cv_2*self.V_unit             # Total volume concentration of component 2 [unit/unit] - NM2
-        self.N02 = 3*self.V02/(4*math.pi*self.R02**3)     # Total number concentration of primary particles component 2 [1/m³] - NM2 (if no PSD)
         self.V03 = self.c_mag_exp*self.V_unit        # Total volume concentration of component 3 [unit/unit] - M
-        self.N03 = 3*self.V03/(4*math.pi*self.R03**3)     # Total number concentration of primary particles component 1 [1/m³] - M (if no PSD) 
-    
+
     def trapz_2d(self, NDF1, NDF2, x1, x2, k, l):
         """
         Perform 2D trapezoidal integration.

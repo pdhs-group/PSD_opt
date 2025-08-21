@@ -14,7 +14,7 @@ from  optframework.utils.func.static_method import interpolate_psd
 from  optframework.utils.func import RK_Radau as RK
 
 ### ------ POPULATION CLASS DEFINITION ------ ###
-class PBECore:
+class DPBECore:
     def __init__(self, base):
         self.base = base
     

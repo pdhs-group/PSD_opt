@@ -12,7 +12,7 @@ from optframework.utils.func.static_method import KDE_fit, KDE_score
 from optframework.utils.plotter import plotter as pt          
 from optframework.utils.plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
         
-class PBEVisual:
+class DPBEVisual:
     def __init__(self, base):
         self.base = base
         

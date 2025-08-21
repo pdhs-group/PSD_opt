@@ -20,15 +20,6 @@
    :show-inheritance:
 ```
 
-## optframework.mcpbe.mcpbe_new module
-
-```{eval-rst}
-.. automodule:: optframework.mcpbe.mcpbe_new
-   :members:
-   :undoc-members:
-   :show-inheritance:
-```
-
 ## Module contents
 
 ```{eval-rst}

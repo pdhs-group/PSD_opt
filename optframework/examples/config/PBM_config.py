@@ -6,17 +6,6 @@ config = {
     "GQMOM": False,
     "GQMOM_method": "gaussian",
     "nu": 1,   
-    # "R01": 8.677468940430804e-07,
-    # "R03": 8.677468940430804e-07,
-    "R01": 2.9e-7,  
-    # Radius of primary NM1 particles (in meters) for uni-grid.
-    # In a geometric grid, volumes are calculated as midpoints between volume edges (V_e).
-    # Therefore, when using a geo-grid, the specified value here corresponds to the radius
-    # of the left edge of the grid, V_e[1]. The actual primary particle size is given by 
-    # V_e[1] * (1 + S) / 2, where S is the geometric spacing factor.
-    
-    "R03": 2.9e-7,  
-    # Radius of primary M particles (in meters).
 
     "t_total": 31,  
     # Total simulation time in seconds.
@@ -30,7 +19,6 @@ config = {
     # "breakage": pure breakage
     # "mix": both agglomeration and breakage
 
-
     "V_unit": 1e-0,  
     # Volume unit used for normalization of N (particle number concentration). 
     # Setting a smaller value generally does not affect the relative relationships between N (i.e., the PSD),
@@ -39,11 +27,6 @@ config = {
     "USE_PSD": False,  
     # Flag indicating whether a particle size distribution (PSD) should be used. If True, 
     # the solver will use the provided PSD files to initialize N.
-    # If False, N will be initialized in a quasi-monodisperse form based on process_type:
-    # - For process_type="agglomeration", the initial state assumes only the smallest particles (primary particles) are present.
-    # - For process_type="breakage", the initial state assumes only the largest particles are present.
-    # - For process_type="mix", the initial state assumes both the smallest and largest particles are present.
-    # Specific configurations can be found in the init_N() function.
 
     "DIST1_path": None,  
     # File path to the PSD data for NM1 particles. If None, default location(pypbe/data/PSD_data) will be used.

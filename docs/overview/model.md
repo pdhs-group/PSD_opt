@@ -1,4 +1,4 @@
-# Model Overview
+# Model
 
 ## 1. Population Balance Equation (PBE)
 

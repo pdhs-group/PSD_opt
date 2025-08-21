@@ -108,7 +108,11 @@ if __name__ == '__main__':
     opt = OptBase(config_path=conf_pth)    
     noise_type = opt.core.noise_type
     noise_strength = opt.core.noise_strength
-    add_info = f"_para_{b}_{a[0]}_{a[1]}_{a[2]}_{v}_{p1}_{p2}_{p3}_{p4}"
+    add_info = (
+    f"_para_{b}"
+    f"_{a[0]:.1e}_{a[1]:.1e}_{a[2]:.1e}"
+    f"_{v}_{p1:.1e}_{p2}_{p3:.1e}_{p4}"
+    )
     data_name = f"Sim_{noise_type}_{noise_strength}" + add_info + ".xlsx"
     
     if generate_synth_data:

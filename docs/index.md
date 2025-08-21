@@ -3,7 +3,7 @@
 % You can adapt this file completely to your liking, but it should at least
 % contain the root `toctree` directive.
 
-# dPBE: Discrete Population Balance Equation Solver
+# optframework: Optimization-Based Framework for Kernel Parameter Identification in Multi-Material Population Balance Models
 
 ![Logo](bild/logo_dpbe.png)
 
@@ -16,14 +16,15 @@ You may also want to have a look at the {doc}`overview of the most important att
 
 ```{toctree}
 :caption: 'Contents:'
-:maxdepth: 2
+:maxdepth: 3
 
 quickstart
+overview/overview
 attributes
 advanced_guide
 references
 api/modules
-overview/model_overview
+
 ```
 
 <!-- # Indices and tables

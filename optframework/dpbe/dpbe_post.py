@@ -8,7 +8,7 @@ import numpy as np
 import math
 from optframework.utils.func.func_math import float_in_list, float_equal, isZero
 
-class PBEPost:
+class DPBEPost:
     def __init__(self, base):
         self.base = base
         

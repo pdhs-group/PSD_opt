@@ -23,7 +23,7 @@ config = {
         # These values are used to initialize N in dPBE wenn calc_init_N is True.
         # Note: The first value in t_init must be zero.
         
-        't_vec' : np.arange(0, 601, 10, dtype=float),
+        't_vec' : np.arange(0, 601, 60, dtype=float),
         # 't_vec' : np.array([0, 5, 10, 15, 20, 25, 30])*60,
         # Time vector for the entire simulation, specifying the time points at which 
         # calculations are performed.

@@ -320,10 +320,10 @@ def calc_B_R_1d(V, V1_mean, pl_P1, pl_P2, G, BREAKRVAL, i):
     elif BREAKRVAL == 3:
         # Power Law Pandy and Spielmann --> See Jeldres2018 (28)
         # Scale particle volume using the average volume of all possible fragments produced
-        B_R = pl_P1 * G * (V[i] / V1_mean) ** pl_P2
+        B_R = pl_P1 * G * V[i] ** pl_P2
     elif BREAKRVAL == 4:
         # Hypothetical formula considering volume fraction
-        B_R = pl_P1 * G * (V[i] / V1_mean) ** pl_P2
+        B_R = pl_P1 * G * V[i] ** pl_P2
     return B_R
     
 @njit
@@ -387,9 +387,9 @@ def calc_B_R_2d(V, V1, V3, V1_mean, V3_mean, V_mean, G,
         elif BREAKFVAL == 2:
             B_R = (pl_P1 + pl_P3) / 2.0 * (V1[i] + V3[j])
     elif BREAKRVAL == 3:
-        B_R = pl_P1 * G * (V[i, j] / V_mean) ** pl_P2
+        B_R = pl_P1 * G * (V[i, j]) ** pl_P2
     elif BREAKRVAL == 4:
-        B_R =  pl_P1 * G * (V1[i]/V1_mean)**pl_P2 + pl_P3 * G * (V3[j]/V3_mean)**pl_P4
+        B_R =  pl_P1 * G * (V1[i])**pl_P2 + pl_P3 * G * (V3[j])**pl_P4
     return B_R
 
 @njit
@@ -403,7 +403,7 @@ def calc_B_R_2d_flat(V, V1, V3, V1_mean, V3_mean, V_mean, G,
         elif BREAKFVAL == 2:
             B_R = (pl_P1 + pl_P3) / 2.0 * (V1[i] + V3[i])
     elif BREAKRVAL == 3:
-        B_R = pl_P1 * G * (V[i] / V_mean) ** pl_P2
+        B_R = pl_P1 * G * (V[i]) ** pl_P2
     elif BREAKRVAL == 4:
-        B_R =  pl_P1 * G * (V1[i]/V1_mean)**pl_P2 + pl_P3 * G * (V3[i]/V3_mean)**pl_P4
+        B_R =  pl_P1 * G * (V1[i])**pl_P2 + pl_P3 * G * (V3[i])**pl_P4
     return B_R

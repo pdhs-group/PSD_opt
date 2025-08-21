@@ -10,9 +10,9 @@ from pathlib import Path
 import runpy
 import math
 import numpy as np
-from optframework.dpbe.dpbe_core import PBECore
-from optframework.dpbe.dpbe_visualization import PBEVisual
-from optframework.dpbe.dpbe_post import PBEPost
+from optframework.dpbe.dpbe_core import DPBECore
+from optframework.dpbe.dpbe_visualization import DPBEVisual
+from optframework.dpbe.dpbe_post import DPBEPost
 
         
 class DPBESolver():
@@ -184,9 +184,9 @@ class DPBESolver():
         # dpbe_visualization.init_visual_params(self)
         # dpbe_post.init_post_params(self)
         # dpbe_mag_sep.init_mag_sep_params(self)
-        self.core = PBECore(self)
-        self.post = PBEPost(self)
-        self.visualization = PBEVisual(self)
+        self.core = DPBECore(self)
+        self.post = DPBEPost(self)
+        self.visualization = DPBEVisual(self)
         
         # Load the configuration file, if available
         if config_path is None and load_attr:

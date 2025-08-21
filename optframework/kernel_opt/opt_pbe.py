@@ -7,11 +7,11 @@ import gc
 import numpy as np
 from scipy.interpolate import interp1d
 from optframework.dpbe import DPBESolver
-from optframework.dpbe.dpbe_post import PBEPost
+from optframework.dpbe.dpbe_post import DPBEPost
 
-class OptPBE(PBEPost):
+class OptPBE(DPBEPost):
     def __init__(self, base):
-        PBEPost.__init__(self, base)
+        DPBEPost.__init__(self, base)
         self.base = base
         
     def create_1d_pop(self, t_vec, disc='geo'):
