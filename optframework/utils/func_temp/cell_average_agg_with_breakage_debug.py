@@ -627,7 +627,7 @@ if __name__ == "__main__":
         elapsed_time = end_time - start_time
         print(f"time with jit is {elapsed_time}")
         # start_time = time.time()       
-        # bf_int_q, xbf_int_q, ybf_int_q = my_jit.calc_int_B_F_2D_quad(NS,V_p1,V_p2,V_e1,V_e2,BREAKFVAL,v,q)
+        # bf_int_q, xbf_int_q, ybf_int_q = my_jit.calc_int_B_F_2D_quad(NS,V_p1,V_p2,V_e1,V_e2,v,q, BREAKFVAL)
         # end_time = time.time()
         # elapsed_time = end_time - start_time
         # print(f"time without jit is {elapsed_time}")

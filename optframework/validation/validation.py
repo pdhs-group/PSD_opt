@@ -110,21 +110,21 @@ class PBEValidation():
         self.p_mc.n0 = np.sum(N[..., 0])
         self.p_mc.Vc = self.p_mc.a0 / self.p_mc.n0
         a_array = np.round(N[..., 0] * self.p_mc.Vc).astype(int)
-        self.p_mc.V = np.zeros((dim+1, np.sum(a_array)))
+        self.p_mc.V_flat = np.zeros((dim+1, np.sum(a_array)))
         
         cnt = 0
         if dim == 1:
             for i in range(1, len(self.p.V)):
-                self.p_mc.V[0, cnt:cnt + a_array[i]] = np.full(a_array[i], self.p.V[i]) 
+                self.p_mc.V_flat[0, cnt:cnt + a_array[i]] = np.full(a_array[i], self.p.V[i]) 
                 cnt += a_array[i]
         elif dim == 2:
             for i in range(self.p.V.shape[0]):
                 for j in range(self.p.V.shape[1]):
                     if a_array[i, j] > 0:
-                        self.p_mc.V[0, cnt:cnt + a_array[i, j]] = np.full(a_array[i, j], self.p.V[i, 0])
-                        self.p_mc.V[1, cnt:cnt + a_array[i, j]] = np.full(a_array[i, j], self.p.V[0, j])
+                        self.p_mc.V_flat[0, cnt:cnt + a_array[i, j]] = np.full(a_array[i, j], self.p.V[i, 0])
+                        self.p_mc.V_flat[1, cnt:cnt + a_array[i, j]] = np.full(a_array[i, j], self.p.V[0, j])
                         cnt += a_array[i, j]
-        self.p_mc.V[-1, :] = np.sum(self.p_mc.V[:dim, :], axis=0)
+        self.p_mc.V_flat[-1, :] = np.sum(self.p_mc.V_flat[:dim, :], axis=0)
             
     def init_pbm(self, dim, t, process, mom_n_order, mom_n_add):
         self.p_mom = PBMSolver(dim, t_vec=t, load_attr=False)

@@ -175,7 +175,7 @@ def visualize_N():
 
 #%% MAIN   
 if __name__ == "__main__":
-    dim=2
+    dim=1
     p = DPBESolver(dim=dim)
     smoothing = True
     t_start = time.time()

@@ -108,7 +108,7 @@ def get_dMdt_1d(t, moments, x_max, GQMOM, GQMOM_method,
                 moments_norm_factor, n_add, nu, 
                 COLEVAL, CORR_BETA, G, alpha_prim, EFFEVAL, 
                 SIZEEVAL, V_unit, X_SEL, Y_SEL, 
-                V1_mean, pl_P1, pl_P2, BREAKRVAL, 
+                pl_P1, pl_P2, BREAKRVAL, 
                 v, q, BREAKFVAL, type_flag):
     """
     Calculate the moment derivatives for 1D population balance equations, handling 
@@ -132,7 +132,6 @@ def get_dMdt_1d(t, moments, x_max, GQMOM, GQMOM_method,
         V_unit (float): Unit volume used for concentration calculations.
         X_SEL (float): Size dependency parameter.
         Y_SEL (float): Size dependency parameter.
-        V1_mean (float): Mean volume for breakage model.
         pl_P1 (float): First parameter in power law for breakage rate.
         pl_P2 (float): Second parameter in power law for breakage rate.
         BREAKRVAL (int): Breakage rate model selector.
@@ -183,7 +182,8 @@ def get_dMdt_1d(t, moments, x_max, GQMOM, GQMOM_method,
     # Calculate agglomeration terms if needed
     if type_flag == "agglomeration" or type_flag == "mix":
         # Get agglomeration frequency matrix
-        F_M_tem = kernel_agg.calc_F_M_1D(n+2, COLEVAL, CORR_BETA, G, R, 
+        F_M_tem = np.zeros((n+1,n+1))
+        F_M_tem = kernel_agg.calc_F_M_1D_jit(F_M_tem, COLEVAL, CORR_BETA, G, R, 
                                      alpha_prim, EFFEVAL, SIZEEVAL, X_SEL, Y_SEL)
         F_M = F_M_tem[1:,1:] / V_unit
         
@@ -191,7 +191,8 @@ def get_dMdt_1d(t, moments, x_max, GQMOM, GQMOM_method,
     if type_flag == "breakage" or type_flag == "mix":
         B_F_intxk = np.zeros((m, n))
         # Calculate breakage rates for each node
-        B_R = kernel_break.breakage_rate_1d(V[1:], V1_mean, pl_P1, pl_P2, G, BREAKRVAL)
+        B_R = np.zeros_like(V[1:])
+        B_R = kernel_break.breakage_rate_1d_jit(V[1:], B_R, pl_P1, pl_P2, G, BREAKRVAL)
 
         # Gauss-Legendre quadrature points and weights for integration
         xs1 = np.array([-9.681602395076260859e-01,
@@ -216,7 +217,7 @@ def get_dMdt_1d(t, moments, x_max, GQMOM, GQMOM_method,
         # Calculate breakage daughter distribution integral for each moment and node
         for k in range(m):
             for i in range(n):
-                argsk = (V[i+1],v,q,BREAKFVAL,k)
+                argsk = (V[i+1],k,v,q,BREAKFVAL)
                 func = kernel_break.breakage_func_1d_xk
                 B_F_intxk[k, i] = kernel_break.gauss_legendre(func, 0.0, V[i+1], xs1, ws1, args=argsk)
     
@@ -245,7 +246,7 @@ def get_dMdt_1d(t, moments, x_max, GQMOM, GQMOM_method,
 @njit
 def get_dMdt_2d(t, moments, n, indices, COLEVAL, CORR_BETA, G, alpha_prim, EFFEVAL, 
                 SIZEEVAL, V_unit, X_SEL, Y_SEL, 
-                V1_mean, V3_mean, pl_P1, pl_P2, pl_P3, pl_P4, BREAKRVAL, 
+                pl_P1, pl_P2, pl_P3, pl_P4, BREAKRVAL, 
                 v, q, BREAKFVAL, type_flag):
     """
     Calculate the moment derivatives for 2D population balance equations, handling
@@ -265,8 +266,6 @@ def get_dMdt_2d(t, moments, n, indices, COLEVAL, CORR_BETA, G, alpha_prim, EFFEV
         V_unit (float): Unit volume used for concentration calculations.
         X_SEL (float): Size dependency parameter.
         Y_SEL (float): Size dependency parameter.
-        V1_mean (float): Mean volume of component 1.
-        V3_mean (float): Mean volume of component 3 (magnetic component).
         pl_P1 (float): First parameter in power law for breakage rate.
         pl_P2 (float): Second parameter in power law for breakage rate.
         pl_P3 (float): Third parameter in power law for breakage rate.
@@ -332,7 +331,8 @@ def get_dMdt_2d(t, moments, n, indices, COLEVAL, CORR_BETA, G, alpha_prim, EFFEV
     # Calculate agglomeration terms if needed
     if type_flag == "agglomeration" or type_flag == "mix":
         # Get agglomeration frequency matrix for 2D
-        F_M_tem = kernel_agg.calc_F_M_2D(n+2, COLEVAL, CORR_BETA, G, R, X1, X3, EFFEVAL, 
+        F_M_tem = np.zeros((n+1,n+1,n+1,n+1))
+        F_M_tem = kernel_agg.calc_F_M_2D_jit(F_M_tem, COLEVAL, CORR_BETA, G, R, X1, X3, EFFEVAL, 
                                      alpha_prim, SIZEEVAL, X_SEL, Y_SEL)
         F_M = F_M_tem[1:,1:,1:,1:] / V_unit
         
@@ -342,7 +342,8 @@ def get_dMdt_2d(t, moments, n, indices, COLEVAL, CORR_BETA, G, alpha_prim, EFFEV
         B_F_intxk = np.zeros((2*n, n, 2*n, n))
         
         # Calculate breakage rates for each node
-        B_R_flat = kernel_break.breakage_rate_2d_flat(V_flat, V1, V3, V1_mean, V3_mean, G,
+        B_R_flat = np.zeros_like(V_flat)
+        B_R_flat = kernel_break.breakage_rate_2d_flat_jit(V_flat, B_R_flat, V1, V3, G,
                                                      pl_P1, pl_P2, pl_P3, pl_P4, BREAKRVAL, BREAKFVAL)
         B_R = np.zeros((n,n))
         for i in range(n):
@@ -382,18 +383,18 @@ def get_dMdt_2d(t, moments, n, indices, COLEVAL, CORR_BETA, G, alpha_prim, EFFEV
                     # if V1[i*n+j] < eta or V3[i*n+j] < eta:
                     #     continue
                     # Calculate bivariate daughter distribution integral
-                    argsk = (V1[i*n+j],V3[i*n+j],v,q,BREAKFVAL,k,l)
+                    argsk = (V1[i*n+j],V3[i*n+j],k,l,v,q,BREAKFVAL)
                     func = kernel_break.breakage_func_2d_x1kx3l
                     B_F_intxk[k, i, l, j] = kernel_break.dblgauss_legendre(
                         func, 0.0, V1[i*n+j], 0.0, V3[i*n+j], 
                         xs1, ws1, xs3, ws3, args=argsk
                     )
-                    # argsk = (V1[i*n+j],V3[i*n+j],v,q,BREAKFVAL,1,eta)
+                    # argsk = (V1[i*n+j],V3[i*n+j],1,v,q,BREAKFVAL,eta)
                     # func1 = kernel_break.breakage_func_2d_x1k_trunc
                     # func2 = kernel_break.breakage_func_2d_x3k_trunc
                     # norm_fac1 = kernel_break.dblgauss_legendre(func1, eta, V1[i*n+j], eta, V3[i*n+j], xs1, ws1, xs3,ws3,args=argsk)
                     # norm_fac2 = kernel_break.dblgauss_legendre(func2, eta, V1[i*n+j], eta, V3[i*n+j], xs1, ws1, xs3,ws3,args=argsk)
-                    # argsk_trunc = (V1[i*n+j],V3[i*n+j],v,q,BREAKFVAL,k,l,eta)
+                    # argsk_trunc = (V1[i*n+j],V3[i*n+j],k,l,v,q,BREAKFVAL,eta)
                     # func_norm = kernel_break.breakage_func_2d_trunc
                     # B_F_intxk_trunk = kernel_break.dblgauss_legendre(func_norm, eta, V1[i*n+j], eta, V3[i*n+j], xs1, ws1, xs3,ws3,args=argsk_trunc)
                     # B_F_intxk[k, i, l, j] = B_F_intxk_trunk / ((norm_fac1 + norm_fac2) / V[i,j])

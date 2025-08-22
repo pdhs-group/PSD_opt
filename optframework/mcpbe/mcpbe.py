@@ -85,17 +85,12 @@ class MCPBESolver():
         self.pl_P3 = 1e-6                     # 3. parameter in power law for breakage rate  2d
         self.pl_P4 = 0.5                      # 4. parameter in power law for breakage rate  2d
         
-        ### To ensure the monotonicity of the breakage rate, this setting has been deprecated, 
-        ### and all particle volumes are scaled by the volume of the smallest particle.
-        self.V1_mean = 4.37*1e-14
-        self.V3_mean = 4.37*1e-14
-        
         ## Print more information if VERBOSE is True
         self.VERBOSE = verbose
         
         self.CDF_method = "disc"
         self.USE_PSD = False
-        self.V = None
+        self.V_flat = None
         
         self.work_dir = Path(os.getcwd()).resolve()
         # Load the configuration file, if available
@@ -156,17 +151,17 @@ class MCPBESolver():
             # # Extract number of components from concentration array c
             # self.dim = len(self.c)
             
-            self.v = self.x**3*math.pi/6            # Array of (mean) volume primary particles (each component)
+            self.V_flat = self.x**3*math.pi/6            # Array of (mean) volume primary particles (each component)
             self.v2 = self.x2**3*math.pi/6          # Array of (mean) volume primary particles (bi-modal case)
             
             # The following part changes whether mono-or bi-modal is used
             ## Mono-modal
             if self.PGV2 is None:
-                self.n = np.round(self.c/(self.v))     # Array of number concentration (each component)
+                self.n = np.round(self.c/(self.V_flat))     # Array of number concentration (each component)
                 self.n2 = 0*self.n
             ## Bi-modal
             else:
-                self.n = np.round(self.c/(2*self.v))   # Array of number concentration (each component)
+                self.n = np.round(self.c/(2*self.V_flat))   # Array of number concentration (each component)
                 self.n2 = np.round(self.c/(2*self.v2)) # Array of number concentration (each component)
             
             self.n0 = np.sum([self.n,self.n2])     # Total number of primary particles
@@ -174,7 +169,7 @@ class MCPBESolver():
             self.a = np.round(self.n*self.Vc).astype(int)   # Array total number of primary particles
             self.a2 = np.round(self.n2*self.Vc).astype(int) # Array total number of primary particles
 
-        if self.V is None:
+        if self.V_flat is None:
             ## Calculate volume matrix
             # Each COLUMN = one individual particle / agglomerate
             # LINE no. i = partial volume component i
@@ -184,29 +179,29 @@ class MCPBESolver():
                 ## The initial mono-disperse condition for 2D breakage is an aggregate consisting 
                 ## of two main particles (here the largest particles).
                 a_tem = (np.sum(self.a)/2).astype(int)  
-                self.V = np.zeros((self.dim+1,a_tem))
+                self.V_flat = np.zeros((self.dim+1,a_tem))
                 for i in range(self.dim):
-                    self.V[i, :] = np.full(a_tem, self.v[i])
+                    self.V_flat[i, :] = np.full(a_tem, self.V_flat[i])
                 
             # Initialize V for pure agglomeration or mix case or (breakage in 1d):
             else:
-                # self.V = np.zeros((self.dim+1,np.sum(self.a)))
-                self.V = np.zeros((self.dim+1,np.sum([self.a,self.a2])))
+                # self.V_flat = np.zeros((self.dim+1,np.sum(self.a)))
+                self.V_flat = np.zeros((self.dim+1,np.sum([self.a,self.a2])))
                 cnt = 0
                 
                 # Loop through all components
                 for i in range (self.dim):
                     ## Monodisperse 
                     if self.PGV[i] == 'mono':
-                        self.V[i,cnt:cnt+self.a[i]] = np.full(self.a[i],self.v[i])
+                        self.V_flat[i,cnt:cnt+self.a[i]] = np.full(self.a[i],self.V_flat[i])
                     ## Normal Distribution
                     elif self.PGV[i] == 'norm':
-                        self.V[i,cnt:cnt+self.a[i]] = norm.rvs(loc=self.v[i], 
-                                                               scale=self.SIG[i]*self.v[i], size=self.a[i])
+                        self.V_flat[i,cnt:cnt+self.a[i]] = norm.rvs(loc=self.V_flat[i], 
+                                                               scale=self.SIG[i]*self.V_flat[i], size=self.a[i])
                     ## Weibull Distribution
                     elif self.PGV[i] == 'weibull':
-                        self.V[i,cnt:cnt+self.a[i]] = weibull_min.rvs(2, loc=self.SIG[i]*self.v[i],
-                                                                      scale=self.v[i], size=self.a[i])
+                        self.V_flat[i,cnt:cnt+self.a[i]] = weibull_min.rvs(2, loc=self.SIG[i]*self.V_flat[i],
+                                                                      scale=self.V_flat[i], size=self.a[i])
                     else:
                         print(f'Provided PGV "{self.PGV[i]}" is invalid')
                         
@@ -216,15 +211,15 @@ class MCPBESolver():
                     if self.PGV2 is not None:
                         
                         if self.PGV2[i] == 'mono':
-                            self.V[i,cnt:cnt+self.a2[i]] = np.full(self.a2[i],self.v2[i])
+                            self.V_flat[i,cnt:cnt+self.a2[i]] = np.full(self.a2[i],self.v2[i])
                         ## Normal Distribution
                         elif self.PGV2[i] == 'norm':
-                            self.V[i,cnt:cnt+self.a2[i]] = norm.rvs(loc=self.v2[i], 
+                            self.V_flat[i,cnt:cnt+self.a2[i]] = norm.rvs(loc=self.v2[i], 
                                                                    scale=self.SIG2[i]*self.v2[i], 
                                                                    size=self.a2[i])
                         ## Weibull Distribution
                         elif self.PGV2[i] == 'weibull':
-                            self.V[i,cnt:cnt+self.a2[i]] = weibull_min.rvs(2, loc=self.SIG2[i]*self.v2[i],
+                            self.V_flat[i,cnt:cnt+self.a2[i]] = weibull_min.rvs(2, loc=self.SIG2[i]*self.v2[i],
                                                                           scale=self.v2[i], size=self.a2[i])
                         else:
                             print(f'Provided PGV "{self.PGV[i]}" is invalid')
@@ -232,21 +227,21 @@ class MCPBESolver():
                         cnt += self.a2[i]
                 
             # Last row: total volume
-            self.V[-1,:] = np.sum(self.V[:self.dim,:], axis=0)
+            self.V_flat[-1,:] = np.sum(self.V_flat[:self.dim,:], axis=0)
             
             # Delete empty entries (may occur to round-off error)
-            self.V = np.delete(self.V, self.V[-1,:]==0, axis=1)
+            self.V_flat = np.delete(self.V_flat, self.V_flat[-1,:]==0, axis=1)
     
-        self.a_tot = len(self.V[-1,:])               # Final total number of primary particles in control volume
+        self.a_tot = len(self.V_flat[-1,:])               # Final total number of primary particles in control volume
         # IDX contains indices of initially present (primary) particles
         # Can be used to retrace which agglomerates contain which particles
-        #self.IDX = [np.array([i],dtype=object) for i in range(len(self.V[-1,:]))]
-        # self.IDX = [[i] for i in range(len(self.V[-1,:]))]
+        #self.IDX = [np.array([i],dtype=object) for i in range(len(self.V_flat[-1,:]))]
+        # self.IDX = [[i] for i in range(len(self.V_flat[-1,:]))]
 
         #self.IDX = np.array(self.IDX,dtype=object)
         
         # Calculate equivalent diameter from total volume 
-        self.X=(6*(self.V[-1,:])/math.pi)**(1/3)
+        self.X=(6*(self.V_flat[-1,:])/math.pi)**(1/3)
               
         # Initialize time array
         self.t=[0]
@@ -254,7 +249,7 @@ class MCPBESolver():
         # Initialize beta array
         if self.COLEVAL != 3:
             self.betaarray = calc_betaarray_jit(self.COLEVAL, self.a_tot, self.G, 
-                                                self.X, self.CORR_BETA, self.V, self.Vc)
+                                                self.X, self.CORR_BETA, self.V_flat, self.Vc)
             
         ## Calculate the expected number of particles generated based on the break function
         if self.BREAKFVAL == 1:
@@ -284,9 +279,9 @@ class MCPBESolver():
         
         # Save arrays
         self.t_save = np.linspace(0,self.tA,self.savesteps)
-        self.V_save = [self.V]
+        self.V_save = [self.V_flat]
         self.Vc_save = [self.Vc]
-        self.V0 = self.V
+        self.V0 = self.V_flat
         self.X0 = self.X
         self.V0_save = [self.V0]
         # self.IDX_save = [copy.deepcopy(self.IDX)]
@@ -384,7 +379,7 @@ class MCPBESolver():
             if self.a_tot <= self.a0/2:
                 self.Vc = self.Vc*2
                 self.a_tot = self.a_tot*2
-                self.V = np.append(self.V, self.V, axis=1)
+                self.V_flat = np.append(self.V_flat, self.V_flat, axis=1)
                 self.X = np.append(self.X, self.X)  
                 # Double indices, Add total number of initially present particles
                 # No value appears double and references to [V_save[0], V_save[0], ...]
@@ -401,7 +396,7 @@ class MCPBESolver():
             ## new calculation of kernel arrays
             if self.COLEVAL != 3 and self.process_type != "breakage":
                 self.betaarray = calc_betaarray_jit(self.COLEVAL, self.a_tot, self.G, 
-                                                    self.X, self.CORR_BETA, self.V, self.Vc)
+                                                    self.X, self.CORR_BETA, self.V_flat, self.Vc)
             
             if self.BREAKRVAL != 1 and self.process_type != "agglomeration":
                 self.break_rate = np.zeros_like(self.a_tot)
@@ -410,7 +405,7 @@ class MCPBESolver():
             ## Save at specific times
             if self.t_save[self.step] <= self.t[-1]:
                 self.t_save[self.step] = self.t[-1]
-                self.V_save.append(self.V)
+                self.V_save.append(self.V_flat)
                 self.Vc_save.append(self.Vc)
                 self.V0_save.append(self.V0)                
                 # self.IDX_save = self.IDX_save + [copy.deepcopy(self.IDX)]
@@ -475,7 +470,7 @@ class MCPBESolver():
         P = np.zeros((self.dim,self.dim))
         for i in range(self.dim):
             for j in range(self.dim):
-                P[i,j] = (self.V[i,idx1]/self.V[-1,idx1])*(self.V[j,idx2]/self.V[-1,idx2])
+                P[i,j] = (self.V_flat[i,idx1]/self.V_flat[-1,idx1])*(self.V_flat[j,idx2]/self.V_flat[-1,idx2])
         return np.sum(P*self.alpha_mmc)
         
     # Calculate distribution moments mu(i,j,t)
@@ -690,20 +685,20 @@ class MCPBESolver():
         ## Size-correction
         if self.SIZEEVAL == 2:
             lam = min([self.X[idx1]/self.X[idx2],self.X[idx2]/self.X[idx1]])
-            alpha_corr = np.exp(-self.X_SEL*(1-lam)**2) / ((self.V[-1,idx1]*self.V[-1,idx2]/(np.mean(self.V0[-1,:])**2))**self.Y_SEL)
+            alpha_corr = np.exp(-self.X_SEL*(1-lam)**2) / ((self.V_flat[-1,idx1]*self.V_flat[-1,idx2]/(np.mean(self.V0[-1,:])**2))**self.Y_SEL)
             self.alpha *= alpha_corr
 
         # Check if agglomeration occurs (if random number e[0,1] is smaller than alpha)
         if self.alpha > np.random.rand():
             ## Modification of V, X and IDX at idx1. 
-            self.V[:,idx1] = self.V[:,idx1] + self.V[:,idx2]
-            self.X[idx1] = (6*(self.V[self.dim,idx1])/math.pi)**(1/3)  
+            self.V_flat[:,idx1] = self.V_flat[:,idx1] + self.V_flat[:,idx2]
+            self.X[idx1] = (6*(self.V_flat[self.dim,idx1])/math.pi)**(1/3)  
             
             #self.IDX[idx1] = np.append(self.IDX[idx1],self.IDX[idx2])
             # self.IDX[idx1] += self.IDX[idx2]
             
             ## Deletion of agglomerate at idx 2
-            self.V = np.delete(self.V, idx2, axis=1)   
+            self.V_flat = np.delete(self.V_flat, idx2, axis=1)   
             self.X = np.delete(self.X, idx2)  
             #self.IDX = np.delete(self.IDX, idx2) 
             # del self.IDX[idx2]
@@ -718,9 +713,9 @@ class MCPBESolver():
             idx = select_size_jit(self.break_rate)
             # self.break_rate_select = self.break_rate[idx]
         
-        particle_to_break = self.V[:, idx].reshape(-1,1)
+        particle_to_break = self.V_flat[:, idx].reshape(-1,1)
         ## Delete broken particles
-        self.V = np.delete(self.V, idx, axis=1) 
+        self.V_flat = np.delete(self.V_flat, idx, axis=1) 
         self.X = np.delete(self.X, idx)  
         
         
@@ -745,12 +740,12 @@ class MCPBESolver():
         ## and the last fragment left is the last one.
         for i in range(frag_num_int - 1):
             frag, X = self.produce_one_frag(particle_to_break)
-            self.V = np.concatenate((self.V, frag), axis=1)
+            self.V_flat = np.concatenate((self.V_flat, frag), axis=1)
             self.X = np.concatenate((self.X, X), axis=0)
             particle_to_break -= frag
             self.a_tot += 1
         
-        self.V = np.concatenate((self.V, particle_to_break), axis=1)
+        self.V_flat = np.concatenate((self.V_flat, particle_to_break), axis=1)
         X = (6*(particle_to_break[-1])/math.pi)**(1/3)  
         self.X = np.concatenate((self.X, X), axis=0)
         
@@ -785,21 +780,19 @@ class MCPBESolver():
         return frag, X
         
     def calc_break_rate(self):
+        self.V = self.V_flat[-1,:]
+        self.B_R = np.zeros_like(self.V_flat[-1,:])
         if self.dim == 1:
-            self.break_rate = kernel_break.breakage_rate_1d(self.V[-1,:], 
-                                                            self.V1_mean, self.pl_P1, self.pl_P2, 
-                                                            self.G, self.BREAKRVAL)
+            kernel_break.breakage_rate_1d(self)
             ## The 2D fragmentation functionality is currently experimental 
             ## and in some cases the number of fragments generated is different.
             if self.BREAKFVAL == 5:
                 self.frag_num = (self.pl_v + 2) / self.pl_v
         elif self.dim == 2:
-            self.break_rate = kernel_break.breakage_rate_2d_flat(self.V[-1,:],
-                                                            self.V[0,:], self.V[1,:], self.V1_mean,    
-                                                            self.V3_mean, self.G, self.pl_P1, self.pl_P2, 
-                                                            self.pl_P3, self.pl_P4, self.BREAKRVAL, self.BREAKFVAL)
+            kernel_break.breakage_rate_2d_flat(self)
             if self.BREAKFVAL == 5:
                 self.frag_num = (2*self.pl_v+1)*(self.pl_v+2)/(2*self.pl_v*(self.pl_v+1))
+        self.break_rate = self.B_R
     def calc_break_func(self, num_points=1000):
         if self.dim == 1:
             self.rel_frag = np.linspace(0, 1, num_points)
@@ -832,7 +825,7 @@ class MCPBESolver():
                 
                 raise ValueError("The continuous CDF method for the two-dimensional case has not yet been coded!")
                 
-                # args = (1.0, 1.0, self.v, self.q, self.BREAKFVAL)
+                # args = (1.0, 1.0, self.V_flat, self.q, self.BREAKFVAL)
                 # func = kernel_break.breakage_func_1d
                 # cdf = np.zeros_like(self.rel_frag1)
                 # for i in range(len(rel_frag1_tem)):
@@ -891,7 +884,7 @@ def calc_betaarray_jit(COLEVAL, a, G, X, beta0, V, V_c):
 
 ## JIT-compiled calculation of beta array 
 @jit(nopython=True)
-def calc_b_r_jit_1d(BREAKRVAL, a, G, V, V1_mean, pl_P1, pl_P2):
+def calc_b_r_jit_1d(BREAKRVAL, a, G, V, pl_P1, pl_P2):
     pass
 
 @jit(nopython=True)

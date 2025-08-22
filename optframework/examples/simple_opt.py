@@ -46,12 +46,6 @@ def calc_delta_test(var_delta=False):
     # pop_params = conf.config['pop_params']
     pop_params = {"pl_v": 1.52783,  
     # Parameter in fragment distribution function.
-
-    "V1_mean": 1e-15,
-    # Mean volume of NM1 particles (in cubic meters).
-
-    "V3_mean": 1e-15,  
-    # Mean volume of M particles (in cubic meters).
     
     "pl_P1": 6.57369e-05,  
     "pl_P2": 2.67092,  

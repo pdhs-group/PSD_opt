@@ -6,14 +6,25 @@ Created on Tue Dec 10 15:13:47 2024
 """
 import numpy as np
 import math
-from numba import jit, njit, float64, int64
+from numba import njit
+
+def calc_F_M_1D(solver):
+    return calc_F_M_1D_jit(
+        np.ascontiguousarray(solver.F_M,  dtype=np.float64),
+        int(solver.COLEVAL),
+        float(solver.CORR_BETA),
+        float(solver.G),
+        np.ascontiguousarray(solver.R,  dtype=np.float64),
+        # np.ascontiguousarray(solver.alpha_prim,  dtype=np.float64),
+        float(solver.alpha_prim),
+        int(solver.EFFEVAL),
+        int(solver.SIZEEVAL),
+        float(solver.X_SEL),
+        float(solver.Y_SEL),
+        )
 
 @njit
-def calc_F_M_1D(NS, COLEVAL, CORR_BETA, G, R, alpha_prim, EFFEVAL, SIZEEVAL, X_SEL, Y_SEL):
-    # To avoid mass leakage at the boundary in CAT, boundary cells are not directly involved in the calculation. 
-    # So there is no need to define the corresponding F_M at boundary. F_M is (NS-1)^2 instead (NS)^2
-    F_M = np.zeros((NS-1, NS-1))
-    
+def calc_F_M_1D_jit(F_M, COLEVAL, CORR_BETA, G, R, alpha_prim, EFFEVAL, SIZEEVAL, X_SEL, Y_SEL):
     # calc_beta = prepare_calc_beta(COLEVAL, CORR_BETA, G)
     # Go through all agglomeration partners 1 [a] and 2 [i]
     # The current index tuple idx stores them as (a, i)
@@ -51,13 +62,25 @@ def calc_F_M_1D(NS, COLEVAL, CORR_BETA, G, R, alpha_prim, EFFEVAL, SIZEEVAL, X_S
         F_M[idx] = beta * alpha * corr_size
 
     return F_M
-            
+      
+def calc_F_M_2D(solver):
+    return calc_F_M_2D_jit(
+        np.ascontiguousarray(solver.F_M,  dtype=np.float64),
+        int(solver.COLEVAL),
+        float(solver.CORR_BETA),
+        float(solver.G),
+        np.ascontiguousarray(solver.R,  dtype=np.float64),
+        np.ascontiguousarray(solver.X1_vol,  dtype=np.float64),
+        np.ascontiguousarray(solver.X3_vol,  dtype=np.float64),
+        int(solver.EFFEVAL),
+        np.ascontiguousarray(solver.alpha_prim,  dtype=np.float64),
+        int(solver.SIZEEVAL),
+        float(solver.X_SEL),
+        float(solver.Y_SEL),
+        )
+      
 @njit
-def calc_F_M_2D(NS,COLEVAL,CORR_BETA,G,R,X1,X3,EFFEVAL,alpha_prim,SIZEEVAL,X_SEL,Y_SEL):
-    # To avoid mass leakage at the boundary in CAT, boundary cells are not directly involved in the calculation. 
-    # So there is no need to define the corresponding F_M at boundary. F_M is (NS-1)^4 instead (NS)^4
-    F_M = np.zeros((NS-1,NS-1,NS-1,NS-1))
-    
+def calc_F_M_2D_jit(F_M,COLEVAL,CORR_BETA,G,R,X1,X3,EFFEVAL,alpha_prim,SIZEEVAL,X_SEL,Y_SEL):
     # calc_beta = prepare_calc_beta(COLEVAL)
     # Go through all agglomeration partners 1 [a,b] and 2 [i,j]
     # The current index tuple idx stores them as (a,b,i,j)
@@ -106,7 +129,7 @@ def calc_F_M_2D(NS,COLEVAL,CORR_BETA,G,R,X1,X3,EFFEVAL,alpha_prim,SIZEEVAL,X_SEL
             
         if SIZEEVAL == 1:
             # No size dependency of alpha
-            corr_size = 1
+            corr_size = 1.0
         if SIZEEVAL == 2:
             # Case 3: Soos2007 (developed from Selomuya 2003). Empirical Equation
             # with model parameters x and y. corr_size is lowered with lowered

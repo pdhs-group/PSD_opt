@@ -85,11 +85,6 @@ class MCPBESolver():
         self.pl_P3 = 1e-6                     # 3. parameter in power law for breakage rate  2d
         self.pl_P4 = 0.5                      # 4. parameter in power law for breakage rate  2d
         
-        ### To ensure the monotonicity of the breakage rate, this setting has been deprecated, 
-        ### and all particle volumes are scaled by the volume of the smallest particle.
-        self.V1_mean = 4.37*1e-14
-        self.V3_mean = 4.37*1e-14
-        
         ## Print more information if VERBOSE is True
         self.VERBOSE = verbose
         
@@ -730,7 +725,7 @@ class MCPBESolver():
     def calc_break_rate(self):
         if self.dim == 1:
             self.break_rate = kernel_break.breakage_rate_1d(self.V[-1,:], 
-                                                            self.V1_mean, self.pl_P1, self.pl_P2, 
+                                                            self.self.pl_P1, self.pl_P2, 
                                                             self.G, self.BREAKRVAL)
             ## The 2D fragmentation functionality is currently experimental 
             ## and in some cases the number of fragments generated is different.
@@ -738,8 +733,8 @@ class MCPBESolver():
                 self.frag_num = (self.pl_v + 2) / self.pl_v
         elif self.dim == 2:
             self.break_rate = kernel_break.breakage_rate_2d_flat(self.V[-1,:],
-                                                            self.V[0,:], self.V[1,:], self.V1_mean,    
-                                                            self.V3_mean, self.G, self.pl_P1, self.pl_P2, 
+                                                            self.V[0,:], self.V[1,:],    
+                                                            self.G, self.pl_P1, self.pl_P2, 
                                                             self.pl_P3, self.pl_P4, self.BREAKRVAL, self.BREAKFVAL)
             if self.BREAKFVAL == 5:
                 self.frag_num = (2*self.pl_v+1)*(self.pl_v+2)/(2*self.pl_v*(self.pl_v+1))
@@ -834,7 +829,7 @@ def calc_betaarray_jit(COLEVAL, a, G, X, beta0, V, V_c):
 
 ## JIT-compiled calculation of beta array 
 @jit(nopython=True)
-def calc_b_r_jit_1d(BREAKRVAL, a, G, V, V1_mean, pl_P1, pl_P2):
+def calc_b_r_jit_1d(BREAKRVAL, a, G, V, pl_P1, pl_P2):
     pass
 
 @jit(nopython=True)

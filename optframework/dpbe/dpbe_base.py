@@ -93,11 +93,6 @@ class DPBESolver():
         self.pl_P3 = 1e-2                     # 3. parameter in power law for breakage rate  2d
         self.pl_P4 = 1                      # 4. parameter in power law for breakage rate  2d
         
-        ### To ensure the monotonicity of the breakage rate, this setting has been deprecated, 
-        ### and all particle volumes are scaled by the volume of the smallest particle.
-        self.V1_mean = 4.37*1e-14
-        self.V3_mean = 4.37*1e-14
-        
         self.B_F_type = 'int_func'            # 'int_func': calculate B_F with breakage function
                                               # 'MC_bond': Obtain B_F directly from the result of MC_bond
                                               # 'ANN_MC': Calculate MC results using ANN model and convert to B_F

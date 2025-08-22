@@ -54,11 +54,6 @@ class PBMSolver:
         self.pl_P3 = 1e-6                     # 3rd parameter in power law for breakage rate 2D
         self.pl_P4 = 0.5                      # 4th parameter in power law for breakage rate 2D
         
-        ### To ensure the monotonicity of the breakage rate, this setting has been deprecated, 
-        ### and all particle volumes are scaled by the volume of the smallest particle.
-        self.V1_mean = 4.37*1e-14             # Mean volume of component 1
-        self.V3_mean = 4.37*1e-14             # Mean volume of component 3
-        
         self.B_F_type = 'int_func'            # Type for calculating B_F: 'int_func', 'MC_bond', 'ANN_MC'
         self.work_dir_MC_BOND = os.path.join(self.work_dir,'bond_break','int_B_F.npz')
         

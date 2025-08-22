@@ -75,8 +75,8 @@ config = {
     "CORR_BETA": 1e-3,
     # Correction factor for the collision frequency kernel, controlling the rate of aggregation.
 
-    'alpha_prim': np.array([1,1,1,1]),  
-    # 'alpha_prim': np.array([1]),
+    # 'alpha_prim': np.array([1,1,1,1]),
+    'alpha_prim': np.array([1]),
     # Factors for collision efficiency.
     # The length of the alpha_prim array must be the square of the dpbe's dimensionality (dim^2).
 

@@ -166,10 +166,6 @@ config = {
         ## aggl_crit: The sequence number of the particle that allows further agglomeration
         'aggl_crit' : 100,
         'process_type' : "mix",
-        ## The "average volume" of the two elemental particles in the system.
-        ## Used to scale the particle volume in calculation of the breakage rate.
-        'V1_mean' : 1e-15,
-        'V3_mean' : 1e-15,
         ## Reduce particle number desity concentration to improve calculation stability
         ## Default value = 1e14 
         'V_unit': 1e-12,

@@ -112,7 +112,7 @@ class PBMCore:
                     solver.moments_norm_factor, solver.n_add, solver.nu, 
                     solver.COLEVAL, solver.CORR_BETA, solver.G, 
                     solver.alpha_prim, solver.EFFEVAL, solver.SIZEEVAL, solver.V_unit,
-                    solver.X_SEL, solver.Y_SEL, solver.V1_mean, 
+                    solver.X_SEL, solver.Y_SEL, 
                     solver.pl_P1, solver.pl_P2, solver.BREAKRVAL, 
                     solver.pl_v, solver.pl_q, solver.BREAKFVAL, solver.process_type)
 
@@ -136,7 +136,7 @@ class PBMCore:
             rhs = jit_pbm_rhs.get_dMdt_2d
             args = (solver.n_order, solver.indices, solver.COLEVAL, solver.CORR_BETA, solver.G, 
                     solver.alpha_prim, solver.EFFEVAL, solver.SIZEEVAL, solver.V_unit,
-                    solver.X_SEL, solver.Y_SEL, solver.V1_mean, solver.V3_mean,
+                    solver.X_SEL, solver.Y_SEL, 
                     solver.pl_P1, solver.pl_P2, solver.pl_P3, solver.pl_P4, solver.BREAKRVAL, 
                     solver.pl_v, solver.pl_q, solver.BREAKFVAL, solver.process_type)
 

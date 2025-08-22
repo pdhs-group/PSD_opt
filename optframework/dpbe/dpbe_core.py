@@ -320,7 +320,6 @@ class DPBECore:
             * ``pop.F_M``: (2D)Agglomeration frequency between two classes ij and ab is stored in ``F_M[i,j,a,b]`` 
         """
         base = self.base
-        G_corr = base.G ** base.G_agg_corr
         # 1-D case
         if base.dim == 1:
             base.alpha_prim = base.alpha_prim.item() if isinstance(base.alpha_prim, np.ndarray) else base.alpha_prim
@@ -330,10 +329,8 @@ class DPBECore:
             if base.process_type == 'breakage':
                 return  
             if base.JIT_FM:
-                base.F_M = jit_kernel_agg.calc_F_M_1D(base.NS,base.COLEVAL,base.CORR_BETA,
-                                           G_corr,base.R,base.alpha_prim,
-                                           base.EFFEVAL,base.SIZEEVAL,
-                                           base.X_SEL,base.Y_SEL)/base.V_unit
+                jit_kernel_agg.calc_F_M_1D(base)
+                base.F_M /= base.V_unit
             else:
                 # Go through all agglomeration partners 1 [a] and 2 [i]
                 # The current index tuple idx stores them as (a,i)
@@ -351,7 +348,7 @@ class DPBECore:
                         # Chin 1998 (shear induced flocculation in stirred tanks)
                         # Optional reduction factor.
                         # corr_beta=1;
-                        beta_ai = base.CORR_BETA*G_corr*2.3*(base.R[a]+base.R[i])**3 # [m^3/s]
+                        beta_ai = base.CORR_BETA*base.G*2.3*(base.R[a]+base.R[i])**3 # [m^3/s]
                     elif base.COLEVAL == 2:
                         # Tsouris 1995 Brownian diffusion as controlling mechanism
                         # Optional reduction factor
@@ -404,10 +401,8 @@ class DPBECore:
             if base.process_type == 'breakage':
                 return
             if base.JIT_FM:
-                base.F_M = jit_kernel_agg.calc_F_M_2D(base.NS,base.COLEVAL,base.CORR_BETA,
-                                           G_corr,base.R,base.X1_vol,base.X3_vol,
-                                           base.EFFEVAL,base.alpha_prim,base.SIZEEVAL,
-                                           base.X_SEL,base.Y_SEL)/base.V_unit
+                jit_kernel_agg.calc_F_M_2D(base)
+                base.F_M /= base.V_unit
             
             else:
                 # Go through all agglomeration partners 1 [a,b] and 2 [i,j]
@@ -426,7 +421,7 @@ class DPBECore:
                         # Chin 1998 (shear induced flocculation in stirred tanks)
                         # Optional reduction factor.
                         # corr_beta=1;
-                        beta_ai = base.CORR_BETA*G_corr*2.3*(base.R[a,b]+base.R[i,j])**3 # [m^3/s]
+                        beta_ai = base.CORR_BETA*base.G*2.3*(base.R[a,b]+base.R[i,j])**3 # [m^3/s]
                     if base.COLEVAL == 2:
                         # Tsouris 1995 Brownian diffusion as controlling mechanism
                         # Optional reduction factor
@@ -491,7 +486,7 @@ class DPBECore:
         #         return
         #     if base.JIT_FM: 
         #         base.F_M = jit.calc_F_M_3D(base.NS,base.disc,base.COLEVAL,base.CORR_BETA,
-        #                                    G_corr,base.R,base.X1_vol,base.X2_vol,base.X3_vol,
+        #                                    base.G,base.R,base.X1_vol,base.X2_vol,base.X3_vol,
         #                                    base.EFFEVAL,base.alpha_prim,base.SIZEEVAL,
         #                                    base.X_SEL,base.Y_SEL)/base.V_unit
             
@@ -518,7 +513,7 @@ class DPBECore:
         #                 # Chin 1998 (shear induced flocculation in stirred tanks)
         #                 # Optional reduction factor.
         #                 # corr_beta=1;
-        #                 beta_ai = base.CORR_BETA*G_corr*2.3*(base.R[a,b,c]+base.R[i,j,k])**3 # [m^3/s]
+        #                 beta_ai = base.CORR_BETA*base.G*2.3*(base.R[a,b,c]+base.R[i,j,k])**3 # [m^3/s]
         #             if base.COLEVAL == 2:
         #                 # Tsouris 1995 Brownian diffusion as controlling mechanism
         #                 # Optional reduction factor
@@ -595,7 +590,6 @@ class DPBECore:
             * ``pop.B_R``: (2D)Breakage rate for class ab. The result is stored in ``B_R[a,b]`` 
         """
         base = self.base
-        G_corr = base.G ** base.G_break_corr
         base.B_R = np.zeros_like(base.V)
         # 1-D case
         if base.dim == 1:
@@ -604,12 +598,12 @@ class DPBECore:
             ##       calculation with V requires (index+1)
             if base.process_type == 'agglomeration':
                 return
-            base.B_R = jit_kernel_break.breakage_rate_1d(base.V, base.V1_mean, base.pl_P1, base.pl_P2, G_corr, base.BREAKRVAL)          
+            jit_kernel_break.breakage_rate_1d(base)          
         # 2-D case            
         if base.dim == 2:
             if base.process_type == 'agglomeration':
                 return
-            base.B_R = jit_kernel_break.breakage_rate_2d(base.V, base.V1, base.V3, base.V1_mean, base.V3_mean, G_corr, base.pl_P1, base.pl_P2, base.pl_P3, base.pl_P4, base.BREAKRVAL, base.BREAKFVAL)
+            jit_kernel_break.breakage_rate_2d(base)
                         
     ## Calculate integrated breakage function matrix.         
     def calc_int_B_F(self):
@@ -646,21 +640,7 @@ class DPBECore:
                     base.int_B_F = mc_bond['int_B_F']
                     base.intx_B_F = mc_bond['intx_B_F']
                 elif base.B_F_type == 'int_func':
-                    ## Let the integration range associated with the breakage function start from zero 
-                    ## to ensure mass conservation  
-                    V_e_tem = np.copy(base.V_e)
-                    V_e_tem[0] = 0.0
-                    for idx, tmp in np.ndenumerate(base.int_B_F):
-                        a = idx[0]; i = idx[1]
-                        if i != 0 and a <= i:
-                            args = (base.V[i],base.pl_v,base.pl_q,base.BREAKFVAL)
-                            argsk = (base.V[i],base.pl_v,base.pl_q,base.BREAKFVAL,1)
-                            if a == i:
-                                base.int_B_F[idx],err = integrate.quad(jit_kernel_break.breakage_func_1d,V_e_tem[a],base.V[a],args=args)
-                                base.intx_B_F[idx],err = integrate.quad(jit_kernel_break.breakage_func_1d_xk,V_e_tem[a],base.V[a],args=argsk)
-                            else:
-                                base.int_B_F[idx],err = integrate.quad(jit_kernel_break.breakage_func_1d,V_e_tem[a],V_e_tem[a+1],args=args)
-                                base.intx_B_F[idx],err = integrate.quad(jit_kernel_break.breakage_func_1d_xk,V_e_tem[a],V_e_tem[a+1],args=argsk)
+                    jit_kernel_break.calc_init_B_F_1D_quad(base)
                     
         # 2-D case
         elif base.dim == 2:
@@ -678,11 +658,9 @@ class DPBECore:
     
             elif base.B_F_type == 'int_func':
                 if base.JIT_BF:
-                    base.int_B_F, base.intx_B_F, base.inty_B_F = jit_kernel_break.calc_int_B_F_2D_GL(
-                        base.NS,base.V1,base.V3,base.V_e1,base.V_e3,base.BREAKFVAL,base.pl_v,base.pl_q)
+                    jit_kernel_break.calc_int_B_F_2D_GL(base)
                 else:
-                    base.int_B_F, base.intx_B_F,base.inty_B_F = jit_kernel_break.calc_int_B_F_2D_quad(
-                        base.NS, base.V1, base.V3, base.V_e1, base.V_e3, base.BREAKFVAL, base.pl_v, base.pl_q)
+                    jit_kernel_break.calc_int_B_F_2D_quad(base)
             elif base.B_F_type == 'ANN_MC': 
                 return
             
