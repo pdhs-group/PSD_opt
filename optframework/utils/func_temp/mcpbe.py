@@ -29,7 +29,7 @@ class population_MC():
         self.x2 = np.full(dim,1e-6)               # (Mean) equivalent diameter of primary particles for each component (bi-modal case)
                  
         self.G = 1                                # Mean shear rate
-        self.tA = 500                             # Agglomeration time [s]
+        self.t_total = 500                             # Agglomeration time [s]
         self.a0 = 1e3                             # Total amount of particles in control volume (initially) [-]
         self.savesteps = 11                       # Numer of equally spaced, saved timesteps [-]
         
@@ -172,7 +172,7 @@ class population_MC():
             self.betaarray = calc_betaarray_jit(self.BETACALC, self.a_tot, self.G, self.X, self.beta0, self.V)
         
         # Save arrays
-        self.t_save = np.linspace(0,self.tA,self.savesteps)
+        self.t_vec = np.linspace(0,self.t_total,self.savesteps)
         self.V_save = [self.V]
         self.Vc_save = [self.Vc]
         self.V0 = self.V
@@ -216,7 +216,7 @@ class population_MC():
         count = 0
         t0 = time.time()
         
-        while self.t[-1] <= self.tA and count < maxiter:
+        while self.t[-1] <= self.t_total and count < maxiter:
         
             ## Simplified case for random choice of collision partners (constant kernel) 
             if self.BETACALC == 3:
@@ -291,11 +291,11 @@ class population_MC():
                 self.V0 = np.append(self.V0, self.V0, axis=1)
                 
                 if self.VERBOSE:
-                    print(f'## Doubled control volume {int(np.log2(self.Vc*self.n0/self.a0))}-time(s). Current time:  {int(self.t[-1])}s/{self.tA}s ##')
+                    print(f'## Doubled control volume {int(np.log2(self.Vc*self.n0/self.a0))}-time(s). Current time:  {int(self.t[-1])}s/{self.t_total}s ##')
             
             ## Save at specific times
-            if self.t_save[self.step] <= self.t[-1]:
-                self.t_save[self.step] = self.t[-1]
+            if self.t_vec[self.step] <= self.t[-1]:
+                self.t_vec[self.step] = self.t[-1]
                 self.V_save.append(self.V)
                 self.Vc_save.append(self.Vc)
                 self.V0_save.append(self.V0)                
@@ -311,7 +311,7 @@ class population_MC():
             # Print why calculations stopped
             if count == maxiter:
                 print('XX Maximum number of iterations reached XX')
-                print(f'XX Final calculation time is {int(self.t[-1])}s/{self.tA}s XX')
+                print(f'XX Final calculation time is {int(self.t[-1])}s/{self.t_total}s XX')
             else:
                 print(f'## Agglomeration time reached after {count} iterations ##')
             print(f'## The calculation took {int(self.MACHINE_TIME)}s ##')
@@ -352,10 +352,10 @@ class population_MC():
     # Calculate distribution moments mu(i,j,t)
     def calc_mom_t(self):
         
-        mu = np.zeros((3,3,len(self.t_save)))
+        mu = np.zeros((3,3,len(self.t_vec)))
         
         # Time loop
-        for t in range(len(self.t_save)):
+        for t in range(len(self.t_vec)):
             
             for i in range(3):
                 if self.dim == 1:
@@ -378,8 +378,8 @@ class population_MC():
             return
             
         # Combine data for each timestep
-        for t in range(len(self.t_save)):
-            self.t_save[t] = np.mean([self.t_save[t],m.t_save[t]])
+        for t in range(len(self.t_vec)):
+            self.t_vec[t] = np.mean([self.t_vec[t],m.t_vec[t]])
             
             # Control volumina add up
             #print(len(self.Vc_save[t]),len(m.Vc_save[t]))
@@ -419,9 +419,9 @@ class population_MC():
         ax2=fig.add_subplot(1,2,2)
         
         if t_plot is None:
-            t_plot = np.arange(len(self.t_save))
+            t_plot = np.arange(len(self.t_vec))
         else:
-            t_plot = np.round(t_plot*(len(self.t_save)-1)).astype(int)
+            t_plot = np.round(t_plot*(len(self.t_vec)-1)).astype(int)
         
         xmin = min(self.return_distribution(t=t_plot[0])[0])*1e6
         xmax = max(self.return_distribution(t=t_plot[-1])[0])*1e6
@@ -478,7 +478,7 @@ class population_MC():
             fig=plt.figure()    
             ax=fig.add_subplot(1,1,1)   
         
-        ax, fig = pt.plot_data(self.t_save,self.mu[i,j,:], fig=fig, ax=ax,
+        ax, fig = pt.plot_data(self.t_vec,self.mu[i,j,:], fig=fig, ax=ax,
                                xlbl='Agglomeration time $t_\mathrm{A}$ / $s$',
                                ylbl=f'Moment $\mu ({i}{j})$ / '+'$m^{3\cdot'+str(i+j)+'}$',
                                lbl=lbl,clr=clr,mrk='o')

@@ -106,7 +106,7 @@ def hyqmom_newton_correction(xi, wi, moments, method="lm"):
 @njit
 def get_dMdt_1d(t, moments, x_max, GQMOM, GQMOM_method, 
                 moments_norm_factor, n_add, nu, 
-                COLEVAL, CORR_BETA, G, alpha_prim, EFFEVAL, 
+                COLEVAL, CORR_BETA, G, alpha_prim, 
                 SIZEEVAL, V_unit, X_SEL, Y_SEL, 
                 pl_P1, pl_P2, BREAKRVAL, 
                 v, q, BREAKFVAL, type_flag):
@@ -127,7 +127,6 @@ def get_dMdt_1d(t, moments, x_max, GQMOM, GQMOM_method,
         CORR_BETA (float): Correction term for collision frequency.
         G (float): Shear rate [1/s].
         alpha_prim (float): Primary particle interaction parameter.
-        EFFEVAL (int): Case for collision efficiency.
         SIZEEVAL (int): Case for size dependency.
         V_unit (float): Unit volume used for concentration calculations.
         X_SEL (float): Size dependency parameter.
@@ -184,7 +183,7 @@ def get_dMdt_1d(t, moments, x_max, GQMOM, GQMOM_method,
         # Get agglomeration frequency matrix
         F_M_tem = np.zeros((n+1,n+1))
         F_M_tem = kernel_agg.calc_F_M_1D_jit(F_M_tem, COLEVAL, CORR_BETA, G, R, 
-                                     alpha_prim, EFFEVAL, SIZEEVAL, X_SEL, Y_SEL)
+                                     alpha_prim, SIZEEVAL, X_SEL, Y_SEL)
         F_M = F_M_tem[1:,1:] / V_unit
         
     # Calculate breakage terms if needed
@@ -192,7 +191,7 @@ def get_dMdt_1d(t, moments, x_max, GQMOM, GQMOM_method,
         B_F_intxk = np.zeros((m, n))
         # Calculate breakage rates for each node
         B_R = np.zeros_like(V[1:])
-        B_R = kernel_break.breakage_rate_1d_jit(V[1:], B_R, pl_P1, pl_P2, G, BREAKRVAL)
+        B_R = kernel_break.calc_B_R_1d_jit(V[1:], B_R, pl_P1, pl_P2, G, BREAKRVAL)
 
         # Gauss-Legendre quadrature points and weights for integration
         xs1 = np.array([-9.681602395076260859e-01,
@@ -244,7 +243,7 @@ def get_dMdt_1d(t, moments, x_max, GQMOM, GQMOM_method,
     return dMdt_norm
 
 @njit
-def get_dMdt_2d(t, moments, n, indices, COLEVAL, CORR_BETA, G, alpha_prim, EFFEVAL, 
+def get_dMdt_2d(t, moments, n, indices, COLEVAL, CORR_BETA, G, alpha_prim, 
                 SIZEEVAL, V_unit, X_SEL, Y_SEL, 
                 pl_P1, pl_P2, pl_P3, pl_P4, BREAKRVAL, 
                 v, q, BREAKFVAL, type_flag):
@@ -261,7 +260,6 @@ def get_dMdt_2d(t, moments, n, indices, COLEVAL, CORR_BETA, G, alpha_prim, EFFEV
         CORR_BETA (float): Correction term for collision frequency.
         G (float): Shear rate [1/s].
         alpha_prim (array): Primary particle interaction parameters array.
-        EFFEVAL (int): Case for collision efficiency.
         SIZEEVAL (int): Case for size dependency.
         V_unit (float): Unit volume used for concentration calculations.
         X_SEL (float): Size dependency parameter.
@@ -332,7 +330,7 @@ def get_dMdt_2d(t, moments, n, indices, COLEVAL, CORR_BETA, G, alpha_prim, EFFEV
     if type_flag == "agglomeration" or type_flag == "mix":
         # Get agglomeration frequency matrix for 2D
         F_M_tem = np.zeros((n+1,n+1,n+1,n+1))
-        F_M_tem = kernel_agg.calc_F_M_2D_jit(F_M_tem, COLEVAL, CORR_BETA, G, R, X1, X3, EFFEVAL, 
+        F_M_tem = kernel_agg.calc_F_M_2D_jit(F_M_tem, COLEVAL, CORR_BETA, G, R, X1, X3, 
                                      alpha_prim, SIZEEVAL, X_SEL, Y_SEL)
         F_M = F_M_tem[1:,1:,1:,1:] / V_unit
         
@@ -343,7 +341,7 @@ def get_dMdt_2d(t, moments, n, indices, COLEVAL, CORR_BETA, G, alpha_prim, EFFEV
         
         # Calculate breakage rates for each node
         B_R_flat = np.zeros_like(V_flat)
-        B_R_flat = kernel_break.breakage_rate_2d_flat_jit(V_flat, B_R_flat, V1, V3, G,
+        B_R_flat = kernel_break.calc_B_R_2d_flat_jit(V_flat, B_R_flat, V1, V3, G,
                                                      pl_P1, pl_P2, pl_P3, pl_P4, BREAKRVAL, BREAKFVAL)
         B_R = np.zeros((n,n))
         for i in range(n):

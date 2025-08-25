@@ -5,6 +5,7 @@
 ```{toctree}
 :maxdepth: 4
 
+optframework.base
 optframework.dpbe
 optframework.examples
 optframework.kernel_opt

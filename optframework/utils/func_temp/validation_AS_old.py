@@ -47,7 +47,6 @@ def calculate_case(CASE, PBE=True, MC=False):
             p.NS = NS  
             p.S = S
             p.COLEVAL = 3                          # Constant beta
-            p.EFFEVAL = 2                           # Case for calculation of alpha
             p.CORR_BETA = beta0
             p.SIZEEVAL = 1
             p.R01 = x/2
@@ -79,7 +78,7 @@ def calculate_case(CASE, PBE=True, MC=False):
                 m.a0 = a0
                 m.VERBOSE = VERBOSE
                 m.savesteps = len(t)
-                m.tA = t[-1]
+                m.t_total = t[-1]
                 
                 m.init_calc()
                 
@@ -137,7 +136,6 @@ def calculate_case(CASE, PBE=True, MC=False):
             p.NS = NS  
             p.S = S
             p.COLEVAL = 3                           # Constant beta
-            p.EFFEVAL = 2                           # Case for calculation of alpha
             p.CORR_BETA = beta0
             p.SIZEEVAL = 1
             p.R01, p.R03 = x/2, x/2
@@ -170,7 +168,7 @@ def calculate_case(CASE, PBE=True, MC=False):
                 m.a0 = a0
                 m.VERBOSE = VERBOSE
                 m.savesteps = len(t)
-                m.tA = t[-1]
+                m.t_total = t[-1]
                 
                 m.init_calc()
                 
@@ -210,7 +208,6 @@ def calculate_case(CASE, PBE=True, MC=False):
             p.process_type = process_type
             p.S = S
             p.COLEVAL = 3                           # Constant beta
-            p.EFFEVAL = 2                           # Case for calculation of alpha
             p.CORR_BETA = beta0
             p.SIZEEVAL = 1
             p.R01, p.R02, p.R03 = x/2, x/2, x/2
@@ -239,7 +236,7 @@ def calculate_case(CASE, PBE=True, MC=False):
                 m.a0 = a0
                 m.VERBOSE = VERBOSE
                 m.savesteps = len(t)
-                m.tA = t[-1]
+                m.t_total = t[-1]
                 
                 m.init_calc()
                 
@@ -267,7 +264,6 @@ def calculate_case(CASE, PBE=True, MC=False):
             p.process_type = process_type
             p.S = S
             p.COLEVAL = 4                           # Sum kernel
-            p.EFFEVAL = 2                           # Case for calculation of alpha
             p.CORR_BETA = beta0/v0
             p.SIZEEVAL = 1
             p.R01 = x/2
@@ -297,7 +293,7 @@ def calculate_case(CASE, PBE=True, MC=False):
                 m.a0 = a0
                 m.VERBOSE = VERBOSE
                 m.savesteps = len(t)
-                m.tA = t[-1]
+                m.t_total = t[-1]
                 
                 m.init_calc()
                 
@@ -325,7 +321,6 @@ def calculate_case(CASE, PBE=True, MC=False):
             p.process_type = process_type
             p.S = S
             p.COLEVAL = 4                           # Sum kernel
-            p.EFFEVAL = 2                           # Case for calculation of alpha
             p.CORR_BETA = beta0/v0
             p.SIZEEVAL = 1
             p.R01, p.R03 = x/2, x/2
@@ -354,7 +349,7 @@ def calculate_case(CASE, PBE=True, MC=False):
                 m.a0 = a0
                 m.VERBOSE = VERBOSE
                 m.savesteps = len(t)
-                m.tA = t[-1]
+                m.t_total = t[-1]
                 
                 m.init_calc()
                 
@@ -385,7 +380,6 @@ def calculate_case(CASE, PBE=True, MC=False):
             p.process_type = process_type
             p.S = S
             p.COLEVAL = 4                           # Sum kernel
-            p.EFFEVAL = 2                           # Case for calculation of alpha
             p.CORR_BETA = beta0/v0
             p.SIZEEVAL = 1
             p.R01, p.R03 = x/2, x/2
@@ -414,7 +408,7 @@ def calculate_case(CASE, PBE=True, MC=False):
                 m.VERBOSE = VERBOSE
                 m.alpha_prim = alpha_mc
                 m.savesteps = len(t)
-                m.tA = t[-1]
+                m.t_total = t[-1]
                 
                 m.init_calc()
                 
@@ -436,7 +430,7 @@ def calculate_case(CASE, PBE=True, MC=False):
                     m.VERBOSE = VERBOSE
                     m.alpha_prim = alpha_mc
                     m.savesteps = len(t)
-                    m.tA = t[-1]
+                    m.t_total = t[-1]
                     
                     m.init_calc()
                     
@@ -475,7 +469,6 @@ def calculate_case(CASE, PBE=True, MC=False):
             p.process_type = process_type
             p.S = S
             p.COLEVAL = 1                           # Constant beta
-            p.EFFEVAL = 2                           # Case for calculation of alpha
             p.CORR_BETA = beta_fac*beta0/v0             
             p.SIZEEVAL = 1
             p.R01, p.R03 = x/2, x/2
@@ -504,7 +497,7 @@ def calculate_case(CASE, PBE=True, MC=False):
                 m.a0 = a0
                 m.VERBOSE = VERBOSE
                 m.savesteps = len(t)
-                m.tA = t[-1]
+                m.t_total = t[-1]
                 
                 m.init_calc()
                 
@@ -529,7 +522,6 @@ def calculate_case(CASE, PBE=True, MC=False):
             p.NS = NS  
             p.S = S
             p.COLEVAL = 1                           # Constant beta
-            p.EFFEVAL = 2                           # Case for calculation of alpha
             p.CORR_BETA = beta_fac*beta0/v0             
             p.SIZEEVAL = 1
             p.R01, p.R03 = x/2, x/2
@@ -560,7 +552,7 @@ def calculate_case(CASE, PBE=True, MC=False):
                 m.VERBOSE = VERBOSE
                 m.alpha_prim = alpha_mc
                 m.savesteps = len(t)
-                m.tA = t[-1]
+                m.t_total = t[-1]
                 
                 m.init_calc()
                 
@@ -805,7 +797,6 @@ if __name__ == "__main__":
     VERBOSE = True    
     alpha_mc = np.reshape(alpha_pbe,(2,2))
     
-    EFFEVAL=2       #dPB
     COLEVAL=3       #dPB
     BREAKFVAL = 2
     BREAKRVAL = 2

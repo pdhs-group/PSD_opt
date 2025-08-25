@@ -2,7 +2,7 @@ import numpy as np
 
 config = {
     
-    "tA": 100,
+    "t_total": 100,
     # Agglomeration time [s]
     
     "savesteps": 11,
@@ -62,10 +62,6 @@ config = {
 
     "COLEVAL": 4,  
     # Flag that determines which model to use for calculating collision frequency.
-    # Can be checked in dpbe_core.py's `calc_F_M`.
-
-    "EFFEVAL": 2,  
-    # Flag that determines which model to use for calculating collision efficiency.
     # Can be checked in dpbe_core.py's `calc_F_M`.
 
     "SIZEEVAL": 1,  

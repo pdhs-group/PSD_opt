@@ -106,10 +106,10 @@ class OptCore():
         # Set the initial population parameters and component parameters
         self.opt_pbe.set_init_pop_para(pop_params)
         self.opt_pbe.set_comp_para(data_path)
-        self.p.reset_params()
+        self.p._reset_params()
         if self.dim == 2:
-            self.p_NM.reset_params()
-            self.p_M.reset_params()
+            self.p_NM._reset_params()
+            self.p_M._reset_params()
         
     def calc_delta(self, params_in, x_uni_exp, data_exp):
         """

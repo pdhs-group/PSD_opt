@@ -133,7 +133,6 @@ config = {
         'S': 4, 
         'SIZEEVAL': 1, 
         'COLEVAL': 1, 
-        'EFFEVAL': 1, 
         'BREAKRVAL': 4, 
         'BREAKFVAL': 5, 
         'aggl_crit': 100, 

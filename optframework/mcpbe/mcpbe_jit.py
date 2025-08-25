@@ -38,7 +38,7 @@ class MCPBESolver():
         self.dim = dim
                  
         self.G = 1                                # Mean shear rate
-        self.tA = 500                             # Agglomeration time [s]
+        self.t_total = 500                             # Agglomeration time [s]
         self.a0 = 1e3                             # Total amount of particles in control volume (initially) [-]
         self.savesteps = 11                       # Numer of equally spaced, saved timesteps [-]
         
@@ -278,7 +278,7 @@ class MCPBESolver():
             self.process_break = True
         
         # Save arrays
-        self.t_save = np.linspace(0,self.tA,self.savesteps)
+        self.t_vec = np.linspace(0,self.t_total,self.savesteps)
         self.V_save = [self.V]
         self.Vc_save = [self.Vc]
         self.V0 = self.V
@@ -330,21 +330,21 @@ class MCPBESolver():
             dtd_break = self.calc_inter_event_time_break()
             timer_break = dtd_break
         
-        if self.process_agg and dtd_agg >= self.tA:
+        if self.process_agg and dtd_agg >= self.t_total:
             print ("------------------ \n"
                 f"Warning: The initial time step of agglomeration dt_agg = {dtd_agg} s "
-                f"is longer than the total simulation duration tA = {self.tA}. "
+                f"is longer than the total simulation duration t_total = {self.t_total}. "
                 "Please try extending the total simulation duration or adjusting the parameters."
                 "\n------------------")
             raise ValueError()
-        if self.process_break and dtd_break >= self.tA:
+        if self.process_break and dtd_break >= self.t_total:
             print ("------------------ \n"
                 f"Warning: The initial time step of breakage dt_break = {dtd_break} s is longer"
-                f"than the total simulation duration tA = {self.tA}. "
+                f"than the total simulation duration t_total = {self.t_total}. "
                 "Please try extending the total simulation duration or adjusting the parameters."
                 "\n------------------")
             
-        while self.t[-1] <= self.tA and count < maxiter:
+        while self.t[-1] <= self.t_total and count < maxiter:
             if self.process_type == "agglomeration":
                 self.calc_one_agg()
                 ## Calculation of inter event time
@@ -392,7 +392,7 @@ class MCPBESolver():
                 self.V0 = np.append(self.V0, self.V0, axis=1)
                 
                 if self.VERBOSE:
-                    print(f'## Doubled control volume {int(np.log2(self.Vc*self.n0/self.a0))}-time(s). Current time:  {int(self.t[-1])}s/{self.tA}s ##')
+                    print(f'## Doubled control volume {int(np.log2(self.Vc*self.n0/self.a0))}-time(s). Current time:  {int(self.t[-1])}s/{self.t_total}s ##')
             ## new calculation of kernel arrays
             if self.COLEVAL != 3 and self.process_type != "breakage":
                 self.betaarray = calc_betaarray_jit(self.COLEVAL, self.a_tot, self.G, 
@@ -403,8 +403,8 @@ class MCPBESolver():
                 self.calc_break_rate()
                 
             ## Save at specific times
-            if self.t_save[self.step] <= self.t[-1]:
-                self.t_save[self.step] = self.t[-1]
+            if self.t_vec[self.step] <= self.t[-1]:
+                self.t_vec[self.step] = self.t[-1]
                 self.V_save.append(self.V)
                 self.Vc_save.append(self.Vc)
                 self.V0_save.append(self.V0)                
@@ -420,7 +420,7 @@ class MCPBESolver():
             # Print why calculations stopped
             if count == maxiter:
                 print('XX Maximum number of iterations reached XX')
-                print(f'XX Final calculation time is {int(self.t[-1])}s/{self.tA}s XX')
+                print(f'XX Final calculation time is {int(self.t[-1])}s/{self.t_total}s XX')
             else:
                 print(f'## Agglomeration time reached after {count} iterations ##')
             print(f'## The calculation took {int(self.MACHINE_TIME)}s ##')
@@ -476,10 +476,10 @@ class MCPBESolver():
     # Calculate distribution moments mu(i,j,t)
     def calc_mom_t(self):
         
-        mu = np.zeros((3,3,len(self.t_save)))
+        mu = np.zeros((3,3,len(self.t_vec)))
         
         # Time loop
-        for t in range(len(self.t_save)):
+        for t in range(len(self.t_vec)):
             
             for i in range(3):
                 if self.dim == 1:
@@ -502,8 +502,8 @@ class MCPBESolver():
             return
             
         # Combine data for each timestep
-        for t in range(len(self.t_save)):
-            self.t_save[t] = np.mean([self.t_save[t],m.t_save[t]])
+        for t in range(len(self.t_vec)):
+            self.t_vec[t] = np.mean([self.t_vec[t],m.t_vec[t]])
             
             # Control volumina add up
             #print(len(self.Vc_save[t]),len(m.Vc_save[t]))
@@ -543,9 +543,9 @@ class MCPBESolver():
         ax2=fig.add_subplot(1,2,2)
         
         if t_plot is None:
-            t_plot = np.arange(len(self.t_save))
+            t_plot = np.arange(len(self.t_vec))
         else:
-            t_plot = np.round(t_plot*(len(self.t_save)-1)).astype(int)
+            t_plot = np.round(t_plot*(len(self.t_vec)-1)).astype(int)
         
         xmin = min(self.return_distribution(t=t_plot[0])[0])*1e6
         xmax = max(self.return_distribution(t=t_plot[-1])[0])*1e6
@@ -601,7 +601,7 @@ class MCPBESolver():
             fig=plt.figure()    
             ax=fig.add_subplot(1,1,1)   
         
-        ax, fig = pt.plot_data(self.t_save,self.mu[i,j,:], fig=fig, ax=ax,
+        ax, fig = pt.plot_data(self.t_vec,self.mu[i,j,:], fig=fig, ax=ax,
                                xlbl='Agglomeration time $t_\mathrm{A}$ / $s$',
                                ylbl=f'Moment $\mu ({i}{j})$ / '+'$m^{3\cdot'+str(i+j)+'}$',
                                lbl=lbl,clr=clr,mrk='o')
@@ -724,7 +724,7 @@ class MCPBESolver():
         
     def calc_break_rate(self):
         if self.dim == 1:
-            self.break_rate = kernel_break.breakage_rate_1d(self.V[-1,:], 
+            self.break_rate = kernel_break.calc_B_R_1d(self.V[-1,:], 
                                                             self.self.pl_P1, self.pl_P2, 
                                                             self.G, self.BREAKRVAL)
             ## The 2D fragmentation functionality is currently experimental 
@@ -732,7 +732,7 @@ class MCPBESolver():
             if self.BREAKFVAL == 5:
                 self.frag_num = (self.pl_v + 2) / self.pl_v
         elif self.dim == 2:
-            self.break_rate = kernel_break.breakage_rate_2d_flat(self.V[-1,:],
+            self.break_rate = kernel_break.calc_B_R_2d_flat(self.V[-1,:],
                                                             self.V[0,:], self.V[1,:],    
                                                             self.G, self.pl_P1, self.pl_P2, 
                                                             self.pl_P3, self.pl_P4, self.BREAKRVAL, self.BREAKFVAL)

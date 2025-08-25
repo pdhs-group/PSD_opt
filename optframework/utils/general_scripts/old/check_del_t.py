@@ -12,13 +12,6 @@ import numpy as np
 
 # @profile
 def check_del_t_2d():
-    
-    # JIT compile function get_deln function for later if JIT_DN == True
-    from dim2_scripts.get_deln_2d import get_deln_2d_geo   
-    if gc.JIT_DN:
-        from numba import jit
-        get_deln_2d_geo=jit(nopython=True)(get_deln_2d_geo)
-        
     t=0
     red=0.5 # Reduction factor
     
@@ -60,14 +53,7 @@ def check_del_t_2d():
     
     del N2, DN, DEL_T_0, tmp_N, red, t
     
-def check_del_t_3d():
-    
-    # JIT compile function get_deln function for later if JIT_DN == True
-    from dim3_scripts.get_deln_3d import get_deln_3d_geo   
-    if gc.JIT_DN:
-        from numba import jit
-        get_deln_3d_geo=jit(nopython=True)(get_deln_3d_geo)
-        
+def check_del_t_3d(): 
     t=0
     red=0.5 # Reduction factor
     

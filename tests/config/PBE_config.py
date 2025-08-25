@@ -14,7 +14,7 @@ config = {
     # In a geometric grid, volumes are calculated as midpoints between volume edges (V_e).
     # Therefore, when using a geo-grid, the specified value here corresponds to the radius
     # of the left edge of the grid, V_e[1]. The actual primary particle size is given by 
-    # V_e[1] * (1 + S) / 2, where S is the geometric spacing factor. R[1] = ((1+S)/2)**(1/3)*R01
+    # R[1] = ((1+S)/2)**(1/3)*R01
     
     "R03": 1e-6,  
     # Radius of primary M particles (in meters).

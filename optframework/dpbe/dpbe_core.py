@@ -360,18 +360,8 @@ class DPBECore:
                     elif base.COLEVAL == 4:
                         # Sum-Kernal (for validation) scaled by CORR_BETA
                         beta_ai = base.CORR_BETA*4*math.pi*(base.R[a]**3+base.R[i]**3)/3
-                                    
-                    # Calculate collision effiecieny depending on EFFEVAL. 
-                    # Case(1): "Correct" calculation for given indices. Accounts for size effects in int_fun_2d
-                    # Case(2): Reduced model. Calculation only based on primary particles
-                    # Case(3): Alphas are pre-fed from ANN or other source.
-                    if base.EFFEVAL == 1:
-                        # Not coded here
-                        alpha_ai = base.alpha_prim
-                    elif base.EFFEVAL == 2:
-                        alpha_ai = base.alpha_prim
                     
-                    # Calculate a correction factor to account for size dependency of alpha, depending on SIZEEVAL
+                    alpha_ai = base.alpha_prim
                     # Calculate lam
                     if base.R[a]<=base.R[i]:
                         lam = base.R[a]/base.R[i]
@@ -451,17 +441,7 @@ class DPBECore:
                                 X3[a,b]*X1[i,j],\
                                 X3[a,b]*X3[i,j]])
                     
-                    # Calculate collision effiecieny depending on EFFEVAL. 
-                    # Case(1): "Correct" calculation for given indices. Accounts for size effects in int_fun_2d
-                    # Case(2): Reduced model. Calculation only based on primary particles
-                    # Case(3): Alphas are pre-fed from ANN or other source.
-                    if base.EFFEVAL == 1:
-                        # Not coded here
-                        alpha_ai = np.sum(p*base.alpha_prim)
-                    if base.EFFEVAL == 2:
-                        alpha_ai = np.sum(p*base.alpha_prim)
-                    
-                    # Calculate a correction factor to account for size dependency of alpha, depending on SIZEEVAL
+                    alpha_ai = np.sum(p*base.alpha_prim)
                     # Calculate lam
                     if base.R[a,b]<=base.R[i,j]:
                         lam = base.R[a,b]/base.R[i,j]
@@ -487,7 +467,7 @@ class DPBECore:
         #     if base.JIT_FM: 
         #         base.F_M = jit.calc_F_M_3D(base.NS,base.disc,base.COLEVAL,base.CORR_BETA,
         #                                    base.G,base.R,base.X1_vol,base.X2_vol,base.X3_vol,
-        #                                    base.EFFEVAL,base.alpha_prim,base.SIZEEVAL,
+        #                                    base.alpha_prim,base.SIZEEVAL,
         #                                    base.X_SEL,base.Y_SEL)/base.V_unit
             
         #     else:
@@ -553,16 +533,6 @@ class DPBECore:
         #                         X3[a,b,c]*X2[i,j,k],\
         #                         X3[a,b,c]*X3[i,j,k]])
                     
-        #             # Calculate collision effiecieny depending on EFFEVAL. 
-        #             # Case(1): "Correct" calculation for given indices. Accounts for size effects in int_fun
-        #             # Case(2): Reduced model. Calculation only based on primary particles
-        #             # Case(3): Alphas are pre-fed from ANN or other source.
-        #             if base.EFFEVAL == 1:
-        #                 # Not coded here
-        #                 alpha_ai = np.sum(p*base.alpha_prim)
-        #             if base.EFFEVAL == 2:
-        #                 alpha_ai = np.sum(p*base.alpha_prim)
-                    
         #             # Calculate a correction factor to account for size dependency of alpha, depending on SIZEEVAL
         #             # Calculate lam
         #             if base.R[a,b,c]<=base.R[i,j,k]:
@@ -598,12 +568,12 @@ class DPBECore:
             ##       calculation with V requires (index+1)
             if base.process_type == 'agglomeration':
                 return
-            jit_kernel_break.breakage_rate_1d(base)          
+            jit_kernel_break.calc_B_R_1d(base)          
         # 2-D case            
         if base.dim == 2:
             if base.process_type == 'agglomeration':
                 return
-            jit_kernel_break.breakage_rate_2d(base)
+            jit_kernel_break.calc_B_R_2d(base)
                         
     ## Calculate integrated breakage function matrix.         
     def calc_int_B_F(self):
@@ -634,7 +604,6 @@ class DPBECore:
                 base.intx_B_F = np.zeros((base.NS, base.NS))
                 if base.process_type == 'agglomeration':
                     return
-                
                 if base.B_F_type == 'MC_bond':
                     mc_bond = np.load(base.work_dir_MC_BOND, allow_pickle=True)
                     base.int_B_F = mc_bond['int_B_F']
@@ -669,7 +638,6 @@ class DPBECore:
         """Calculate collision efficiency between primary particles based on material data."""
         
         base = self.base
-        # Use reduced model if EFFEVAL==2. Only primary agglomeration efficiencies are calculated. 
         # Due to numerical issues it may occur that the integral is 0, thus dividing by zero
         # This appears to be the case in fully destabilized systems --> set the integral to 1
         # See 3-D case or int_fun for definition of comb_flag order

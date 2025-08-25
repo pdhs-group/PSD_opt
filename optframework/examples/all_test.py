@@ -163,7 +163,7 @@ if __name__ == '__main__':
                           beta0=1e-16, use_psd=True, dist_path=dist_path)
         v.P1 = 1e12
         v.init_all()
-        v.calculate_case(calc_pbe=True, calc_mc=False, calc_pbm=True)
+        v.calculate_case(calc_mc=True, calc_pbm=True)
         v.init_plot(size = 'half', extra = True, mrksize=6)
         v.plot_all_moments(REL=True)
         v.show_plot()

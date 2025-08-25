@@ -6,17 +6,24 @@ In this project, each solver is implemented as a **dedicated class**.
 All parameters related to material properties, particle kinetics, and simulation control are defined as **class attributes**.  
 Meanwhile, operations such as grid construction, data processing, matrix computations, and solving the PBE are organized into **class methods**.
 
-Because each solver requires a large number of attributes and methods, the class design follows two main principles:
+The overall class design follows two main principles:
 
 1. **Base class with method wrappers**  
-   - Each solver is structured around a **base class**, which stores all attributes, intermediate variables, matrices, and some essential methods.  
-   - Additional functionality is grouped into **method classes**, which act as wrappers for different categories of operations.  
-   - These method classes are automatically instantiated as attributes of the base class during initialization.  
+   - Each solver is structured around its own **base class**, which stores solver-specific attributes, intermediate variables, matrices, and essential methods.  
+   - Additional functionality is grouped into **method classes**, which are automatically instantiated and linked to the base class as attributes.  
    - From the user’s perspective, only the base class needs to be instantiated and used directly.  
 
-2. **Parameter passing via config data**  
+2. **Shared base class for common functionality**  
+   - Since many solvers share common parameters and methods, all solver base classes now **inherit from a global `BaseSolver` class**.  
+   - `BaseSolver` provides reusable methods such as:  
+     - `_init_base_parameters` → defines common parameters (e.g., kernel parameters)  
+     - `_load_attributes` → loads attributes from config files and assigns them to the solver instance  
+   - This inheritance ensures consistency across solvers and avoids redundant code.  
+
+3. **Parameter passing via config data**  
    - Parameters are mainly provided through **config data**, a Python file containing a dictionary where each key corresponds to a class attribute.  
    - Using Python rather than JSON enables direct definition of `numpy` arrays and allows preprocessing steps within the config.  
+
 
 
 ## Solver Class Structures

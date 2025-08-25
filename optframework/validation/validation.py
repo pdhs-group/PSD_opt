@@ -166,8 +166,7 @@ class PBEValidation():
             elif self.kernel == "sum":
                 self.p.t_vec = np.arange(0, 100, 10, dtype=float)
         t = self.p.t_vec
-        self.p_mc.tA = t[-1]
-        self.p_mc.savesteps = len(t)
+        self.p_mc.t_vec = self.p.t_vec
         
         self.mu_as = np.ones((3,3,len(t)))
         self.mu_pbe = np.zeros((3,3,len(t)))
@@ -179,7 +178,6 @@ class PBEValidation():
     def set_kernel_params(self, solver):
         if self.kernel == "const":
             solver.COLEVAL = 3                          
-            solver.EFFEVAL = 2  
             solver.SIZEEVAL = 1
             solver.CORR_BETA = self.beta0
             solver.BREAKRVAL = 1
@@ -192,7 +190,6 @@ class PBEValidation():
             
         elif self.kernel == "sum":
             solver.COLEVAL = 4                          
-            solver.EFFEVAL = 2  
             solver.SIZEEVAL = 1
             solver.CORR_BETA = self.beta0 / self.v0
             solver.BREAKRVAL = 2
@@ -317,12 +314,12 @@ class PBEValidation():
                         for l in range(2):
                             self.mu_as[k,l,:] = np.ones(t.shape)*self.c
                         
-    def calculate_case(self, calc_pbe=True, calc_mc=True, calc_pbm=True):
+    def calculate_case(self, calc_mc=True, calc_pbm=True):
         self.init_mu()
         
-        if calc_pbe:
-            self.set_kernel_params(self.p)
-            self.calculate_pbe()
+        # if calc_pbe:
+        self.set_kernel_params(self.p)
+        self.calculate_pbe()
         if calc_mc:
             self.set_kernel_params(self.p_mc)
             self.calculate_mc_pbe()

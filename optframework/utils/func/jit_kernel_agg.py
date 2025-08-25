@@ -17,14 +17,13 @@ def calc_F_M_1D(solver):
         np.ascontiguousarray(solver.R,  dtype=np.float64),
         # np.ascontiguousarray(solver.alpha_prim,  dtype=np.float64),
         float(solver.alpha_prim),
-        int(solver.EFFEVAL),
         int(solver.SIZEEVAL),
         float(solver.X_SEL),
         float(solver.Y_SEL),
         )
 
 @njit
-def calc_F_M_1D_jit(F_M, COLEVAL, CORR_BETA, G, R, alpha_prim, EFFEVAL, SIZEEVAL, X_SEL, Y_SEL):
+def calc_F_M_1D_jit(F_M, COLEVAL, CORR_BETA, G, R, alpha_prim, SIZEEVAL, X_SEL, Y_SEL):
     # calc_beta = prepare_calc_beta(COLEVAL, CORR_BETA, G)
     # Go through all agglomeration partners 1 [a] and 2 [i]
     # The current index tuple idx stores them as (a, i)
@@ -39,13 +38,8 @@ def calc_F_M_1D_jit(F_M, COLEVAL, CORR_BETA, G, R, alpha_prim, EFFEVAL, SIZEEVAL
         # r1, r2 = R[a], R[i]
         # beta = calc_beta(r1, r2)
         beta = calc_beta(COLEVAL, CORR_BETA, G, R, a, i)                
-        # Calculate collision efficiency depending on EFFEVAL. 
-        if EFFEVAL == 1:
-            alpha = alpha_prim
-        elif EFFEVAL == 2:
-            alpha = alpha_prim
+        alpha = alpha_prim
         
-        # Calculate a correction factor to account for size dependency of alpha, depending on SIZEEVAL
         if R[a] <= R[i]:
             lam = R[a] / R[i]
         else:
@@ -72,7 +66,6 @@ def calc_F_M_2D(solver):
         np.ascontiguousarray(solver.R,  dtype=np.float64),
         np.ascontiguousarray(solver.X1_vol,  dtype=np.float64),
         np.ascontiguousarray(solver.X3_vol,  dtype=np.float64),
-        int(solver.EFFEVAL),
         np.ascontiguousarray(solver.alpha_prim,  dtype=np.float64),
         int(solver.SIZEEVAL),
         float(solver.X_SEL),
@@ -80,7 +73,7 @@ def calc_F_M_2D(solver):
         )
       
 @njit
-def calc_F_M_2D_jit(F_M,COLEVAL,CORR_BETA,G,R,X1,X3,EFFEVAL,alpha_prim,SIZEEVAL,X_SEL,Y_SEL):
+def calc_F_M_2D_jit(F_M,COLEVAL,CORR_BETA,G,R,X1,X3,alpha_prim,SIZEEVAL,X_SEL,Y_SEL):
     # calc_beta = prepare_calc_beta(COLEVAL)
     # Go through all agglomeration partners 1 [a,b] and 2 [i,j]
     # The current index tuple idx stores them as (a,b,i,j)
@@ -110,17 +103,7 @@ def calc_F_M_2D_jit(F_M,COLEVAL,CORR_BETA,G,R,X1,X3,EFFEVAL,alpha_prim,SIZEEVAL,
             X3[a,b]*X1[i,j],\
             X3[a,b]*X3[i,j]])
         
-        # Calculate collision effiecieny depending on EFFEVAL. 
-        # Case(1): "Correct" calculation for given indices. Accounts for size effects in int_fun_2d
-        # Case(2): Reduced model. Calculation only based on primary particles
-        # Case(3): Alphas are pre-fed from ANN or other source.
-        if EFFEVAL == 1:
-            # Not coded here
-            alpha = np.sum(p*alpha_prim)
-        if EFFEVAL == 2 or EFFEVAL == 3:
-            alpha = np.sum(p*alpha_prim)
-        
-        # Calculate a correction factor to account for size dependency of alpha, depending on SIZEEVAL
+        alpha = np.sum(p*alpha_prim)
         # Calculate lam
         if R[a,b]<=R[i,j]:
             lam = R[a,b]/R[i,j]
@@ -144,7 +127,7 @@ def calc_F_M_2D_jit(F_M,COLEVAL,CORR_BETA,G,R,X1,X3,EFFEVAL,alpha_prim,SIZEEVAL,
     return F_M
                 
 @njit
-def calc_F_M_3D(NS,COLEVAL,CORR_BETA,G,R,X1,X2,X3,EFFEVAL,alpha_prim,SIZEEVAL,X_SEL,Y_SEL):
+def calc_F_M_3D(NS,COLEVAL,CORR_BETA,G,R,X1,X2,X3,alpha_prim,SIZEEVAL,X_SEL,Y_SEL):
                        
     # Initialize F_M Matrix. NOTE: F_M is defined without the border around the calculation grid
     # as e.g. N or V are (saving memory and calculations). 
@@ -178,7 +161,7 @@ def calc_F_M_3D(NS,COLEVAL,CORR_BETA,G,R,X1,X2,X3,EFFEVAL,alpha_prim,SIZEEVAL,X_
             # Use a constant collision frequency given by CORR_BETA
             beta = CORR_BETA
         if COLEVAL == 4:
-            # Sum-Kernal (for validation) scaled by CORR_BETA
+            # Sum-Kernel (for validation) scaled by CORR_BETA
             beta = CORR_BETA*4*math.pi*(R[a,b,c]**3+R[i,j,k]**3)/3
         
         # Calculate probabilities, that particle 1 [a,b,c] is colliding as
@@ -205,17 +188,7 @@ def calc_F_M_3D(NS,COLEVAL,CORR_BETA,G,R,X1,X2,X3,EFFEVAL,alpha_prim,SIZEEVAL,X_
                     X3[a,b,c]*X2[i,j,k],\
                     X3[a,b,c]*X3[i,j,k]])
         
-        # Calculate collision effiecieny depending on EFFEVAL. 
-        # Case(1): "Correct" calculation for given indices. Accounts for size effects in int_fun
-        # Case(2): Reduced model. Calculation only based on primary particles
-        # Case(3): Alphas are pre-fed from ANN or other source.
-        if EFFEVAL == 1:
-            # Not coded here
-            alpha = np.sum(p*alpha_prim)
-        if EFFEVAL == 2 or EFFEVAL == 3:
-            alpha = np.sum(p*alpha_prim)
-        
-        # Calculate a correction factor to account for size dependency of alpha, depending on SIZEEVAL
+        alpha = np.sum(p*alpha_prim)
         # Calculate lam
         if R[a,b,c]<=R[i,j,k]:
             lam = R[a,b,c]/R[i,j,k]

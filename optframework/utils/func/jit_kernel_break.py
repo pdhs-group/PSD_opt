@@ -159,14 +159,14 @@ def calc_int_B_F_2D_GL(solver):
         np.ascontiguousarray(solver.int_B_F,  dtype=np.float64),
         np.ascontiguousarray(solver.intx_B_F,  dtype=np.float64),
         np.ascontiguousarray(solver.inty_B_F,  dtype=np.float64),
-        int(solver.BREAKFVAL),
         float(solver.pl_v),
         float(solver.pl_q),
+        int(solver.BREAKFVAL),
         )
 @njit
 ## integration function scipy.quad and scipy.dblquad are not compatible with jit!
 ## So a manually implemented integration method(GL: gauss-legendre quadrature) is needed here.
-def calc_int_B_F_2D_GL_jit(NS,V1,V3,V_e1,V_e3,int_B_F, intx_B_F, inty_B_F, BREAKFVAL,v,q):
+def calc_int_B_F_2D_GL_jit(NS,V1,V3,V_e1,V_e3,int_B_F, intx_B_F, inty_B_F, v,q,BREAKFVAL):
     V_e1_tem = np.copy(V_e1)
     V_e1_tem[0] = 0.0
     V_e3_tem = np.copy(V_e3)
@@ -318,8 +318,8 @@ def calc_int_B_F_2D_quad(solver):
                                             
     return True
 
-def breakage_rate_1d(solver):
-    return breakage_rate_1d_jit(
+def calc_B_R_1d(solver):
+    return calc_B_R_1d_jit(
         np.ascontiguousarray(solver.V,  dtype=np.float64),
         np.ascontiguousarray(solver.B_R,  dtype=np.float64),
         float(solver.pl_P1),
@@ -329,18 +329,18 @@ def breakage_rate_1d(solver):
     )
     
 @njit
-def breakage_rate_1d_jit(V, B_R, pl_P1, pl_P2, G, BREAKRVAL):
+def calc_B_R_1d_jit(V, B_R, pl_P1, pl_P2, G, BREAKRVAL):
     num_particles = len(B_R)
     if V[0] == 0:
         for i in range(1, num_particles):
-            B_R[i] = calc_B_R_1d(V, pl_P1, pl_P2, G, BREAKRVAL, i)
+            B_R[i] = calc_break_rate_1d(V, pl_P1, pl_P2, G, BREAKRVAL, i)
     else:
         for i in range(num_particles):
-            B_R[i] = calc_B_R_1d(V, pl_P1, pl_P2, G, BREAKRVAL, i)
+            B_R[i] = calc_break_rate_1d(V, pl_P1, pl_P2, G, BREAKRVAL, i)
     return B_R
 
 @njit
-def calc_B_R_1d(V, pl_P1, pl_P2, G, BREAKRVAL, i):
+def calc_break_rate_1d(V, pl_P1, pl_P2, G, BREAKRVAL, i):
     if BREAKRVAL == 1:
         # Size independent breakage rate --> See Leong2023 (10)
         # only for validation with analytical results
@@ -351,15 +351,14 @@ def calc_B_R_1d(V, pl_P1, pl_P2, G, BREAKRVAL, i):
         B_R = pl_P1 * V[i]
     elif BREAKRVAL == 3:
         # Power Law Pandy and Spielmann --> See Jeldres2018 (28)
-        # Scale particle volume using the average volume of all possible fragments produced
         B_R = pl_P1 * G * V[i] ** pl_P2
     elif BREAKRVAL == 4:
         # Hypothetical formula considering volume fraction
         B_R = pl_P1 * G * V[i] ** pl_P2
     return B_R
     
-def breakage_rate_2d(solver):
-    return breakage_rate_2d_jit(
+def calc_B_R_2d(solver):
+    return calc_B_R_2d_jit(
         np.ascontiguousarray(solver.V,  dtype=np.float64),
         np.ascontiguousarray(solver.B_R,  dtype=np.float64),
         np.ascontiguousarray(solver.V1,  dtype=np.float64),
@@ -373,26 +372,26 @@ def breakage_rate_2d(solver):
         int(solver.BREAKFVAL),
         )
 @njit
-def breakage_rate_2d_jit(V, B_R, V1, V3, G, pl_P1, pl_P2, pl_P3, pl_P4, BREAKRVAL, BREAKFVAL):
+def calc_B_R_2d_jit(V, B_R, V1, V3, G, pl_P1, pl_P2, pl_P3, pl_P4, BREAKRVAL, BREAKFVAL):
     for idx, _ in np.ndenumerate(B_R):
         i = idx[0]; j = idx[1]
         if i == 0 and j == 0:
             continue
         elif i == 0:
             if BREAKRVAL == 3:
-                B_R[i,j] = calc_B_R_1d(V3, pl_P1, pl_P2, G, BREAKRVAL, j)
+                B_R[i,j] = calc_break_rate_1d(V3, pl_P1, pl_P2, G, BREAKRVAL, j)
             else:
-                B_R[i,j] = calc_B_R_1d(V3, pl_P3, pl_P4, G, BREAKRVAL, j)
+                B_R[i,j] = calc_break_rate_1d(V3, pl_P3, pl_P4, G, BREAKRVAL, j)
         elif j == 0:
-            B_R[i,j] = calc_B_R_1d(V1, pl_P1, pl_P2, G, BREAKRVAL, i)
+            B_R[i,j] = calc_break_rate_1d(V1, pl_P1, pl_P2, G, BREAKRVAL, i)
         else:
-            B_R[i,j] = calc_B_R_2d(V, V1, V3, G, 
+            B_R[i,j] = calc_break_rate_2d(V, V1, V3, G, 
                             pl_P1, pl_P2, pl_P3, pl_P4, BREAKRVAL, BREAKFVAL, i, j)
 
     return B_R
 
-def breakage_rate_2d_flat(solver):
-    return breakage_rate_2d_flat_jit(
+def calc_B_R_2d_flat(solver):
+    return calc_B_R_2d_flat_jit(
         np.ascontiguousarray(solver.V,  dtype=np.float64),
         np.ascontiguousarray(solver.B_R,  dtype=np.float64),
         np.ascontiguousarray(solver.V1,  dtype=np.float64),
@@ -407,7 +406,7 @@ def breakage_rate_2d_flat(solver):
         )
 
 @njit
-def breakage_rate_2d_flat_jit(V, B_R, V1, V3, G, pl_P1, pl_P2, pl_P3, pl_P4, BREAKRVAL, BREAKFVAL):
+def calc_B_R_2d_flat_jit(V, B_R, V1, V3, G, pl_P1, pl_P2, pl_P3, pl_P4, BREAKRVAL, BREAKFVAL):
     ## Normally B_R here should be a flat one-dimensional array, for example in MC-PBE
     ## And there is a one-to-one correspondence between V1, 
     # B_R = np.zeros_like(V)
@@ -415,19 +414,19 @@ def breakage_rate_2d_flat_jit(V, B_R, V1, V3, G, pl_P1, pl_P2, pl_P3, pl_P4, BRE
     for i in range(num_particles):
         if V1[i] == 0:
             if BREAKRVAL == 3:
-                B_R[i] = calc_B_R_1d(V, pl_P1, pl_P2, G, BREAKRVAL, i)
+                B_R[i] = calc_break_rate_1d(V, pl_P1, pl_P2, G, BREAKRVAL, i)
             else:
-                B_R[i] = calc_B_R_1d(V, pl_P3, pl_P4, G, BREAKRVAL, i)
+                B_R[i] = calc_break_rate_1d(V, pl_P3, pl_P4, G, BREAKRVAL, i)
         elif V3[i] == 0:
-            B_R[i] = calc_B_R_1d(V, pl_P1, pl_P2, G, BREAKRVAL, i)
+            B_R[i] = calc_break_rate_1d(V, pl_P1, pl_P2, G, BREAKRVAL, i)
         else:
-            B_R[i] = calc_B_R_2d_flat(V, V1, V3, G, 
+            B_R[i] = calc_break_rate_2d_flat(V, V1, V3, G, 
                             pl_P1, pl_P2, pl_P3, pl_P4, BREAKRVAL, BREAKFVAL, i)
 
     return B_R
 
 @njit
-def calc_B_R_2d(V, V1, V3, G, 
+def calc_break_rate_2d(V, V1, V3, G, 
                 pl_P1, pl_P2, pl_P3, pl_P4, BREAKRVAL, BREAKFVAL, i, j):
     if BREAKRVAL == 1:
         B_R = (pl_P1 + pl_P3) / 2.0
@@ -443,7 +442,7 @@ def calc_B_R_2d(V, V1, V3, G,
     return B_R
 
 @njit
-def calc_B_R_2d_flat(V, V1, V3, G, 
+def calc_break_rate_2d_flat(V, V1, V3, G, 
                 pl_P1, pl_P2, pl_P3, pl_P4, BREAKRVAL, BREAKFVAL, i):
     if BREAKRVAL == 1:
         B_R = (pl_P1 + pl_P3) / 2.0

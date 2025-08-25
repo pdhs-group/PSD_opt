@@ -165,8 +165,6 @@ def parameterstudy(filename=None,init=False,max_param=0,ANN_flnm=None):
         
         # Use ANN to predict alpha prim if filename is given
         if ANN_flnm!=None:
-            # Set EFFEVAL to 3 (=using reduced model, but not calculating alphas)
-            gc.EFFEVAL=3
             gv.alpha_prim=np.zeros(4)
             
             # Set G to 1

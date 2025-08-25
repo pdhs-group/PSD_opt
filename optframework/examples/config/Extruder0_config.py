@@ -49,10 +49,6 @@ config = {
     # Flag that determines which model to use for calculating collision frequency.
     # Can be checked in dpbe_core.py's `calc_F_M`.
 
-    "EFFEVAL": 1,  
-    # Flag that determines which model to use for calculating collision efficiency.
-    # Can be checked in dpbe_core.py's `calc_F_M`.
-
     "SIZEEVAL": 1,  
     # Flag that determines whether to account for damping effects due to particle volume growth 
     # during aggregation. This is handled in dpbe_core.py's `calc_F_M`.

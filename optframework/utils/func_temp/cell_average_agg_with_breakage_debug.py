@@ -35,7 +35,6 @@ V_crit = 8
 COLEVAL = 2
 CORR_BETA = 150
 G= 1 
-EFFEVAL = 2 
 alpha_prim = np.array([0.5,1,1,0.5]) 
 SIZEEVAL = 1
 dim = 1
@@ -589,7 +588,7 @@ if __name__ == "__main__":
                     X1[i,j] = V_p1[i]/V_p[i,j]
                     X2[i,j] = V_p2[j]/V_p[i,j]
         
-        F_M = my_jit.calc_F_M_2D(NS, 'geo', COLEVAL, CORR_BETA, G, R, X1, X2, EFFEVAL, alpha_prim, SIZEEVAL, 0.310601, 1.06168)
+        F_M = my_jit.calc_F_M_2D(NS, 'geo', COLEVAL, CORR_BETA, G, R, X1, X2, alpha_prim, SIZEEVAL, 0.310601, 1.06168)
         B_R = np.zeros((NS-1,NS-1))
         if BREAKRVAL == 1:
             B_R[:,:] = 1

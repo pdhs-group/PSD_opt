@@ -46,7 +46,7 @@ if __name__ == "__main__":
     # m.a0 = m_new.a0
     # m.VERBOSE = True
     # m.savesteps = m_new.savesteps
-    # m.tA = m_new.tA
+    # m.t_total = m_new.t_total
     # m.init_calc()
     
     mu_mc_jit, std_mu_mc_jit, t_run_jit = run_mcpbe(m_jit)

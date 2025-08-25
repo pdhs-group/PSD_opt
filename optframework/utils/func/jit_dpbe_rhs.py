@@ -6,7 +6,7 @@ Created on Tue Feb 27 16:24:30 2024
 """
 import numpy as np
 import math
-from numba import jit, njit, float64, int64
+from numba import njit
 
 @njit
 def get_dNdt_1d_geo(t,N,NS,V_p,V_e,F_M,B_R,bf_int,xbf_int,type_flag,agg_crit):

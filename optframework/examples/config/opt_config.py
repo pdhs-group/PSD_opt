@@ -160,7 +160,6 @@ config = {
         'S' : 4,
         "SIZEEVAL": 1,
         "COLEVAL": 1,
-        "EFFEVAL": 1,
         'BREAKRVAL' : 4,
         'BREAKFVAL' : 5,
         ## aggl_crit: The sequence number of the particle that allows further agglomeration
