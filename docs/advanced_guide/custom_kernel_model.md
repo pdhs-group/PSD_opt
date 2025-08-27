@@ -147,4 +147,7 @@ config = {
 
 Run **`optframework/examples/simple_dpbe.py`** with your new model.
 
+```{toctree}
+:caption: 'Advanced Guide:'
+:maxdepth: 1
 

@@ -215,19 +215,13 @@ class OptBaseRay():
             x_uni_exp = []
             data_exp = []
             for exp_data_paths_tem in exp_data_paths:
-                if base.core.exp_data:
-                    x_uni_exp_tem, data_exp_tem = base.core.opt_data.get_all_exp_data(exp_data_paths_tem)
-                else:
-                    x_uni_exp_tem, data_exp_tem = base.core.opt_data.get_all_synth_data(exp_data_paths_tem)
+                x_uni_exp_tem, data_exp_tem = base.core.p.get_all_data(exp_data_paths_tem)
                 x_uni_exp.append(x_uni_exp_tem)
                 data_exp.append(data_exp_tem)
             data_name = getattr(base.core, 'data_name_tune', os.path.basename(exp_data_paths[0]))
         else:
             # When not set to multi or optimization of 1d-data, the exp_data_paths contain the name of that data.
-            if base.core.exp_data:
-                x_uni_exp, data_exp = base.core.opt_data.get_all_exp_data(exp_data_paths)
-            else:
-                x_uni_exp, data_exp = base.core.opt_data.get_all_synth_data(exp_data_paths)
+            x_uni_exp, data_exp = base.core.p.get_all_data(exp_data_paths)
             data_name = os.path.basename(exp_data_paths)
             
         # Reuse the previous parameters as warm-up for new optimization

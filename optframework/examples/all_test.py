@@ -68,8 +68,8 @@ import runpy
 from pathlib import Path
 import numpy as np
 import ray
-from optframework.kernel_opt.opt_base import OptBase
-from optframework.validation import PBEValidation
+from optframework import OptBase
+from optframework import PBEValidation
 from optframework.utils.general_scripts.generate_psd import full_psd
 from optframework.utils.func.change_config import replace_key_value
 
@@ -116,7 +116,7 @@ if __name__ == '__main__':
     data_name = f"Sim_{noise_type}_{noise_strength}" + add_info + ".xlsx"
     
     if generate_synth_data:
-        opt.generate_data(pop_params, add_info=add_info)
+        opt.core.p.generate_data(opt.data_path, opt.multi_flag, pop_params, add_info=add_info)
         print(f'The dPBE simulation has been completed. The new synthetic data {data_name} has been saved in path {opt.data_path}.')
         
     exp_data_path = os.path.join(opt.data_path, data_name)
@@ -140,17 +140,11 @@ if __name__ == '__main__':
             x_uni_exp = []
             data_exp = []
             for exp_data_path_tem in exp_data_paths:
-                if opt.core.exp_data:
-                    x_uni_exp_tem, data_exp_tem = opt.core.opt_data.get_all_exp_data(exp_data_path_tem)
-                else:
-                    x_uni_exp_tem, data_exp_tem = opt.core.opt_data.get_all_synth_data(exp_data_path_tem)
+                x_uni_exp_tem, data_exp_tem = opt.core.p.get_all_data(exp_data_path_tem)
                 x_uni_exp.append(x_uni_exp_tem)
                 data_exp.append(data_exp_tem)
         else:
-            if opt.core.exp_data:
-                x_uni_exp, data_exp = opt.core.opt_data.get_all_exp_data(exp_data_paths)
-            else:
-                x_uni_exp, data_exp = opt.core.opt_data.get_all_synth_data(exp_data_paths)  
+            x_uni_exp, data_exp = opt.core.p.get_all_data(exp_data_paths)
                 
         delta = opt.core.calc_delta(pop_params, x_uni_exp, data_exp)
     

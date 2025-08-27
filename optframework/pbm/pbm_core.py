@@ -10,7 +10,16 @@ import optframework.utils.func.jit_pbm_rhs as jit_pbm_rhs
 from optframework.utils.func.static_method import interpolate_psd
 
 class PBMCore:
+    """
+    Core computation module for Population Balance Model (PBM) solver.
+    
+    This class handles the core computational tasks for the PBM solver, including
+    moment initialization and PBE solving. It provides methods for setting up
+    initial conditions and integrating the moment equations over time.
+    """
+    
     def __init__(self, solver):
+        """Initialize PBMCore with reference to parent solver."""
         self.solver = solver
 
     def init_moments(self, x=None, NDF=None, NDF_shape="normal", N0=1.0, N01=1.0, N02=1.0,
@@ -19,23 +28,40 @@ class PBMCore:
         """
         Initialize moments for the PBM solver (supports both 1D and 2D).
 
-        Parameters:
-            x (numpy.ndarray): x-coordinates for the distribution function (1D only).
-            NDF (numpy.ndarray): (Normalized) Distribution function (1D only).
-            NDF_shape (str): Shape of the distribution ("normal", "gamma", "lognormal", "beta", "mono").
-            N0 (float): Initial total number concentration (1D only).
-            N01 (float): Initial number concentration for component 1 (2D only).
-            N02 (float): Initial number concentration for component 2 (2D only).
-            V0 (float): Total volume of particles (1D only).
-            x_range (tuple): Range of x values.
-            mean (float): Mean value for normal/lognormal distribution.
-            std_dev (float): Standard deviation for normal distribution.
-            shape (float): Shape parameter for gamma distribution.
-            scale (float): Scale parameter for gamma distribution.
-            sigma (float): Standard deviation for lognormal distribution.
-            a (float): Alpha parameter for beta distribution.
-            b (float): Beta parameter for beta distribution.
-            size (float): Size parameter for mono distribution.
+        Parameters
+        ----------
+        x : numpy.ndarray, optional
+            x-coordinates for the distribution function (1D only)
+        NDF : numpy.ndarray, optional
+            (Normalized) Distribution function (1D only)
+        NDF_shape : str, optional
+            Shape of the distribution ("normal", "gamma", "lognormal", "beta", "mono") (default: "normal")
+        N0 : float, optional
+            Initial total number concentration (1D only) (default: 1.0)
+        N01 : float, optional
+            Initial number concentration for component 1 (2D only) (default: 1.0)
+        N02 : float, optional
+            Initial number concentration for component 2 (2D only) (default: 1.0)
+        V0 : float, optional
+            Total volume of particles (1D only)
+        x_range : tuple, optional
+            Range of x values (default: (0,1))
+        mean : float, optional
+            Mean value for normal/lognormal distribution (default: 0.5)
+        std_dev : float, optional
+            Standard deviation for normal distribution (default: 0.1)
+        shape : float, optional
+            Shape parameter for gamma distribution (default: 2)
+        scale : float, optional
+            Scale parameter for gamma distribution (default: 1)
+        sigma : float, optional
+            Standard deviation for lognormal distribution (default: 1)
+        a : float, optional
+            Alpha parameter for beta distribution (default: 2)
+        b : float, optional
+            Beta parameter for beta distribution (default: 2)
+        size : float, optional
+            Size parameter for mono distribution (default: 0.5)
         """
         solver = self.solver
         
@@ -51,6 +77,9 @@ class PBMCore:
                         shape, scale, sigma, a, b, size):
         """
         Initialize 1D moments for the PBM solver.
+        
+        Creates distribution function and calculates initial moments for 1D systems.
+        Handles both PSD file input and analytical distributions.
         """
         solver = self.solver
         
@@ -89,6 +118,9 @@ class PBMCore:
     def _init_moments_2d(self, N01, N02):
         """
         Initialize 2D moments for the PBM solver.
+        
+        Creates distribution functions for both components and calculates
+        initial 2D moments using trapezoidal integration.
         """
         solver = self.solver
         
@@ -117,7 +149,15 @@ class PBMCore:
 
     def _create_distribution(self, NDF_shape, x_range, mean, std_dev, shape, scale, sigma, a, b, size):
         """
-        Helper method to create distribution based on shape parameter.
+        Create distribution based on shape parameter.
+        
+        Helper method that delegates to solver's create_ndf method with
+        appropriate parameters for different distribution types.
+        
+        Returns
+        -------
+        tuple
+            (x, NDF) coordinate array and distribution values
         """
         solver = self.solver
         
@@ -142,9 +182,12 @@ class PBMCore:
             This method is deprecated. Use `init_moments()` instead, which automatically
             handles both 1D and 2D cases based on solver.dim.
 
-        Parameters:
-            N01 (float): Initial number concentration for component 1.
-            N02 (float): Initial number concentration for component 2.
+        Parameters
+        ----------
+        N01 : float, optional
+            Initial number concentration for component 1 (default: 1.0)
+        N02 : float, optional
+            Initial number concentration for component 2 (default: 1.0)
         """
         import warnings
         warnings.warn("init_moments_2d() is deprecated. Use init_moments() instead.", 
@@ -153,10 +196,16 @@ class PBMCore:
 
     def solve_PBM(self, t_vec=None):
         """
-        Solve the Population Balance Model (PBM) using the specified time vector.
+        Solve the Population Balance Model using moment equations.
+        
+        Integrates the moment ODEs over time using scipy.integrate.solve_ivp
+        with RK45 method. Handles both 1D and 2D systems with appropriate
+        right-hand-side functions.
 
-        Parameters:
-            t_vec (numpy.ndarray): Time vector for the simulation.
+        Parameters
+        ----------
+        t_vec : numpy.ndarray, optional
+            Time vector for the simulation. If None, uses solver.t_vec
         """
         solver = self.solver
         if t_vec is None:

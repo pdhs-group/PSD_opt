@@ -1227,7 +1227,7 @@ def return_animation(variable, opt, exp_data_paths):
     
     opt_opt.core.calc_init_N = calc_init_N_tem
     if opt_opt.core.calc_init_N:
-        opt_opt.core.set_init_N(exp_data_paths, 'mean')
+        opt_opt.core.calc_init_from_data(exp_data_paths, 'mean')
     opt_opt.core.calc_all_pop(variable[1])
     ani=opt.core.p.visualize_distribution_animation(smoothing=opt.core.smoothing,fps=fps,others=[opt_opt.core.p],other_labels=['opt'])
     ani_NM=opt.core.p_NM.visualize_distribution_animation(smoothing=opt.core.smoothing,fps=fps,others=[opt_opt.core.p_NM],other_labels=['opt'])
@@ -1259,7 +1259,7 @@ def return_one_frame(variable, opt, exp_data_paths):
     ## Calculate PSD using opt_value
     opt.core.calc_init_N = calc_init_N_tem
     if opt.core.calc_init_N:
-        opt.core.set_init_N(exp_data_paths, 'mean')
+        opt.core.calc_init_from_data(exp_data_paths, 'mean')
     opt.core.calc_all_pop(variable[1])
     opt.core.p.visualize_distribution(smoothing=True,axq3=axq3,axQ3=axQ3,fig=fig,clr='r',lbl='PSD_opt')
     opt.core.p_NM.visualize_distribution(smoothing=True,axq3=axq3_NM,axQ3=axQ3_NM,fig=fig_NM,clr='r',lbl='PSD_opt')

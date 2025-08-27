@@ -2,7 +2,7 @@ import numpy as np
 
 config = {
     
-    "tA": 100,
+    "t_total": 100,
     # Agglomeration time [s]
     
     "savesteps": 11,
@@ -64,10 +64,6 @@ config = {
     # Flag that determines which model to use for calculating collision frequency.
     # Can be checked in dpbe_core.py's `calc_F_M`.
 
-    "EFFEVAL": 2,  
-    # Flag that determines which model to use for calculating collision efficiency.
-    # Can be checked in dpbe_core.py's `calc_F_M`.
-
     "SIZEEVAL": 1,  
     # Flag that determines whether to account for damping effects due to particle volume growth 
     # during aggregation. This is handled in dpbe_core.py's `calc_F_M`.
@@ -90,14 +86,6 @@ config = {
 
     "pl_v": 1.0,  
     # Parameter in fragment distribution function.
-
-    ### To ensure the monotonicity of the breakage rate, this setting has been deprecated, 
-    ### and all particle volumes are scaled by the volume of the smallest particle.
-    # "V1_mean": 1e-15,
-    # Mean volume of NM1 particles (in cubic meters).
-
-    # "V3_mean": 1e-15,  
-    # Mean volume of M particles (in cubic meters).
     
     "pl_P1": 1e-1,  
     "pl_P2": 1,  

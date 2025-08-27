@@ -110,6 +110,15 @@
    :show-inheritance:
 ```
 
+## optframework.utils.func.print module
+
+```{eval-rst}
+.. automodule:: optframework.utils.func.print
+   :members:
+   :undoc-members:
+   :show-inheritance:
+```
+
 ## optframework.utils.func.static_method module
 
 ```{eval-rst}

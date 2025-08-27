@@ -9,9 +9,8 @@ import numpy as np
 import copy
 import math
 import time
-from optframework.mcpbe.mcpbe_new import MCPBESolver as pop_mc_new
+from optframework.mcpbe.mcpbe import MCPBESolver as pop_mc
 from optframework.mcpbe.mcpbe_jit import MCPBESolver as pop_mc_jit
-from optframework.mcpbe.mcpbe import population_MC as pop_mc 
 
 def run_mcpbe(m):
     t_start = time.time()
@@ -35,7 +34,7 @@ def run_mcpbe(m):
 if __name__ == "__main__":
     N_MC = 5
     
-    m_new = pop_mc_new(1)
+    m = pop_mc(1)
     m_jit = pop_mc_jit(1)
     
     # m = pop_mc(2)
@@ -47,12 +46,11 @@ if __name__ == "__main__":
     # m.a0 = m_new.a0
     # m.VERBOSE = True
     # m.savesteps = m_new.savesteps
-    # m.tA = m_new.tA
+    # m.t_total = m_new.t_total
     # m.init_calc()
     
     mu_mc_jit, std_mu_mc_jit, t_run_jit = run_mcpbe(m_jit)
-    mu_mc_new, std_mu_mc_new, t_run_new = run_mcpbe(m_new)
-    # mu_mc, std_mu_mc, t_run = run_mcpbe(m)
+    mu_mc_new, std_mu_mc_new, t_run_new = run_mcpbe(m)
     
     error = np.mean(abs(mu_mc_jit - mu_mc_new) / mu_mc_new)
     print(f"### Runing time of jit MC-PBE: {t_run_jit} s ###")

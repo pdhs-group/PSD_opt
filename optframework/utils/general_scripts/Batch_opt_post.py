@@ -254,10 +254,7 @@ def calc_delta_test(known_params_list, exp_data_paths, init_core=True, opt_param
     x_uni_exp = []
     data_exp = []
     for exp_data_path_tem in exp_data_paths:
-        if opt.core.exp_data:
-            x_uni_exp_tem, data_exp_tem = opt.core.get_all_exp_data(exp_data_path_tem)
-        else:
-            x_uni_exp_tem, data_exp_tem = opt.core.get_all_synth_data(exp_data_path_tem)
+        x_uni_exp_tem, data_exp_tem = opt.core.p.get_all_data(exp_data_path_tem)
         x_uni_exp.append(x_uni_exp_tem)
         data_exp.append(data_exp_tem)
 
@@ -351,10 +348,7 @@ def calc_x50(known_params_list, exp_data_paths, init_core=True, opt_params=None,
     x_uni_exp = []
     data_exp = []
     for exp_data_path_tem in exp_data_paths:
-        if opt.core.exp_data:
-            x_uni_exp_tem, data_exp_tem = opt.core.get_all_exp_data(exp_data_path_tem)
-        else:
-            x_uni_exp_tem, data_exp_tem = opt.core.get_all_synth_data(exp_data_path_tem)
+        x_uni_exp_tem, data_exp_tem = opt.core.p.get_all_data(exp_data_path_tem)
         x_uni_exp.append(x_uni_exp_tem)
         data_exp.append(data_exp_tem)
     

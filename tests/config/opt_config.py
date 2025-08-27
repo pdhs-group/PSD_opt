@@ -23,7 +23,7 @@ config = {
         # These values are used to initialize N in dPBE wenn calc_init_N is True.
         # Note: The first value in t_init must be zero.
         
-        't_vec' : np.arange(0, 601, 10, dtype=float),
+        't_vec' : np.arange(0, 601, 60, dtype=float),
         # 't_vec' : np.array([0, 5, 10, 15, 20, 25, 30])*60,
         # Time vector for the entire simulation, specifying the time points at which 
         # calculations are performed.
@@ -160,16 +160,11 @@ config = {
         'S' : 4,
         "SIZEEVAL": 1,
         "COLEVAL": 1,
-        "EFFEVAL": 1,
         'BREAKRVAL' : 4,
         'BREAKFVAL' : 5,
         ## aggl_crit: The sequence number of the particle that allows further agglomeration
         'aggl_crit' : 100,
         'process_type' : "mix",
-        ## The "average volume" of the two elemental particles in the system.
-        ## Used to scale the particle volume in calculation of the breakage rate.
-        'V1_mean' : 1e-15,
-        'V3_mean' : 1e-15,
         ## Reduce particle number desity concentration to improve calculation stability
         ## Default value = 1e14 
         'V_unit': 1e-12,

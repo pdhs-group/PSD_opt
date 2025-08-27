@@ -62,7 +62,7 @@ class OptCoreRay(OptCore, tune.Trainable):
         
         # Initialize the number concentration N if required
         if self.calc_init_N:
-            self.opt_pbe.set_init_N(exp_data_paths, init_flag='mean')
+            self.opt_pbe.calc_init_from_data(exp_data_paths, init_flag='mean')
             
         # Store experimental data and known parameters
         self.pop_params = pop_params
@@ -161,7 +161,7 @@ class OptCoreRay(OptCore, tune.Trainable):
             self.opt_pbe.close_pbe()
             self.init_pbe(self.pop_params, self.data_path)
             if self.calc_init_N:
-                self.opt_pbe.set_init_N(self.exp_data_paths, init_flag='mean')
+                self.opt_pbe.calc_init_from_data(self.exp_data_paths, init_flag='mean')
             self.reuse_num = 0
         self.config = new_config
         return True

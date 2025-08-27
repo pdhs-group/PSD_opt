@@ -34,29 +34,27 @@ class OptCoreMulti(OptCore):
         float
             The total delta value representing the error between the experimental and simulated data.
         """
-        params = self.check_corr_agg(params_in)
-        
         # Calculate population data for all 2D and 1D populations
-        self.calc_all_pop(params, self.t_vec)
+        self.calc_all_pop(params_in, self.t_vec)
         ## for DEBUG
         # if len(self.t_vec) != len(self.p.t_vec):
         #     print(params)
         #     print(self.p.t_vec)
         
         if self.p.calc_status:
-            delta = self.calc_delta_tem(x_uni_exp[0], data_exp[0], self.p)
+            delta = self.p.calc_delta_pop(x_uni_exp[0], data_exp[0])
         else:
             print('p not converged')
             delta = 10
             
         if self.p_NM.calc_status:
-            delta_NM = self.calc_delta_tem(x_uni_exp[1], data_exp[1], self.p_NM)
+            delta_NM = self.p_NM.calc_delta_pop(x_uni_exp[1], data_exp[1])
         else:
             print('p_NM not converged')
             delta_NM = 10
             
         if self.p_M.calc_status:    
-            delta_M = self.calc_delta_tem(x_uni_exp[2], data_exp[2], self.p_M)
+            delta_M = self.p_M.calc_delta_pop(x_uni_exp[2], data_exp[2])
         else:
             print('p_M not converged')
             delta_M = 10

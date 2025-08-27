@@ -26,7 +26,7 @@ class OptData:
         -------
         tuple of arrays
             - x_uni_exp: An array of unique particle sizes from the experimental data.
-            - sumN_uni_exp: An array of the sum of number concentrations for the unique particle sizes.
+            - raw_data_exp: An array of the sum of number concentrations for the unique particle sizes.
         """
         if sheet_name is None:
             sheet_name = self.base.sheet_name
@@ -37,112 +37,112 @@ class OptData:
         # Extract the experimental data corresponding to the given time vector
         df = exp_data.get_exp_data(t_vec)
         
-        # Get the particle sizes (x_uni_exp) and corresponding number concentrations (sumN_uni_exp)
+        # Get the particle sizes (x_uni_exp) and corresponding data (raw_data_exp)
         x_uni_exp = df.index.to_numpy()
-        sumN_uni_exp = df.to_numpy()
+        raw_data_exp = df.to_numpy()
         
-        return x_uni_exp, sumN_uni_exp
+        return x_uni_exp, raw_data_exp
     
-    def get_all_synth_data(self, exp_data_path):
-        """
-        Process synthetic data by reading the data and converting it to volume-based PSD.
+    # def get_all_synth_data(self, exp_data_path):
+    #     """
+    #     Process synthetic data by reading the data and converting it to volume-based PSD.
     
-        This method processes synthetic experimental data for one or multiple samples. For each sample, 
-        it reads the experimental data, converts the number-based particle size distribution (PSD) into 
-        a volume-based distribution, and then recalculates the final distribution (including q3, Q3, and 
-        x_50) based on the specified flags. The results are stored in `data_exp` for use in subsequent 
-        optimization steps.
+    #     This method processes synthetic experimental data for one or multiple samples. For each sample, 
+    #     it reads the experimental data, converts the number-based particle size distribution (PSD) into 
+    #     a volume-based distribution, and then recalculates the final distribution (including q3, Q3, and 
+    #     x_50) based on the specified flags. The results are stored in `data_exp` for use in subsequent 
+    #     optimization steps.
     
-        Parameters
-        ----------
-        exp_data_path : str
-            Path to the experimental data file.
+    #     Parameters
+    #     ----------
+    #     exp_data_path : str
+    #         Path to the experimental data file.
     
-        Returns
-        -------
-        tuple of arrays
-            - x_uni_exp: List of arrays containing unique particle sizes for each sample.
-            - data_exp: List of arrays containing processed experimental PSD data for each sample.
-        """
-        base = self.base
-        # If only one sample exists, read and process the experimental data
-        if base.sample_num == 1:
-            x_uni_exp, sumN_uni_exp = self.read_exp(exp_data_path, base.t_vec[base.delta_t_start_step:]) 
-            x_uni_exp = np.insert(x_uni_exp, 0, 0.0)
-            sumN_uni_exp = np.insert(sumN_uni_exp, 0, 0.0, axis=0)
+    #     Returns
+    #     -------
+    #     tuple of arrays
+    #         - x_uni_exp: List of arrays containing unique particle sizes for each sample.
+    #         - data_exp: List of arrays containing processed experimental PSD data for each sample.
+    #     """
+    #     base = self.base
+    #     # If only one sample exists, read and process the experimental data
+    #     if base.sample_num == 1:
+    #         x_uni_exp, sumN_uni_exp = self.read_exp(exp_data_path, base.t_vec[base.delta_t_start_step:]) 
+    #         x_uni_exp = np.insert(x_uni_exp, 0, 0.0)
+    #         sumN_uni_exp = np.insert(sumN_uni_exp, 0, 0.0, axis=0)
             
-            # Convert number-based PSD to volume-based PSD
-            vol_uni = np.tile((1/6)*np.pi*x_uni_exp**3, (base.num_t_steps-base.delta_t_start_step, 1)).T
-            sumvol_uni_exp = sumN_uni_exp * vol_uni
+    #         # Convert number-based PSD to volume-based PSD
+    #         vol_uni = np.tile((1/6)*np.pi*x_uni_exp**3, (base.num_t_steps-base.delta_t_start_step, 1)).T
+    #         sumvol_uni_exp = sumN_uni_exp * vol_uni
             
             
-            # Recalculate the distribution
-            for flag, _ in base.delta_flag:
-                data_exp = base.opt_pbe.re_calc_distribution(x_uni_exp, sum_uni=sumvol_uni_exp, flag=flag)[0]
+    #         # Recalculate the distribution
+    #         for flag, _ in base.delta_flag:
+    #             data_exp = base.opt_pbe.re_calc_distribution(x_uni_exp, sum_uni=sumvol_uni_exp, flag=flag)[0]
     
-        # If multiple samples exist, process each one
-        else:
-            x_uni_exp = []
-            data_exp = []
-            for i in range (0, base.sample_num):
-                # Read and process experimental data for each sample
-                exp_data_path = self.traverse_path(i, exp_data_path)
-                x_uni_exp_tem, sumN_uni_exp = self.read_exp(exp_data_path, base.t_vec[base.delta_t_start_step:])
-                x_uni_exp_tem = np.insert(x_uni_exp_tem, 0, 0.0)
-                sumN_uni_exp = np.insert(sumN_uni_exp, 0, 0.0, axis=0)
+    #     # If multiple samples exist, process each one
+    #     else:
+    #         x_uni_exp = []
+    #         data_exp = []
+    #         for i in range (0, base.sample_num):
+    #             # Read and process experimental data for each sample
+    #             exp_data_path = self.traverse_path(i, exp_data_path)
+    #             x_uni_exp_tem, sumN_uni_exp = self.read_exp(exp_data_path, base.t_vec[base.delta_t_start_step:])
+    #             x_uni_exp_tem = np.insert(x_uni_exp_tem, 0, 0.0)
+    #             sumN_uni_exp = np.insert(sumN_uni_exp, 0, 0.0, axis=0)
                 
-                # Convert number-based PSD to volume-based PSD
-                vol_uni = np.tile((1/6)*np.pi*x_uni_exp_tem**3, (base.num_t_steps-base.delta_t_start_step, 1)).T
-                sumvol_uni_exp = sumN_uni_exp * vol_uni
+    #             # Convert number-based PSD to volume-based PSD
+    #             vol_uni = np.tile((1/6)*np.pi*x_uni_exp_tem**3, (base.num_t_steps-base.delta_t_start_step, 1)).T
+    #             sumvol_uni_exp = sumN_uni_exp * vol_uni
                 
-                # Recalculate the distribution
-                for flag, _ in base.delta_flag:
-                    data_exp_tem = base.opt_pbe.re_calc_distribution(x_uni_exp_tem, sum_uni=sumvol_uni_exp, flag=flag)[0] 
-                x_uni_exp.append(x_uni_exp_tem)
-                data_exp.append(data_exp_tem)
+    #             # Recalculate the distribution
+    #             for flag, _ in base.delta_flag:
+    #                 data_exp_tem = base.opt_pbe.re_calc_distribution(x_uni_exp_tem, sum_uni=sumvol_uni_exp, flag=flag)[0] 
+    #             x_uni_exp.append(x_uni_exp_tem)
+    #             data_exp.append(data_exp_tem)
                 
-        return x_uni_exp, data_exp
+    #     return x_uni_exp, data_exp
     
     ## test only for 1d batch exp data
-    def get_all_exp_data(self, exp_data_path):
-        base = self.base
-        (flag, cost_func_type) = base.delta_flag[0]
-        if base.sample_num == 1:
-            x_uni_exp, data_exp = self.read_exp(exp_data_path, base.t_vec[base.delta_t_start_step:]) 
-            x_uni_exp = np.insert(x_uni_exp, 0, 0.0)
-            zero_row = np.zeros((1, data_exp.shape[1]))
-            data_exp = np.insert(data_exp, 0, zero_row, axis=0)
-            if flag == 'x_50' or flag == 'y_weibull':
-                if base.sheet_name != 'Q_x_int':
-                    ## Input is qx
-                    data_exp = base.opt_pbe.re_calc_distribution(x_uni_exp, qx=data_exp, flag=flag)[0]
-                else:
-                    ## Input is Qx
-                    data_exp = base.opt_pbe.re_calc_distribution(x_uni_exp, Qx=data_exp, flag=flag)[0]
+    # def get_all_exp_data(self, exp_data_path):
+    #     base = self.base
+    #     (flag, cost_func_type) = base.delta_flag[0]
+    #     if base.sample_num == 1:
+    #         x_uni_exp, data_exp = self.read_exp(exp_data_path, base.t_vec[base.delta_t_start_step:]) 
+    #         x_uni_exp = np.insert(x_uni_exp, 0, 0.0)
+    #         zero_row = np.zeros((1, data_exp.shape[1]))
+    #         data_exp = np.insert(data_exp, 0, zero_row, axis=0)
+    #         if flag == 'x_50' or flag == 'y_weibull':
+    #             if base.sheet_name != 'Q_x_int':
+    #                 ## Input is qx
+    #                 data_exp = base.opt_pbe.re_calc_distribution(x_uni_exp, qx=data_exp, flag=flag)[0]
+    #             else:
+    #                 ## Input is Qx
+    #                 data_exp = base.opt_pbe.re_calc_distribution(x_uni_exp, Qx=data_exp, flag=flag)[0]
             
-        else:
-            x_uni_exp = []
-            data_exp = []
-            zero_row = np.zeros((1, data_exp.shape[1]))
-            for i in range (0, base.sample_num):
-                # Read and process experimental data for each sample
-                exp_data_path = self.traverse_path(i, exp_data_path)
-                x_uni_exp_tem, data_exp_tem = self.read_exp(exp_data_path, base.t_vec[base.delta_t_start_step:])
-                x_uni_exp_tem = np.insert(x_uni_exp_tem, 0, 0.0)
-                data_exp_tem = np.insert(data_exp_tem, 0, zero_row, axis=0)
-                if flag == 'x_50' or flag == 'y_weibull':
-                    if base.sheet_name != 'Q_x_int':
-                        ## Input is qx
-                        data_exp_tem_raw = base.opt_pbe.re_calc_distribution(x_uni_exp, qx=data_exp_tem, flag=flag)[0]
-                    else:
-                        ## Input is Qx
-                        data_exp_tem_raw = base.opt_pbe.re_calc_distribution(x_uni_exp, Qx=data_exp_tem, flag=flag)[0]
-                    data_exp_tem = data_exp_tem_raw
+    #     else:
+    #         x_uni_exp = []
+    #         data_exp = []
+    #         zero_row = np.zeros((1, data_exp.shape[1]))
+    #         for i in range (0, base.sample_num):
+    #             # Read and process experimental data for each sample
+    #             exp_data_path = self.traverse_path(i, exp_data_path)
+    #             x_uni_exp_tem, data_exp_tem = self.read_exp(exp_data_path, base.t_vec[base.delta_t_start_step:])
+    #             x_uni_exp_tem = np.insert(x_uni_exp_tem, 0, 0.0)
+    #             data_exp_tem = np.insert(data_exp_tem, 0, zero_row, axis=0)
+    #             if flag == 'x_50' or flag == 'y_weibull':
+    #                 if base.sheet_name != 'Q_x_int':
+    #                     ## Input is qx
+    #                     data_exp_tem_raw = base.opt_pbe.re_calc_distribution(x_uni_exp, qx=data_exp_tem, flag=flag)[0]
+    #                 else:
+    #                     ## Input is Qx
+    #                     data_exp_tem_raw = base.opt_pbe.re_calc_distribution(x_uni_exp, Qx=data_exp_tem, flag=flag)[0]
+    #                 data_exp_tem = data_exp_tem_raw
                         
-                x_uni_exp.append(x_uni_exp_tem)
-                data_exp.append(data_exp_tem)
+    #             x_uni_exp.append(x_uni_exp_tem)
+    #             data_exp.append(data_exp_tem)
             
-        return x_uni_exp, data_exp
+    #     return x_uni_exp, data_exp
     
     def function_noise(self, ori_data):
         """
@@ -276,7 +276,7 @@ class OptData:
         data_smoothing = data_smoothing.ravel()
         
         # Normalize the smoothed data using the cumulative distribution function (Q3)
-        Qx = self.base.opt_pbe.calc_Qx(x_uni_new, data_smoothing)
+        Qx = self.base.p.post.calc_Qx(x_uni_new, data_smoothing)
         data_smoothing = data_smoothing / Qx[-1]
         
         return data_smoothing

@@ -6,7 +6,7 @@ Created on Fri Jan  3 11:02:26 2025
 """
 import os
 import numpy as np
-from optframework.validation import PBEValidation
+from optframework import PBEValidation
 from optframework.utils.general_scripts.generate_psd import full_psd
 
 if __name__ == "__main__":

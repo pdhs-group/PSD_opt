@@ -29,7 +29,7 @@ config = {
     # "breakage": pure breakage
     # "mix": both agglomeration and breakage
 
-    "solver": "ivp",  
+    "solve_algo": "ivp",  
     # Numerical solver used to integrate the PBE.
     'c_mag_exp': 1e-2,
     "V_unit": 1e-12,  

@@ -3,11 +3,11 @@
 Calculate the difference between the PSD of the simulation results and the experimental data.
 """
 import numpy as np
-from ray import tune
 from scipy.stats import entropy
 from sklearn.metrics import mean_squared_error, mean_absolute_error
-from optframework.dpbe.dpbe_base import DPBESolver
-from optframework.utils.func.bind_methods import bind_methods_from_module , unbind_methods_from_class
+from optframework.base.adapters_api import make_solver
+# from optframework.dpbe.dpbe_base import DPBESolver
+from optframework.utils.func.bind_methods import bind_methods_from_module
 from .opt_data import OptData
 from .opt_pbe import OptPBE
 
@@ -99,17 +99,19 @@ class OptCore():
             The path to the data directory for loading component parameters.
         """
         # Initialize the PBE solver
-        self.p = DPBESolver(dim=self.dim, disc='geo', t_vec=self.t_vec, load_attr=False)
+        self.p = make_solver("dpbe", opt=self, role="main", dim=self.dim, disc='geo', t_vec=self.t_vec, load_attr=False)
+        # self.p = DPBESolver(dim=self.dim, disc='geo', t_vec=self.t_vec, load_attr=False)
         # If the dimension is 2, also create a 1D population for initialization
         if self.dim == 2:
-            self.opt_pbe.create_1d_pop(self.t_vec, disc='geo')
+            self.p_NM = make_solver("dpbe", opt=self, role="NM", dim=1, disc='geo', t_vec=self.t_vec, load_attr=False)
+            self.p_M = make_solver("dpbe", opt=self, role="M", dim=1, disc='geo', t_vec=self.t_vec, load_attr=False)
         # Set the initial population parameters and component parameters
         self.opt_pbe.set_init_pop_para(pop_params)
-        self.opt_pbe.set_comp_para(data_path)
-        self.p._reset_params()
+        self.p.set_comp_para(data_path)
+        self.p.reset_params()
         if self.dim == 2:
-            self.p_NM._reset_params()
-            self.p_M._reset_params()
+            self.p_NM.reset_params()
+            self.p_M.reset_params()
         
     def calc_delta(self, params_in, x_uni_exp, data_exp):
         """
@@ -134,100 +136,98 @@ class OptCore():
             and the PBE-generated PSD. If the PBE calculation fails, it returns a large positive 
             value (e.g., 10) to indicate failure.
         """
-        params = self.check_corr_agg(params_in)
-        
         # Run the PBE calculations using the provided parameters
-        self.opt_pbe.calc_pop(self.p, params, self.t_vec, init_N=self.init_N)
+        self.opt_pbe.calc_pop(self.p, params_in, self.t_vec, init_N=self.init_N)
         
         # If the PBE calculation is successful, calculate the delta
         if self.p.calc_status:
-            return self.calc_delta_tem(x_uni_exp, data_exp, self.p)
+            return self.p.calc_delta_pop(x_uni_exp, data_exp)
         else:
             # Return a large delta value if the PBE calculation fails
             return 10
 
-    def calc_delta_tem(self, x_uni_exp, data_exp, pop):
-        """
-        Calculate the average differences (delta) between experimental and simulated PSDs.
+    # def calc_delta_tem(self, x_uni_exp, data_exp, pop):
+    #     """
+    #     Calculate the average differences (delta) between experimental and simulated PSDs.
  
-        This method loops through the experimental data and computes the average difference 
-        (delta) between the experimental PSD and the simulated PSD. It supports both single and 
-        multiple sample sets and handles optional smoothing via KDE (Kernel Density Estimation).
+    #     This method loops through the experimental data and computes the average difference 
+    #     (delta) between the experimental PSD and the simulated PSD. It supports both single and 
+    #     multiple sample sets and handles optional smoothing via KDE (Kernel Density Estimation).
  
-        Parameters
-        ----------
-        x_uni_exp : array-like
-            The unique particle diameters in experimental data.
-        data_exp : array-like
-            The experimental PSD data that will be compared with the simulated PSD.
-        pop : :class:
-            An instance of the PBE solver, which generates the simulated PSD.
+    #     Parameters
+    #     ----------
+    #     x_uni_exp : array-like
+    #         The unique particle diameters in experimental data.
+    #     data_exp : array-like
+    #         The experimental PSD data that will be compared with the simulated PSD.
+    #     pop : :class:
+    #         An instance of the PBE solver, which generates the simulated PSD.
  
-        Returns
-        -------
-        float
-            The average difference (delta) between the experimental PSD and the simulated PSD, 
-            normalized by the number of particle sizes in the experimental data (`x_uni_exp`).
-        """
-        # If smoothing is enabled, initialize a list to store KDE objects
-        if self.smoothing:
-            kde_list = []
+    #     Returns
+    #     -------
+    #     float
+    #         The average difference (delta) between the experimental PSD and the simulated PSD, 
+    #         normalized by the number of particle sizes in the experimental data (`x_uni_exp`).
+    #     """
+    #     # If smoothing is enabled, initialize a list to store KDE objects
+    #     if self.smoothing:
+    #         kde_list = []
             
-        # Get the unique particle size in PBE
-        x_uni = pop.post.calc_x_uni()
+    #     # Get the unique particle size in PBE
+    #     x_uni = pop.post.calc_x_uni()
         
-        # Loop through time steps to collect the simulation results and convert to PSD
-        for idt in range(self.delta_t_start_step, self.num_t_steps):
-            if self.smoothing:
-                sum_uni = pop.post.return_distribution(t=idt, flag='sum_uni', q_type=self.dist_type)[0]
-                # Volume of particles with index=0 is 0; in theory, such particles do not exist
-                kde = self.opt_data.KDE_fit(x_uni[1:], sum_uni[1:])
-                # The qx distribution measured by the Lumisizer is typically matched using the 
-                # average values of two measurement nodes, so the corresponding conversion has also been performed here.
-                # x_uni_m = (x_uni[:-1]+x_uni[1:]) / 2
-                # kde = self.KDE_fit(x_uni_m, sum_uni[1:])
-                kde_list.append(kde)
+    #     # Loop through time steps to collect the simulation results and convert to PSD
+    #     for idt in range(self.delta_t_start_step, self.num_t_steps):
+    #         if self.smoothing:
+    #             sum_uni = pop.post.return_distribution(t=idt, flag='sum_uni', q_type=self.dist_type)[0]
+    #             # Volume of particles with index=0 is 0; in theory, such particles do not exist
+    #             kde = self.opt_data.KDE_fit(x_uni[1:], sum_uni[1:])
+    #             # The qx distribution measured by the Lumisizer is typically matched using the 
+    #             # average values of two measurement nodes, so the corresponding conversion has also been performed here.
+    #             # x_uni_m = (x_uni[:-1]+x_uni[1:]) / 2
+    #             # kde = self.KDE_fit(x_uni_m, sum_uni[1:])
+    #             kde_list.append(kde)
                 
-        delta_sum = 0 
-        # Single sample case
-        if self.sample_num == 1:
-            qx_mod = np.zeros((len(x_uni_exp), self.num_t_steps-self.delta_t_start_step))
-            for idt in range(self.num_t_steps-self.delta_t_start_step):
-                if self.smoothing:
-                    qx_mod_tem = self.opt_data.KDE_score(kde_list[idt], x_uni_exp[1:])
-                    qx_mod[1:, idt] = qx_mod_tem
-                else:
-                    qx_mod[:, idt] = pop.post.return_distribution(t=idt+self.delta_t_start_step, flag='qx', q_type=self.dist_type)[0]
-                Qx = self.opt_pbe.calc_Qx(x_uni_exp, qx_mod[:, idt]) 
-                qx_mod[:, idt] = qx_mod[:, idt] / Qx.max() 
-            # Calculate the delta for each cost function type, if is defined.
-            for flag, cost_func_type in self.delta_flag:
-                data_mod = pop.post.re_calc_distribution(x_uni_exp, qx=qx_mod, flag=flag)[0]
-                delta = self.cost_fun(data_exp, data_mod, cost_func_type, flag)
-                delta_sum += delta 
+    #     delta_sum = 0 
+    #     # Single sample case
+    #     if self.sample_num == 1:
+    #         qx_mod = np.zeros((len(x_uni_exp), self.num_t_steps-self.delta_t_start_step))
+    #         for idt in range(self.num_t_steps-self.delta_t_start_step):
+    #             if self.smoothing:
+    #                 qx_mod_tem = self.opt_data.KDE_score(kde_list[idt], x_uni_exp[1:])
+    #                 qx_mod[1:, idt] = qx_mod_tem
+    #             else:
+    #                 qx_mod[:, idt] = pop.post.return_distribution(t=idt+self.delta_t_start_step, flag='qx', q_type=self.dist_type)[0]
+    #             Qx = self.opt_pbe.calc_Qx(x_uni_exp, qx_mod[:, idt]) 
+    #             qx_mod[:, idt] = qx_mod[:, idt] / Qx.max() 
+    #         # Calculate the delta for each cost function type, if is defined.
+    #         for flag, cost_func_type in self.delta_flag:
+    #             data_mod = pop.post.re_calc_distribution(x_uni_exp, qx=qx_mod, flag=flag)[0]
+    #             delta = self.cost_fun(data_exp, data_mod, cost_func_type, flag)
+    #             delta_sum += delta 
             
-            return delta
+    #         return delta
         
-        # Multiple sample case
-        else:
-            for i in range (0, self.sample_num):
-                qx_mod = np.zeros((len(x_uni_exp[i]), self.num_t_steps-self.delta_t_start_step))
-                for idt in range(self.num_t_steps-self.delta_t_start_step):
-                    if self.smoothing:
-                        qx_mod_tem = self.opt_data.KDE_score(kde_list[idt], x_uni_exp[i][1:])
-                        qx_mod[1:, idt] = qx_mod_tem
-                    else:
-                        qx_mod[:, idt] = pop.post.return_distribution(t=idt+self.delta_t_start_step, flag='qx')[0]
-                    Qx = self.opt_pbe.calc_Qx(x_uni_exp[i], qx_mod[:, idt]) 
-                    qx_mod[:, idt] = qx_mod[:, idt] / Qx.max()
-                # Calculate delta for each cost function type, if is defined.    
-                for flag, cost_func_type in self.delta_flag:
-                    data_mod = pop.post.re_calc_distribution(x_uni_exp[i], qx=qx_mod, flag=flag)[0]
-                    delta = self.cost_fun(data_exp[i], data_mod, cost_func_type, flag)
-                    delta_sum += delta 
+    #     # Multiple sample case
+    #     else:
+    #         for i in range (0, self.sample_num):
+    #             qx_mod = np.zeros((len(x_uni_exp[i]), self.num_t_steps-self.delta_t_start_step))
+    #             for idt in range(self.num_t_steps-self.delta_t_start_step):
+    #                 if self.smoothing:
+    #                     qx_mod_tem = self.opt_data.KDE_score(kde_list[idt], x_uni_exp[i][1:])
+    #                     qx_mod[1:, idt] = qx_mod_tem
+    #                 else:
+    #                     qx_mod[:, idt] = pop.post.return_distribution(t=idt+self.delta_t_start_step, flag='qx')[0]
+    #                 Qx = self.opt_pbe.calc_Qx(x_uni_exp[i], qx_mod[:, idt]) 
+    #                 qx_mod[:, idt] = qx_mod[:, idt] / Qx.max()
+    #             # Calculate delta for each cost function type, if is defined.    
+    #             for flag, cost_func_type in self.delta_flag:
+    #                 data_mod = pop.post.re_calc_distribution(x_uni_exp[i], qx=qx_mod, flag=flag)[0]
+    #                 delta = self.cost_fun(data_exp[i], data_mod, cost_func_type, flag)
+    #                 delta_sum += delta 
                 
-            delta_sum /= self.sample_num
-            return delta_sum
+    #         delta_sum /= self.sample_num
+    #         return delta_sum
         
     def check_corr_agg(self, params_in):
         """

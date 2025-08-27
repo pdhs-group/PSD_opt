@@ -12,9 +12,10 @@ import ray
 # from ..pbe.dpbe_base import DPBESolver
 from .opt_core import OptCore
 from .opt_core_multi import OptCoreMulti
-from optframework.utils.func.func_read_exp import write_read_exp
+# from optframework.utils.func.func_read_exp import write_read_exp
 from optframework.utils.func.bind_methods import bind_methods_from_module
 from .opt_base_ray import OptBaseRay
+from optframework.utils.func.print import print_highlighted
 ## For plots
 # import matplotlib.pyplot as plt
 # from ..utils.plotter import plotter as pt        
@@ -69,14 +70,14 @@ class OptBase():
         else:
             self.multi_flag = multi_flag
         self.single_case = config['single_case']
-        self.print_highlighted(f'Current operating mode: single_case = {self.single_case}, multi_flag = {self.multi_flag}.',
+        print_highlighted(f'Current operating mode: single_case = {self.single_case}, multi_flag = {self.multi_flag}.',
                                title="INFO", color="cyan")
         
         self.opt_params_space = config['opt_params']
         self.dim = self.core_params.get('dim', None)
         # Set the data path, use default if not provided
         if data_path is None:
-            self.print_highlighted('Data path is not found or is None, default path will be used.',
+            print_highlighted('Data path is not found or is None, default path will be used.',
                                    title="INFO", color="cyan")
             self.data_path = os.path.join(self.work_dir, "data")
         else:
@@ -128,7 +129,7 @@ class OptBase():
             # Load the configuration from the specified file
             conf = runpy.run_path(config_path)
             config = conf['config']
-            self.print_highlighted(f"The Optimization and dPBE are using config file at : {config_path}",
+            print_highlighted(f"The Optimization and dPBE are using config file at : {config_path}",
                                    title="INFO", color="cyan")
             return config
         
@@ -144,7 +145,7 @@ class OptBase():
         # Initialize the optimization core based on dimensionality and multi_flag
         if self.dim == 1 and self.multi_flag:
             # If the dimension is 1, the multi algorithm is not applicable
-            self.print_highlighted("The multi algorithm does not support 1-D pop!",
+            print_highlighted("The multi algorithm does not support 1-D pop!",
                                    title="WARNING", color="yellow")
             self.multi_flag = False
         # Initialize optimization core with or without 1D data based on multi_flag
@@ -159,135 +160,6 @@ class OptBase():
         # Initialize PBE with population parameters and data path
         self.core.init_pbe(self.pop_params, self.data_path)
         
-    def generate_data(self, pop_params=None, add_info=""):
-        """
-        Generates synthetic data based on simulation results, with optional noise.
-
-        This method generates synthetic data based on the population parameters and simulation results. 
-        If noise is enabled, it modifies the file name to reflect the noise type and strength. The data 
-        is saved to an Excel file. For multi-dimensional optimizations, separate files for different 
-        dimensions are created.
-
-        Parameters
-        ----------
-        pop_params : dict, optional
-            Parameters for the population model. If not provided, uses `self.pop_params`.
-        add_info : str, optional
-            Additional information to append to the file name. Default is an empty string.
-
-        Returns
-        -------
-        None
-        """
-        if pop_params is None:
-            pop_params = self.pop_params
-        # Modify the file name if noise is enabled
-        if self.core.add_noise:
-            # Modify the file name to include noise type and strength
-            filename = f"Sim_{self.core.noise_type}_{self.core.noise_strength}"+add_info+".xlsx"
-        else:
-            filename = "Sim"+add_info+".xlsx"
-
-        # Construct the full path for the output data file
-        exp_data_path = os.path.join(self.data_path, filename)
-        
-        # Check if multi_flag is False, indicating no auxiliary 1D data
-        if not self.multi_flag:
-            # Calculate the population data based on the given parameters
-            self.core.calc_pop(self.core.p, pop_params, self.core.t_all)
-            # Only proceed if the calculation status is valid
-            if self.core.p.calc_status:
-                for i in range(0, self.core.sample_num):
-                    # Traverse the file path if multiple samples are generated
-                    if self.core.sample_num != 1:
-                        exp_data_path=self.core.traverse_path(i, exp_data_path)
-                    # print(self.core.exp_data_path)
-                    ## Write new data to file
-                    self.write_new_data(self.core.p, exp_data_path)
-            else:
-                return
-        else:
-            # For multi-dimensional data, create multiple file paths for different datasets
-            exp_data_paths = [
-                exp_data_path,
-                exp_data_path.replace(".xlsx", "_NM.xlsx"),
-                exp_data_path.replace(".xlsx", "_M.xlsx")
-            ]
-            # Calculate the population data for all dimensions
-            self.core.calc_all_pop(pop_params, self.core.t_all)
-            if self.core.p.calc_status and self.core.p_NM.calc_status and self.core.p_M.calc_status:
-                for i in range(0, self.core.sample_num):
-                    if self.core.sample_num != 1:
-                        # Traverse the file paths for multiple samples
-                        exp_data_paths = self.core.opt_data.traverse_path(i, exp_data_paths)
-                    # Write data for each dimension to separate files
-                    self.write_new_data(self.core.p, exp_data_paths[0])
-                    self.write_new_data(self.core.p_NM, exp_data_paths[1])
-                    self.write_new_data(self.core.p_M, exp_data_paths[2])
-            else:
-                return
-    def write_new_data(self, pop, exp_data_path):
-        """
-        Saves the calculation results in the format of experimental data.
-
-        This method saves the population distribution data into an Excel file in the format used for
-        experimental data. It supports both smoothed and non-smoothed distributions, and can apply noise 
-        to the data if required.
-
-        Parameters
-        ----------
-        pop : :class:`optframework.dpbe`
-            The population instance for which data is being generated.
-        exp_data_path : str
-            The file path where the experimental data will be saved.
-
-        Returns
-        -------
-        None
-        """
-        # Return if the population data is invalid (calculation status is False)
-        if not pop.calc_status:
-            return
-        # Get particle size and volume in the dPBE grid
-        x_uni = pop.post.calc_x_uni()
-        v_uni = pop.post.calc_v_uni()
-        # Format the simulation times for the output file
-        formatted_times = write_read_exp.convert_seconds_to_time(self.core.t_all)
-        # Initialize the sumN_uni array to store particle count distributions
-        sumN_uni = np.zeros((len(x_uni)-1, len(self.core.t_all)))
-        
-        for idt in self.idt_vec[1:]:
-            if self.core.smoothing:
-                # Get the volume distribution at the current time step
-                sumvol_uni = pop.post.return_distribution(t=idt, flag='sum_uni')[0]
-                # Skip index=0, as particles with volume 0 theoretically do not exist
-                kde = self.core.opt_data.KDE_fit(x_uni[1:], sumvol_uni[1:])
-                # Smooth the distribution using KDE and insert a zero for the first entry
-                q3 = self.core.opt_data.KDE_score(kde, x_uni[1:])
-                q3 = np.insert(q3, 0, 0.0)
-                # Calculate and normalize Q3 values
-                Q3 = self.core.opt_pbe.calc_Qx(x_uni, q3)
-                Q3 = Q3 / Q3.max()
-                # Calculate the final smoothed particle volume distribution
-                sumvol_uni = self.core.opt_pbe.calc_sum_uni(Q3, sumvol_uni.sum())
-                # Store the particle count distribution
-                sumN_uni[:, idt] = sumvol_uni[1:] / v_uni[1:]
-            else:
-                # Use the unsmoothed distribution for this time step
-                sumN_uni[:, idt] = pop.post.return_distribution(t=idt, flag='sum_uni', q_type='q0')[0][1:]
-        # For initialization data, do not apply smoothing
-        for idt in self.core.idt_init:
-            sumN_uni[:, idt] = pop.post.return_distribution(t=idt, flag='sum_uni', q_type='q0')[0][1:]
-        # Apply noise to the data if noise is enabled
-        if self.core.add_noise:
-            sumN_uni = self.core.opt_data.function_noise(sumN_uni)
-            
-        # Create a DataFrame for the distribution data and set the index name
-        df = pd.DataFrame(data=sumN_uni, index=x_uni[1:], columns=formatted_times)
-        df.index.name = 'Circular Equivalent Diameter'
-        # Save the DataFrame as an Excel file at the specified path
-        df.to_excel(exp_data_path)
-        return        
     def find_opt_kernels(self, method='kernels', data_names=None, known_params=None):
         """
         Finds optimal kernels for the PBE model by minimizing the difference between 
@@ -325,7 +197,7 @@ class OptBase():
         if data_names == None:
             raise ValueError("Please specify the name of the experiment data without labels!")
 
-        self.print_highlighted(f"Now the flag of resume tuning is: {self.core.resume_unfinished}", 
+        print_highlighted(f"Now the flag of resume tuning is: {self.core.resume_unfinished}", 
                                title="INFO", color="cyan")
         
         # Helper function to construct full file paths for the data files
@@ -362,7 +234,7 @@ class OptBase():
         # ray.init(address=os.environ["ip_head"], log_to_driver=log_to_driver)
         if method == 'kernels':
             # Currently, this method is not implemented
-            self.print_highlighted("not coded yet", title="ERROR", color="red")
+            print_highlighted("not coded yet", title="ERROR", color="red")
         elif method == 'delta':
             # Perform multi-job optimization if enabled
             if self.core.multi_jobs:
@@ -412,74 +284,23 @@ class OptBase():
         """
         # Initialize particle distribution if necessary
         if self.core.calc_init_N:
-            self.core.set_init_N(exp_data_path, init_flag='mean')
+            self.core.calc_init_from_data(exp_data_path, init_flag='mean')
         if isinstance(exp_data_path, list):
             # Handle multi-dimensional data (1D + 2D)
             exp_data_path_ori = exp_data_path[0]
             x_uni_exp = []
             data_exp = []
             for exp_data_path_tem in exp_data_path:
-                if self.core.exp_data:
-                    x_uni_exp_tem, data_exp_tem = self.core.get_all_exp_data(exp_data_path_tem)
-                else:
-                    x_uni_exp_tem, data_exp_tem = self.core.get_all_synth_data(exp_data_path_tem)
+                x_uni_exp_tem, data_exp_tem = self.core.p.get_all_data(exp_data_path_tem)
                 x_uni_exp.append(x_uni_exp_tem)
                 data_exp.append(data_exp_tem)
         else:
             exp_data_path_ori = exp_data_path
-            if self.core.exp_data:
-                x_uni_exp, data_exp = self.core.get_all_exp_data(exp_data_path)
-            else:
-                x_uni_exp, data_exp = self.core.get_all_synth_data(exp_data_path)
+            x_uni_exp, data_exp = self.core.p.get_all_data(exp_data_path)
         # Calculate the delta value based on the difference between simulated and experimental data
         delta = self.core.calc_delta(params, x_uni_exp, data_exp)
         return delta, exp_data_path_ori
     
-    def print_highlighted(self, message, title=None, color="yellow", separator=True, timestamp=True, width=80):
-        """
-        Print a highlighted message with optional color, timestamp, and separator.
     
-        Parameters:
-            message (str): The message to print.
-            title (str, optional): Title for the message (e.g., "WARNING", "INFO").
-            color (str, optional): Color of the message ("red", "green", "yellow", "blue", "cyan", etc.).
-            separator (bool, optional): Whether to print a separator line before the message.
-            timestamp (bool, optional): Whether to include a timestamp.
-            width (int, optional): The width of the separator line.
-    
-        Colors supported:
-            - "red", "green", "yellow", "blue", "magenta", "cyan", "white"
-        """
-    
-        # ANSI color codes
-        colors = {
-            "red": "\033[91m",
-            "green": "\033[92m",
-            "yellow": "\033[93m",
-            "blue": "\033[94m",
-            "magenta": "\033[95m",
-            "cyan": "\033[96m",
-            "white": "\033[97m",
-            "reset": "\033[0m"
-        }
-        
-        color_code = colors.get(color.lower(), colors["yellow"])
-        
-        # Build the output string
-        output = ""
-        
-        if separator:
-            output += "=" * width + "\n"  # Print a separator line
-        
-        if timestamp:
-            time_str = time.strftime("[%Y-%m-%d %H:%M:%S]")
-            output += f"{time_str} "
-        
-        if title:
-            output += f"[{title.upper()}] "
-    
-        output += f"{color_code}{message}{colors['reset']}"  # Apply color formatting
-    
-        print(output, file=sys.stdout)
 # Bind methods from another module into this class    
 bind_methods_from_module(OptBase, 'optframework.kernel_opt.opt_base_ray')        

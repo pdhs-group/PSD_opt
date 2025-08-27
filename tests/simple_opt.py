@@ -4,17 +4,11 @@ Created on Thu Jan  4 14:53:00 2024
 
 @author: px2030
 """
-import sys
 import os
 import ray
 from optframework.kernel_opt.opt_base import OptBase
-import config.opt_config as conf
 import numpy as np
-import pandas as pd
 import time
-## For plots
-import matplotlib.pyplot as plt
-import optframework.utils.plotter.plotter as pt  
 
 def normal_test():
     start_time = time.time()
@@ -52,12 +46,6 @@ def calc_delta_test(var_delta=False):
     # pop_params = conf.config['pop_params']
     pop_params = {"pl_v": 1.52783,  
     # Parameter in fragment distribution function.
-
-    "V1_mean": 1e-15,
-    # Mean volume of NM1 particles (in cubic meters).
-
-    "V3_mean": 1e-15,  
-    # Mean volume of M particles (in cubic meters).
     
     "pl_P1": 6.57369e-05,  
     "pl_P2": 2.67092,  

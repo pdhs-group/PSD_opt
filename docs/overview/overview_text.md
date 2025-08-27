@@ -36,7 +36,7 @@ This provides a unified way to manage simulation parameters consistently across 
 
 ## 4. Optimization Framework
 
-The **{doc}Optimization Framework <optimization_framework>** documentation introduces:
+The **{doc}`Optimization Framework <optimization_framework>`** documentation introduces:
 
 - The structure of the optimization modules (`kernel_opt`, `kernel_opt_extruder`)  
 - How Ray Tune is used to enable scalable, parallel optimization  

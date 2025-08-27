@@ -9,17 +9,32 @@ import matplotlib.pyplot as plt
 import optframework.utils.plotter.plotter as pt
 
 class PBMPost:
+    """
+    Post-processing module for Population Balance Model (PBM) solver.
+    
+    Provides visualization and analysis tools for PBM results, including
+    moment comparisons and distribution function plots.
+    """
+    
     def __init__(self, solver):
+        """Initialize PBMPost with reference to parent solver."""
         self.solver = solver
 
     def plot_moments_comparison(self, moments, moments_QMOM, moments_GQMOM):
         """
-        Plot a visual comparison of QMOM and GQMOM moments against original moments.
+        Plot visual comparison of QMOM and GQMOM moments against original moments.
 
-        Parameters:
-            moments (array-like): Original moments (true values).
-            moments_QMOM (array-like): Moments calculated using QMOM.
-            moments_GQMOM (array-like): Moments calculated using GQMOM.
+        Creates side-by-side plots showing absolute moment values and relative errors
+        for QMOM and GQMOM reconstruction methods.
+
+        Parameters
+        ----------
+        moments : array-like
+            Original moments (true values)
+        moments_QMOM : array-like
+            Moments calculated using QMOM
+        moments_GQMOM : array-like
+            Moments calculated using GQMOM
         """
         fig=plt.figure()
         ori_ax = fig.add_subplot(1,2,1)   
@@ -62,12 +77,21 @@ class PBMPost:
 
     def plot_NDF_comparison(self, x, NDF, NDF_QMOM, NDF_GQMOM):
         """
-        Plot a visual comparison of QMOM and GQMOM NDF against original NDF.
+        Plot visual comparison of QMOM and GQMOM NDF against original NDF.
 
-        Parameters:
-            NDF (array-like): Original NDF (true values).
-            NDF_QMOM (array-like): NDF calculated using QMOM.
-            NDF_GQMOM (array-like): NDF calculated using GQMOM.
+        Compares reconstructed normalized distribution functions from different
+        quadrature methods against the original distribution.
+
+        Parameters
+        ----------
+        x : array-like
+            x-coordinates for the distribution
+        NDF : array-like
+            Original normalized distribution function (true values)
+        NDF_QMOM : array-like
+            NDF calculated using QMOM
+        NDF_GQMOM : array-like
+            NDF calculated using GQMOM
         """
         fig=plt.figure()
 
@@ -91,6 +115,27 @@ class PBMPost:
         plt.show()
 
     def plot_nodes_weights_comparision(self, x, NDF, nodes, weights, nodes_G, weights_G):
+        """
+        Plot comparison of quadrature nodes and weights for QMOM and GQMOM.
+
+        Shows original distribution alongside quadrature nodes and weights from
+        both QMOM and GQMOM methods on dual y-axes.
+
+        Parameters
+        ----------
+        x : array-like
+            x-coordinates for the distribution
+        NDF : array-like
+            Original normalized distribution function
+        nodes : array-like
+            QMOM quadrature nodes
+        weights : array-like
+            QMOM quadrature weights
+        nodes_G : array-like
+            GQMOM quadrature nodes
+        weights_G : array-like
+            GQMOM quadrature weights
+        """
         fig=plt.figure()
         # ax1 = fig.add_subplot(1,3,1)   
         # ax2 = fig.add_subplot(1,3,2)

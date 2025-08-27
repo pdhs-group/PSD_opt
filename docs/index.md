@@ -21,7 +21,7 @@ You may also want to have a look at the {doc}`overview of the most important att
 quickstart
 overview/overview
 attributes
-advanced_guide
+advanced_guide/custom_kernel_model
 references
 api/modules
 

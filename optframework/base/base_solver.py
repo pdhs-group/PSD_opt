@@ -36,7 +36,7 @@ class BaseSolver():
                                             # Case 3 to use pre-defines alphas (e.g. from ANN) --> alphas need to be provided at some point
                                             
         self.alpha_prim = np.ones(dim**2)   # Collision efficiency
-        self.CORR_BETA = 1e6*2.5e-5           # Correction Term for collision frequency [-]. The meaning may vary across different kernel models. 
+        self.CORR_BETA = 1           # Correction Term for collision frequency [-]. The meaning may vary across different kernel models. 
                                                 # It describes the influence of external factors such as the environment and particle shape on the model.
                                                 
         ## Parameters in breakage kernels
@@ -55,9 +55,9 @@ class BaseSolver():
         self.pl_v = 2                         # number of fragments in product function of power law
                                               # or (v+1)/v: number of fragments in simple power law  
         self.pl_q = 1                         # parameter describes the breakage type(in product function of power law) 
-        self.pl_P1 = 1e-2                     # 1. parameter in power law for breakage rate  1d/2d
+        self.pl_P1 = 1e10                     # 1. parameter in power law for breakage rate  1d/2d
         self.pl_P2 = 1                      # 2. parameter in power law for breakage rate  1d/2d
-        self.pl_P3 = 1e-2                     # 3. parameter in power law for breakage rate  2d
+        self.pl_P3 = 1e10                     # 3. parameter in power law for breakage rate  2d
         self.pl_P4 = 1                      # 4. parameter in power law for breakage rate  2d
         
         self.B_F_type = 'int_func'            # 'int_func': calculate B_F with breakage function
@@ -176,11 +176,11 @@ class BaseSolver():
             self.t_num = len(self.t_vec)  
             self.t_total = self.t_vec[-1]
         
-        if getattr(self, "DIST1_name", None):
+        if getattr(self, "DIST1_name", None) is not None:
             self.DIST1 = os.path.join(self.DIST1_path,self.DIST1_name)
-        if getattr(self, "DIST2_name", None):
+        if getattr(self, "DIST2_name", None) is not None:
             self.DIST2 = os.path.join(self.DIST2_path,self.DIST2_name)
-        if getattr(self, "DIST3_name", None):
+        if getattr(self, "DIST3_name", None) is not None:
             self.DIST3 = os.path.join(self.DIST3_path,self.DIST3_name)  
         
         self.cv_1 = self.c_mag_exp*self.Psi_c1_exp   # Volume concentration of NM1 particles [Vol-%] 

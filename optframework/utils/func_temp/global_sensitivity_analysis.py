@@ -48,8 +48,7 @@ def evaluate_model(params, moment_flag):
     opt = OptBase(multi_flag=False)
     params_trans = params.copy()
     params_trans = opt.core.array_dict_transform(params_trans)
-    params_checked = opt.core.check_corr_agg(params_trans)
-    opt.core.calc_pop(opt.core.p, params_checked, opt.core.t_vec)
+    opt.core.calc_pop(opt.core.p, params_trans, opt.core.t_vec)
     ## if PBE failed to converge
     if not opt.core.p.calc_status:
         return np.nan

@@ -10,118 +10,89 @@ import os
 # _config_opt_path = os.environ.get('TMP_PATH')
 _config_opt_path = os.path.dirname(__file__)
 config = {
-    ## Use only 2D Data or 1D+2D
-    'multi_flag': True,
-    ## Input only one/one set of PSD data
-    'single_case': True,
+    # Use only 2D Data or 1D+2D
+    'multi_flag': True, 
+    # Input only one/one set of PSD data
+    'single_case': True, 
     
+    ## Core parameters for optimization
     'algo_params': {
-        'dim': 2,
         # The dimensionality of the PBE
-        't_init' : np.array([0, 0]),
+        'dim': 2, 
         # Initial time points for simulation. 
         # These values are used to initialize N in dPBE wenn calc_init_N is True.
         # Note: The first value in t_init must be zero.
-        
-        't_vec' : np.arange(0, 601, 60, dtype=float),
-        # 't_vec' : np.array([0, 5, 10, 15, 20, 25, 30])*60,
+        't_init': np.array([0, 0]), 
         # Time vector for the entire simulation, specifying the time points at which 
         # calculations are performed.
-        
-        'delta_t_start_step' : 1,
+        't_vec' : np.arange(0, 601, 10, dtype=float),
         # Specifies the number of initial time steps to skip during optimization, 
         # often useful to avoid the impact of initialization errors.
-        
-        'add_noise': True,
+        'delta_t_start_step': 1, 
         # Whether to add noise to the generated data.
-        
-        'smoothing': True,
+        'add_noise': True, 
         # Whether to apply smoothing to the simulated data, usually performed using 
         # kernel density estimation (KDE).
-        
-        'noise_type': 'Mul',
+        # Note: When NS is large, KDE may tend to underestimate the distribution function.
+        'smoothing': True, 
         # Type of noise to add to the data. Options include:
         # - 'Gaus': Gaussian noise
         # - 'Uni': Uniform noise
         # - 'Po': Poisson noise
         # - 'Mul': Multiplicative noise
-        
-        'noise_strength': 0.1,
+        'noise_type': 'Mul', 
         # The strength of the added noise.
-        
-        'sample_num': 5,
+        'noise_strength': 0.1, 
         # Number of experimental or synthetic data samples used during the optimization process.
-        
-        'exp_data' : False, 
+        'sample_num': 1, 
         # Whether to use experimental data (True) or synthetic data (False) during optimization.
-        
-        'sheet_name' : None, 
+        'exp_data': False, 
         # Name of the sheet in the experimental data file (if applicable).
-         
-        'method': 'Cmaes',
+        'sheet_name': None, 
         # Optimization method to use. Options include:
         # - 'GP': Gaussian Process-based Bayesian Optimization
         # - 'TPE': Tree-structured Parzen Estimator
         # - 'Cmaes': Covariance Matrix Adaptation Evolution Strategy (CMA-ES)
         # - 'NSGA': Nondominated Sorting Genetic Algorithm (NSGA-III)
         # - 'QMC': Quasi Monte Carlo sampling
-        
-        'random_seed': 1,
+        'method': 'Cmaes', 
         # Seed for reproducible results, int or None. 
         # This value will change global random states for numpy and torch on 
         # initalization and loading from checkpoint.
-        
-        'n_iter': 10,
+        'random_seed': 1, 
         # Number of iterations for the optimization process.
-
-        'calc_init_N': True,
+        'n_iter': 20, 
         # Whether to initialize the PBE using the first few time points of experimental data (True).
-    
-        'USE_PSD' : True,
-        # Whether to use PSD (particle size distribution) data for setting the initial conditions 
-        # of N.
-        
-        'USE_PSD_R': True,
+        'calc_init_N': False, 
         # Whether to use R01_0 and R03_0 below to get the particle size in the PSD data as 
         # the starting coordinates for PBE. If False, the values ​​of R_01 and R_03 are used.
-        
-        'R01_0' : 'r0_001',
-        # Radius of NM1 primary particles corresponding to the 1% position (Q3) in the PSD data.
-        
-        'R03_0' : 'r0_001',
-        # Radius of M primary particles corresponding to the 1% position (Q3) in the PSD data.
-
-        # 'R_01': 2.9e-7,
-        # 'R_03': 2.9e-7,
-        
-        'R01_0_scl': 1e-1,
-        # Scaling factor for the NM1 primary particle radius.
-        
-        'R03_0_scl': 1e-1,
-        # Scaling factor for the M primary particle radius.
-        
-        'PSD_R01' : 'PSD_x50_2.0E-5_RelSigmaV_2.0E-1.npy',
-        # File name for the PSD data for NM1 particles.
-        
-        'PSD_R03': 'PSD_x50_2.0E-5_RelSigmaV_2.0E-1.npy',  
-        # File name for the PSD data for M particles.
-    
-        'weight_2d': 1,  
+        'USE_PSD_R': False,
+        # Radius of primary particles corresponding to the x% position (Q3) in the PSD data.
+        # - 'r0_001': Corresponding to the 1% position
+        # - 'r0_005': Corresponding to the 5% position
+        # - 'r0_01': Corresponding to the 10% position
+        'R01_0': 'r0_001', 
+        'R03_0': 'r0_001',
+        # Directly define the radius of the primary particles, 
+        # the choice of R01_0 or R_01 depending on the value of USE_PSD and USE_PSD_R.
+        'R_01': 2.9e-07, 
+        'R_03': 2.9e-07, 
+        # Scaling factor for the primary particle radius.
+        'R01_0_scl': 1, 
+        'R03_0_scl': 1, 
+        # The filename of the PSD file used for initialization. 
+        # Note: it must not be moved into the pop_params sub-dictionary, otherwise it may cause calculation errors.
+        'DIST1_name': 'PSD_x50_2.0E-5_RelSigmaV_2.0E-1.npy', 
+        'DIST3_name': 'PSD_x50_2.0E-5_RelSigmaV_2.0E-1.npy', 
         # Weight applied to the error (delta) of 2D particle populations, giving it 
         # more importance during optimization.
-        
-        'dist_type': 'q3',
+        'weight_2d': 1, 
+        # Determine on what the PSD returned after the PBE calculation is based.
         # - 'q0': Number-based PSD (weight = N, i.e., V^0 × N)
         # - 'q3': Volume-based PSD (weight = V * N, i.e., V^1 × N)
         # - 'q6': Square-volume PSD (weight = V^2 * N)
-        
-        'delta_flag': [('qx','MSE'), 
-                       # ('Qx','RMSE'), 
-                       #('x_50','MSE')
-                       # ('y_weibull','MSE'),
-                       ],
-        # Specifies which particle size distribution (PSD) and cost function to use 
-        # during optimization. Options for PSD include:
+        'dist_type': 'q3', 
+        # Specify the objectives and calculation method in the optimization process.
         # - 'qx': density distribution
         # - 'Qx': Cumulative distribution
         # - 'x_10': Particle size at 10% of cumulative distribution
@@ -132,67 +103,76 @@ config = {
         # - 'RMSE': Root Mean Squared Error
         # - 'MAE': Mean Absolute Error
         # - 'KL': Kullback-Leibler divergence (only compatible with q3 and Q3)
-        # It is allowed to use combinations of different PSDs and cost functions as optimization targets.
-        # In such cases, the objective function is the sum of the individual errors.
-        'tune_storage_path': os.path.join(_config_opt_path, "Ray_Tune"),   
+        # Note: It is allowed to use combinations of different objectives and calculation method as cost function.
+        # In such cases, the cost function is the sum of the individual errors.
+        'delta_flag': [# ('qx','MSE'), 
+                       ('Qx','MSE'), 
+                       # ('x_50','MSE'),
+                       # ('y_weibull','MSE'),
+                       ],
         # Path to store Ray Tune optimization infomation.
-        
-        'verbose': 0,
-    
-        'multi_jobs': False,  
+        'tune_storage_path': os.path.join(_config_opt_path, 'Ray_Tune'), 
+        # Whether to print information during the Ray Tune run.
+        # - 0: Silent mode.
+        # - 1': Only main information.
+        # - 2: Detailed information.
+        'verbose': 1, 
         # Whether to run multiple optimization tasks (Tune jobs) concurrently. 
         # If True, multiple PSD datasets should be provided.
-    
-        'num_jobs': 2,  
+        'multi_jobs': False, 
         # Number of parallel optimization jobs to run.
-    
-        'cpus_per_trail': 3,  
+        'num_jobs': 3, 
         # Number of CPU cores allocated to each optimization trial.
-    
-        'max_concurrent': 4,  
+        'cpus_per_trail': 2, 
         # Maximum number of trials that can be run concurrently.
-        },
+        'max_concurrent': 2
+        }, 
     
     ## PBE parameters
     ## For a detailed explanation of the PBE parameters, please refer to the `PBE_config.py` file.
     'pop_params': {
-        'NS' : 10,
-        'S' : 4,
-        "SIZEEVAL": 1,
-        "COLEVAL": 1,
-        'BREAKRVAL' : 4,
-        'BREAKFVAL' : 5,
-        ## aggl_crit: The sequence number of the particle that allows further agglomeration
-        'aggl_crit' : 100,
-        'process_type' : "mix",
-        ## Reduce particle number desity concentration to improve calculation stability
-        ## Default value = 1e14 
-        'V_unit': 1e-12,
-        ## When True, use distribution data simulated using MC-bond-break methods
-        'USE_MC_BOND' : False,
-        'solver' : "ivp",
-        
-        "CORR_BETA": 1,
-        'alpha_prim': np.array([1e-2, 1e-2, 1e-2]),
-        # 'alpha_prim': np.array([1]),
-        "pl_v": 2,
-        "pl_P1": 1e-2,
-        "pl_P2": 1,
-        "pl_P3": 1e-2,
-        "pl_P4": 1,
-        "G": 1,
+        'NS': 10, 
+        'S': 4, 
+        'USE_PSD': True, 
+        'SIZEEVAL': 1, 
+        'COLEVAL': 1, 
+        'BREAKRVAL': 4, 
+        'BREAKFVAL': 5, 
+        'aggl_crit': 100, 
+        'process_type': 'mix', 
+        'V_unit': 1e-12, 
+        'USE_MC_BOND': False, 
+        'solve_algo': 'ivp', 
+        'CORR_BETA': 1, 
+        'alpha_prim': np.array([0.01, 0.01, 0.01]), 
+        'pl_v': 2, 
+        'pl_P1': 1e13, 
+        'pl_P2': 1, 
+        'pl_P3': 1e13, 
+        'pl_P4': 1, 
+        'G': 80
         },
     
-    ## Parameters which should be optimized
-    'opt_params' : {
-        'corr_agg_0': {'bounds': (-4.0, 0.0), 'log_scale': True},
-        'corr_agg_1': {'bounds': (-4.0, 0.0), 'log_scale': True},
-        'corr_agg_2': {'bounds': (-4.0, 0.0), 'log_scale': True},
-        'pl_v': {'bounds': (0.5, 2.0), 'log_scale': False},
-        'pl_P1': {'bounds': (-5.0, -1.0), 'log_scale': True},
-        'pl_P2': {'bounds': (0.3, 3.0), 'log_scale': False},
-        'pl_P3': {'bounds': (-5.0, -1.0), 'log_scale': True},
+    ## Optimized parameters and their search ranges.
+    # Except for corr_agg, the names of the optimized parameters should be consistent with 
+    # their actual names in the PBE.
+    'opt_params': {
+        'corr_agg_0': {'bounds': (-4.0, 0.0), 'log_scale': True}, 
+        'corr_agg_1': {'bounds': (-4.0, 0.0), 'log_scale': True}, 
+        'corr_agg_2': {'bounds': (-4.0, 0.0), 'log_scale': True}, 
+        'pl_v': {'bounds': (0.5, 2.0), 'log_scale': False}, 
+        'pl_P1': {'bounds': (10.0, 15.0), 'log_scale': True}, 
+        'pl_P2': {'bounds': (0.3, 3.0), 'log_scale': False}, 
+        'pl_P3': {'bounds': (10.0, 15.0), 'log_scale': True}, 
         'pl_P4': {'bounds': (0.3, 3.0), 'log_scale': False},
-    },
-
-}
+        
+        ## Fixed parameters passed to the internal optimizer Actor.
+        # Whether to wait after each calculation is completed.
+        'actor_wait': {"fixed": True},
+        # Waiting time.
+        'wait_time': {"fixed": 1},
+        # The maximum number of times a single Actor can be reused. 
+        # After this number is exceeded, the Actor will be reset and resources released to prevent memory overflow.
+        'max_reuse': {"fixed": 10}
+        }
+    }

@@ -6,27 +6,21 @@ from bayes_opt import BayesianOptimization
 
 def optimierer_bo(self, opt_params, hyperparameter=None, exp_data_paths=None,known_params=None):
     if self.calc_init_N:
-        self.set_init_N(exp_data_paths, init_flag='mean')
+        self.calc_init_from_data(exp_data_paths, init_flag='mean')
     if isinstance(exp_data_paths, list):
         ## When set to multi, the exp_data_paths entered here is a list 
         ## containing one 2d data name and two 1d data names.
         x_uni_exp = []
         data_exp = []
         for exp_data_paths_tem in exp_data_paths:
-            if self.exp_data:
-                x_uni_exp_tem, data_exp_tem = self.get_all_exp_data(exp_data_paths_tem)
-            else:
-                x_uni_exp_tem, data_exp_tem = self.get_all_synth_data(exp_data_paths_tem)
+            x_uni_exp_tem, data_exp_tem = self.p.get_all_data(exp_data_paths_tem)
             x_uni_exp.append(x_uni_exp_tem)
             data_exp.append(data_exp_tem)
     else:
         ## When not set to multi or optimization of 1d-data, the exp_data_paths 
         ## contain the name of that data.
-        if self.exp_data:
-            x_uni_exp, data_exp = self.get_all_exp_data(exp_data_paths)
-        else:
-            x_uni_exp, data_exp = self.get_all_synth_data(exp_data_paths)
-            
+        x_uni_exp, data_exp = self.p.get_all_data(exp_data_paths)
+
     pbounds = {}
     transform = {}
     # Prepare bounds and transformation based on parameters definition

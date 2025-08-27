@@ -84,7 +84,7 @@ Created on Wed Apr 17 08:57:57 2024
 """
 import time
 import numpy as np
-from optframework.dpbe import DPBESolver
+from optframework import DPBESolver
 import matplotlib.pyplot as plt
 from optframework.utils.func.static_method import KDE_fit, KDE_score
 import optframework.utils.plotter.plotter as pt
