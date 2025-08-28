@@ -68,6 +68,7 @@ class SolverProtocol(Protocol):
         ----------
         init_N : array-like or None
             Initial number concentrations or other initial conditions.
+            
             - If None: Solver should obtain initial conditions internally 
               (e.g., from files or default values)
             - If provided: Use these runtime-calculated initial conditions
@@ -217,7 +218,7 @@ def make_solver(name: str, **params) -> SolverProtocol:
     ----------
     name : str
         Name of the solver type (must be in REGISTRY)
-    **params
+    \*\*params
         Keyword arguments passed to the adapter constructor
         
     Returns

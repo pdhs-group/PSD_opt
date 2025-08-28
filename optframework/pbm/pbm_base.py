@@ -181,8 +181,9 @@ class PBMSolver(BaseSolver):
             Range of the variable (start, end) (default: (0, 100))
         points : int, optional
             Number of discretization points (default: 1000)
-        **kwargs
+        \*\*kwargs
             Distribution-specific parameters:
+            
             - normal: mean, std_dev
             - gamma: shape, scale
             - lognormal: mean, sigma

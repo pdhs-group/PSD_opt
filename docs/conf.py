@@ -39,7 +39,8 @@ nitpick_ignore = [
     ("py:class", "ray.tune.trainable.trainable.Trainable"),
     ("py:class", "ray.tune.trainable.Trainable"),
     ("py:class", "libcst.CSTTransformer"),
-    ("py:class", "libcst._visitors.CSTTransformer")
+    ("py:class", "libcst._visitors.CSTTransformer"),
+    ("py:class", "numpy.ndarray"),
 ]
 
 # -- Options for HTML output -------------------------------------------------
