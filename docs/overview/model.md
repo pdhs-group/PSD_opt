@@ -152,6 +152,8 @@ While efficient, QMOM has specific stability issues:
     - This can sometimes lead to results that better reflect real physical behavior.  
     - However, in extreme cases, it may also trigger numerical instabilities.
 
+---
+
 ## 4. MCPBESolver
 
 The **MCPBESolver** is based on **Monte Carlo (MC) random algorithms and statistical methods**.  
@@ -178,6 +180,8 @@ The larger the number of simulated particles and repetitions, the **more stable 
 - There are **no inherent stability issues** associated with numerical schemes.  
 - The method can, in principle, achieve **very high accuracy**, limited only by the number of particles and repetitions that can be simulated given computational resources.
 
+---
+
 ## 5. ExtruderPBESolver
 
 The **ExtruderPBESolver** is an extension of the `DPBESolver`.  
@@ -186,6 +190,8 @@ In addition to solving the PBE within each region using the DPBE approach, it in
 This allows the solver to handle **multi-region problems**, such as processes where particles are transported through different spatial zones (e.g., extrusion or segmented reactors).
 
 However, similar to the original DPBE, the internal variables do not include spatial coordinates. This means the PBE does not account for spatial variations of the particle number density. In other words, both DPBE and ExtruderPBESolver assume that particles are **uniformly distributed** within each region.
+
+---
 
 ## 6. Summary
 

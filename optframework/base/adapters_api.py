@@ -56,7 +56,35 @@ class SolverProtocol(Protocol):
         - If no updates needed, implement as `return None`
         """
         ...
+
+    def calc_init_from_data(self, exp_data_paths, init_flag) -> None:
+        """
+        Calculate initial conditions from experimental data.
         
+        This method is called once after solver initialization is complete.
+        It reverse-calculates initial conditions from provided experimental data
+        and caches them in optimizer attributes for later use by calc_matrix().
+        
+        Parameters
+        ----------
+        exp_data_paths : str or list of str
+            Path(s) to experimental data files for initial condition calculation
+        init_flag : bool or other
+            Flag indicating the type/method of initial condition calculation
+            
+        Notes
+        -----
+        - Called once after solver initialization
+        - Requires optimizer parameter calc_init_N=True to trigger
+        - Should calculate and cache initial conditions in:
+          * opt.init_N (standard case)
+          * opt.init_N_2D (2D case)
+          * opt.init_N_NM and opt.init_N_M (multi case)
+        - Cached values are later passed to calc_matrix()
+        - If no calculations needed, implement as `return None`
+        """
+        ...
+            
     def calc_matrix(self, init_N) -> None: 
         """
         Calculate parameter matrices required by the solver.

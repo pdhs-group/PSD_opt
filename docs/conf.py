@@ -27,14 +27,17 @@ extensions = ["sphinx.ext.todo",
 
 myst_enable_extensions = ["dollarmath", "amsmath"]
 
-#templates_path = ['_templates']
+templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 
 # Include all external packages (should not be included in the docs)
 autodoc_mock_imports = ['matplotlib', 'scipy', 'numba', 'plotter','statsmodels',
                         'bayes_opt', 'sklearn', 'pandas', 'SALib', 'numdifftools',
                         'originpro']
-autodoc_default_options = {'member-order': 'bysource'}
+
+autodoc_default_options = {
+                            'member-order': 'bysource',
+                            }
 nitpick_ignore = [
     ("py:class", "ray.tune.trainable.trainable.Trainable"),
     ("py:class", "ray.tune.trainable.Trainable"),
@@ -47,4 +50,9 @@ nitpick_ignore = [
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
 html_theme = 'sphinx_rtd_theme'
+html_theme_options = {
+    "collapse_navigation": False,
+    "sticky_navigation": True,
+    "navigation_depth": 8,
+}
 html_static_path = ['_static']

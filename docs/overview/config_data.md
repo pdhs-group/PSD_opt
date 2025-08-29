@@ -15,6 +15,7 @@ config/*_config.py
 
 in the current working directory.
 
+---
 
 ## 1. General Solvers
 
@@ -26,6 +27,7 @@ the config data is a **flat dictionary** (single level).
 
 This ensures simple and transparent parameter control.
 
+---
 
 ## 2. ExtruderPBESolver
 
@@ -42,6 +44,7 @@ its config structure is slightly more complex.
 
 This design allows each region to have its own DPBE configuration while sharing common structural definitions.
 
+---
 
 ## 3. Optimization Framework
 

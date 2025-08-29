@@ -44,7 +44,7 @@ class DPBEAdapter(WriteThroughAdapter):
         # Write-through attributes
         self.calc_status = True
 
-        # ---------- alpha_prim (same as之前) ----------
+        # ---------- alpha_prim  ----------
         def set_alpha_prim(impl, value):
             arr = np.asarray(value)
             dim = impl.dim  
@@ -176,7 +176,46 @@ class DPBEAdapter(WriteThroughAdapter):
         
     def reset_params(self) -> None:
         self.impl._reset_params()
+    
+    def calc_init_from_data(self, exp_data_paths, init_flag) -> None:
+        """
+        Initialize the number concentration N for PBE(s) based on experimental data.
         
+        This method initializes the N for both 1D and 2D PBE instances. For 2D PBE systems, the initialization 
+        assumes that the system initially contains only pure materials (i.e., no mixed particles have formed yet). 
+        As a result, the initialization of 2D PBE is effectively equivalent to performing two 1D initializations: 
+        one for the NM particles and one for the M particles.
+        
+        Parameters
+        ----------
+        sample_num : `int`
+            The number of sets of experimental data used for initialization.
+        exp_data_paths : `list of str`
+            Paths to the experimental data for initialization.
+        init_flag : `str`
+            The method to use for initialization: 'int' for interpolation or 'mean' for averaging
+            the initial sets.
+        """
+        opt = self.opt
+        if opt.dim ==1:
+            opt.p.core.calc_R()
+            opt.p.N = np.zeros((opt.p.NS, len(opt.p.t_vec)))
+            opt.init_N = self._set_init_N_1D(opt, opt.p, exp_data_paths, init_flag)
+        elif opt.dim == 2:
+            opt.p.core.calc_R()
+            opt.p_NM.core.calc_R()
+            opt.p_M.core.calc_R()
+            opt.init_N_NM = self._set_init_N_1D(opt, opt.p_NM, exp_data_paths[1], init_flag)
+            opt.init_N_M = self._set_init_N_1D(opt, opt.p_M, exp_data_paths[2], init_flag)
+            opt.p.N = np.zeros((opt.p.NS, opt.p.NS, len(opt.p.t_vec)))
+            opt.p_NM.N = np.zeros((opt.p.NS, len(opt.p.t_vec)))
+            opt.p_M.N = np.zeros((opt.p.NS, len(opt.p.t_vec)))
+            # Set the number concentration for NM and M populations at the initial time step
+            # This assumes the system initially contains only pure materials, so no mixed particles exist
+            opt.p.N[1:, 1, 0] = opt.p_NM.N[1:, 0]
+            opt.p.N[1, 1:, 0] = opt.p_M.N[1:, 0]
+            opt.init_N_2D = opt.p.N.copy()
+            
     def calc_matrix(self, init_N) -> None:
         if not self.opt.calc_init_N:
             self.impl.core.full_init(calc_alpha=False)
@@ -286,46 +325,8 @@ class DPBEAdapter(WriteThroughAdapter):
     def close(self) -> None:
         self.impl.core._close()
             
+    
     # %% OPTIONAL METHOD INTERFACE      
-    def calc_init_from_data(self, exp_data_paths, init_flag) -> None:
-        """
-        Initialize the number concentration N for PBE(s) based on experimental data.
-        
-        This method initializes the N for both 1D and 2D PBE instances. For 2D PBE systems, the initialization 
-        assumes that the system initially contains only pure materials (i.e., no mixed particles have formed yet). 
-        As a result, the initialization of 2D PBE is effectively equivalent to performing two 1D initializations: 
-        one for the NM particles and one for the M particles.
-        
-        Parameters
-        ----------
-        sample_num : `int`
-            The number of sets of experimental data used for initialization.
-        exp_data_paths : `list of str`
-            Paths to the experimental data for initialization.
-        init_flag : `str`
-            The method to use for initialization: 'int' for interpolation or 'mean' for averaging
-            the initial sets.
-        """
-        opt = self.opt
-        if opt.dim ==1:
-            opt.p.core.calc_R()
-            opt.p.N = np.zeros((opt.p.NS, len(opt.p.t_vec)))
-            opt.init_N = self._set_init_N_1D(opt, opt.p, exp_data_paths, init_flag)
-        elif opt.dim == 2:
-            opt.p.core.calc_R()
-            opt.p_NM.core.calc_R()
-            opt.p_M.core.calc_R()
-            opt.init_N_NM = self._set_init_N_1D(opt, opt.p_NM, exp_data_paths[1], init_flag)
-            opt.init_N_M = self._set_init_N_1D(opt, opt.p_M, exp_data_paths[2], init_flag)
-            opt.p.N = np.zeros((opt.p.NS, opt.p.NS, len(opt.p.t_vec)))
-            opt.p_NM.N = np.zeros((opt.p.NS, len(opt.p.t_vec)))
-            opt.p_M.N = np.zeros((opt.p.NS, len(opt.p.t_vec)))
-            # Set the number concentration for NM and M populations at the initial time step
-            # This assumes the system initially contains only pure materials, so no mixed particles exist
-            opt.p.N[1:, 1, 0] = opt.p_NM.N[1:, 0]
-            opt.p.N[1, 1:, 0] = opt.p_M.N[1:, 0]
-            opt.init_N_2D = opt.p.N.copy()
-            
     def generate_data(self, data_path=None, multi_flag=False, pop_params=None, add_info=""):
         """
         Generates synthetic data based on simulation results, with optional noise.

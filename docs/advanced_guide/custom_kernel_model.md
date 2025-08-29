@@ -9,6 +9,8 @@ The changes involve three parts:
 
 > We use **`DPBESolver`** as the working example. (Integrations for `PBMSolver` and `MCPBESolver` are in progress and structurally more involved.)
 
+---
+
 ## 1. Class Layer: Define Parameters & Defaults
 
 You can define defaults in two places:
@@ -42,6 +44,8 @@ class DPBESolver(BaseSolver):
         self.alpha = getattr(self, "alpha", 0)          # int default
         # arrays should be C-contiguous later when passed into JIT
 ````
+
+---
 
 ## 2. JIT Layer: Add the Mathematical Model & Wire Parameters
 
@@ -116,6 +120,7 @@ This part is **more involved**:
   The fastest way: **search for** `v,q,BREAKFVAL` and **extend the signature** everywhere to `v, q, BREAKFVAL, <your_params>`.
 * Finally, add matching formatted inputs in **`calc_int_B_F_2D_GL`** , ensuring ints/floats/arrays are cast/contiguous as above.
 
+---
 
 ## 3. Runtime: Add Parameters in Config
 
@@ -141,6 +146,7 @@ config = {
 > The loader (`_load_attributes`) in `BaseSolver` maps these keys to instance attributes automatically.
 > If you also set defaults in `_init_base_parameters`, the config values will **override** those defaults.
 
+---
 
 ## 4. Validation
 

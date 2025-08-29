@@ -11,19 +11,32 @@
 **Authors**: Frank Rhein ([frank.rhein@kit.edu](mailto:frank.rhein@kit.edu)), Haoran Ji ([haoran.ji@kit.edu](mailto:haoran.ji@kit.edu)). \
 **Affiliation**: Karlsruhe Institute of Technology (KIT), Institute of Mechanical Process Engineering and Mechanics
 
-For a simple example see visit the {doc}`Quick Start <quickstart>` page. \
-You may also want to have a look at the {doc}`overview of the most important attributes <attributes>`.
+This project provides **Python-based solvers and optimizers** for the **Population Balance Equation (PBE)**.  
+
+Depending on the application, users can choose the most suitable solver to predict the evolution of particle systems.  
+For cases with experimental data, the optimization framework can be used to determine **kernel parameters** that best match experimental conditions, improving prediction accuracy.
+
+- See {doc}`Quick Start <quickstart>` for simple usage examples of the solvers.  
+- Visit {doc}`Overview <overview/overview>` to understand the overall project structure.  
+- For a full list of class attributes and their meanings, refer to {doc}`Attributes <attributes>`.  
+  
+The documentation also includes two advanced guides:  
+
+- {doc}`Adding a Custom Kernel Model <advanced_guide/custom_kernel_model>`  
+- {doc}`Adapting a Custom Solver to the Optimizer <advanced_guide/custom_optimizer>`  
+
 
 ```{toctree}
 :caption: 'Contents:'
-:maxdepth: 3
+:maxdepth: 6
 
 quickstart
 overview/overview
 attributes
 advanced_guide/custom_kernel_model
+advanced_guide/custom_optimizer
 references
-api/modules
+api/optframework
 
 ```
 

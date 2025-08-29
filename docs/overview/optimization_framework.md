@@ -11,6 +11,8 @@ A common approach is therefore to use **experimental PSD (Particle Size Distribu
 
 In this framework, the target data (`data_exp`) is usually the PSD measured over time in experiments, while the model results (`data_mod`) are obtained from solving the **dPBE**.  
 
+---
+
 ## 2. Basic Workflow
 
 1. **Provide experimental data (`data_exp`)**  
@@ -43,6 +45,8 @@ In this framework, the target data (`data_exp`) is usually the PSD measured over
    - Steps 3–4 are repeated until the maximum number of iterations is reached.  
    - The optimizer selects the parameter set with the smallest error as the optimal kernel parameters.  
 
+---
+
 ## 3. Ray Tune Framework
 
 This project uses **Ray Tune** to accelerate optimization with distributed parallelization.  
@@ -71,6 +75,8 @@ Ray Tune introduces the concept of **Actors**, which wrap optimization experimen
    - If a single iteration is faster than 1 second, inter-thread communication may lag, causing bottlenecks.  
    - A wait mechanism is added: if runtime < `wait_time`, the process pauses until `wait_time` is reached.  
    - Configurable in `opt_params['wait_time']`.  
+
+---
 
 ## 4. Usage Recommendations
 

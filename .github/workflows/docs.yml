@@ -48,7 +48,7 @@ jobs:
 
 
       - name: Generate API stubs
-        run: sphinx-apidoc -o docs/api optframework
+        run: sphinx-apidoc -o docs/api -e -M -f -T optframework
 
       - name: Convert RST -> MyST Markdown
         shell: bash

@@ -11,6 +11,7 @@ The **{doc}`Model <model>`** introduces the implemented Population Balance Equat
 
 It also explains the physical basis of PBE, the algorithms behind each solver, and provides a performance and stability comparison across methods.
 
+---
 
 ## 2. Class Structure
 
@@ -22,6 +23,7 @@ The **{doc}`Class Structure <class_structure>`** documentation describes:
 
 This section helps users understand the internal logic of the library and how the main solvers are constructed.
 
+---
 
 ## 3. Config Data
 
@@ -33,6 +35,8 @@ The **{doc}`Config Data <config_data>`** section explains:
 - Priority rules among these methods  
 
 This provides a unified way to manage simulation parameters consistently across different solvers.
+
+---
 
 ## 4. Optimization Framework
 

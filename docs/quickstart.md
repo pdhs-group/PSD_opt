@@ -13,6 +13,8 @@ Here we use `DPBESolver` (see `optframework/examples/simple_dpbe.py`) as an exam
 from optframework.dpbe import DPBESolver
 ```
 
+---
+
 ## 2. Instantiating the Solver
 
 Each instance represents an independent PBE solver with its own set of parameters.
@@ -44,6 +46,8 @@ In this case:
 * `S = 1.2` (from init args) is first applied.
 * It is overridden by the config file value `S = 1.3`.
 * Finally, it is manually updated to `S = 1.4`.
+
+---
 
 ## 3. Running the Solver
 

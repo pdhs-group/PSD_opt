@@ -24,7 +24,7 @@ The overall class design follows two main principles:
    - Parameters are mainly provided through **config data**, a Python file containing a dictionary where each key corresponds to a class attribute.  
    - Using Python rather than JSON enables direct definition of `numpy` arrays and allows preprocessing steps within the config.  
 
-
+---
 
 ## Solver Class Structures
 
@@ -38,6 +38,7 @@ The overall class design follows two main principles:
   - `DPBEVisual` → accessible as `*.visualization`  
     - Provides visualization methods for particle size distribution (PSD).  
 
+---
 
 ### 2. ExtruderPBESolver
 
@@ -49,6 +50,7 @@ The overall class design follows two main principles:
   - Construction of **multi-region computational matrices**.  
   - Solution of **multi-region PBEs** with inter-region convection terms.  
 
+---
 
 ### 3. PBMSolver
 
@@ -60,12 +62,15 @@ The overall class design follows two main principles:
   - `PBMQuickTest` → accessible as `*.quick_test`  
     - Contains diagnostic tools and test routines for QMOM algorithms, primarily used for debugging.  
 
+---
 
 ### 4. MCPBESolver
 
 - **Structure:**  
   - Currently implemented as a **single monolithic class**.  
   - Unlike other solvers, its structure has not yet been refactored into base and method classes, as development is ongoing.  
+
+---
 
 ## Optimization Framework Classes
 

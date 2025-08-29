@@ -108,6 +108,8 @@ The following parameters are automatically calculated in the `_reset_params` met
 | `DIST2` | `str` | Full path to PSD file for component 2 |
 | `DIST3` | `str` | Full path to PSD file for component 3 |
 
+---
+
 ## DPBESolver Specific Attributes
 
 ### General Information
@@ -159,6 +161,8 @@ The following submodules are automatically instantiated:
 - `post`: DPBEPost instance for post-processing
 - `visualization`: DPBEVisual instance for visualization
 
+---
+
 ## PBMSolver Specific Attributes
 
 ### General Information
@@ -198,6 +202,8 @@ The following submodules are automatically instantiated:
 - `post`: PBMPost instance for post-processing
 - `quick_test`: PBMQuickTest instance for quick testing
 - `core`: PBMCore instance for core PBM functionality
+
+---
 
 ## MCPBESolver Specific Attributes
 
