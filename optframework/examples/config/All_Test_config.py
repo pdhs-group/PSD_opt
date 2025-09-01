@@ -88,7 +88,7 @@ config = {
         # - 'q0': Number-based PSD (weight = N, i.e., V^0 × N)
         # - 'q3': Volume-based PSD (weight = V * N, i.e., V^1 × N)
         # - 'q6': Square-volume PSD (weight = V^2 * N)
-        'dist_type': 'q3', 
+        'dist_type': 'q0', 
         # Specify the objectives and calculation method in the optimization process.
         # - 'qx': density distribution
         # - 'Qx': Cumulative distribution

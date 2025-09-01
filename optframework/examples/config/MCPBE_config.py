@@ -2,11 +2,11 @@ import numpy as np
 
 config = {
     
-    "t_total": 100,
-    # Agglomeration time [s]
+    "t_total": 10*10+1,  
+    # Total simulation time in seconds.
     
-    "savesteps": 11,
-    # Numer of equally spaced, saved timesteps [-]
+    "t_write": 10,  
+    # Interval (in time steps) for writing output data (e.g., simulation results).
     
     "a0": 1e3,
     # Total amount of particles in control volume (initially)
@@ -18,7 +18,7 @@ config = {
     ## in the initial total amount a_0.
     ## It also affects/scales the control volume to calculate the PBE!
     
-    "x": np.array([1e0]),
+    "x": np.array([1e-4]),
     # "x": np.array([1e-2, 1e-2]),
     # (Mean) equivalent diameter of primary particles for each component
     
@@ -39,7 +39,7 @@ config = {
 
     "CDF_method": "disc",  
 
-    "USE_PSD": True,  
+    "USE_PSD": False,  
     # Flag indicating whether a particle size distribution (PSD) should be used. If True, 
     # the solver will use the provided PSD files to initialize N.
     # If False, N will be initialized in a quasi-monodisperse form based on process_type:
@@ -60,7 +60,7 @@ config = {
     "DIST3_name": "PSD_x50_2.0E-5_RelSigmaV_2.0E-1.npy",  
     # Name of the file containing the PSD for M particles.
 
-    "COLEVAL": 4,  
+    "COLEVAL": 1,  
     # Flag that determines which model to use for calculating collision frequency.
     # Can be checked in dpbe_core.py's `calc_F_M`.
 
@@ -76,20 +76,20 @@ config = {
     # Factors for collision efficiency.
     # The length of the alpha_prim array must be the square of the dpbe's dimensionality (dim^2).
 
-    "BREAKRVAL": 2,
+    "BREAKRVAL": 4,
     # Flag that determines which model to use for calculating breakage rate.
     # Can be checked in dpbe_core.py's `calc_B_R`.
 
-    "BREAKFVAL": 2,  
+    "BREAKFVAL": 5,  
     # Flag that determines which model to use for calculating the fragment distribution function.
     # Can be checked in dpbe_core.py's `calc_int_B_F`.
 
-    "pl_v": 1.0,  
+    "pl_v": 2.0,  
     # Parameter in fragment distribution function.
     
-    "pl_P1": 1e-1,  
+    "pl_P1": 1e12,  
     "pl_P2": 1,  
-    "pl_P3": 1e-1,  
+    "pl_P3": 1e12,  
     "pl_P4": 1,  
     # Parameters for breakage rate kernel.
     "G": 1,

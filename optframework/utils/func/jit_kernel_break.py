@@ -394,8 +394,8 @@ def calc_B_R_2d_flat(solver):
     return calc_B_R_2d_flat_jit(
         np.ascontiguousarray(solver.V,  dtype=np.float64),
         np.ascontiguousarray(solver.B_R,  dtype=np.float64),
-        np.ascontiguousarray(solver.V1,  dtype=np.float64),
-        np.ascontiguousarray(solver.V3,  dtype=np.float64),
+        np.ascontiguousarray(solver.V_flat[0,:],  dtype=np.float64),
+        np.ascontiguousarray(solver.V_flat[1,:],  dtype=np.float64),
         float(solver.G),
         float(solver.pl_P1),
         float(solver.pl_P2),

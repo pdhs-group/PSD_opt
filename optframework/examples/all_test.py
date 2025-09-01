@@ -74,9 +74,9 @@ from optframework.utils.general_scripts.generate_psd import full_psd
 from optframework.utils.func.change_config import replace_key_value
 
 if __name__ == '__main__':
-    generate_synth_data = True
-    run_opt = True
-    run_calc_delta = True
+    generate_synth_data = False
+    run_opt = False
+    run_calc_delta = False
     run_validation = True
     
     ## Get config data
@@ -149,11 +149,8 @@ if __name__ == '__main__':
         delta = opt.core.calc_delta(pop_params, x_uni_exp, data_exp)
     
     if run_validation:
-        dim = 1
-        grid = 'geo'
-        NS = 20
         t = np.arange(0, 1, 0.1, dtype=float)
-        v = PBEValidation(1, 'geo', 20, 2, 'sum', 'mix', t=t, c=1e-2,
+        v = PBEValidation(dim=1, grid='geo', NS=20, S=2, kernel='sum', process='mix', t=t, c=1e-2,
                           beta0=1e-16, use_psd=True, dist_path=dist_path)
         v.P1 = 1e12
         v.init_all()

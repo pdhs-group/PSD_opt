@@ -104,6 +104,6 @@ class DPBESolver(BaseSolver):
             config_path = os.path.join(self.work_dir,"config","PBE_config.py")
 
         if load_attr:
-            self.load_attributes(config_path)
+            self._load_attributes(config_path)
         self._check_params()
         self._reset_params()

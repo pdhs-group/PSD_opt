@@ -232,7 +232,7 @@ class DPBEAdapter(WriteThroughAdapter):
         self.impl.core.solve_PBE(t_vec=t_vec)
         
     def get_all_data(self, exp_data_path) -> tuple[np.ndarray, np.ndarray]:
-        if self.opt.exp_data:
+        if not self.opt.exp_data:
             x_uni, data_exp = self._get_all_synth_data(exp_data_path)
         else:
             x_uni, data_exp = self._get_all_exp_data(exp_data_path)

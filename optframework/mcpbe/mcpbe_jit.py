@@ -18,6 +18,7 @@ from pathlib import Path
 from scipy.integrate import quad, dblquad
 from scipy.interpolate import interp1d, RegularGridInterpolator
 
+from optframework.base.base_solver import BaseSolver
 import optframework.utils.func.jit_kernel_agg as kernel_agg
 import optframework.utils.func.jit_kernel_break as kernel_break
 
@@ -27,21 +28,24 @@ from ..utils.plotter import plotter as pt
 from ..utils.plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
 
 ### ------ POPULATION CLASS DEFINITION ------ ###
-class MCPBESolver():
+class MCPBESolver(BaseSolver):
     
-    def __init__(self, dim=2, verbose=False, load_attr=True, config_path=None, init=True):
+    def __init__(self, dim=2, t_total=601, t_write=10, t_vec= None, verbose=False, 
+                 load_attr=True, config_path=None, init=True):
+        self._init_base_parameters(dim, t_total, t_write, t_vec)
         
-        ## System parameters        
+        ## Simulation parameters     
         self.c = np.full(dim,0.1e-2)              # Concentration array of components 
         self.x = np.full(dim,1e-6)                # (Mean) equivalent diameter of primary particles for each component
         self.x2 = np.full(dim,1e-6)               # (Mean) equivalent diameter of primary particles for each component (bi-modal case)
-        self.dim = dim
-                 
-        self.G = 1                                # Mean shear rate
-        self.t_total = 500                             # Agglomeration time [s]
         self.a0 = 1e3                             # Total amount of particles in control volume (initially) [-]
-        self.savesteps = 11                       # Numer of equally spaced, saved timesteps [-]
+        self.CDF_method = "disc"                  # Which method to use for calculating and representing the fragment distribution function.
+                                                  # "disc" uses 1000 (default) discrete points to describe the distribution function; 
+                                                  # the mass depends on the number of discrete points, and too many points may affect computational efficiency.
+                                                  # "conti" uses continuous functions and integration to describe the distribution function, 
+                                                  # providing higher accuracy but limited to one dimension.
         
+        self.VERBOSE = verbose                    # Whether to print detailed information of the calculation.
         ## Initial conditions
         # PGV defines which initial particle size distribution is assumed for each component
         # 'mono': Monodisperse at x = x[i]
@@ -53,92 +57,19 @@ class MCPBESolver():
         self.PGV2 = None
         self.SIG2 = None
         
-        ## Calculation of beta
-        # COLEVAL = 3: -- Random selection, beta = beta0
-        # COLEVAL = 1: -- Size selection, orthokinetic beta
-        # COLEVAL = 4: -- Size selection, beta from sum kernel 
-        self.COLEVAL = 1
-        self.CORR_BETA = 2.3e-18                   
-
-        ## Calculation of alpha 
-        # SIZEEVAL = 1: -- Constant alpha0
-        # SIZEEVAL = 2: -- Calculation of alpha via collision case model
-        self.SIZEEVAL = 2
-        self.alpha0 = 1.0
-        self.alpha_mmc = np.ones((dim,dim))
-        
-        ## Size correction of alpha
-        # SIZEEVAL = 1: -- No correction
-        # SIZEEVAL = 2: -- Selomulya model
-        self.SIZEEVAL = 1
-        self.X_SEL = 0.310601                 # Size dependency parameter for Selomulya2003 / Soos2006 
-        self.Y_SEL = 1.06168                 # Size dependency parameter for Selomulya2003 / Soos2006
-        
-        self.BREAKRVAL = 3                    # Case for calculation breakage rate. 1 = constant, 2 = size dependent
-        self.BREAKFVAL = 3                    # Case for calculation breakage function. 1 = conservation of Hypervolume, 2 = conservation of 0 Moments 
-        self.process_type = "breakage"    # "agglomeration": only calculate agglomeration, "breakage": only calculate breakage, "mix": calculate both agglomeration and breakage
-        self.pl_v = 4                         # number of fragments in product function of power law
-                                              # or (v+1)/v: number of fragments in simple power law  
-        self.pl_q = 1                         # parameter describes the breakage type(in product function of power law) 
-        self.pl_P1 = 1e-6                     # 1. parameter in power law for breakage rate  1d/2d
-        self.pl_P2 = 0.5                      # 2. parameter in power law for breakage rate  1d/2d
-        self.pl_P3 = 1e-6                     # 3. parameter in power law for breakage rate  2d
-        self.pl_P4 = 0.5                      # 4. parameter in power law for breakage rate  2d
-        
         ## Print more information if VERBOSE is True
-        self.VERBOSE = verbose
+        self.V_flat = None
         
-        self.CDF_method = "disc"
-        self.USE_PSD = False
-        self.V = None
-        
-        self.work_dir = Path(os.getcwd()).resolve()
         # Load the configuration file, if available
         if config_path is None and load_attr:
             config_path = os.path.join(self.work_dir,"config","MCPBE_config.py")
 
         if load_attr:
-            self.load_attributes(config_path)
+            self._load_attributes(config_path)
             
+        # self._reset_params()
         if init:
             self.init_calc()
-        
-    def load_attributes(self, config_path):
-        """
-        Load attributes dynamically from a configuration file.
-        
-        This method dynamically loads attributes from a specified Python configuration file 
-        and assigns them to the DPBESolver instance. It checks for certain key attributes like 
-        `alpha_prim` to ensure they match the PBE's dimensionality.
-        
-        Parameters
-        ----------
-        config_name : str
-            The name of the configuration file (without the extension).
-        config_path : str
-            The file path to the configuration file.
-        
-        Raises
-        ------
-        Exception
-            If the length of `alpha_prim` does not match the expected dimensionality.
-        """
-        if not os.path.exists(config_path):
-            raise FileNotFoundError(f"Warning: Config file not found at: {config_path}.")
-        print(f"The MC-PBE is using config file at : {config_path}." )
-        # Dynamically load the configuration file
-        conf = runpy.run_path(config_path)
-        config = conf['config']
-        
-        # Assign attributes from the configuration file to the DPBESolver instance
-        for key, value in config.items():
-            if value is not None:
-                setattr(self, key, value)
-                if key == "alpha_prim": 
-                    if len(value) != self.dim**2:
-                        raise Exception(f"The length of the array alpha_prim needs to be {self.dim**2}.")
-                    else:
-                        self.alpha_mc = np.reshape(self.alpha_prim,(self.dim,self.dim))
                 
     def init_calc(self, init_Vc=True):
         
@@ -467,11 +398,11 @@ class MCPBESolver():
     
     # Calculate alpha base on collision case model
     def calc_alpha_ccm(self, idx1, idx2):
-        P = np.zeros((self.dim,self.dim))
-        for i in range(self.dim):
-            for j in range(self.dim):
-                P[i,j] = (self.V[i,idx1]/self.V[-1,idx1])*(self.V[j,idx2]/self.V[-1,idx2])
-        return np.sum(P*self.alpha_mmc)
+        P = np.array([self.V_flat[0,idx1]/self.V_flat[-1,idx1]*self.V_flat[0,idx2]/self.V_flat[-1,idx2],\
+                      self.V_flat[0,idx1]/self.V_flat[-1,idx1]*self.V_flat[1,idx2]/self.V_flat[-1,idx2],\
+                      self.V_flat[1,idx1]/self.V_flat[-1,idx1]*self.V_flat[0,idx2]/self.V_flat[-1,idx2],\
+                      self.V_flat[1,idx1]/self.V_flat[-1,idx1]*self.V_flat[1,idx2]/self.V_flat[-1,idx2]])
+        return np.sum(P*self.alpha_prim)
         
     # Calculate distribution moments mu(i,j,t)
     def calc_mom_t(self):
@@ -677,10 +608,10 @@ class MCPBESolver():
             idx2 = int(self.betaarray[2,select])
             
         ## Calculation of alpha
-        if self.SIZEEVAL == 1:            
-            self.alpha = self.alpha0 
-        elif self.SIZEEVAL == 2:
-            self.alpha = self.calc_alpha_ccm(idx1,idx2)
+        if self.dim == 1:            
+            self.alpha = self.alpha_prim 
+        elif self.dim == 2:
+            self.alpha = calc_alpha_ccm_jit(idx1,idx2)
         
         ## Size-correction
         if self.SIZEEVAL == 2:
@@ -833,13 +764,12 @@ def calc_b_r_jit_1d(BREAKRVAL, a, G, V, pl_P1, pl_P2):
     pass
 
 @jit(nopython=True)
-def calc_alpha_ccm_jit(V, alpha_mmc, idx1, idx2):
-    dim = len(V[:,0])
-    P = np.zeros((dim,dim))
-    for i in range(dim):
-        for j in range(dim):
-            P[i,j] = (V[i,idx1]/V[-1,idx1])*(V[j,idx2]/V[-1,idx2])
-    return np.sum(P*alpha_mmc)
+def calc_alpha_ccm_jit(V, alpha_prim, idx1, idx2):
+    P = np.array([V[0,idx1]/V[-1,idx1]*V[0,idx2]/V[-1,idx2],\
+                  V[0,idx1]/V[-1,idx1]*V[1,idx2]/V[-1,idx2],\
+                  V[1,idx1]/V[-1,idx1]*V[0,idx2]/V[-1,idx2],\
+                  V[1,idx1]/V[-1,idx1]*V[1,idx2]/V[-1,idx2]])
+    return np.sum(P*alpha_prim)
 
 ## JIT-compiled calculation of inter-event-time   
 @jit(nopython=True)       

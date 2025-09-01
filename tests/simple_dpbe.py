@@ -84,7 +84,7 @@ Created on Wed Apr 17 08:57:57 2024
 """
 import time
 import numpy as np
-from optframework.dpbe import DPBESolver
+from optframework import DPBESolver
 import matplotlib.pyplot as plt
 from optframework.utils.func.static_method import KDE_fit, KDE_score
 import optframework.utils.plotter.plotter as pt
@@ -187,7 +187,7 @@ if __name__ == "__main__":
     p.core.solve_PBE()
     ## View number concentration of partikel
     N = p.N
-    if p.solver == "radau":
+    if p.solve_algo == "radau":
         N_res_tem = p.N_res_tem
         t_res_tem = p.t_res_tem
         rate_res_tem = p.rate_res_tem
@@ -202,6 +202,7 @@ if __name__ == "__main__":
        NE = N[:,-1]
     print('### Total Volume before and after..')
     print(np.sum(N0*V_p), np.sum(NE*V_p))
+    print(np.sum(NE)/np.sum(N0))
     
     ## Visualize particle distribution at the first and the last time point 
     ## Visualize the convergence rate and error_norm

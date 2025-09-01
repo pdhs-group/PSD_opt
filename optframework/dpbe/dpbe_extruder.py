@@ -82,7 +82,7 @@ class ExtruderPBESolver():
                     raise FileNotFoundError(f"Warning: Config file not found at: {config_path}.")
                 print(f"The dPBE-Extruder simulation is using config file at : {config_path}")
                 config_path = config_paths[i]
-                self.p.load_attributes(config_path)
+                self.p._load_attributes(config_path)
                 ## V_unit must be the same as the geometric volume/capacity of the corresponding compartment.
                 self.p.V_unit = self.fill_rate[i]*self.VC[i]
                 self.p.full_init(calc_alpha=False)

@@ -23,13 +23,13 @@ config = {
     "t_write": 10,  
     # Interval (in time steps) for writing output data (e.g., simulation results).
 
-    "process_type": "mix",  
+    "process_type": "agglomeration",  
     # Type of process being simulated.
     # "agglomeration": pure agglomeration
     # "breakage": pure breakage
     # "mix": both agglomeration and breakage
 
-    "solver": "ivp",  
+    "solve_algo": "ivp",  
     # Numerical solver used to integrate the PBE.
     'c_mag_exp': 1e-2,
     "V_unit": 1e-12,  

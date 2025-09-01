@@ -187,7 +187,7 @@ if __name__ == "__main__":
     p.core.solve_PBE()
     ## View number concentration of partikel
     N = p.N
-    if p.solver == "radau":
+    if p.solve_algo == "radau":
         N_res_tem = p.N_res_tem
         t_res_tem = p.t_res_tem
         rate_res_tem = p.rate_res_tem

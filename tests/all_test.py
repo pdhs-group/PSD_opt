@@ -74,9 +74,9 @@ from optframework.utils.general_scripts.generate_psd import full_psd
 from optframework.utils.func.change_config import replace_key_value
 
 if __name__ == '__main__':
-    generate_synth_data = False
-    run_opt = False
-    run_calc_delta = False
+    generate_synth_data = True
+    run_opt = True
+    run_calc_delta = True
     run_validation = True
     
     ## Get config data

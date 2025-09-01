@@ -65,7 +65,7 @@ class MCPBESolver(BaseSolver):
             config_path = os.path.join(self.work_dir,"config","MCPBE_config.py")
 
         if load_attr:
-            self.load_attributes(config_path)
+            self._load_attributes(config_path)
             
         # self._reset_params()
         if init:
@@ -82,17 +82,17 @@ class MCPBESolver(BaseSolver):
             # # Extract number of components from concentration array c
             # self.dim = len(self.c)
             
-            self.V_flat = self.x**3*math.pi/6            # Array of (mean) volume primary particles (each component)
+            self.v = self.x**3*math.pi/6            # Array of (mean) volume primary particles (each component)
             self.v2 = self.x2**3*math.pi/6          # Array of (mean) volume primary particles (bi-modal case)
             
             # The following part changes whether mono-or bi-modal is used
             ## Mono-modal
             if self.PGV2 is None:
-                self.n = np.round(self.c/(self.V_flat))     # Array of number concentration (each component)
+                self.n = np.round(self.c/(self.v))     # Array of number concentration (each component)
                 self.n2 = 0*self.n
             ## Bi-modal
             else:
-                self.n = np.round(self.c/(2*self.V_flat))   # Array of number concentration (each component)
+                self.n = np.round(self.c/(2*self.v))   # Array of number concentration (each component)
                 self.n2 = np.round(self.c/(2*self.v2)) # Array of number concentration (each component)
             
             self.n0 = np.sum([self.n,self.n2])     # Total number of primary particles
@@ -112,7 +112,7 @@ class MCPBESolver(BaseSolver):
                 a_tem = (np.sum(self.a)/2).astype(int)  
                 self.V_flat = np.zeros((self.dim+1,a_tem))
                 for i in range(self.dim):
-                    self.V_flat[i, :] = np.full(a_tem, self.V_flat[i])
+                    self.V_flat[i, :] = np.full(a_tem, self.v[i])
                 
             # Initialize V for pure agglomeration or mix case or (breakage in 1d):
             else:
@@ -124,15 +124,15 @@ class MCPBESolver(BaseSolver):
                 for i in range (self.dim):
                     ## Monodisperse 
                     if self.PGV[i] == 'mono':
-                        self.V_flat[i,cnt:cnt+self.a[i]] = np.full(self.a[i],self.V_flat[i])
+                        self.V_flat[i,cnt:cnt+self.a[i]] = np.full(self.a[i],self.v[i])
                     ## Normal Distribution
                     elif self.PGV[i] == 'norm':
-                        self.V_flat[i,cnt:cnt+self.a[i]] = norm.rvs(loc=self.V_flat[i], 
-                                                               scale=self.SIG[i]*self.V_flat[i], size=self.a[i])
+                        self.V_flat[i,cnt:cnt+self.a[i]] = norm.rvs(loc=self.v[i], 
+                                                               scale=self.SIG[i]*self.v[i], size=self.a[i])
                     ## Weibull Distribution
                     elif self.PGV[i] == 'weibull':
-                        self.V_flat[i,cnt:cnt+self.a[i]] = weibull_min.rvs(2, loc=self.SIG[i]*self.V_flat[i],
-                                                                      scale=self.V_flat[i], size=self.a[i])
+                        self.V_flat[i,cnt:cnt+self.a[i]] = weibull_min.rvs(2, loc=self.SIG[i]*self.v[i],
+                                                                      scale=self.v[i], size=self.a[i])
                     else:
                         print(f'Provided PGV "{self.PGV[i]}" is invalid')
                         
@@ -610,7 +610,7 @@ class MCPBESolver(BaseSolver):
         if self.dim == 1:            
             self.alpha = self.alpha_prim 
         elif self.dim == 2:
-            self.alpha = calc_alpha_ccm_jit(idx1,idx2)
+            self.alpha = calc_alpha_ccm_jit(self.V_flat, self.alpha_prim, idx1,idx2)
         
         ## Size-correction
         if self.SIZEEVAL == 2:

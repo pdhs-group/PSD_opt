@@ -6,7 +6,7 @@ Created on Thu Jan  4 14:53:00 2024
 """
 import os
 import ray
-from optframework.kernel_opt.opt_base import OptBase
+from optframework import OptBase
 import numpy as np
 import time
 
@@ -23,7 +23,7 @@ def normal_test():
     print(f"The execution of optimierer takes：{elapsed_time} seconds")
     
     ## Calculate PBE with synth-data and parameter from optimization in 2D
-    opt.core.opt_pbe.set_init_N(exp_data_paths, 'mean')
+    opt.core.opt_pbe.calc_init_from_data(exp_data_paths, 'mean')
     opt.core.calc_all_pop(result_dict["opt_params"], opt.core.t_vec)
     x_uni, Q3 = return_pop_distribution()
     
@@ -56,22 +56,17 @@ def calc_delta_test(var_delta=False):
     opt.core.init_attr(opt.core_params)
     opt.core.init_pbe(opt.pop_params, opt.data_path) 
     if opt.core.calc_init_N:
-        opt.core.opt_pbe.set_init_N(exp_data_paths, 'mean')
+        opt.core.opt_pbe.calc_init_from_data(exp_data_paths, 'mean')
     if isinstance(exp_data_paths, list):
         x_uni_exp = []
         data_exp = []
         for exp_data_path_tem in exp_data_paths:
-            if opt.core.exp_data:
-                x_uni_exp_tem, data_exp_tem = opt.core.opt_data.get_all_exp_data(exp_data_path_tem)
-            else:
-                x_uni_exp_tem, data_exp_tem = opt.core.opt_data.get_all_synth_data(exp_data_path_tem)
+            x_uni_exp_tem, data_exp_tem = opt.core.p.get_all_data(exp_data_path_tem)
             x_uni_exp.append(x_uni_exp_tem)
             data_exp.append(data_exp_tem)
     else:
-        if opt.core.exp_data:
-            x_uni_exp, data_exp = opt.core.opt_data.get_all_exp_data(exp_data_paths)
-        else:
-            x_uni_exp, data_exp = opt.core.opt_data.get_all_synth_data(exp_data_paths)    
+        x_uni_exp, data_exp = opt.core.p.get_all_data(exp_data_paths)
+      
     # corr_agg = pop_params['CORR_BETA'] * pop_params['alpha_prim']
     # pop_params_test = {}
     # pop_params_test['corr_agg'] = corr_agg
@@ -93,7 +88,7 @@ if __name__ == '__main__':
     opt = OptBase()
     multi_flag = opt.multi_flag
     
-    data_name = "Sim_Mul_0.1_para_1.0_0.001_0.001_0.001_1.5_0.01_0.5_0.01_2.0.xlsx"
+    data_name = "Sim_Mul_0.1_para_1_1.0e-02_1.0e-02_1.0e-02_2_1.0e+13_1_1.0e+13_1.xlsx"
     
     exp_data_paths = os.path.join(opt.data_path, data_name)
     if multi_flag:
