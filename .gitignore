@@ -32,3 +32,5 @@ poetry.lock
 *.jpg
 /optframework/utils/func_temp/config
 *.sqlite
+/docs/api
+/optframework/examples/config/Ray_Tune
