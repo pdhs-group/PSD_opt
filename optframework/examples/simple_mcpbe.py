@@ -16,10 +16,11 @@ Unlike dPBE and PBM, MC-PBE can capture the full complexity of particle interact
 size distributions without assumptions about distribution shapes.
 
 Key Features:
-- Support for 1D (single component) and 2D (multi-component) systems
-- Configurable agglomeration and breakage kernels
-- Statistical analysis through multiple Monte Carlo realizations
-- Various initial particle size distribution shapes
+    
+    - Support for 1D (single component) and 2D (multi-component) systems
+    - Configurable agglomeration and breakage kernels
+    - Statistical analysis through multiple Monte Carlo realizations
+    - Various initial particle size distribution shapes
 """
 
 import numpy as np
