@@ -32,10 +32,10 @@ config = {
         # Specifies the number of initial time steps to skip during optimization, 
         # often useful to avoid the impact of initialization errors.
         
-        'add_noise': True,
+        'add_noise': False,
         # Whether to add noise to the generated data.
         
-        'smoothing': True,
+        'smoothing': False,
         # Whether to apply smoothing to the simulated data, usually performed using 
         # kernel density estimation (KDE).
         
@@ -58,7 +58,7 @@ config = {
         'sheet_name' : None, 
         # Name of the sheet in the experimental data file (if applicable).
          
-        'method': 'Cmaes',
+        'method': 'HEBO',
         # Optimization method to use. Options include:
         # - 'GP': Gaussian Process-based Bayesian Optimization
         # - 'TPE': Tree-structured Parzen Estimator
@@ -131,13 +131,13 @@ config = {
         # - 'MSE': Mean Squared Error
         # - 'RMSE': Root Mean Squared Error
         # - 'MAE': Mean Absolute Error
-        # - 'KL': Kullback-Leibler divergence (only compatible with q3 and Q3)
+        # - 'KL': Kullback-Leibler divergence (only compatible with q3)
         # It is allowed to use combinations of different PSDs and cost functions as optimization targets.
         # In such cases, the objective function is the sum of the individual errors.
         'tune_storage_path': os.path.join(_config_opt_path, "Ray_Tune"),   
         # Path to store Ray Tune optimization infomation.
         
-        'verbose': 0,
+        'verbose': 1,
     
         'multi_jobs': True,  
         # Whether to run multiple optimization tasks (Tune jobs) concurrently. 
@@ -198,6 +198,9 @@ config = {
         'pl_P2': {'bounds': (0.3, 3.0), 'log_scale': False},
         'pl_P3': {'bounds': (-5.0, -1.0), 'log_scale': True},
         'pl_P4': {'bounds': (0.3, 3.0), 'log_scale': False},
+        'actor_wait': {"fixed": True},
+        'wait_time': {"fixed": 1},
+        'max_reuse': {"fixed": 10}
     },
 
 }

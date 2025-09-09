@@ -431,6 +431,8 @@ ulated delta by comparing the
             else:
                 x_uni_exp, data_exp = self.core.get_all_synth_data(exp_data_path)
         # Calculate the delta value based on the difference between simulated and experimental data
+        if 'corr_agg_0' in params:
+            params = self.core.array_dict_transform(params)  
         delta = self.core.calc_delta(params, x_uni_exp, data_exp)
         return delta, exp_data_path_ori
     

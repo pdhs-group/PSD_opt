@@ -3,8 +3,8 @@
 Calculate the difference between the PSD of the simulation results and the experimental data.
 """
 import numpy as np
-from ray import tune
 from scipy.stats import entropy
+import yappi
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 from optframework.dpbe.dpbe_base import DPBESolver
 from optframework.utils.func.bind_methods import bind_methods_from_module , unbind_methods_from_class
@@ -39,6 +39,8 @@ class OptCore():
         self.init_N_2D = None
         self.init_N = None
         self.mean_delta = True
+        self.resume_unfinished = False
+        self.debug_mod = False
         
  
     def init_attr(self, core_params):
@@ -199,8 +201,10 @@ class OptCore():
                 data_mod = pop.re_calc_distribution(x_uni_exp, qx=qx_mod, flag=flag)[0]
                 delta = self.cost_fun(data_exp, data_mod, cost_func_type, flag)
                 delta_sum += delta 
-            
-            return delta
+            if self.exp_data:
+                return delta
+            else:
+                return delta / len(x_uni_exp)
         
         # Multiple sample case
         else:
@@ -221,7 +225,10 @@ class OptCore():
                     delta_sum += delta 
                 
             delta_sum /= self.sample_num
-            return delta_sum
+            if self.exp_data:
+                return delta
+            else:
+                return delta / len(x_uni_exp)
         
     def check_corr_agg(self, params_in):
         """
@@ -377,7 +384,6 @@ class OptCore():
         print(notice)
 
 # Bind methods from other modules into this class
-bind_methods_from_module(OptCore, 'optframework.kernel_opt.opt_algo_bo')
 bind_methods_from_module(OptCore, 'optframework.kernel_opt.opt_data')
 bind_methods_from_module(OptCore, 'optframework.kernel_opt.opt_pbe')
 bind_methods_from_module(OptCore, 'optframework.dpbe.dpbe_post')

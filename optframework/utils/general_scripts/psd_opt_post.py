@@ -60,7 +60,6 @@ def calc_diff(result):
             elif diff_type == 'scaled':
                 # scaled_diff = diff / (max_search - min_search)
                 scaled_diff = diff / (max(tem_ori_kernel) - min(tem_ori_kernel))
-                scaled_diff
                 diff = scaled_diff
             diff_kernels[kernel] = diff
     return diff_kernels, opt_kernels, ori_kernels 
@@ -327,7 +326,7 @@ def calc_save_PSD_delta(results, data_paths):
 def calc_ori_mse():
     # tmpdir = os.environ.get('TMP_PATH')
     # data_path = os.path.join(tmpdir, "data")
-    data_path = r"C:\Users\px2030\Code\Ergebnisse\opt_para_study\study_data\data"
+    data_path = r"C:\Users\px2030\Code\PSD_opt\optframework\utils\general_scripts\mix\data"
     config_path = r"C:\Users\px2030\Code\PSD_opt\tests\config\opt_config.py"
     opt = OptBase(config_path=config_path, data_path=data_path)
     
@@ -342,11 +341,11 @@ def calc_ori_mse():
         if not any(np.array_equal(comp, x) or np.array_equal(comp_reversed, x) for x in unique_alpha_prim):
             unique_alpha_prim.append(comp)
     var_alpha_prim = np.array(unique_alpha_prim)
-    var_v = np.array([1.0,1.5])
-    var_P1 = np.array([1e-4,1e-2])
-    var_P2 = np.array([0.5,2.0])
-    var_P3 = np.array([1e-4,1e-2])
-    var_P4 = np.array([0.5,2.0])
+    var_v = np.array([1.5])
+    var_P1 = np.array([1e-4])
+    var_P2 = np.array([2.0])
+    var_P3 = np.array([1e-2])
+    var_P4 = np.array([0.5])
     
     func_list = []
     for j,corr_beta in enumerate(var_corr_beta):
@@ -357,8 +356,9 @@ def calc_ori_mse():
                         for m3,P3 in enumerate(var_P3):
                             for m4,P4 in enumerate(var_P4):
                                 ori_params = {
-                                    'CORR_BETA' : corr_beta,
-                                    'alpha_prim' : alpha_prim,
+                                    'corr_agg_0' : corr_beta*alpha_prim[0],
+                                    'corr_agg_1' : corr_beta*alpha_prim[1],
+                                    'corr_agg_2' : corr_beta*alpha_prim[2],
                                     'pl_v' : v,
                                     'pl_P1' : P1,
                                     'pl_P2' : P2,
@@ -376,10 +376,14 @@ def calc_ori_mse():
                                     exp_data_path.replace(".xlsx", "_NM.xlsx"),
                                     exp_data_path.replace(".xlsx", "_M.xlsx")
                                 ]
+                                if opt.multi_flag:
+                                    _path = exp_data_paths
+                                else:
+                                    _path = exp_data_path
                                 # print(data_name)
-                                results = opt.calc_PSD_delta(ori_params, exp_data_paths)
-                                # func_list.append((ori_params,exp_data_paths))
-    # pool = multiprocessing.Pool()
+                                results = opt.calc_PSD_delta(ori_params, _path)
+    #                             func_list.append((ori_params,_path))
+    # pool = multiprocessing.Pool(processes=6)
     # results = pool.starmap(opt.calc_PSD_delta, func_list) 
     np.savez('ori_mse.npz', 
           results=results, 
@@ -527,9 +531,9 @@ def which_group(group_flag):
             'multi_[(\'qx\', \'MSE\')]_Cmaes_wight_1_iter_200.npz',
             'multi_[(\'qx\', \'MSE\')]_Cmaes_wight_1_iter_400.npz',
             'multi_[(\'qx\', \'MSE\')]_Cmaes_wight_1_iter_800.npz',
-            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_1600.npz',
-            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_2400.npz',
-            # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_3200.npz',
+            'multi_[(\'qx\', \'MSE\')]_Cmaes_wight_1_iter_1600.npz',
+            # 'multi_[(\'qx\', \'MSE\')]_Cmaes_wight_1_iter_2400.npz',
+            # 'multi_[(\'qx\', \'MSE\')]_Cmaes_wight_1_iter_3200.npz',
             # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_4000.npz',
             # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_4800.npz',
             # 'multi_[(\'q3\', \'MSE\')]_Cmaes_wight_1_iter_5000.npz',
@@ -541,7 +545,7 @@ def which_group(group_flag):
             'iter_200',
             'iter_400',
             'iter_800',
-            # 'iter_1600',
+            'iter_1600',
             # 'iter_2400',
             # 'iter_3200',
             # 'iter_4000',
@@ -949,7 +953,7 @@ def which_group(group_flag):
 #%% PRE-POCESSING
 def read_results(data_paths):
     if group_flag == "no_multi":
-        ori_mse_path = os.path.join(results_pth, pbe_type, 'no_multi_ori_mse.npz')
+        ori_mse_path = os.path.join(results_pth, pbe_type, 'ori_mse_no_multi.npz')
     else:
         ori_mse_path = os.path.join(results_pth, pbe_type, 'ori_mse.npz')
     ori_mse = np.load(ori_mse_path,allow_pickle=True)['results']
@@ -975,6 +979,9 @@ def read_results(data_paths):
                 # results_tem[i, 2] = results[i, 1]
                 results_tem[i, 0] = results[i]['opt_score']
                 results_tem[i, 1] = results[i]['opt_params']
+                del results_tem[i, 1]['actor_wait']
+                del results_tem[i, 1]['wait_time']
+                del results_tem[i, 1]['max_reuse']
                 filename = results[i]['file_path'] 
                 results_tem[i, 3] = filename
                 if isinstance(filename, list):
@@ -1272,7 +1279,7 @@ if __name__ == '__main__':
     remove_small_results = False
     calc_criteria = False
     visualize_sampler_iter_flag = False
-    export_in_origin = True
+    export_in_origin = False
 
     # pbe_type = 'agglomeration'
     # pbe_type = 'breakage'

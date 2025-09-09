@@ -297,7 +297,7 @@ def breakage_rate_1d(V, V1_mean, pl_P1, pl_P2, G, BREAKRVAL):
     B_R = np.zeros_like(V)
     num_particles = len(B_R)
     ###
-    V1_mean = V[1]
+    # V1_mean = V[1]
     ###
     if V[0] == 0:
         for i in range(1, num_particles):
@@ -330,8 +330,8 @@ def calc_B_R_1d(V, V1_mean, pl_P1, pl_P2, G, BREAKRVAL, i):
 def breakage_rate_2d(V, V1, V3, V1_mean, V3_mean, G, pl_P1, pl_P2, pl_P3, pl_P4, BREAKRVAL, BREAKFVAL):
     B_R = np.zeros_like(V)
     ###
-    V1_mean = V1[1]
-    V3_mean = V3[1]
+    # V1_mean = V1[1]
+    # V3_mean = V3[1]
     ###
     V_mean = (V3_mean + V1_mean) / 2.0
     for idx, _ in np.ndenumerate(B_R):
@@ -357,8 +357,8 @@ def breakage_rate_2d_flat(V, V1, V3, V1_mean, V3_mean, G, pl_P1, pl_P2, pl_P3, p
     ## And there is a one-to-one correspondence between V1, 
     B_R = np.zeros_like(V)
     ###
-    V1_mean = V1[1]
-    V3_mean = V3[1]
+    # V1_mean = V1[1]
+    # V3_mean = V3[1]
     ###
     V_mean = (V3_mean + V1_mean) / 2.0
     num_particles = len(B_R)

@@ -15,7 +15,6 @@ from ray import tune
 # from ray.util.placement_group import placement_group, placement_group_table
 import ray.util.multiprocessing as mp
 from ray.tune.search.optuna import OptunaSearch
-from ray.tune.search.hebo import HEBOSearch
 from optuna.samplers import GPSampler,CmaEsSampler,TPESampler,NSGAIIISampler,QMCSampler
 from ray.tune.search import ConcurrencyLimiter
 from .opt_core_ray import OptCoreRay

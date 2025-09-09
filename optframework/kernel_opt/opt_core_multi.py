@@ -6,6 +6,7 @@ Created on Mon Dec 11 09:05:42 2023
 """
 
 from .opt_core import OptCore   
+import yappi
 
 class OptCoreMulti(OptCore):
     """
@@ -81,3 +82,4 @@ class OptCoreMulti(OptCore):
         self.calc_pop(self.p_M, params, t_vec, self.init_N_M)
         self.calc_pop(self.p, params, t_vec, self.init_N_2D)           
         
+    

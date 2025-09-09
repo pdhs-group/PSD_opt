@@ -62,6 +62,7 @@ if __name__ == '__main__':
         result_dict = opt.find_opt_kernels(method='delta', data_names=exp_data_paths)
         print('The optimization process has finished running.')
         print('Please check the output of ray to confirm whether the calculation was successful.')
+        ray.shutdown()
         
     if run_calc_delta:
         if opt.core.calc_init_N:
