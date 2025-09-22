@@ -71,7 +71,7 @@ config = {
         # This value will change global random states for numpy and torch on 
         # initalization and loading from checkpoint.
         
-        'n_iter': 20,
+        'n_iter': 100,
         # Number of iterations for the optimization process.
 
         'calc_init_N': False,
@@ -108,9 +108,10 @@ config = {
         'weight_2d': 1,  
         # Weight applied to the error (delta) of 2D particle populations, giving it 
         # more importance during optimization.
-    
-        'delta_flag': [('q3','MSE'), 
-                       # ('Q3','RMSE'), 
+        'dist_type': 'q3',
+        
+        'delta_flag': [('qx','MSE'), 
+                       # ('Qx','RMSE'), 
                        #('x_50','MSE')
                        ],
         # Specifies which particle size distribution (PSD) and cost function to use 
@@ -130,7 +131,7 @@ config = {
         'tune_storage_path': os.path.join(_config_opt_path, "Ray_Tune"),  
         # Path to store Ray Tune optimization infomation.
                 
-        'verbose': 0,
+        'verbose': 1,
         
         'multi_jobs': False,
         # Whether to run multiple optimization tasks (Tune jobs) concurrently. 
@@ -148,8 +149,8 @@ config = {
     
     ## PBE parameters
     'pop_params': {
-        'NS' : 10,
-        'S' : 4,
+        'NS' : 15,
+        'S' : 2.8,
         "SIZEEVAL": 1,
         "COLEVAL": 1,
         "EFFEVAL": 1,
@@ -190,6 +191,9 @@ config = {
         'pl_P2': {'bounds': (0.3, 3.0), 'log_scale': False},
         'pl_P3': {'bounds': (-5.0, -1.0), 'log_scale': True},
         'pl_P4': {'bounds': (0.3, 3.0), 'log_scale': False},
+        'actor_wait': {"fixed": False},
+        'wait_time': {"fixed": 0},
+        'max_reuse': {"fixed": 10}
     },
 
 }

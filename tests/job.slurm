@@ -14,6 +14,9 @@ export TMP_PATH=$TMPDIR
 export STORAGE_PATH="$(ws_find ws)/Batch_Opt"
 export TEST_GROUP="group1"
 export PY_FILE="opt_Batch.py"
+head_node="$(hostname)"
+head_node_ip="$(hostname --ip-address)"
+port=6379
 
 (
     SLEEP_TIME=$((72*3600 - 300))
@@ -44,6 +47,24 @@ for pkg in ray numpy optframework; do
     pip show $pkg | grep -E 'Name|Version|Location'
 done
 echo "=============================="
+
+if [[ "$head_node_ip" == *" "* ]]; then
+  IFS=' ' read -ra ADDR <<<"$head_node_ip"
+  if [[ ${#ADDR[0]} -gt 16 ]]; then
+    head_node_ip="${ADDR[1]}"
+  else
+    head_node_ip="${ADDR[0]}"
+  fi
+  echo "Multiple addresses detected. Use IPv4: $head_node_ip"
+fi
+
+# --- Start Ray head ---
+ray start --head \
+  --node-ip-address="${head_node_ip}" \
+  --port="${port}" \
+  --num-cpus "${SLURM_CPUS_PER_TASK}" \
+  --num-gpus 0 \
+  --block &
 
 python $PY_FILE
 

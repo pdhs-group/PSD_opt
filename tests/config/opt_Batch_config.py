@@ -28,7 +28,7 @@ config = {
         # Time vector for the entire simulation, specifying the time points at which 
         # calculations are performed.
         
-        'delta_t_start_step' : 1,
+        'delta_t_start_step' : 0,
         # Specifies the number of initial time steps to skip during optimization, 
         # often useful to avoid the impact of initialization errors.
         

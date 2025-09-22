@@ -15,7 +15,6 @@ from ray import tune
 # from ray.util.placement_group import placement_group, placement_group_table
 import ray.util.multiprocessing as mp
 from ray.tune.search.optuna import OptunaSearch
-from ray.tune.search.hebo import HEBOSearch
 from optuna.samplers import GPSampler,CmaEsSampler,TPESampler,NSGAIIISampler,QMCSampler
 from ray.tune.search import ConcurrencyLimiter
 from .opt_core_ray import OptCoreRay
@@ -212,16 +211,16 @@ class OptBaseRay():
         # Prepare experimental data (either for 1D or 2D)
         if isinstance(exp_data_paths, list):
             # When set to multi, the exp_data_paths entered here is a list containing one 2d data name and two 1d data names.
-            x_uni_exp = []
-            data_exp = []
-            for exp_data_paths_tem in exp_data_paths:
-                x_uni_exp_tem, data_exp_tem = base.core.p.get_all_data(exp_data_paths_tem)
-                x_uni_exp.append(x_uni_exp_tem)
-                data_exp.append(data_exp_tem)
+            # x_uni_exp = []
+            # data_exp = []
+            # for exp_data_paths_tem in exp_data_paths:
+            #     x_uni_exp_tem, data_exp_tem = base.core.p.get_all_data(exp_data_paths_tem)
+            #     x_uni_exp.append(x_uni_exp_tem)
+            #     data_exp.append(data_exp_tem)
             data_name = getattr(base.core, 'data_name_tune', os.path.basename(exp_data_paths[0]))
         else:
             # When not set to multi or optimization of 1d-data, the exp_data_paths contain the name of that data.
-            x_uni_exp, data_exp = base.core.p.get_all_data(exp_data_paths)
+            # x_uni_exp, data_exp = base.core.p.get_all_data(exp_data_paths)
             data_name = os.path.basename(exp_data_paths)
             
         # Reuse the previous parameters as warm-up for new optimization
@@ -246,6 +245,8 @@ class OptBaseRay():
                         base.RT_space[name] = tune.loguniform(10**lo, 10**hi)
                     else:
                         base.RT_space[name] = tune.uniform(lo, hi)
+        base.RT_space["__exp_paths"] = tune.choice([exp_data_paths])
+        base.RT_space["__known_params"] = tune.choice([known_params])
         # Create the search algorithm
         algo = self.create_algo(evaluated_params=evaluated_params, evaluated_rewards=evaluated_rewards)
         # Clean up the data name for output storage 
@@ -257,23 +258,29 @@ class OptBaseRay():
         def trial_dirname_creator(trial):
             return f"trial_{trial.trial_id}"
         # Set up the trainable function based on the multi_flag
-        if not base.multi_flag:
-            trainable = tune.with_parameters(OptCoreRay, core_params=base.core_params, pop_params=base.pop_params,
-                                             data_path=base.data_path, exp_data_paths=exp_data_paths,
-                                             x_uni_exp=x_uni_exp, data_exp=data_exp, known_params=known_params, 
-                                             exp_case=base.core.exp_data)
-        else:
-            trainable = tune.with_parameters(OptCoreMultiRay, core_params=base.core_params, pop_params=base.pop_params,
-                                             data_path=base.data_path, exp_data_paths=exp_data_paths,
-                                             x_uni_exp=x_uni_exp, data_exp=data_exp, known_params=known_params,
-                                             exp_case=base.core.exp_data)    
+        # if not base.multi_flag:
+        #     trainable = tune.with_parameters(OptCoreRay, core_params=base.core_params, pop_params=base.pop_params,
+        #                                      data_path=base.data_path, exp_data_paths=exp_data_paths,
+        #                                      x_uni_exp=x_uni_exp, data_exp=data_exp, known_params=known_params, 
+        #                                      exp_case=base.core.exp_data)
+        # else:
+        #     trainable = tune.with_parameters(OptCoreMultiRay, core_params=base.core_params, pop_params=base.pop_params,
+        #                                      data_path=base.data_path, exp_data_paths=exp_data_paths,
+        #                                      x_uni_exp=x_uni_exp, data_exp=data_exp, known_params=known_params,
+        #                                      exp_case=base.core.exp_data)    
+        trainable = tune.with_parameters(
+            OptCoreRay if not base.multi_flag else OptCoreMultiRay,
+            core_params=base.core_params,
+            pop_params=base.pop_params,
+            data_path=base.data_path,
+        ) 
         # Define the resources used for each trial using PlacementGroupFactory
-        trainable_with_resources  = tune.with_resources(trainable, 
-                                                      resources=tune.PlacementGroupFactory([{"CPU": base.core.cpus_per_trail}]),
-        )
-        # trainable_with_resources  = tune.with_resources(trainable,                             
-        #     {"cpu": base.core.cpus_per_trail}, 
+        # trainable_with_resources  = tune.with_resources(trainable, 
+        #                                               resources=tune.PlacementGroupFactory([{"CPU": base.core.cpus_per_trail}]),
         # )
+        trainable_with_resources  = tune.with_resources(trainable,                             
+            {"cpu": base.core.cpus_per_trail}, 
+        )
         
         # checkpoint_path_save = os.path.join(base.core.tune_storage_path, f"{data_name}_checkpoint_{n_save}.pkl")
         # if resume_unfinished:
@@ -321,6 +328,10 @@ class OptBaseRay():
         results = tuner.fit()
         # algo.save(checkpoint_path_save)
         
+        # df = results.get_dataframe()
+        # df_path = os.path.join(r"C:\Users\px2030\Code\PSD_opt\optframework\utils\general_scripts\Parameter_study", data_name+".csv")
+        # df.to_csv(df_path, index=False)
+        
         all_params = []
         all_score = []
         for trial in results:
@@ -329,26 +340,25 @@ class OptBaseRay():
             if score is not None:
                 all_params.append(config)
                 all_score.append(score)
-    
+
         warm_params_path = os.path.join(result_dir, f"{base.core.n_iter}.sqlite")
         self._save_warm_params(warm_params_path, data_name, all_params, all_score)
         # Get the best result from the optimization
         opt_result = results.get_best_result(metric="loss", mode="min")
         opt_params = opt_result.config
-        opt_exp_data_paths = opt_result.metrics["exp_paths"]
+        opt_exp_data_paths = data_name
         opt_score = opt_result.metrics["loss"]
         result_dict = {
             "opt_score": opt_score,
             "opt_params": opt_params,
             "file_path": opt_exp_data_paths,
         }
-    
         return result_dict
         
     def create_algo(self, batch=False, evaluated_params=None, evaluated_rewards=None):
         """
         Create and return the search algorithm to be used for hyperparameter optimization.
-    
+
         This method creates a search algorithm based on the `method` attribute of the core object. 
         It supports a variety of search algorithms from the Optuna library, including Bayesian 
         optimization (`GP`), tree-structured Parzen estimators (`TPE`), covariance matrix adaptation 
@@ -358,11 +368,10 @@ class OptBaseRay():
         The number of concurrent trials controls the parallelism of the optimization process. In theory, 
         increasing the number of concurrent trials speeds up the calculation, but it may reduce the 
         convergence rate due to less frequent information sharing between trials. Empirically, a range of 
-        4-12 concurrent trials tends to work well. 
+        2-12 concurrent trials tends to work well. 
     
         The `batch` parameter controls whether a new batch of trials is submitted only after the current 
-        batch finishes all trials. Note that for some algorithms, the batch setting is fixed; for example, 
-        the HEBO algorithm always uses batching.
+        batch finishes all trials. Note that for some algorithms, the batch setting is fixed.
     
         Parameters
         ----------
@@ -376,9 +385,13 @@ class OptBaseRay():
     
         """
         base = self.base
-        # if base.core.method == 'HEBO': 
-        #     search_alg = HEBOSearch(metric="loss", mode="min", random_state_seed=base.core.random_seed)
         if base.core.method == 'GP': 
+            try:
+                import torch  # just to check if PyTorch is installed
+            except ImportError:
+                raise ImportError(
+                "PyTorch is required for GPSampler but not installed. "
+            )
             search_alg = OptunaSearch(metric="loss", mode="min", sampler=GPSampler(seed=base.core.random_seed), 
                                       points_to_evaluate=evaluated_params, evaluated_rewards=evaluated_rewards)
         elif base.core.method == 'TPE': 
@@ -401,3 +414,4 @@ class OptBaseRay():
         else:
             # Limit the number of concurrent trials using ConcurrencyLimiter
             return ConcurrencyLimiter(search_alg, max_concurrent=base.core.max_concurrent, batch=batch)
+

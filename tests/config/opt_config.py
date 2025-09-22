@@ -103,8 +103,6 @@ config = {
         # - 'RMSE': Root Mean Squared Error
         # - 'MAE': Mean Absolute Error
         # - 'KL': Kullback-Leibler divergence (only compatible with q3 and Q3)
-        # Note: It is allowed to use combinations of different objectives and calculation method as cost function.
-        # In such cases, the cost function is the sum of the individual errors.
         'delta_flag': [# ('qx','MSE'), 
                        ('Qx','MSE'), 
                        # ('x_50','MSE'),

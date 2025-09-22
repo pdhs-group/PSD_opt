@@ -3,11 +3,13 @@
 Calculate the difference between the PSD of the simulation results and the experimental data.
 Minimize the difference by optimization algorithm to obtain the kernel of PBE.
 """
-import os
-import time
+import os, csv, time
+from pathlib import Path
+import yappi
+from copy import deepcopy
 from ray import tune
 from .opt_core import OptCore
-
+        
 class OptCoreRay(OptCore, tune.Trainable):
     """
     An extension of the OptCore class that integrates with Ray Tune for optimization.
@@ -30,8 +32,7 @@ class OptCoreRay(OptCore, tune.Trainable):
         OptCore.__init__(self)
         tune.Trainable.__init__(self, *args, **kwargs)
         
-    def setup(self, config, core_params, pop_params, data_path, 
-              exp_data_paths, x_uni_exp, data_exp, known_params, exp_case):
+    def setup(self, config, core_params, pop_params, data_path):
         """
         Set up the environment for the optimization task.
         
@@ -60,22 +61,56 @@ class OptCoreRay(OptCore, tune.Trainable):
         self.init_attr(core_params)
         self.init_pbe(pop_params, data_path)
         
+        self.exp_data_paths = config.get("__exp_paths", None)
+        self.known_params = config.get("__known_params", None)
+        self.actor_wait = config.get("actor_wait", True)
+        self.wait_time = config.get("wait_time", 2)
+        self.max_reuse = config.get("max_reuse", 50)
         # Initialize the number concentration N if required
         if self.calc_init_N:
-            self.opt_pbe.calc_init_from_data(exp_data_paths, init_flag='mean')
+            self.opt_pbe.calc_init_from_data(self.exp_data_paths, init_flag='mean')
             
         # Store experimental data and known parameters
         self.pop_params = pop_params
         self.data_path = data_path
-        self.known_params = known_params
+        self.exp_case = self.exp_data
+        self.reuse_num =  0
+        
+        # Prepare experimental data (either for 1D or 2D)
+        if isinstance(self.exp_data_paths, list):
+            # When set to multi, the exp_data_paths entered here is a list containing one 2d data name and two 1d data names.
+            x_uni_exp = []
+            data_exp = []
+            for exp_data_paths_tem in self.exp_data_paths:
+                if self.exp_case:
+                    x_uni_exp_tem, data_exp_tem = self.get_all_exp_data(exp_data_paths_tem)
+                else:
+                    x_uni_exp_tem, data_exp_tem = self.get_all_synth_data(exp_data_paths_tem)
+                x_uni_exp.append(x_uni_exp_tem)
+                data_exp.append(data_exp_tem)
+        else:
+            # When not set to multi or optimization of 1d-data, the exp_data_paths contain the name of that data.
+            if self.exp_case:
+                x_uni_exp, data_exp = self.get_all_exp_data(self.exp_data_paths)
+            else:
+                x_uni_exp, data_exp = self.get_all_synth_data(self.exp_data_paths)
         self.x_uni_exp = x_uni_exp
         self.data_exp = data_exp
-        self.exp_data_paths = exp_data_paths
-        self.exp_case = exp_case
-        self.reuse_num =  0
-        self.actor_wait = config.get("actor_wait", True)
-        self.wait_time = config.get("wait_time", 5)
-        self.max_reuse = config.get("max_reuse", 10)
+        
+        self._time_loger = True
+        if self._time_loger:
+            self._logdir = self._resolve_logdir()
+            self._csv = os.path.join(self.logdir, "timings_yappi.csv")
+            print(f"save the info in path {self._csv}")
+            if not os.path.exists(self._csv):
+                with open(self._csv, "w", newline="") as f:
+                    csv.writer(f).writerow([
+                        "sample_idx","matrix_size",
+                        "step_wall_s","solver_wall_s","overhead_wall_s"
+                    ])
+            self._sample_idx = 0
+        
+        self.EXCLUDE_KEYS = {"__exp_paths", "__known_params", "actor_wait", "wait_time", "max_reuse"}
     
     def step(self):
         """
@@ -91,11 +126,7 @@ class OptCoreRay(OptCore, tune.Trainable):
             A dictionary containing the loss (delta) and the reuse count for the current Actor.
         """
         start_time = time.time()
-        # Transform the input parameters if they include corr_agg for dimensional handling
-        if 'corr_agg_0' in self.config:
-            transformed_params = self.array_dict_transform(self.config)
-        else:
-            transformed_params = self.config.copy()
+        transformed_params = {k: deepcopy(v) for k, v in self.config.items() if k not in self.EXCLUDE_KEYS}
             
         if not self.exp_case:
             # Apply known parameters to override any conflicting optimization parameters
@@ -105,23 +136,48 @@ class OptCoreRay(OptCore, tune.Trainable):
                         print(f"Warning: Known parameter '{key}' are set for optimization.")
                     transformed_params[key] = value
                     
+            # Transform the input parameters if they include corr_agg for dimensional handling
+            if 'corr_agg_0' in transformed_params:
+                transformed_params = self.array_dict_transform(transformed_params)   
             # print(f"The paramters actually entered calc_delta are {transformed_params}")
+            if self._time_loger:
+                matrix_size = int(transformed_params.get("matrix_size", -1))
+                t0 = time.perf_counter()
+                yappi.clear_stats()
+                yappi.set_clock_type("wall")  # First measure wall clock (reflects waiting + Python layer overhead)
+                yappi.start()
+            
             # Calculate the loss (delta) using the transformed parameters
             loss = self.calc_delta(transformed_params, self.x_uni_exp, self.data_exp)
+            if self._time_loger:
+                yappi.stop()
+                _yappi_debug_preview(keyword="calc_delta")
+                solver_wall_s = _yappi_total_time(name_endswith=".calc_delta")
+                step_wall_s = time.perf_counter() - t0
+                overhead_wall_s = max(0.0, step_wall_s - solver_wall_s)
+                with open(self._csv, "a", newline="") as f:
+                    csv.writer(f).writerow([
+                        self._sample_idx, matrix_size,
+                        f"{step_wall_s:.6f}", f"{solver_wall_s:.6f}", f"{overhead_wall_s:.6f}"
+                    ])
+                self._sample_idx += 1
+            
         else:
             losses = []
             for i in range(len(self.known_params)):
                 known_i = self.known_params[i]
                 for key, value in known_i.items():
                     transformed_params[key] = value
-                    
+                # Transform the input parameters if they include corr_agg for dimensional handling
+                if 'corr_agg_0' in transformed_params:
+                    transformed_params = self.array_dict_transform(transformed_params)    
                 # print(f"The paramters actually entered calc_delta are {transformed_params}")
                 x_i = self.x_uni_exp[i]
                 data_i = self.data_exp[i]
                 loss_i = self.calc_delta(transformed_params, x_i, data_i)
                 losses.append(loss_i)
             loss = sum(losses) / len(losses)
-            
+        
         end_time = time.time()
         execution_time = end_time - start_time
         
@@ -134,6 +190,7 @@ class OptCoreRay(OptCore, tune.Trainable):
             
         result = {"loss": loss, "reuse_num": self.reuse_num, "exp_paths": self.exp_data_paths}    
         return result
+    
     def save_checkpoint(self, checkpoint_dir):
         """
         Save the checkpoint. This method is required by Ray Tune but is not used in this implementation.
@@ -166,5 +223,71 @@ class OptCoreRay(OptCore, tune.Trainable):
         self.config = new_config
         return True
         
+    def _resolve_logdir(self) -> str:
+        # 1) In Ray Tune's Trainable, self.logdir is already available (read-only)
+        try:
+            return str(self.logdir)
+        except Exception:
+            pass
+        # 2) In functional/other contexts, use session/get_trial_dir as fallback
+        try:
+            from ray.air import session
+            return str(session.get_trial_dir())
+        except Exception:
+            try:
+                from ray import tune
+                return str(tune.get_trial_dir())
+            except Exception:
+                # 3) Final fallback: current working directory
+                return str(Path.cwd())
+            
+def _yappi_total_time(name_equals: str | None = None,
+                      name_contains: str | None = None,
+                      name_endswith: str | None = None,
+                      module_contains: str | None = None,
+                      use_self_time: bool = False) -> float:
+    """
+    Aggregate yappi statistics (in seconds).
+    - name_equals / name_contains / name_endswith: Match yappi's function name field (e.g., "OptCoreMultiRay.calc_delta")
+    - module_contains: Match module field (usually file path, on Windows can use 'opt_core_multi.py' or 'optframework' fragment)
+    - use_self_time=True uses (ttot - tsub) for self time only; default uses ttot (including sub-calls)
+    """
+    total = 0.0
+    stats = yappi.get_func_stats()
+    for s in stats:
+        name = (getattr(s, "name", "") or "")
+        module = (getattr(s, "module", "") or "")
+        if name_equals is not None and name != name_equals:
+            continue
+        if name_contains is not None and name_contains not in name:
+            continue
+        if name_endswith is not None and not name.endswith(name_endswith):
+            continue
+        if module_contains is not None and module_contains not in module:
+            continue
+        ttot = float(getattr(s, "ttot", 0.0) or 0.0)
+        if use_self_time:
+            tsub = float(getattr(s, "tsub", 0.0) or 0.0)
+            ttot = max(0.0, ttot - tsub)
+        total += ttot
+    return total
 
-
+def _yappi_debug_preview(limit: int = 50, keyword: str | None = None) -> None:
+    """
+    Print first several yappi statistics to identify the actual content of module/fullname.
+    Call after yappi.stop() to see what entries are available.
+    """
+    stats = yappi.get_func_stats()
+    cnt = 0
+    for s in stats:
+        name = getattr(s, "name", "")
+        module = getattr(s, "module", "")
+        fullname = getattr(s, "fullname", "")
+        ttot = getattr(s, "ttot", 0.0)
+        tsub = getattr(s, "tsub", 0.0)
+        line = f"module={module} | fullname={fullname} | name={name} | ttot={ttot:.6f}s | self={max(0.0, ttot - tsub):.6f}s"
+        if (keyword is None) or (keyword in line):
+            print(line)
+            cnt += 1
+            if cnt >= limit:
+                break

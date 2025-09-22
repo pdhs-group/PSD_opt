@@ -28,7 +28,7 @@ Usage Flow:
 from optframework import PBMSolver
 
 if __name__ == "__main__":
-    dim = 2
+    dim = 1
     pbm = PBMSolver(dim)
     pbm.core.init_moments(
         NDF_shape="normal",    # Shape of initial distribution

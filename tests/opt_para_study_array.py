@@ -5,6 +5,7 @@ Created on Tue Dec  5 10:58:09 2023
 @author: px2030
 """
 import sys, os
+import argparse
 from pathlib import Path
 import time
 import ray
@@ -12,13 +13,21 @@ import numpy as np
 from optframework.kernel_opt.opt_base import OptBase
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--chunk_idx', type=int, required=True)
+    parser.add_argument('--num_chunks', type=int, required=True)
+    args = parser.parse_args()
+
+    chunk_idx = args.chunk_idx
+    num_chunks = args.num_chunks
+
     base_path = Path(os.getcwd()).resolve()
-    # tmpdir = os.environ.get('TMP_PATH')
-    # data_path = os.path.join(tmpdir, "data")
-    # test_group = os.environ.get('TEST_GROUP')
-    data_path = r"C:\Users\px2030\Code\Ergebnisse\opt_para_study\study_data\New_CAMES\data"
-    result_dir = os.path.join(base_path, "opt_results")
-    # result_dir = os.path.join(os.environ.get('STORAGE_PATH'), f"opt_results_{test_group}")
+    tmpdir = os.environ.get('TMP_PATH')
+    data_path = os.path.join(tmpdir, "data")
+    test_group = os.environ.get('TEST_GROUP')
+    # data_path = r"C:\Users\px2030\Code\Ergebnisse\opt_para_study\study_data\data"
+    # result_dir = os.path.join(base_path, "opt_results")
+    result_dir = os.path.join(os.environ.get('STORAGE_PATH'), f"opt_results_{test_group}")
     os.makedirs(result_dir, exist_ok=True)
     #%%  Instantiate OptBase.
     opt = OptBase(data_path=data_path)
@@ -33,15 +42,17 @@ if __name__ == '__main__':
     method = opt.core.method
     n_iter = opt.core.n_iter
     
-    n_iter_list = [10]
-    # n_iter_list = [10]
+    n_iter_list = [50, 100, 200, 400, 800, 1600, 2400, 3200]
+    # n_iter_list = [400, 1600]
+    # seed_list = [4, 16, 64, 256, 1024]
+    seed_list = [1]
     prev_iter = 0
     
     #%% Prepare paths of test data set
     ## define the range of corr_beta
     var_corr_beta = np.array([1.0])
     ## define the range of alpha_prim 27x3
-    values = np.array([1e-3, 1e-1])
+    values = np.array([1e-3,1e-1])
     a1, a2, a3 = np.meshgrid(values, values, values, indexing='ij')
     var_alpha_prim = np.column_stack((a1.flatten(), a2.flatten(), a3.flatten()))
     ## The case of all zero α is meaningless, that means no Agglomeration occurs
@@ -55,6 +66,7 @@ if __name__ == '__main__':
             unique_alpha_prim.append(comp)
             
     var_alpha_prim = np.array(unique_alpha_prim)
+
     ## define the range of v(breakage function)
     var_v = np.array([1.0,1.5])
     # var_v = np.array([0.01])    ## define the range of P1, P2 for power law breakage rate
@@ -105,6 +117,13 @@ if __name__ == '__main__':
                                     continue
                                 data_names_list.append(data_name)
                                 known_params_list.append(known_params)
+    total = len(data_names_list)
+    chunk_size = (total + num_chunks - 1) // num_chunks
+    start = chunk_idx * chunk_size
+    end = min((chunk_idx + 1) * chunk_size, total)
+    data_names_list = data_names_list[start:end]
+    known_params_list = known_params_list[start:end]
+
     if multi_flag:
         data_names_list_tem= []
         for data_name in data_names_list:
@@ -115,42 +134,44 @@ if __name__ == '__main__':
             ]
             data_names_list_tem.append(data_name_ex)
         data_names_list = data_names_list_tem
-    opt.core.result_dir = result_dir
+    opt.core.result_dir = result_dir 
     ray.init(log_to_driver=True)
     for n_iter in n_iter_list:
-        if n_iter <= prev_iter:
-            continue
-        inc = n_iter - prev_iter
-        opt.core.n_iter = int(n_iter)
-        opt.core.n_iter_prev = int(prev_iter)
-        opt.core.resume_unfinished = prev_iter > 0
-        
-        if getattr(opt.core, 'resume_unfinished', False):
-            prev_path = os.path.join(result_dir, f"{opt.core.n_iter_prev}.sqlite")
-            if os.path.exists(prev_path):
-                print(f"Loaded previous opt_params for warm start: {prev_path}")
-            else:
-                print(f"Warning: Previous result not found: {prev_path}") 
-        result = opt.find_opt_kernels(method='delta', data_names=data_names_list, known_params=known_params_list)   
-
-        ## save the results in npz
-        if multi_flag:
-            result_name = f'multi_{delta_flag}_{method}_wight_{weight_2d}_iter_{n_iter}'
-        else:
-            result_name =  f'{delta_flag}_{method}_wight_{weight_2d}_iter_{n_iter}'
-        if opt.core.random_seed != 1:
-            result_name += f'seed_{opt.core.random_seed}'
-        file_path = os.path.join(result_dir, f'{result_name}.npz')
-        # if os.path.exists(file_path):
-        #     timestamp = time.strftime("%Y%m%d_%H%M%S")
-        #     file_path = os.path.join(result_dir, f'{result_name}_{timestamp}.npz')
+        for seed in seed_list:
+            opt.core.random_seed = seed
+            if n_iter <= prev_iter:
+                continue
+            inc = n_iter - prev_iter
+            opt.core.n_iter = int(n_iter)
+            opt.core.n_iter_prev = int(prev_iter)
+            opt.core.resume_unfinished = prev_iter > 0
+            if getattr(opt.core, 'resume_unfinished', False):
+                prev_path = os.path.join(result_dir, f"{opt.core.n_iter_prev}.sqlite")
+                if os.path.exists(prev_path):
+                    print(f"Loaded previous opt_params for warm start: {prev_path}")
+                else:
+                    print(f"Warning: Previous result not found: {prev_path}") 
+                
+            result = opt.find_opt_kernels(method='delta', data_names=data_names_list, known_params=known_params_list)   
     
-        np.savez(file_path,
-              results=result,
-              )
+            ## save the results in npz
+            if multi_flag:
+                result_name = f'multi_{delta_flag}_{method}_wight_{weight_2d}_iter_{n_iter}'
+            else:
+                result_name =  f'{delta_flag}_{method}_wight_{weight_2d}_iter_{n_iter}'
+            if opt.core.random_seed != 1:
+                result_name += f'seed_{opt.core.random_seed}'
+            file_path = os.path.join(result_dir, f'{result_name}.npz')
+            # if os.path.exists(file_path):
+                # timestamp = time.strftime("%Y%m%d_%H%M%S")
+                # file_path = os.path.join(result_dir, f'{result_name}_{timestamp}.npz')
         
-        prev_iter = n_iter
-    ray.shutdown()
+            np.savez(file_path,
+                  results=result,
+                  )
+            
+            prev_iter = n_iter
+
     end_time = time.time()
     elapsed_time = end_time - start_time
     print(f"elapsed_time = {elapsed_time} s")

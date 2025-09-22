@@ -45,6 +45,7 @@ class OptCore():
         
         self.opt_data = OptData(self)
         self.opt_pbe = OptPBE(self)
+        self.debug_mod = False
         
  
     def init_attr(self, core_params):
