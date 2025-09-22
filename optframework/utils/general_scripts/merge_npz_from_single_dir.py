@@ -2,7 +2,6 @@
 """
 Created on Mon Sep  8 12:53:17 2025
 Merge NPZ results from multiple run folders into a single folder per prefix.
-
 Folder layout example:
   opt_results_MSE-0/
     multi_[('qx','MSE')]_Cmaes_wight_1_iter_50.npz
@@ -30,7 +29,7 @@ import numpy as np
 import shutil
 
 def _to_list_of_dicts(obj) -> list[dict]:
-    """把 npz['results'] 统一转成 List[dict]，否则抛错。"""
+    """Convert npz['results'] uniformly to List[dict], otherwise throw error."""
     if isinstance(obj, dict):
         return [obj]
     if isinstance(obj, np.ndarray):
@@ -62,7 +61,7 @@ def _to_list_of_dicts(obj) -> list[dict]:
     raise TypeError(f"unsupported results type: {type(obj)}")
 
 def load_results(npz_path: Path) -> list[dict]:
-    """读取单个 npz 的 results -> List[dict]。"""
+    """Read results from single npz file -> List[dict]."""
     with np.load(npz_path, allow_pickle=True) as data:
         if "results" not in data:
             raise KeyError(f"{npz_path} missing 'results'")
@@ -70,9 +69,9 @@ def load_results(npz_path: Path) -> list[dict]:
 
 def merge_results_lists(results_lists: list[list[dict]], src_tags: list[str], src_files: list[str]) -> list[dict]:
     """
-    合并多个 List[dict] 为一个 List[dict]，并为每条记录添加来源信息：
-    - source_tag: 例如 '0'、'1'（从文件名中 -X_ 提取）
-    - source_file: 源文件名
+    Merge multiple List[dict] into one List[dict], adding source information to each record:
+    - source_tag: e.g. '0', '1' (extracted from filename -X_)
+    - source_file: source filename
     """
     merged: list[dict] = []
     for lst, tag, file in zip(results_lists, src_tags, src_files):
@@ -84,15 +83,15 @@ def merge_results_lists(results_lists: list[list[dict]], src_tags: list[str], sr
     return merged
 
 def save_npz(out_path: Path, results_obj: Any) -> None:
-    """保存为 npz，键名固定 'results'。"""
+    """Save as npz with fixed key name 'results'."""
     out_path.parent.mkdir(parents=True, exist_ok=True)
     np.savez(out_path, results=results_obj)
 
 def find_group_files_single_dir(base: Path, prefix: str, iter_label: str | int) -> List[Path]:
     """
-    在 base 目录下查找匹配 {prefix}-*_{iter}.npz 的文件（不递归）。
-    例如：prefix='opt_results_kva', iter_label=50
-        -> 匹配 'opt_results_kva-0_50.npz', 'opt_results_kva-1_50.npz', ...
+    Find files matching {prefix}-*_{iter}.npz in base directory (non-recursive).
+    Example: prefix='opt_results_kva', iter_label=50
+        -> matches 'opt_results_kva-0_50.npz', 'opt_results_kva-1_50.npz', ...
     """
     iter_str = str(iter_label)
     pattern = f"{prefix}-*_{iter_str}.npz"
@@ -101,14 +100,14 @@ def find_group_files_single_dir(base: Path, prefix: str, iter_label: str | int) 
 
 def extract_source_tag_from_name(fname: str, prefix: str, iter_label: str | int) -> str:
     """
-    从文件名中提取 -<tag>_ 的 tag，例：
+    Extract -<tag>_ tag from filename, example:
         'opt_results_kva-12_50.npz' -> '12'
-    若未匹配到，返回空字符串。
+    If no match found, return empty string.
     """
     base = os.path.basename(fname)
     iter_str = str(iter_label)
-    # 构造严格匹配：^prefix-(tag)_(iter)\.npz$
-    # prefix 可能含下划线和字母数字，先转义
+    # Construct strict match: ^prefix-(tag)_(iter)\.npz$
+    # prefix may contain underscores and alphanumeric chars, escape first
     pre_escaped = re.escape(prefix)
     m = re.match(rf"^{pre_escaped}-(?P<tag>[^_]+)_{re.escape(iter_str)}\.npz$", base, flags=re.IGNORECASE)
     return m.group("tag") if m else ""
@@ -119,10 +118,10 @@ def merge_single_dir(prefixes: Iterable[str],
                          out_dir: Path | None = None,
                          verbose: bool = True) -> None:
     """
-    在单个目录 base_dir 中，对每个 (prefix, iter) 组合：
-      - 收集 prefix-*_{iter}.npz
-      - 逐个加载 results -> List[dict]
-      - 合并并写出为 out_dir / f"{prefix}_{iter}.npz"
+    In single directory base_dir, for each (prefix, iter) combination:
+      - Collect prefix-*_{iter}.npz
+      - Load results -> List[dict] one by one
+      - Merge and write out as out_dir / f"{prefix}_{iter}.npz"
     """
     if out_dir is None:
         out_dir = base_dir / "merged"
@@ -161,7 +160,6 @@ def merge_single_dir(prefixes: Iterable[str],
                     print("  [skip] nothing loaded successfully.")
                 continue
 
-            # 为了输出稳定，把 (tag, file, list) 按 tag 的“数字优先”排序
             def _tag_key(idx: int):
                 t = src_tags[idx]
                 try:

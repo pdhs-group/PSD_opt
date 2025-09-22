@@ -94,6 +94,11 @@ Ray Tune introduces the concept of **Actors**, which wrap optimization experimen
      - Guided algorithms quickly narrow parameter space.  
      - If a parameter consistently converges to the boundary, expand or shift the search range accordingly.  
 
+4. **Choice of sampler**  
+   - It is recommended to use **CMA-ES** as the optimization sampler.  
+   - Tests have shown that **CMA-ES** generally provides excellent performance (fast computation and quick convergence).  
+   - If using **GP (Gaussian Process)**, note that it requires manual installation of **PyTorch**. And also be aware that GP optimization runs significantly slower compared to other samplers.
+  
 ```{toctree}
 :maxdepth: 1
 

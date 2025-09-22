@@ -7,7 +7,7 @@ Created on Mon Jan 15 12:41:37 2024
 
 import sys, os
 import re
-import opt_config as conf
+# import opt_config as conf
 from optframework.kernel_opt.opt_base import OptBase
 import numpy as np
 import pandas as pd
@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 import optframework.utils.plotter.plotter as pt  
 import itertools
 import multiprocessing
-from matplotlib.animation import FuncAnimation
+# from matplotlib.animation import FuncAnimation
 from scipy.stats import pearsonr, spearmanr
 from typing import Iterable, List, Tuple, Dict
 

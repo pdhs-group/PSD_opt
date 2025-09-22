@@ -5,8 +5,7 @@ Merge NPZ results from multiple run folders into a single folder per prefix.
 
 Folder layout example:
   opt_results_MSE-0/
-    multi_[('qx','MSE')]_Cmaes_wight_1_iter_50.npz
-    50.sqlite
+    multi_[('qx','MSE')]_Cmaes_wight_1_50.sqlite
     50.sqlite.lock
   opt_results_MSE-1/
     multi_[('qx','MSE')]_Cmaes_wight_1_iter_50.npz
@@ -165,9 +164,9 @@ def merge_for_prefix(base: Path, prefix: str) -> None:
 
 def find_group_files_single_dir(base: Path, prefix: str, iter_label: str | int) -> List[Path]:
     """
-    在 base 目录下查找匹配 {prefix}-*_{iter}.npz 的文件（不递归）。
-    例如：prefix='opt_results_kva', iter_label=50
-        -> 匹配 'opt_results_kva-0_50.npz', 'opt_results_kva-1_50.npz', ...
+    Find files matching {prefix}-*_{iter}.npz in base directory (non-recursive).
+    Example: prefix='opt_results_kva', iter_label=50
+        -> matches 'opt_results_kva-0_50.npz', 'opt_results_kva-1_50.npz', ...
     """
     iter_str = str(iter_label)
     pattern = f"{prefix}-*_{iter_str}.npz"
@@ -176,14 +175,14 @@ def find_group_files_single_dir(base: Path, prefix: str, iter_label: str | int) 
 
 def extract_source_tag_from_name(fname: str, prefix: str, iter_label: str | int) -> str:
     """
-    从文件名中提取 -<tag>_ 的 tag，例：
+    Extract -<tag>_ tag from filename, example:
         'opt_results_kva-12_50.npz' -> '12'
-    若未匹配到，返回空字符串。
+    If no match found, return empty string.
     """
     base = os.path.basename(fname)
     iter_str = str(iter_label)
-    # 构造严格匹配：^prefix-(tag)_(iter)\.npz$
-    # prefix 可能含下划线和字母数字，先转义
+    # Construct strict match: ^prefix-(tag)_(iter)\.npz$
+    # prefix may contain underscores and alphanumeric chars, escape first
     pre_escaped = re.escape(prefix)
     m = re.match(rf"^{pre_escaped}-(?P<tag>[^_]+)_{re.escape(iter_str)}\.npz$", base, flags=re.IGNORECASE)
     return m.group("tag") if m else ""
@@ -194,10 +193,10 @@ def merge_single_dir(prefixes: Iterable[str],
                          out_dir: Path | None = None,
                          verbose: bool = True) -> None:
     """
-    在单个目录 base_dir 中，对每个 (prefix, iter) 组合：
-      - 收集 prefix-*_{iter}.npz
-      - 逐个加载 results -> List[dict]
-      - 合并并写出为 out_dir / f"{prefix}_{iter}.npz"
+    In single directory base_dir, for each (prefix, iter) combination:
+      - Collect prefix-*_{iter}.npz
+      - Load results -> List[dict] one by one
+      - Merge and write out as out_dir / f"{prefix}_{iter}.npz"
     """
     if out_dir is None:
         out_dir = base_dir / "merged"
@@ -249,7 +248,7 @@ def merge_single_dir(prefixes: Iterable[str],
             src_tags      = [src_tags[i] for i in order]
             src_files     = [src_files[i] for i in order]
 
-            merged = merge_results_lists(results_lists, src_tags, src_files)
+            merged = merge_results_lists(results_lists, src_tags)
             out_path = out_dir / f"{prefix}_{it}.npz"
             save_npz(out_path, merged)
             total_outputs += 1

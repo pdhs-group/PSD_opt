@@ -83,17 +83,17 @@ class OptCoreRay(OptCore, tune.Trainable):
             data_exp = []
             for exp_data_paths_tem in self.exp_data_paths:
                 if self.exp_case:
-                    x_uni_exp_tem, data_exp_tem = self.get_all_exp_data(exp_data_paths_tem)
+                    x_uni_exp_tem, data_exp_tem = self.p._get_all_exp_data(exp_data_paths_tem)
                 else:
-                    x_uni_exp_tem, data_exp_tem = self.get_all_synth_data(exp_data_paths_tem)
+                    x_uni_exp_tem, data_exp_tem = self.p._get_all_synth_data(exp_data_paths_tem)
                 x_uni_exp.append(x_uni_exp_tem)
                 data_exp.append(data_exp_tem)
         else:
             # When not set to multi or optimization of 1d-data, the exp_data_paths contain the name of that data.
             if self.exp_case:
-                x_uni_exp, data_exp = self.get_all_exp_data(self.exp_data_paths)
+                x_uni_exp, data_exp = self.p._get_all_exp_data(self.exp_data_paths)
             else:
-                x_uni_exp, data_exp = self.get_all_synth_data(self.exp_data_paths)
+                x_uni_exp, data_exp = self.p._get_all_synth_data(self.exp_data_paths)
         self.x_uni_exp = x_uni_exp
         self.data_exp = data_exp
         

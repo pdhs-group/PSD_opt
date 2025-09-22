@@ -16,24 +16,24 @@ import pandas as pd
 
 def list_yappi_files(directory: Path, base: str) -> List[Path]:
     """
-    列出目录下所有匹配 base*.csv 的文件，并按自然序排序：
+    List all files matching base*.csv in directory, sorted in natural order:
       timings_yappi.csv, timings_yappi (2).csv, timings_yappi (3).csv ...
     """
-    # 收集候选
+    # Collect candidates
     files = [p for p in directory.iterdir() if p.is_file() and p.name.endswith(".csv") and p.name.startswith(base)]
     if not files:
         return []
 
-    # 解析序号：timings_yappi.csv -> 1，timings_yappi (N).csv -> N
+    # Parse sequence number: timings_yappi.csv -> 1, timings_yappi (N).csv -> N
     pat = re.compile(rf"^{re.escape(base)}(?:\s*\((\d+)\))?\.csv$", re.IGNORECASE)
 
     def sort_key(p: Path):
         m = pat.match(p.name)
         if not m:
-            # 非标准命名，放后面，按名称排序
+            # Non-standard naming, put later, sort by name
             return (1, p.name.lower())
         num = m.group(1)
-        # 基础文件（无括号）优先，视为序号 1；括号文件按数字升序
+        # Base file (no parentheses) has priority, treated as sequence 1; parentheses files sorted by number ascending
         return (0, 1 if num is None else int(num))
 
     return sorted(files, key=sort_key)
@@ -41,8 +41,8 @@ def list_yappi_files(directory: Path, base: str) -> List[Path]:
 
 def merge_yappi_csvs(directory: Path, base: str, out_path: Path, add_source: bool = True) -> int:
     """
-    合并目录下 base*.csv（自然序），写到 out_path。
-    返回成功合并的文件数量。
+    Merge base*.csv files in directory (natural order), write to out_path.
+    Return number of successfully merged files.
     """
     files = list_yappi_files(directory, base)
     if not files:
@@ -52,7 +52,7 @@ def merge_yappi_csvs(directory: Path, base: str, out_path: Path, add_source: boo
     frames = []
     for p in files:
         try:
-            # 尝试读取；空文件会抛 EmptyDataError
+            # Try to read; empty files will raise EmptyDataError
             df = pd.read_csv(p)
         except pd.errors.EmptyDataError:
             print(f"[SKIP] Empty file: {p.name}")
@@ -93,7 +93,6 @@ def main():
 
 
 if __name__ == "__main__":
-    # 你也可以直接在这里硬编码路径，方便在 Spyder 里运行：
     directory = Path(r"C:\Users\px2030\Code\Ergebnisse\opt_para_study")
     merge_yappi_csvs(directory, "timings_yappi", directory / "timings_yappi_merged.csv", add_source=True)
     main()

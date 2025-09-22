@@ -4,20 +4,21 @@ Created on Thu Sep 11 10:48:23 2025
 
 @author: Haoran Ji (px2030@kit.edu)
 
-离线读取 Ray Tune 过程中写入的 warm_params SQLite 数据库，
-按每个 data_name（即你的文件名）在“前 N 步”的范围内统计最佳结果，
-并输出与原代码 result_dict 结构一致的字典列表到 N.npz。
+Offline summarization of the warm_params SQLite database written during Ray Tune.
+For each data_name (i.e., your filename), compute the best result within the
+first N steps and write a list of dictionaries that matches the original
+result_dict structure into N.npz.
 
-两种用法：
-1) 命令行：
-    python summarize_warm_params.py \
+Usage:
+1) CLI:
+    python summarize_params_from_sqlite.py \
         --db /path/to/1600.sqlite \
         --steps 50 100 200 400 800 1600 \
         --outdir ./summaries \
         --filter nameA nameB
 
-2) Debug 交互模式（无命令行参数时自动触发，适合 Spyder/Jupyter）：
-    运行脚本后按提示输入参数。
+2) Debug/interactive mode (auto when no CLI args; convenient for Spyder/Jupyter):
+    Run the script and follow the prompts.
 """
 
 import argparse
@@ -33,12 +34,12 @@ import numpy as np
 
 
 # -----------------------------
-# 核心功能
+# Core functionality
 # -----------------------------
 def load_all_records(db_path: str) -> Dict[str, List[Tuple[dict, float]]]:
-    """从 SQLite 读取所有行，按 data_name 分组，并按插入顺序排序。"""
+    """Read all rows from SQLite, group by data_name, and keep insertion order."""
     if not os.path.exists(db_path):
-        raise FileNotFoundError(f"SQLite 文件不存在：{db_path}")
+        raise FileNotFoundError(f"SQLite file does not exist: {db_path}")
 
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -62,7 +63,7 @@ def load_all_records(db_path: str) -> Dict[str, List[Tuple[dict, float]]]:
 
 
 def best_so_far_prefix(records: List[Tuple[dict, float]], n: int) -> Tuple[dict, float]:
-    """在前 n 条记录中找到 score 最小的 (params, score)。"""
+    """Within the first n records, find the minimal-score (params, score)."""
     if not records:
         return {}, float("inf")
 
@@ -77,7 +78,7 @@ def best_so_far_prefix(records: List[Tuple[dict, float]], n: int) -> Tuple[dict,
 
 
 def build_result_dict(opt_params: dict, opt_score: float, data_name: str) -> dict:
-    """构造与原程序一致的 result_dict，file_path 使用 data_name。"""
+    """Build a result_dict consistent with the framework; use data_name as file_path."""
     return {
         "opt_score": opt_score,
         "opt_params": opt_params,
@@ -91,15 +92,15 @@ def run_summarize(db_path: str,
                   filters: Optional[List[str]],
                   prefix: str = "") -> None:
     """
-    执行统计并保存 N.npz。
-    若提供 prefix，则输出文件名为 {prefix}_{N}.npz，否则为 {N}.npz。
+    Compute summaries and save to N.npz.
+    If prefix is provided, output file name is {prefix}_{N}.npz; otherwise {N}.npz.
     """
     steps = sorted(set(int(s) for s in steps if int(s) > 0))
     os.makedirs(outdir, exist_ok=True)
 
     grouped = load_all_records(db_path)
     if not grouped:
-        print(f"[WARN] 数据库中没有任何记录：{db_path}")
+        print(f"[WARN] No records found in database: {db_path}")
         return
 
     data_names = sorted(grouped.keys())
@@ -107,17 +108,17 @@ def run_summarize(db_path: str,
         filt = set(filters)
         missing = [name for name in filt if name not in grouped]
         if missing:
-            print(f"[WARN] 下列 data_name 在数据库中不存在，将被忽略：{missing}")
+            print(f"[WARN] The following data_name values do not exist in the DB and will be ignored: {missing}")
         data_names = [name for name in data_names if name in filt]
 
     if not data_names:
-        print("[WARN] 没有匹配到任何 data_name。")
+        print("[WARN] No data_name matched the given filter.")
         return
 
-    print(f"[INFO] 从 {db_path} 读取到 {len(data_names)} 个 data_name。")
-    print(f"[INFO] 将统计步数：{steps}")
+    print(f"[INFO] Loaded {len(data_names)} data_name groups from {db_path}.")
+    print(f"[INFO] Steps to summarize: {steps}")
     if prefix:
-        print(f"[INFO] 输出文件前缀：{prefix}_")
+        print(f"[INFO] Output filename prefix: {prefix}_")
 
     for n in steps:
         results_for_n: List[dict] = []
@@ -135,13 +136,13 @@ def run_summarize(db_path: str,
         fname = f"{prefix}_{n}.npz" if prefix else f"{n}.npz"
         save_path = os.path.join(outdir, fname)
         np.savez_compressed(save_path, results=np.array(results_for_n, dtype=object))
-        print(f"[OK] 已保存：{save_path}（包含 {len(results_for_n)} 个 data_name 的前 {n} 步最佳结果）")
+        print(f"[OK] Saved: {save_path} (contains {len(results_for_n)} data_name best-of-first-{n} results)")
 
-    print("[DONE] 全部步数统计完成。")
-    print("读取示例：")
+    print("[DONE] All steps summarized.")
+    print("Read example:")
     print("  import numpy as np")
     print("  npz = np.load('N.npz', allow_pickle=True'); results = npz['results'].tolist()")
-    print("  # results 是 list[dict]，每个 dict 的结构与原始 result_dict 一致。")
+    print("  # results is a list[dict]; each dict matches the original result_dict structure.")
 
 
 def run_summarize_for_root(results_root: str,
@@ -150,12 +151,13 @@ def run_summarize_for_root(results_root: str,
                            db_name: str = "1600.sqlite",
                            filters: Optional[List[str]] = None) -> None:
     """
-    遍历 results_root 下的**一级子目录**，查找形如 {subdir}/{db_name} 的 sqlite，
-    对每个子目录执行汇总，并将子目录名作为输出文件前缀：
+    Traverse the first-level subdirectories under results_root and look for
+    SQLite files at {subdir}/{db_name}. For each subdirectory, run the
+    summarization and use the subdirectory name as the output prefix:
         {subdir}_{N}.npz
     """
     if not os.path.isdir(results_root):
-        raise NotADirectoryError(f"不是有效目录：{results_root}")
+        raise NotADirectoryError(f"Not a valid directory: {results_root}")
 
     os.makedirs(outdir, exist_ok=True)
 
@@ -164,19 +166,19 @@ def run_summarize_for_root(results_root: str,
     # subdirs = [os.path.join(results_root, "KL")]
 
     if not subdirs:
-        print(f"[WARN] 根目录下没有子目录：{results_root}")
+        print(f"[WARN] No subdirectories found under root: {results_root}")
         return
 
     found_any = False
     for sub in sorted(subdirs):
         db_path = os.path.join(results_root, sub, db_name)
         if not os.path.exists(db_path):
-            print(f"[SKIP] 子目录 {sub} 未发现 {db_name}")
+            print(f"[SKIP] Subdirectory {sub} does not contain {db_name}")
             continue
 
         found_any = True
-        print(f"\n====== 处理子目录：{sub} | DB: {db_path} ======")
-        # 输出到共享 outdir，文件名加前缀
+        print(f"\n====== Processing subdirectory: {sub} | DB: {db_path} ======")
+        # Output to the shared outdir; filenames get the prefix
         run_summarize(db_path=db_path,
                       steps=steps,
                       outdir=outdir,
@@ -184,28 +186,28 @@ def run_summarize_for_root(results_root: str,
                       prefix=sub)
 
     if not found_any:
-        print(f"[WARN] 未在任何子目录中找到 {db_name}")
+        print(f"[WARN] Did not find {db_name} in any subdirectory")
 
 
 # -----------------------------
-# 命令行主函数（支持单库或遍历根目录）
+# CLI entry (single DB or traverse root)
 # -----------------------------
 def cli_main():
     parser = argparse.ArgumentParser(
-        description="从 warm_params sqlite 统计前 N 步最佳结果，支持单库或遍历根目录（输出 {prefix}_{N}.npz）。"
+        description="Summarize best-of-first-N results from warm_params SQLite; support single DB or traversing a root directory (output {prefix}_{N}.npz)."
     )
     mode = parser.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--db", help="单个 SQLite 文件路径，例如 /path/to/1600.sqlite")
-    mode.add_argument("--root", help="根目录，遍历其一级子目录，查找 {sub}/{db_name}")
+    mode.add_argument("--db", help="Single SQLite file path, e.g., /path/to/1600.sqlite")
+    mode.add_argument("--root", help="Root directory; traverse its first-level subdirectories and look for {sub}/{db_name}")
 
     parser.add_argument("--db-name", default="1600.sqlite",
-                        help="在 --root 模式下要查找的 sqlite 文件名（默认：1600.sqlite）")
+                        help="In --root mode, the sqlite filename to search for (default: 1600.sqlite)")
     parser.add_argument("--steps", nargs="+", type=int, required=True,
-                        help="需要统计的步数列表，例如：50 100 200 400 800 1600")
+                        help="List of steps to summarize, e.g.: 50 100 200 400 800 1600")
     parser.add_argument("--outdir", default=".",
-                        help="输出目录（默认当前目录）")
+                        help="Output directory (default: current directory)")
     parser.add_argument("--filter", nargs="*", default=None,
-                        help="只统计指定的 data_name，留空则统计全部")
+                        help="Only summarize the specified data_name values; empty means all")
 
     args = parser.parse_args()
 
@@ -216,7 +218,7 @@ def cli_main():
                                db_name=args.db_name,
                                filters=args.filter)
     else:
-        # 单库模式不带前缀
+    # Single DB mode uses no prefix
         run_summarize(db_path=args.db,
                       steps=args.steps,
                       outdir=args.outdir,
@@ -225,14 +227,14 @@ def cli_main():
 
 
 # -----------------------------
-# Debug 交互主函数（适合 Spyder/Jupyter）
+# Debug/interactive main (good for Spyder/Jupyter)
 # -----------------------------
 def debug_main():
-    print("=== Debug 交互模式 ===")
-    print("将遍历指定根目录的一级子目录，查找 1600.sqlite 并输出 {子目录名}_{N}.npz")
+    print("=== Debug interactive mode ===")
+    print("Traverse first-level subdirectories under the specified root, find 1600.sqlite, and output {subdir}_{N}.npz")
 
-    # 你自己的默认路径
-    results_root = results_path  # 根目录，包含 MSE、MAE 等子目录
+    # Your default paths
+    results_root = results_path  # Root directory containing subdirs like MSE, MAE, etc.
     db_name = "3200.sqlite"
     steps_str = "50,100,200,400,800,1600,2400,3200"
     # steps_str = "5,10,15,20,25,30,35,40,45,50,\
@@ -246,9 +248,9 @@ def debug_main():
     #             3360,3520,3680,3840,4000,4160,4320,4480,4640,4800,\
     #             4960,5120,5280,5440,5600,5760,5920,6080,6240,6400"
     outdir = os.path.join(results_root, "summaries_array")
-    filters_str = ""  # 逗号分隔多个 data_name；留空表示全部
+    filters_str = ""  # Comma-separated data_name list; empty means all
 
-    # 解析步数
+    # Parse steps
     steps = []
     for tok in steps_str.split(","):
         tok = tok.strip()
@@ -258,12 +260,12 @@ def debug_main():
                 if v > 0:
                     steps.append(v)
             except ValueError:
-                print(f"[WARN] 无法解析步数：{tok}，已忽略。")
+                print(f"[WARN] Failed to parse step value: {tok}; ignored.")
 
-    # 解析过滤 data_name
+    # Parse data_name filters
     filters = [s.strip() for s in filters_str.split(",") if s.strip()] if filters_str else None
 
-    print("\n[DEBUG] 参数确认：")
+    print("\n[DEBUG] Parameter confirmation:")
     print(f"  root    : {results_root}")
     print(f"  db_name : {db_name}")
     print(f"  steps   : {steps}")
@@ -279,53 +281,53 @@ def debug_main():
 
 def compare_npz(script_npz_path: str, framework_npz_path: str):
     """
-    比较脚本汇总的 npz 与框架直接输出的 npz。
-    
-    参数:
-        script_npz_path : str  脚本汇总结果 npz 文件路径 (如 "1600.npz")
-        framework_npz_path : str  框架直接输出结果 npz 文件路径 (如 "1600_opt.npz")
-    
-    返回:
-        pandas.DataFrame : 包含 data_name、score_script、score_framework、equal 四列
+    Compare the npz summarized by this script with the npz produced directly by the framework.
+
+    Parameters:
+        script_npz_path : str  Path to the script-summarized npz (e.g., "1600.npz")
+        framework_npz_path : str  Path to the framework-produced npz (e.g., "1600_opt.npz")
+
+    Returns:
+        pandas.DataFrame : columns: data_name, score_script, score_framework, equal
     """
-    # 读取 npz
+    # Read npz
     script_npz_path = os.path.join(results_path, script_npz_path)
     framework_npz_path = os.path.join(results_path, framework_npz_path)
     script_npz = np.load(script_npz_path, allow_pickle=True)["results"].tolist()
     framework_npz = np.load(framework_npz_path, allow_pickle=True)["results"].tolist()
 
-    # 建立脚本数据的字典 {data_name -> opt_score}
+    # Build a dict for the script data: {data_name -> opt_score}
     script_dict = {
         item["file_path"]: item["opt_score"] for item in script_npz
     }
     # script_dict = {}
     # for idx, item in enumerate(script_npz):
-    #     data_name = item["file_path"]  # 脚本里的 file_path 就是 data_name
+    #     data_name = item["file_path"]  # In the script output, file_path equals data_name
     #     if data_name in script_dict:
-    #         print(f"[WARN] Script npz 重复: {data_name} "
-    #               f"(旧score={script_dict[data_name]}, 新score={item['opt_score']}, index={idx})")
+    #         print(f"[WARN] Duplicate in script npz: {data_name} "
+    #               f"(old score={script_dict[data_name]}, new score={item['opt_score']}, index={idx})")
     #     script_dict[data_name] = item["opt_score"]
 
-    # 框架数据 -> 提取 data_name (从 file_path[0] 提取 Sim_...xlsx 中间的部分)
+    # Framework data -> extract data_name (from file_path[0], take middle of Sim_...xlsx)
     framework_dict = {}
     i = 0
     for idx, item in enumerate(framework_npz):
         file_paths = item["file_path"]
         if not isinstance(file_paths, list):
             continue
-        first_path = os.path.basename(file_paths[0])  # 取文件名
+        first_path = os.path.basename(file_paths[0])  # get filename
         if first_path.startswith("Sim_") and first_path.endswith(".xlsx"):
             data_name = first_path[len("Sim_"):-len(".xlsx")]
         else:
             data_name = first_path  # fallback
         if data_name in framework_dict:
             i += 1
-            print(f"[WARN] Framework npz 重复: {data_name} "
-                  f"(旧score={framework_dict[data_name]}, 新score={item['opt_score']}, index={idx})")
-        print(f"一共有 {i} 个不一样的")
+            print(f"[WARN] Duplicate in framework npz: {data_name} "
+                  f"(old score={framework_dict[data_name]}, new score={item['opt_score']}, index={idx})")
+        print(f"Total duplicates encountered so far: {i}")
         framework_dict[data_name] = item["opt_score"]
 
-    # 对齐并合并
+    # Align and merge
     rows = []
     for data_name, score_s in script_dict.items():
         score_f = framework_dict.get(data_name, None)
@@ -341,15 +343,15 @@ def compare_npz(script_npz_path: str, framework_npz_path: str):
     return df
 
 # -----------------------------
-# 入口：根据是否有命令行参数选择模式
+# Entry point: choose mode based on presence of CLI args
 # -----------------------------
 if __name__ == "__main__":
-    # 设为 True 可强制进入 debug 交互模式（即使有命令行参数）
+    # Set to True to force debug interactive mode (even if CLI args are present)
     FORCE_DEBUG = True
     results_path = r"C:\Users\px2030\Code\Ergebnisse\opt_para_study\study_results\New_CAMES_results\results210925"
     
     if FORCE_DEBUG or len(sys.argv) == 1:
-        # 无命令行参数 -> 进入交互模式（Spyder/Jupyter 友好）
+        # No CLI args -> enter interactive mode (Spyder/Jupyter friendly)
         debug_main()
     else:
         cli_main()

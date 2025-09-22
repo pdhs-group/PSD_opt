@@ -383,13 +383,5 @@ class OptCore():
         # Print the formatted notice
         print(notice)
 
-# Bind methods from other modules into this class
-bind_methods_from_module(OptCore, 'optframework.kernel_opt.opt_algo_bo')
-# bind_methods_from_module(OptCore, 'optframework.kernel_opt.opt_data')
-# bind_methods_from_module(OptCore, 'optframework.kernel_opt.opt_pbe')
-# bind_methods_from_module(OptCore, 'optframework.dpbe.dpbe_post')
-# methods_to_remove = ['calc_v_uni','calc_x_uni', 'return_distribution',
-#                      'return_N_t','calc_mom_t']
-# unbind_methods_from_class(OptCore, methods_to_remove)
 
 
