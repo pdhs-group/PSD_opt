@@ -13,8 +13,7 @@ from SALib.sample import saltelli
 from SALib.analyze import sobol
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.neighbors import KNeighborsRegressor
-sys.path.insert(0,os.path.join(os.path.dirname( __file__ ),"../../.."))
-from pypbe.kernel_opt.opt_base import OptBase
+from optframework.kernel_opt.opt_base import OptBase
 
 def transform_parameters(X):
     """
@@ -47,10 +46,15 @@ def evaluate_model(params):
     """
     Run the PBE model for a given set of parameters and return Moment M.
     """
+    # moment_flag = "m00"
+    moment_flag = "m11"
+    # moment_flag = "m_wight"
     # tmpdir = os.environ.get('TMP_PATH')
     # data_path = os.path.join(tmpdir, "data")
-    data_path = r"C:\Users\px2030\Code\PSD_opt\pypbe\data"
-    opt = OptBase(data_path=data_path, multi_flag=False)
+    data_path = r"C:\Users\px2030\Code\Ergebnisse\opt_para_study\study_data\New_CAMES\data"
+    # config_path = os.path.join(my_pth, '../../../tests/config/opt_config.py')
+    config_path = r"C:\Users\px2030\Code\PSD_opt\tests\config\opt_config.py"
+    opt = OptBase(data_path=data_path, config_path=config_path, multi_flag=False)
     params_trans = params.copy()
     params_trans = opt.core.array_dict_transform(params_trans)
     params_checked = opt.core.check_corr_agg(params_trans)
@@ -151,29 +155,29 @@ if __name__ == '__main__':
     }
     
     # Set the number of sampling points
-    N = 4  # Adjust this number based on available computational resources
+    N = 2**5  # Adjust this number based on available computational resources
     
     # Generate sampling points
     param_values = saltelli.sample(problem, N, calc_second_order=True)
     # Transform parameters to get a list of parameter dictionaries
-    # params_list = transform_parameters_to_dict(param_values)
+    params_list = transform_parameters_to_dict(param_values)
     
-    # ## only for test
-    # # mu = evaluate_model(params_list[0], moment_flag)
+    ## only for test
+    # mu = evaluate_model(params_list[0])
     
-    # pool = multiprocessing.Pool(processes=8)
-    # try:
-    #     results = pool.map(evaluate_model, params_list)
-    # except KeyboardInterrupt:
-    #     print("Caught KeyboardInterrupt, terminating workers")
-    #     pool.terminate()
-    # except Exception as e:
-    #     print(f"An error occurred: {e}")
-    #     pool.terminate()
-    # finally:          
-    #     pool.close()
-    #     pool.join()                        
-    #     results_arr = np.array(results)  
+    pool = multiprocessing.Pool(processes=8)
+    try:
+        results = pool.map(evaluate_model, params_list)
+    except KeyboardInterrupt:
+        print("Caught KeyboardInterrupt, terminating workers")
+        pool.terminate()
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        pool.terminate()
+    finally:          
+        pool.close()
+        pool.join()                        
+        results_arr = np.array(results)  
 
     # # Convert the results to an array format
     # Y = np.array(results)

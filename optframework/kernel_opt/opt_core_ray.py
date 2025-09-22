@@ -6,6 +6,7 @@ Minimize the difference by optimization algorithm to obtain the kernel of PBE.
 import os, csv, time
 from pathlib import Path
 import yappi
+from copy import deepcopy
 from ray import tune
 from .opt_core import OptCore
         
@@ -31,8 +32,7 @@ class OptCoreRay(OptCore, tune.Trainable):
         tune.Trainable.__init__(self, *args, **kwargs)
         OptCore.__init__(self)
         
-    def setup(self, config, core_params, pop_params, data_path, 
-              exp_data_paths, x_uni_exp, data_exp, known_params, exp_case):
+    def setup(self, config, core_params, pop_params, data_path):
         """
         Set up the environment for the optimization task.
         
@@ -61,22 +61,41 @@ class OptCoreRay(OptCore, tune.Trainable):
         self.init_attr(core_params)
         self.init_pbe(pop_params, data_path)
         
+        self.exp_data_paths = config.get("__exp_paths", None)
+        self.known_params = config.get("__known_params", None)
+        self.actor_wait = config.get("actor_wait", True)
+        self.wait_time = config.get("wait_time", 2)
+        self.max_reuse = config.get("max_reuse", 50)
         # Initialize the number concentration N if required
         if self.calc_init_N:
-            self.set_init_N(exp_data_paths, init_flag='mean')
+            self.set_init_N(self.exp_data_paths, init_flag='mean')
             
         # Store experimental data and known parameters
         self.pop_params = pop_params
         self.data_path = data_path
-        self.known_params = known_params
+        self.exp_case = self.exp_data
+        self.reuse_num =  0
+        
+        # Prepare experimental data (either for 1D or 2D)
+        if isinstance(self.exp_data_paths, list):
+            # When set to multi, the exp_data_paths entered here is a list containing one 2d data name and two 1d data names.
+            x_uni_exp = []
+            data_exp = []
+            for exp_data_paths_tem in self.exp_data_paths:
+                if self.exp_case:
+                    x_uni_exp_tem, data_exp_tem = self.get_all_exp_data(exp_data_paths_tem)
+                else:
+                    x_uni_exp_tem, data_exp_tem = self.get_all_synth_data(exp_data_paths_tem)
+                x_uni_exp.append(x_uni_exp_tem)
+                data_exp.append(data_exp_tem)
+        else:
+            # When not set to multi or optimization of 1d-data, the exp_data_paths contain the name of that data.
+            if self.exp_case:
+                x_uni_exp, data_exp = self.get_all_exp_data(self.exp_data_paths)
+            else:
+                x_uni_exp, data_exp = self.get_all_synth_data(self.exp_data_paths)
         self.x_uni_exp = x_uni_exp
         self.data_exp = data_exp
-        self.exp_data_paths = exp_data_paths
-        self.exp_case = exp_case
-        self.reuse_num =  0
-        self.actor_wait = config.get("actor_wait", True)
-        self.wait_time = config.get("wait_time", 2)
-        self.max_reuse = config.get("max_reuse", 50)
         
         self._time_loger = True
         if self._time_loger:
@@ -90,6 +109,8 @@ class OptCoreRay(OptCore, tune.Trainable):
                         "step_wall_s","solver_wall_s","overhead_wall_s"
                     ])
             self._sample_idx = 0
+        
+        self.EXCLUDE_KEYS = {"__exp_paths", "__known_params", "actor_wait", "wait_time", "max_reuse"}
     
     def step(self):
         """
@@ -105,7 +126,7 @@ class OptCoreRay(OptCore, tune.Trainable):
             A dictionary containing the loss (delta) and the reuse count for the current Actor.
         """
         start_time = time.time()
-        transformed_params = self.config.copy()
+        transformed_params = {k: deepcopy(v) for k, v in self.config.items() if k not in self.EXCLUDE_KEYS}
             
         if not self.exp_case:
             # Apply known parameters to override any conflicting optimization parameters
@@ -169,6 +190,7 @@ class OptCoreRay(OptCore, tune.Trainable):
             
         result = {"loss": loss, "reuse_num": self.reuse_num, "exp_paths": self.exp_data_paths}    
         return result
+    
     def save_checkpoint(self, checkpoint_dir):
         """
         Save the checkpoint. This method is required by Ray Tune but is not used in this implementation.

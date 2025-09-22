@@ -4,7 +4,6 @@ Calculate the difference between the PSD of the simulation results and the exper
 """
 import numpy as np
 from scipy.stats import entropy
-import yappi
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 from optframework.dpbe.dpbe_base import DPBESolver
 from optframework.utils.func.bind_methods import bind_methods_from_module , unbind_methods_from_class
@@ -226,9 +225,9 @@ class OptCore():
                 
             delta_sum /= self.sample_num
             if self.exp_data:
-                return delta
+                return delta_sum
             else:
-                return delta / len(x_uni_exp)
+                return delta_sum / len(x_uni_exp)
         
     def check_corr_agg(self, params_in):
         """

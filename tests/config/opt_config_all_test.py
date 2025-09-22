@@ -143,14 +143,14 @@ config = {
         'cpus_per_trail': 2,  
         # Number of CPU cores allocated to each optimization trial.
     
-        'max_concurrent': 4,  
+        'max_concurrent': 2,  
         # Maximum number of trials that can be run concurrently.
         },
     
     ## PBE parameters
     'pop_params': {
-        'NS' : 10,
-        'S' : 4,
+        'NS' : 15,
+        'S' : 2.8,
         "SIZEEVAL": 1,
         "COLEVAL": 1,
         "EFFEVAL": 1,
@@ -192,7 +192,7 @@ config = {
         'pl_P3': {'bounds': (-5.0, -1.0), 'log_scale': True},
         'pl_P4': {'bounds': (0.3, 3.0), 'log_scale': False},
         'actor_wait': {"fixed": False},
-        'wait_time': {"fixed": 2},
+        'wait_time': {"fixed": 0},
         'max_reuse': {"fixed": 10}
     },
 

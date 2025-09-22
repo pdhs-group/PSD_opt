@@ -205,22 +205,22 @@ def optimierer_ray(self, opt_params_space=None, exp_data_paths=None,known_params
     # Prepare experimental data (either for 1D or 2D)
     if isinstance(exp_data_paths, list):
         # When set to multi, the exp_data_paths entered here is a list containing one 2d data name and two 1d data names.
-        x_uni_exp = []
-        data_exp = []
-        for exp_data_paths_tem in exp_data_paths:
-            if self.core.exp_data:
-                x_uni_exp_tem, data_exp_tem = self.core.get_all_exp_data(exp_data_paths_tem)
-            else:
-                x_uni_exp_tem, data_exp_tem = self.core.get_all_synth_data(exp_data_paths_tem)
-            x_uni_exp.append(x_uni_exp_tem)
-            data_exp.append(data_exp_tem)
+        # x_uni_exp = []
+        # data_exp = []
+        # for exp_data_paths_tem in exp_data_paths:
+        #     if self.core.exp_data:
+        #         x_uni_exp_tem, data_exp_tem = self.core.get_all_exp_data(exp_data_paths_tem)
+        #     else:
+        #         x_uni_exp_tem, data_exp_tem = self.core.get_all_synth_data(exp_data_paths_tem)
+        #     x_uni_exp.append(x_uni_exp_tem)
+        #     data_exp.append(data_exp_tem)
         data_name = getattr(self.core, 'data_name_tune', os.path.basename(exp_data_paths[0]))
     else:
         # When not set to multi or optimization of 1d-data, the exp_data_paths contain the name of that data.
-        if self.core.exp_data:
-            x_uni_exp, data_exp = self.core.get_all_exp_data(exp_data_paths)
-        else:
-            x_uni_exp, data_exp = self.core.get_all_synth_data(exp_data_paths)
+        # if self.core.exp_data:
+        #     x_uni_exp, data_exp = self.core.get_all_exp_data(exp_data_paths)
+        # else:
+        #     x_uni_exp, data_exp = self.core.get_all_synth_data(exp_data_paths)
         data_name = os.path.basename(exp_data_paths)
         
     # Reuse the previous parameters as warm-up for new optimization
@@ -245,6 +245,8 @@ def optimierer_ray(self, opt_params_space=None, exp_data_paths=None,known_params
                     self.RT_space[name] = tune.loguniform(10**lo, 10**hi)
                 else:
                     self.RT_space[name] = tune.uniform(lo, hi)
+    self.RT_space["__exp_paths"] = tune.choice([exp_data_paths])
+    self.RT_space["__known_params"] = tune.choice([known_params])
     # Create the search algorithm
     algo = self.create_algo(evaluated_params=evaluated_params, evaluated_rewards=evaluated_rewards)
     # Clean up the data name for output storage 
@@ -256,23 +258,30 @@ def optimierer_ray(self, opt_params_space=None, exp_data_paths=None,known_params
     def trial_dirname_creator(trial):
         return f"trial_{trial.trial_id}"
     # Set up the trainable function based on the multi_flag
-    if not self.multi_flag:
-        trainable = tune.with_parameters(OptCoreRay, core_params=self.core_params, pop_params=self.pop_params,
-                                         data_path=self.data_path, exp_data_paths=exp_data_paths,
-                                         x_uni_exp=x_uni_exp, data_exp=data_exp, known_params=known_params, 
-                                         exp_case=self.core.exp_data)
-    else:
-        trainable = tune.with_parameters(OptCoreMultiRay, core_params=self.core_params, pop_params=self.pop_params,
-                                         data_path=self.data_path, exp_data_paths=exp_data_paths,
-                                         x_uni_exp=x_uni_exp, data_exp=data_exp, known_params=known_params,
-                                         exp_case=self.core.exp_data)    
+    # if not self.multi_flag:
+    #     trainable = tune.with_parameters(OptCoreRay, core_params=self.core_params, pop_params=self.pop_params,
+    #                                      data_path=self.data_path, exp_data_paths=exp_data_paths,
+    #                                      x_uni_exp=x_uni_exp, data_exp=data_exp, known_params=known_params, 
+    #                                      exp_case=self.core.exp_data)
+    # else:
+    #     trainable = tune.with_parameters(OptCoreMultiRay, core_params=self.core_params, pop_params=self.pop_params,
+    #                                      data_path=self.data_path, exp_data_paths=exp_data_paths,
+    #                                      x_uni_exp=x_uni_exp, data_exp=data_exp, known_params=known_params,
+    #                                      exp_case=self.core.exp_data)  
+        
+    trainable = tune.with_parameters(
+    OptCoreRay if not self.multi_flag else OptCoreMultiRay,
+    core_params=self.core_params,
+    pop_params=self.pop_params,
+    data_path=self.data_path,
+)    
     # Define the resources used for each trial using PlacementGroupFactory
-    trainable_with_resources  = tune.with_resources(trainable, 
-                                                  resources=tune.PlacementGroupFactory([{"CPU": self.core.cpus_per_trail}]),
-    )
-    # trainable_with_resources  = tune.with_resources(trainable,                             
-    #     {"cpu": self.core.cpus_per_trail}, 
+    # trainable_with_resources  = tune.with_resources(trainable, 
+    #                                               resources=tune.PlacementGroupFactory([{"CPU": self.core.cpus_per_trail}]),
     # )
+    trainable_with_resources  = tune.with_resources(trainable,                             
+        {"cpu": self.core.cpus_per_trail}, 
+    )
     
     # checkpoint_path_save = os.path.join(self.core.tune_storage_path, f"{data_name}_checkpoint_{n_save}.pkl")
     # if resume_unfinished:
@@ -320,6 +329,10 @@ def optimierer_ray(self, opt_params_space=None, exp_data_paths=None,known_params
     results = tuner.fit()
     # algo.save(checkpoint_path_save)
     
+    # df = results.get_dataframe()
+    # df_path = os.path.join(r"C:\Users\px2030\Code\PSD_opt\optframework\utils\general_scripts\Parameter_study", data_name+".csv")
+    # df.to_csv(df_path, index=False)
+    
     all_params = []
     all_score = []
     for trial in results:
@@ -334,7 +347,8 @@ def optimierer_ray(self, opt_params_space=None, exp_data_paths=None,known_params
     # Get the best result from the optimization
     opt_result = results.get_best_result(metric="loss", mode="min")
     opt_params = opt_result.config
-    opt_exp_data_paths = opt_result.metrics["exp_paths"]
+    # opt_exp_data_paths = opt_result.metrics["exp_paths"]
+    opt_exp_data_paths = data_name
     opt_score = opt_result.metrics["loss"]
     result_dict = {
         "opt_score": opt_score,
@@ -374,9 +388,13 @@ def create_algo(self, batch=False, evaluated_params=None, evaluated_rewards=None
         The search algorithm instance to be used for optimization.
 
     """
-    # if self.core.method == 'HEBO': 
-    #     search_alg = HEBOSearch(metric="loss", mode="min", random_state_seed=self.core.random_seed)
     if self.core.method == 'GP': 
+        try:
+            import torch  # just to check if PyTorch is installed
+        except ImportError:
+            raise ImportError(
+                "PyTorch is required for GPSampler but not installed. "
+            )
         search_alg = OptunaSearch(metric="loss", mode="min", sampler=GPSampler(seed=self.core.random_seed), 
                                   points_to_evaluate=evaluated_params, evaluated_rewards=evaluated_rewards)
     elif self.core.method == 'TPE': 

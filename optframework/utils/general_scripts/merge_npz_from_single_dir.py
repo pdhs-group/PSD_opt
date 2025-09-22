@@ -29,139 +29,64 @@ from typing import List, Dict, Any, Iterable, Tuple
 import numpy as np
 import shutil
 
-def find_run_dirs(base: Path, prefix: str) -> List[Path]:
-    """Find subdirectories matching pattern <prefix>-* (single level, not recursive)."""
-    runs = [p for p in base.iterdir() if p.is_dir() and p.name.startswith(prefix + "-")]
-    runs.sort()
-    return runs
-
-def index_npz_by_name(folders: Iterable[Path]) -> Dict[str, List[Path]]:
-    """
-    Collect path lists for each filename across multiple directories:
-    Returns mapping: filename -> [path_in_run0, path_in_run1, ...]
-    (missing directories won't appear)
-    """
-    table: Dict[str, List[Path]] = {}
-    for d in folders:
-        for p in sorted(d.glob("*.npz")):
-            table.setdefault(p.name, []).append(p)
-    return table
-
+def _to_list_of_dicts(obj) -> list[dict]:
+    """把 npz['results'] 统一转成 List[dict]，否则抛错。"""
+    if isinstance(obj, dict):
+        return [obj]
+    if isinstance(obj, np.ndarray):
+        if obj.ndim == 0 and obj.dtype == object:
+            return _to_list_of_dicts(obj.item())
+        if obj.dtype != object:
+            raise TypeError(f"unexpected results array dtype: {obj.dtype}")
+        out: list[dict] = []
+        for x in obj.ravel():
+            if isinstance(x, dict):
+                out.append(x)
+            elif isinstance(x, (list, tuple)):
+                for y in x:
+                    if isinstance(y, dict):
+                        out.append(y)
+                    else:
+                        raise TypeError(f"results contains non-dict element of type {type(y)}")
+            else:
+                raise TypeError(f"results contains non-dict element of type {type(x)}")
+        return out
+    if isinstance(obj, (list, tuple)):
+        out = []
+        for x in obj:
+            if isinstance(x, dict):
+                out.append(x)
+            else:
+                raise TypeError(f"results contains non-dict element of type {type(x)}")
+        return out
+    raise TypeError(f"unsupported results type: {type(obj)}")
 
 def load_results(npz_path: Path) -> list[dict]:
-    """
-    Read results from .npz and uniformly convert to List[dict]:
-      - If single dict -> [dict]
-      - If object array/list/tuple -> flatten to [dict, dict, ...]
-    Throws error for non-dict elements (to ensure consistent structure).
-    """
-    def _to_list_of_dicts(obj) -> list[dict]:
-        # Single dict
-        if isinstance(obj, dict):
-            return [obj]
-        # numpy array
-        if isinstance(obj, np.ndarray):
-            if obj.dtype == object:
-                out = []
-                for x in obj.ravel():
-                    if isinstance(x, dict):
-                        out.append(x)
-                    elif isinstance(x, (list, tuple)):
-                        for y in x:
-                            if isinstance(y, dict):
-                                out.append(y)
-                            else:
-                                raise TypeError(f"results contains non-dict element of type {type(y)}")
-                    else:
-                        raise TypeError(f"results contains non-dict element of type {type(x)}")
-                return out
-            else:
-                # Non-object dtype is basically impossible for the expected structure
-                raise TypeError(f"unexpected results array dtype: {obj.dtype}")
-        # Python list/tuple
-        if isinstance(obj, (list, tuple)):
-            out = []
-            for x in obj:
-                if isinstance(x, dict):
-                    out.append(x)
-                else:
-                    raise TypeError(f"results contains non-dict element of type {type(x)}")
-            return out
-        # Other types not supported
-        raise TypeError(f"unsupported results type: {type(obj)}")
-
+    """读取单个 npz 的 results -> List[dict]。"""
     with np.load(npz_path, allow_pickle=True) as data:
-        res_obj = data["results"]
-        # Some save methods wrap single dict in 0-d object array
-        if isinstance(res_obj, np.ndarray) and res_obj.ndim == 0 and res_obj.dtype == object:
-            res_obj = res_obj.item()
-        return _to_list_of_dicts(res_obj)
+        if "results" not in data:
+            raise KeyError(f"{npz_path} missing 'results'")
+        return _to_list_of_dicts(data["results"])
 
-
-
-def merge_results_lists(results_lists: list[list[dict]], source_dirs: list[str]) -> list[dict]:
+def merge_results_lists(results_lists: list[list[dict]], src_tags: list[str], src_files: list[str]) -> list[dict]:
     """
-    Merge multiple List[dict] into a single List[dict], adding 'source_dir' field to each dict.
-    results_lists[i] corresponds one-to-one with source_dirs[i].
+    合并多个 List[dict] 为一个 List[dict]，并为每条记录添加来源信息：
+    - source_tag: 例如 '0'、'1'（从文件名中 -X_ 提取）
+    - source_file: 源文件名
     """
     merged: list[dict] = []
-    for lst, src in zip(results_lists, source_dirs):
+    for lst, tag, file in zip(results_lists, src_tags, src_files):
         for d in lst:
-            # Shallow copy to avoid modifying original object
             nd = dict(d)
-            nd["source_dir"] = src
+            nd["source_tag"] = tag
+            nd["source_file"] = file
             merged.append(nd)
     return merged
 
-
-
 def save_npz(out_path: Path, results_obj: Any) -> None:
-    """Save as .npz with structure consistent with original: np.savez(out_path, results=results_obj)."""
+    """保存为 npz，键名固定 'results'。"""
     out_path.parent.mkdir(parents=True, exist_ok=True)
     np.savez(out_path, results=results_obj)
-
-
-def merge_for_prefix(base: Path, prefix: str) -> None:
-    """Execute cleanup + merge for a specific prefix."""
-    run_dirs = find_run_dirs(base, prefix)
-    if VERBOSE:
-        print(f"\n==> Prefix '{prefix}': found {len(run_dirs)} run folder(s)")
-    if not run_dirs:
-        return
-
-    # Target output directory (without -number suffix)
-    out_dir = base / prefix
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    table = index_npz_by_name(run_dirs)
-    if VERBOSE:
-        print(f"  found {len(table)} unique .npz filenames across runs")
-
-    merged_count = 0
-    for fname, paths in sorted(table.items()):
-        results_lists = []
-        src_dirs = []
-        for p in paths:
-            try:
-                lst = load_results(p)              # -> List[dict]
-                results_lists.append(lst)
-                src_dirs.append(p.parent.name)     # e.g. "opt_results_MSE-0"
-            except Exception as e:
-                if VERBOSE:
-                    print(f"  [skip] failed to load '{p}': {e}")
-        
-        if not results_lists:
-            continue
-        
-        merged_results_list = merge_results_lists(results_lists, src_dirs)  # -> List[dict]
-        out_path = out_dir / fname
-        save_npz(out_path, merged_results_list)
-        merged_count += 1
-        if VERBOSE:
-            print(f"  merged {len(paths):2d} -> {out_path.relative_to(base)}")
-
-    if VERBOSE:
-        print(f"==> Done: {merged_count} file(s) merged into '{out_dir.name}/'.")
 
 def find_group_files_single_dir(base: Path, prefix: str, iter_label: str | int) -> List[Path]:
     """
@@ -259,20 +184,21 @@ def merge_single_dir(prefixes: Iterable[str],
     if verbose:
         print(f"\n==> Done. planned groups: {total_groups}, written outputs: {total_outputs}")
 
-def merge_multi_dir():
-    for prefix in PREFIXES:
-        merge_for_prefix(BASE_DIR, prefix)
-
-
 if __name__ == "__main__":
     
     # ====== Configuration Section (Edit directly here in Spyder) ======
     BASE_DIR = Path(r"C:\Users\px2030\Code\Ergebnisse\opt_para_study\study_results\New_CAMES_results\summaries_array")      # Top-level directory (containing opt_results_MSE-0 / -1 / ...)
     PREFIXES: List[str] = ["kva", "MSEa", "nna"]   # Prefixes to process, can have multiple
-    ITERS: List[int] = [50, 100, 200, 400, 800, 1600, 2400, 3200, 4800, 6400]
+    ITERS: List[int] = [5,10,15,20,25,30,35,40,45,50,\
+                55,60,65,70,75,80,85,90,95,100,\
+                110,120,130,140,150,160,170,180,190,200,\
+                220,240,260,280,300,320,340,360,380,400,\
+                440,480,520,560,600,640,680,720,760,800,\
+                880,960,1040,1120,1200,1280,1360,1440,1520,1600,\
+                1680,1760,1840,1920,2000,2080,2160,2240,2320,2400,\
+                2480,2560,2640,2720,2800,2880,2960,3040,3120,3200,\
+                3360,3520,3680,3840,4000,4160,4320,4480,4640,4800,\
+                4960,5120,5280,5440,5600,5760,5920,6080,6240,6400]
     VERBOSE = True                      # Print progress
-    # ==========================================
-    # merge_multi_dir()
-    
     OUT_DIR = BASE_DIR / "merged"
     merge_single_dir(PREFIXES, ITERS, BASE_DIR, OUT_DIR, VERBOSE)

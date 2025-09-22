@@ -6,7 +6,7 @@ Created on Mon Dec 11 09:05:42 2023
 """
 
 from .opt_core import OptCore   
-import yappi
+# import yappi
 
 class OptCoreMulti(OptCore):
     """

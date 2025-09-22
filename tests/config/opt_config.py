@@ -32,10 +32,10 @@ config = {
         # Specifies the number of initial time steps to skip during optimization, 
         # often useful to avoid the impact of initialization errors.
         
-        'add_noise': False,
+        'add_noise': True,
         # Whether to add noise to the generated data.
         
-        'smoothing': False,
+        'smoothing': True,
         # Whether to apply smoothing to the simulated data, usually performed using 
         # kernel density estimation (KDE).
         
@@ -58,7 +58,7 @@ config = {
         'sheet_name' : None, 
         # Name of the sheet in the experimental data file (if applicable).
          
-        'method': 'HEBO',
+        'method': 'Cmaes',
         # Optimization method to use. Options include:
         # - 'GP': Gaussian Process-based Bayesian Optimization
         # - 'TPE': Tree-structured Parzen Estimator
@@ -137,19 +137,19 @@ config = {
         'tune_storage_path': os.path.join(_config_opt_path, "Ray_Tune"),   
         # Path to store Ray Tune optimization infomation.
         
-        'verbose': 1,
+        'verbose': 0,
     
         'multi_jobs': True,  
         # Whether to run multiple optimization tasks (Tune jobs) concurrently. 
         # If True, multiple PSD datasets should be provided.
     
-        'num_jobs': 2,  
+        'num_jobs': 8,  
         # Number of parallel optimization jobs to run.
     
         'cpus_per_trail': 3,  
         # Number of CPU cores allocated to each optimization trial.
     
-        'max_concurrent': 4,  
+        'max_concurrent': 1,  
         # Maximum number of trials that can be run concurrently.
         },
     
@@ -199,7 +199,7 @@ config = {
         'pl_P3': {'bounds': (-5.0, -1.0), 'log_scale': True},
         'pl_P4': {'bounds': (0.3, 3.0), 'log_scale': False},
         'actor_wait': {"fixed": True},
-        'wait_time': {"fixed": 1},
+        'wait_time': {"fixed": 0.3},
         'max_reuse': {"fixed": 10}
     },
 
