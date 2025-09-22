@@ -298,8 +298,10 @@ class DPBEAdapter(WriteThroughAdapter):
                 data_mod = self.impl.post.re_calc_distribution(x_uni_exp, qx=qx_mod, flag=flag)[0]
                 delta = opt.cost_fun(data_exp, data_mod, cost_func_type, flag)
                 delta_sum += delta 
-            
-            return delta
+            if opt.exp_data:  
+                return delta
+            else:
+                return delta / len(x_uni_exp)
         
         # Multiple sample case
         else:
@@ -318,9 +320,11 @@ class DPBEAdapter(WriteThroughAdapter):
                     data_mod = self.impl.post.re_calc_distribution(x_uni_exp[i], qx=qx_mod, flag=flag)[0]
                     delta = opt.cost_fun(data_exp[i], data_mod, cost_func_type, flag)
                     delta_sum += delta 
-                
             delta_sum /= opt.sample_num
-            return delta_sum 
+            if opt.exp_data:    
+                return delta_sum
+            else:
+                return delta_sum / len(x_uni_exp)
         
     def close(self) -> None:
         self.impl.core._close()
