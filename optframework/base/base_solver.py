@@ -65,7 +65,7 @@ class BaseSolver():
                                               # 'ANN_MC': Calculate MC results using ANN model and convert to B_F (experimental)
         self.work_dir_MC_BOND = os.path.join(self.work_dir,'bond_break','int_B_F.npz')
         
-        self.USE_PSD = True                   # Defines whether to use a .npy file to initialize the particle distribution. (False = monodisperse primary particles)
+        self.USE_PSD = False                   # Defines whether to use a .npy file to initialize the particle distribution. (False = monodisperse primary particles)
         # Set default initial PSD file paths
         self.DIST1_path = os.path.join(self.work_dir,'data','PSD_data')
         self.DIST2_path = os.path.join(self.work_dir,'data','PSD_data')
