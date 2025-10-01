@@ -433,7 +433,7 @@ def calc_break_rate_2d(V, V1, V3, G,
     elif BREAKRVAL == 2:
         if BREAKFVAL == 1:
             B_R = (pl_P1 + pl_P3) / 2.0 * V1[i]*V3[j]
-        elif BREAKFVAL == 2:
+        else:
             B_R = (pl_P1 + pl_P3) / 2.0 * (V1[i] + V3[j])
     elif BREAKRVAL == 3:
         B_R = pl_P1 * G * (V[i, j]) ** pl_P2
@@ -449,7 +449,7 @@ def calc_break_rate_2d_flat(V, V1, V3, G,
     elif BREAKRVAL == 2:
         if BREAKFVAL == 1:
             B_R = (pl_P1 + pl_P3) / 2.0 * V1[i]*V3[i]
-        elif BREAKFVAL == 2:
+        else:
             B_R = (pl_P1 + pl_P3) / 2.0 * (V1[i] + V3[i])
     elif BREAKRVAL == 3:
         B_R = pl_P1 * G * (V[i]) ** pl_P2

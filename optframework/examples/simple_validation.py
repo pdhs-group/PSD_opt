@@ -48,7 +48,7 @@ if __name__ == "__main__":
     v.P2 = P2
     v.V_unit = 1
     v.init_all()
-    v.calculate_case(calc_pbe=True, calc_mc=True, calc_pbm=True)
+    v.calculate_case(calc_mc=True, calc_pbm=True)
     v.init_plot(size = 'half', extra = True, mrksize=6)
     v.plot_all_moments(REL=rel_mom)
     v.add_new_moments(NS=NS2,REL=rel_mom)

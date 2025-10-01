@@ -11,7 +11,7 @@ import copy
 import matplotlib.pyplot as plt
 from matplotlib.ticker import ScalarFormatter
 from optframework.dpbe import DPBESolver, ExtruderPBESolver
-from optframework.mcpbe import MCPBESolver
+from optframework.mcpbe.mcpbe_new_stru import MCPBESolver
 from optframework.pbm import PBMSolver
 import optframework.utils.plotter.plotter as pt
 from optframework.utils.plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
@@ -208,13 +208,9 @@ class PBEValidation():
         
     def calculate_mc_pbe(self):
         mu_tmp = []
-        mc_save = []
-        self.p_mc.init_calc(init_Vc=False)
+        results = self.p_mc.solve_repeats(N=self.N_MC, compute_moments=True)
         for i in range(self.N_MC):
-            p_mc_tem = copy.deepcopy(self.p_mc)
-            p_mc_tem.solve_MC()
-            mu_tmp.append(p_mc_tem.calc_mom_t())
-            mc_save.append(p_mc_tem)
+            mu_tmp.append(results[i]['mu'])
         self.mu_mc = np.mean(mu_tmp, axis=0)
         if self.N_MC > 1: self.std_mu_mc = np.std(mu_tmp,ddof=1,axis=0)
     

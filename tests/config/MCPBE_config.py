@@ -11,19 +11,19 @@ config = {
     "a0": 1e3,
     # Total amount of particles in control volume (initially)
     
-    "c": np.array([1e0]), 
-    # "c": np.array([0.5,0.5]), 
+    # "c": np.array([1e0]), 
+    "c": np.array([0.5,0.5]), 
     # Volume concentration array of components [m3/m3]
     ## The Volume concentration of components specifies the proportion of the two primary particles 
     ## in the initial total amount a_0.
     ## It also affects/scales the control volume to calculate the PBE!
     
-    "x": np.array([1e0]),
-    # "x": np.array([1e-2, 1e-2]),
+    # "x": np.array([1e0]),
+    "x": np.array([1e-2, 1e-2]),
     # (Mean) equivalent diameter of primary particles for each component
     
-    "PGV": np.array(['mono']),
-    # "PGV": np.array(['mono','mono']),
+    # "PGV": np.array(['mono']),
+    "PGV": np.array(['mono','mono']),
     # PGV defines which initial particle size distribution is assumed for each component
     # 'mono': Monodisperse at x = x[i]
     # 'norm': Normal distribution at x_mean = x[i] with sigma defined in SIG 
@@ -31,7 +31,7 @@ config = {
     
     "VERBOSE": True,
 
-    "process_type": "breakage",  
+    "process_type": "mix",  
     # Type of process being simulated.
     # "agglomeration": pure agglomeration
     # "breakage": pure breakage
@@ -71,25 +71,25 @@ config = {
     "CORR_BETA": 1e-2,
     # Correction factor for the collision frequency kernel, controlling the rate of aggregation.
 
-    'alpha_prim': np.array([1]),
-    # 'alpha_prim': np.array([1,1,1,1]),  
+    # 'alpha_prim': np.array([1]),
+    'alpha_prim': np.array([1,1,1,1]),  
     # Factors for collision efficiency.
     # The length of the alpha_prim array must be the square of the dpbe's dimensionality (dim^2).
 
-    "BREAKRVAL": 2,
+    "BREAKRVAL": 4,
     # Flag that determines which model to use for calculating breakage rate.
     # Can be checked in dpbe_core.py's `calc_B_R`.
 
-    "BREAKFVAL": 2,  
+    "BREAKFVAL": 4,  
     # Flag that determines which model to use for calculating the fragment distribution function.
     # Can be checked in dpbe_core.py's `calc_int_B_F`.
 
     "pl_v": 1.0,  
     # Parameter in fragment distribution function.
     
-    "pl_P1": 1e-1,  
+    "pl_P1": 1e5,  
     "pl_P2": 1,  
-    "pl_P3": 1e-1,  
+    "pl_P3": 1e5,  
     "pl_P4": 1,  
     # Parameters for breakage rate kernel.
     "G": 1,

@@ -34,12 +34,12 @@ if __name__ == "__main__":
     
     dim = 1
     grid = "geo"
-    NS1 = 20
+    NS1 = 10
     NS2 = None
     S1 = 2
     # S2 = 2
     kernel = "sum"
-    process = "mix"
+    process = "breakage"
     t = np.arange(0, 1, 0.1, dtype=float)
     
     v = PBEValidation(dim, grid, NS1, S1, kernel, process, t=t, c=c, x=x, 
@@ -48,7 +48,7 @@ if __name__ == "__main__":
     v.P2 = P2
     v.V_unit = 1
     v.init_all()
-    v.calculate_case(calc_pbe=True, calc_mc=True, calc_pbm=True)
+    v.calculate_case(calc_mc=True, calc_pbm=True)
     v.init_plot(size = 'half', extra = True, mrksize=6)
     v.plot_all_moments(REL=rel_mom)
     v.add_new_moments(NS=NS2,REL=rel_mom)
