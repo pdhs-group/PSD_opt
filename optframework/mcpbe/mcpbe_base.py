@@ -163,10 +163,9 @@ class MCPBEBase(BaseSolver):
                 raise ValueError("Total primary particle count `n0` must be > 0 (check c and x).")
             self.Vc = self.a0 / self.n0
             self.a = np.round(self.n * self.Vc).astype(int)
-
-        total_cols = int(np.sum(self.a))
-        if total_cols <= 0:
-            raise ValueError("No particles to initialize (sum(a) == 0). Check c/x/PGV/SIG.")
+            total_cols = int(np.sum(self.a))
+            if total_cols <= 0:
+                raise ValueError("No particles to initialize (sum(a) == 0). Check c/x/PGV/SIG.")
 
         if V_flat is None:
             V_init = np.zeros((dim + 1, total_cols), dtype=float)
@@ -398,7 +397,7 @@ class MCPBEBase(BaseSolver):
         self._elapsed = 0.0
         self._iter_count = 0
 
-        while self.t[-1] <= float(self.t_total) and count < maxiter:
+        while self.t[-1] <= float(self.t_vec[-1]) and count < maxiter:
             # keep context for logging/expansion
             self._elapsed = self.t[-1]
             self._iter_count = count
@@ -445,7 +444,8 @@ class MCPBEBase(BaseSolver):
         if self.VERBOSE:
             print(f"[MC-PBE] The calculation took {getattr(self,'MACHINE_TIME',0.0):.4g}s after {count} events")
         return self
-    def solve_repeats(self,N:int=5,base_seed:int=42,seeds:Optional[Sequence[int]]=None,maxiter:int=int(1e8)):
+    def solve_repeats(self,N:int=5,base_seed:int=42,seeds:Optional[Sequence[int]]=None,maxiter:int=int(1e8),
+                      init_Vc: bool = True, V_flat: Optional[np.ndarray] = None):
         if seeds is None:
             master=np.random.SeedSequence(base_seed)
             seeds=master.spawn(N)
@@ -462,7 +462,7 @@ class MCPBEBase(BaseSolver):
                 self._rng=np.random.default_rng(int(seed_k))
                 seed_info={"seed":int(seed_k)}
             self.V_flat=None
-            self._initialize_particles()
+            self._initialize_particles(init_Vc=init_Vc, V_flat=V_flat)
             self._initialize_samplers()
             self.solve(maxiter=maxiter)
             mu,tv=self.calc_moments_over_time(normalize=True)

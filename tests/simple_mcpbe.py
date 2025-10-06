@@ -26,7 +26,7 @@ Key Features:
 import numpy as np
 import copy
 import time
-from optframework.mcpbe_old_stru import MCPBESolver
+from optframework.mcpbe.mcpbe_old_stru import MCPBESolver
 from optframework.mcpbe import MCPBESolver as MCPBESolver_new
 
 import cProfile, pstats
@@ -118,7 +118,6 @@ def plot_moment_t(tp, mu_mc, std_mu_mc, mu_mc_new, std_mu_mc_new, i=0, j=0):
     return 
 
 if __name__ == "__main__":
-    plot_results = False
     # Simulation Configuration
     # ========================
 
@@ -126,7 +125,7 @@ if __name__ == "__main__":
                     # More realizations → better statistics but longer computation time
                     # Recommended: 5-20 for testing, 50-100 for production runs
     dim = 2         # System dimension:
-    seed = 41
+    seed = 42
     # Other key parameters can be modified in MCPBE_config.py
 
     m = MCPBESolver(dim=dim)
@@ -138,7 +137,7 @@ if __name__ == "__main__":
     print(f"Simulation time: 0 to {m.t_total} seconds")
     print(f"Process type: {m.process_type}")
     
-    # mu_mc, std_mu_mc, t_run = run_mcpbe(m)
+    mu_mc, std_mu_mc, t_run = run_mcpbe(m)
     # profiler = cProfile.Profile()
     # profiler.enable()
     mu_mc_new, std_mu_mc_new, t_run_new, mu_tmp_new = run_mcpbe_new(m_new, seed, N_MC)
@@ -147,6 +146,6 @@ if __name__ == "__main__":
     # stats.print_stats(20)
     
     tp = m.t_vec
-    # plot_moment_t(tp, mu_mc, std_mu_mc, mu_mc_new, std_mu_mc_new, i=0, j=0)
-    # plot_moment_t(tp, mu_mc, std_mu_mc, mu_mc_new, std_mu_mc_new, i=1, j=0)
-    # plot_moment_t(tp, mu_mc, std_mu_mc, mu_mc_new, std_mu_mc_new, i=2, j=0)
+    plot_moment_t(tp, mu_mc, std_mu_mc, mu_mc_new, std_mu_mc_new, i=0, j=0)
+    plot_moment_t(tp, mu_mc, std_mu_mc, mu_mc_new, std_mu_mc_new, i=1, j=0)
+    plot_moment_t(tp, mu_mc, std_mu_mc, mu_mc_new, std_mu_mc_new, i=2, j=0)

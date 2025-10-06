@@ -11,7 +11,7 @@ import copy
 import matplotlib.pyplot as plt
 from matplotlib.ticker import ScalarFormatter
 from optframework.dpbe import DPBESolver, ExtruderPBESolver
-from optframework.mcpbe.mcpbe_new_stru import MCPBESolver
+from optframework.mcpbe import MCPBESolver
 from optframework.pbm import PBMSolver
 import optframework.utils.plotter.plotter as pt
 from optframework.utils.plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
@@ -99,7 +99,7 @@ class PBEValidation():
             self.v0 = (self.p.V1[1] + self.p.V3[1]) /2
     
     def init_mcpbe(self, dim, t, process):
-        self.p_mc = MCPBESolver(dim=dim, verbose=True, load_attr=False, init=False)
+        self.p_mc = MCPBESolver(dim=dim, t_vec=t, verbose=True, load_attr=False, init=False)
         self.p_mc.a0 = self.mom_a0
         self.p_mc.CDF_method = "disc"
         self.p_mc.G = self.G
@@ -110,21 +110,21 @@ class PBEValidation():
         self.p_mc.n0 = np.sum(N[..., 0])
         self.p_mc.Vc = self.p_mc.a0 / self.p_mc.n0
         a_array = np.round(N[..., 0] * self.p_mc.Vc).astype(int)
-        self.p_mc.V_flat = np.zeros((dim+1, np.sum(a_array)))
+        self.V_flat = np.zeros((dim+1, np.sum(a_array)))
         
         cnt = 0
         if dim == 1:
             for i in range(1, len(self.p.V)):
-                self.p_mc.V_flat[0, cnt:cnt + a_array[i]] = np.full(a_array[i], self.p.V[i]) 
+                self.V_flat[0, cnt:cnt + a_array[i]] = np.full(a_array[i], self.p.V[i]) 
                 cnt += a_array[i]
         elif dim == 2:
             for i in range(self.p.V.shape[0]):
                 for j in range(self.p.V.shape[1]):
                     if a_array[i, j] > 0:
-                        self.p_mc.V_flat[0, cnt:cnt + a_array[i, j]] = np.full(a_array[i, j], self.p.V[i, 0])
-                        self.p_mc.V_flat[1, cnt:cnt + a_array[i, j]] = np.full(a_array[i, j], self.p.V[0, j])
+                        self.V_flat[0, cnt:cnt + a_array[i, j]] = np.full(a_array[i, j], self.p.V[i, 0])
+                        self.V_flat[1, cnt:cnt + a_array[i, j]] = np.full(a_array[i, j], self.p.V[0, j])
                         cnt += a_array[i, j]
-        self.p_mc.V_flat[-1, :] = np.sum(self.p_mc.V_flat[:dim, :], axis=0)
+        self.V_flat[-1, :] = np.sum(self.V_flat[:dim, :], axis=0)
             
     def init_pbm(self, dim, t, process, mom_n_order, mom_n_add):
         self.p_mom = PBMSolver(dim, t_vec=t, load_attr=False)
@@ -208,11 +208,13 @@ class PBEValidation():
         
     def calculate_mc_pbe(self):
         mu_tmp = []
-        results = self.p_mc.solve_repeats(N=self.N_MC, compute_moments=True)
+        results = self.p_mc.solve_repeats(N=self.N_MC, base_seed=42, maxiter=1e8,
+                                          init_Vc=False, V_flat=self.V_flat)
         for i in range(self.N_MC):
-            mu_tmp.append(results[i]['mu'])
+            mu_tmp.append(results[i]['moments'])
         self.mu_mc = np.mean(mu_tmp, axis=0)
-        if self.N_MC > 1: self.std_mu_mc = np.std(mu_tmp,ddof=1,axis=0)
+        if self.N_MC > 1: 
+            self.std_mu_mc = np.std(mu_tmp,ddof=1,axis=0)
     
     def calculate_pbm(self):
         self.p_mom.core.solve_PBM()

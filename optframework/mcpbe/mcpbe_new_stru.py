@@ -586,7 +586,7 @@ class MCPBESolver(BaseSolver):  # Monte Carlo PBE Solver with capacity buffers a
         next_save_idx = 1 if len(self.t_vec) > 1 else 0
         self._elapsed = 0.0
         self._iter_count = 0
-        while self.t[-1] <= float(self.t_total) and count < maxiter:
+        while self.t[-1] <= float(self.t_vec[-1]) and count < maxiter:
             self._elapsed = self.t[-1]
             self._iter_count = count
             if getattr(self, 'process_type', 'agglomeration') == 'agglomeration':

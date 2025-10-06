@@ -32,14 +32,14 @@ if __name__ == "__main__":
     maxscale = 100
     dist_path = full_psd(x50, resigma, minscale=minscale, maxscale=maxscale, plot_psd=False, output_dir=output_dir)
     
-    dim = 1
+    dim = 2
     grid = "geo"
     NS1 = 10
     NS2 = None
     S1 = 2
     # S2 = 2
     kernel = "sum"
-    process = "breakage"
+    process = "mix"
     t = np.arange(0, 1, 0.1, dtype=float)
     
     v = PBEValidation(dim, grid, NS1, S1, kernel, process, t=t, c=c, x=x, 

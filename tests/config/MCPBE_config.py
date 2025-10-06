@@ -31,7 +31,7 @@ config = {
     
     "VERBOSE": True,
 
-    "process_type": "mix",  
+    "process_type": "breakage",  
     # Type of process being simulated.
     # "agglomeration": pure agglomeration
     # "breakage": pure breakage
