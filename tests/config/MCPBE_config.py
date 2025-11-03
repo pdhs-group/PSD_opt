@@ -37,7 +37,17 @@ config = {
     # "breakage": pure breakage
     # "mix": both agglomeration and breakage
 
-    "CDF_method": "disc",  
+    "CDF_method": "disc", 
+    "use_lmc_tables": False,
+    "use_lmc_rank_tables": True,
+    "lmc_A0_runtime": 1e-9,
+    "lmc_tables_path": "lmc_tables_grid.npz",
+    "lmc_rank_tables_path": "lmc_rank_tables_grid.npz",
+    "lmc_interp ": "bilinear",
+    "lmc_tables_cache": True,
+    
+    "use_lmc_live": True,
+    "lmc_small_particle_policy": "fallback", # 'fallback' | 'disable'
 
     "USE_PSD": True,  
     # Flag indicating whether a particle size distribution (PSD) should be used. If True, 

@@ -28,6 +28,7 @@ import copy
 import time
 from optframework.mcpbe.mcpbe_old_stru import MCPBESolver
 from optframework.mcpbe import MCPBESolver as MCPBESolver_new
+from optframework.mcpbe.lmc_adapter import LMCRankAdapter, LMCTableAdapter
 
 import cProfile, pstats
 
@@ -130,6 +131,7 @@ if __name__ == "__main__":
 
     m = MCPBESolver(dim=dim)
     m_new = MCPBESolver_new(dim=dim, init=False)
+    m_new2 = MCPBESolver_new(dim=dim, init=False)
 
     print(f"Running {N_MC} Monte Carlo realizations for {dim}D system...")
     print(f"Initial particle count: {m.a_tot}")
@@ -137,10 +139,12 @@ if __name__ == "__main__":
     print(f"Simulation time: 0 to {m.t_total} seconds")
     print(f"Process type: {m.process_type}")
     
-    mu_mc, std_mu_mc, t_run = run_mcpbe(m)
+    # mu_mc, std_mu_mc, t_run = run_mcpbe(m)
     # profiler = cProfile.Profile()
     # profiler.enable()
     mu_mc_new, std_mu_mc_new, t_run_new, mu_tmp_new = run_mcpbe_new(m_new, seed, N_MC)
+    m_new2.use_lmc_live = False
+    mu_mc, std_mu_mc, t_run, _ = run_mcpbe_new(m_new2, seed, N_MC)
     # profiler.disable()
     # stats = pstats.Stats(profiler).strip_dirs().sort_stats("cumtime")
     # stats.print_stats(20)

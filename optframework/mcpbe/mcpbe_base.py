@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import os
 import time
+import warnings
 from typing import Optional, Sequence
 
 import numpy as np
@@ -79,6 +80,69 @@ class MCPBEBase(BaseSolver):
         # cache for breakage CDF tables (keyed by dim, N, BREAKFVAL, pl_v, pl_q)
         self._bf_cache = {}
 
+        # --- 读取配置（保持原有方式） ---
+        self.use_lmc_tables       = bool(getattr(self, "use_lmc_tables", False))
+        self.use_lmc_rank_tables  = bool(getattr(self, "use_lmc_rank_tables", False))
+        self.lmc_tables_path      = getattr(self, "lmc_tables_path", None)
+        self.lmc_rank_tables_path = getattr(self, "lmc_rank_tables_path", None)
+        self.lmc_A0_runtime       = getattr(self, "lmc_A0_runtime", None)
+        self.lmc_interp           = str(getattr(self, "lmc_interp", "bilinear"))
+        self.lmc_tables_cache     = bool(getattr(self, "lmc_tables_cache", False))
+        self.lmc_small_particle_policy = str(getattr(self, "lmc_small_particle_policy", "fallback"))
+        
+        # --- 互斥处理：tables vs rank_tables ---
+        if self.use_lmc_tables and self.use_lmc_rank_tables:
+            # 两者不可同时启用：优先 rank，并提示
+            warnings.warn("Both use_lmc_tables and use_lmc_rank_tables are True; prefer rank tables. "
+                          "Proceeding with use_lmc_rank_tables=True and disabling use_lmc_tables.")
+            self.use_lmc_tables = False
+        
+        # --- 构建 lmc_adapter（若启用任一表） ---
+        self.lmc_adapter = None
+        if self.use_lmc_tables or self.use_lmc_rank_tables:
+            from .lmc_adapter import LMCTableAdapter, LMCRankAdapter
+            if self.use_lmc_rank_tables:
+                if not self.lmc_rank_tables_path:
+                    raise ValueError("use_lmc_rank_tables=True but lmc_rank_tables_path is missing.")
+                self.lmc_adapter = LMCRankAdapter(self.lmc_rank_tables_path, interp=self.lmc_interp, A0_run=self.lmc_A0_runtime,
+                                                  cache_enabled=self.lmc_tables_cache)
+            else:
+                if not self.lmc_tables_path:
+                    raise ValueError("use_lmc_tables=True but lmc_tables_path is missing.")
+                self.lmc_adapter = LMCTableAdapter(self.lmc_tables_path, interp=self.lmc_interp, A0_run=self.lmc_A0_runtime,
+                                                  cache_enabled=self.lmc_tables_cache)
+            self.lmc_adapter.set_small_particle_policy(policy=self.lmc_small_particle_policy)
+        # --- Live LMC 初始化 + 依赖检查（fallback 策略需要至少一个表） ---
+        self.use_lmc_live = bool(getattr(self, "use_lmc_live", False))
+        self.lmc_live = None
+        if self.use_lmc_live:
+            from .lmc_adapter import LMCLiveAdapter
+            self.lmc_live = LMCLiveAdapter()
+            self.lmc_live.configure_simulator(
+                STR=self.STR if hasattr(self, "STR") else np.array([1.0,1.0,1.0]),
+                NO_FRAG=int(getattr(self, "NO_FRAG", 4)),
+                gamma=float(getattr(self, "gamma", 1.0)),
+                allow_loops=bool(getattr(self, "allow_loops", True)),
+                accept_all_cracks=bool(getattr(self, "accept_all_cracks", False)),
+                use_weighted_start=bool(getattr(self, "use_weighted_start", False)),
+                aspect_ratio=float(getattr(self, "aspect_ratio", 1.0)),
+                int_bre=float(getattr(self, "int_bre", 0.0)),
+                A0_run=float(getattr(self, "lmc_A0_runtime", 1.0)),
+                small_particle_policy=str(getattr(self, "lmc_small_particle_policy", "fallback")),  # 'fallback' | 'disable'
+                delta_cells=float(getattr(self, "lmc_delta_cells", 0.1)),
+                rebuild=True,
+            )
+            # 若策略为 fallback，则要求至少有一个表；若两个表都关了，报错
+            if self.lmc_live.small_particle_policy == "fallback":
+                if self.lmc_adapter is None:
+                    raise ValueError("use_lmc_live=True with small_particle_policy='fallback' "
+                                     "requires either use_lmc_rank_tables or use_lmc_tables to be True.")
+                # 若两者都配了（上面已互斥处理为只留 rank），也提示一下优先级
+                if isinstance(self.lmc_adapter, LMCTableAdapter):
+                    # 如果用户同时提供了 rank 和 table 的路径但前面没有冲突，这里提示一下
+                    if self.use_lmc_rank_tables:
+                        warnings.warn("Live LMC fallback: rank tables are available; "
+                                      "prefer LMCRankAdapter over LMCTableAdapter when both provided.")
     # ---------------------------------------------------------------------
     # Validation & helpers
     # ---------------------------------------------------------------------
@@ -295,6 +359,7 @@ class MCPBEBase(BaseSolver):
             f"[MC-PBE] Capacity grown at t={getattr(self,'_elapsed',0.0):.6g} "
             f"after {getattr(self,'_iter_count',0)} events: cap {old_cap} -> {new_cap} "
             f"(x{new_cap/max(old_cap,1):.2f})"
+            f"[TEST] dt_break = {self.test_dt_break}"
         )
 
     def _maybe_double_control_volume(self, elapsed_time: float, iter_count: int):
@@ -370,6 +435,7 @@ class MCPBEBase(BaseSolver):
         s = float(np.mean(self._break_rate[:a])) if a > 0 else 0.0
         if s <= 0.0:
             return float("inf")
+        self.test_dt_break = 1.0 / (a * s)
         return 1.0 / (a * s)
 
     # ---------------------------------------------------------------------
