@@ -9,63 +9,59 @@ from typing import Optional, Tuple, Dict, List
 import numpy as np
 import matplotlib.pyplot as plt
 
-# 适配器（按你的工程路径导入）
+# 适配器
 from optframework.mcpbe.lmc_adapter import (
     LMCTableAdapter,
     LMCRankAdapter,
     LMCLiveAdapter,
     LMCLiveFallback,
     LMCLiveDisable,
-    LMCCopulaAdapter,   # ← 新增
+    LMCCopulaAdapter,
+    LMCFlowAdapter,    # ← 新增：flow 适配器
 )
 
 # ---------------------------
 # 可配置区域
 # ---------------------------
-# 1) 手动指定母颗粒
-A_parent = 500.0     # 总体积
-X1_parent = 0.70     # 材料 A 的体积分数
+A_parent = 500.0
+X1_parent = 0.5
 
-# 2) 采样重复次数
 N_OUTER = 200
-N_INNER = 200     # 总事件数 = N_OUTER * N_INNER
+N_INNER = 200
 
-# 3) 方法开关 + 所需表路径
 USE_TABLES = True
 USE_RANK   = True
 USE_LIVE   = True
-USE_COPULA = True   # ← 新增
+USE_COPULA = True
+USE_FLOW   = True   # ← 新增
 
 TABLES_NPZ_PATH = "lmc_tables_grid.npz"
 RANK_NPZ_PATH   = "lmc_rank_tables_grid.npz"
-COPULA_NPZ_PATH = "lmc_copula_grid.npz"   # ← 我们刚训练出来的 copula 表
+COPULA_NPZ_PATH = "lmc_copula_grid.npz"
+FLOW_MIX_PT_PATH    = "lmc_cond_flow_mix.pt"   # ← 你刚训练出来的 .pt
+FLOW_PURE_PT_PATH   = "lmc_cond_flow_pure.pt"
 
-# 4) 运行期 A0
 A0_run = 1.0
 
-# 5) Rank / Copula 采样选项
 RANK_K_USE: Optional[int] = None
 TAIL_STRATEGY = "equal"
 
-# 6) Live LMC 选项
 LIVE_NO_FRAG = 4
 LIVE_SMALL_PARTICLE_POLICY = "fallback"
 LIVE_DELTA_CELLS = 0.1
 
-# 7) 随机种子
 BASE_SEED = 42
+# ---------------------------
 
 
-# ---------------------------
-# 工具函数
-# ---------------------------
 def _spawn_rngs(base_seed: int, count: int) -> List[np.random.Generator]:
     ss = np.random.SeedSequence(base_seed)
     children = ss.spawn(count)
     return [np.random.default_rng(s) for s in children]
 
 
-def _from_rA_rB_to_fragments(rA: List[float], rB: List[float], A: float, X1: float) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+def _from_rA_rB_to_fragments(rA: List[float], rB: List[float],
+                             A: float, X1: float) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     X3 = 1.0 - X1
     VA = np.asarray(rA, dtype=float) * (A * X1)
     VB = np.asarray(rB, dtype=float) * (A * X3)
@@ -107,7 +103,8 @@ def _plot_results(fig_title: str,
                   ZA_by_method: Dict[str, np.ndarray],
                   ZB_by_method: Dict[str, np.ndarray],
                   bins_1d: int = 60,
-                  bins_2d: int = 60):
+                  bins_2d: int = 60,
+                  vmax = None):
     nrow = 2
     ncol = 1 + len(methods)
 
@@ -130,7 +127,7 @@ def _plot_results(fig_title: str,
         ax2 = plt.subplot(nrow, ncol, idx)
         ZA = ZA_by_method[name]
         ZB = ZB_by_method[name]
-        hb = ax2.hexbin(ZA, ZB, gridsize=bins_2d, mincnt=1)
+        hb = ax2.hexbin(ZA, ZB, gridsize=bins_2d, mincnt=1, vmin=0, vmax=vmax)
         ax2.set_xlabel("ZA = VA/A")
         ax2.set_ylabel("ZB = VB/A")
         ax2.set_title(f"{name}: 2D distribution")
@@ -148,7 +145,7 @@ def _plot_results(fig_title: str,
 # ---------------------------
 def run_with_tables(adapter: LMCTableAdapter,
                     A: float, X1: float,
-                    rngs: List[np.random.Generator]) -> Tuple[List[float], List[float], List[float], List[int]]:
+                    rngs: List[np.random.Generator]):
     VA_all: List[float] = []
     VB_all: List[float] = []
     VT_all: List[float] = []
@@ -189,7 +186,7 @@ def run_with_tables(adapter: LMCTableAdapter,
 
 def run_with_rank(adapter: LMCRankAdapter,
                   A: float, X1: float,
-                  rngs: List[np.random.Generator]) -> Tuple[List[float], List[float], List[float], List[int]]:
+                  rngs: List[np.random.Generator]):
     VA_all: List[float] = []
     VB_all: List[float] = []
     VT_all: List[float] = []
@@ -211,10 +208,7 @@ def run_with_rank(adapter: LMCRankAdapter,
 
 def run_with_copula(adapter: LMCCopulaAdapter,
                     A: float, X1: float,
-                    rngs: List[np.random.Generator]) -> Tuple[List[float], List[float], List[float], List[int]]:
-    """
-    新增：使用 Copula 表的一次性采样
-    """
+                    rngs: List[np.random.Generator]):
     VA_all: List[float] = []
     VB_all: List[float] = []
     VT_all: List[float] = []
@@ -234,9 +228,32 @@ def run_with_copula(adapter: LMCCopulaAdapter,
     return VA_all, VB_all, VT_all, N_per_event
 
 
+def run_with_flow(adapter: LMCFlowAdapter,
+                  A: float, X1: float,
+                  rngs: List[np.random.Generator]):
+    """
+    新增：使用条件 flow 一次性生成整次破碎事件
+    """
+    VA_all: List[float] = []
+    VB_all: List[float] = []
+    VT_all: List[float] = []
+    N_per_event: List[int] = []
+
+    for rng in rngs:
+        rA_list, rB_list = adapter.sample_one_shot(A=A, X1=X1, rng=rng, N=None)
+        N = len(rA_list)
+        VA, VB, VT = _from_rA_rB_to_fragments(rA_list, rB_list, A, X1)
+        VA_all.extend(VA.tolist())
+        VB_all.extend(VB.tolist())
+        VT_all.extend(VT.tolist())
+        N_per_event.append(N)
+
+    return VA_all, VB_all, VT_all, N_per_event
+
+
 def run_with_live(adapter: LMCLiveAdapter,
                   A: float, X1: float,
-                  rngs: List[np.random.Generator]) -> Tuple[List[float], List[float], List[float], List[int]]:
+                  rngs: List[np.random.Generator]):
     VA_all: List[float] = []
     VB_all: List[float] = []
     VT_all: List[float] = []
@@ -285,9 +302,9 @@ def main():
             tab = LMCTableAdapter(TABLES_NPZ_PATH, interp="bilinear", A0_run=A0_run, cache_enabled=True)
             VA_all, VB_all, VT_all, N_event = run_with_tables(tab, A_parent, X1_parent, rngs)
             methods.append("tables")
-            VT_rel_by_method["tables"] = np.asarray(VT_all, dtype=float) / max(A_parent, 1e-16)
-            ZA_by_method["tables"] = np.asarray(VA_all, dtype=float) / max(A_parent, 1e-16)
-            ZB_by_method["tables"] = np.asarray(VB_all, dtype=float) / max(A_parent, 1e-16)
+            VT_rel_by_method["tables"] = np.asarray(VT_all) / max(A_parent, 1e-16)
+            ZA_by_method["tables"] = np.asarray(VA_all) / max(A_parent, 1e-16)
+            ZB_by_method["tables"] = np.asarray(VB_all) / max(A_parent, 1e-16)
             stats_by_method["tables"] = _collect_stats(VA_all, VB_all, VT_all, N_event, A_parent, X1_parent)
 
     # --- RANK ---
@@ -298,9 +315,9 @@ def main():
             rk = LMCRankAdapter(RANK_NPZ_PATH, interp="bilinear", A0_run=A0_run, cache_enabled=True)
             VA_all, VB_all, VT_all, N_event = run_with_rank(rk, A_parent, X1_parent, rngs)
             methods.append("rank")
-            VT_rel_by_method["rank"] = np.asarray(VT_all, dtype=float) / max(A_parent, 1e-16)
-            ZA_by_method["rank"] = np.asarray(VA_all, dtype=float) / max(A_parent, 1e-16)
-            ZB_by_method["rank"] = np.asarray(VB_all, dtype=float) / max(A_parent, 1e-16)
+            VT_rel_by_method["rank"] = np.asarray(VT_all) / max(A_parent, 1e-16)
+            ZA_by_method["rank"] = np.asarray(VA_all) / max(A_parent, 1e-16)
+            ZB_by_method["rank"] = np.asarray(VB_all) / max(A_parent, 1e-16)
             stats_by_method["rank"] = _collect_stats(VA_all, VB_all, VT_all, N_event, A_parent, X1_parent)
 
     # --- COPULA ---
@@ -311,10 +328,24 @@ def main():
             cp = LMCCopulaAdapter(COPULA_NPZ_PATH, interp="bilinear", A0_run=A0_run, cache_enabled=True)
             VA_all, VB_all, VT_all, N_event = run_with_copula(cp, A_parent, X1_parent, rngs)
             methods.append("copula")
-            VT_rel_by_method["copula"] = np.asarray(VT_all, dtype=float) / max(A_parent, 1e-16)
-            ZA_by_method["copula"] = np.asarray(VA_all, dtype=float) / max(A_parent, 1e-16)
-            ZB_by_method["copula"] = np.asarray(VB_all, dtype=float) / max(A_parent, 1e-16)
+            VT_rel_by_method["copula"] = np.asarray(VT_all) / max(A_parent, 1e-16)
+            ZA_by_method["copula"] = np.asarray(VA_all) / max(A_parent, 1e-16)
+            ZB_by_method["copula"] = np.asarray(VB_all) / max(A_parent, 1e-16)
             stats_by_method["copula"] = _collect_stats(VA_all, VB_all, VT_all, N_event, A_parent, X1_parent)
+
+    # --- FLOW ---
+    if USE_FLOW:
+        if not os.path.exists(FLOW_MIX_PT_PATH) or not os.path.exists(FLOW_PURE_PT_PATH):
+            print("[WARN] flow model not found -> skip.")
+        else:
+            flw = LMCFlowAdapter(pure_model_path=FLOW_PURE_PT_PATH, mix_model_path=FLOW_MIX_PT_PATH, 
+                                 A0_run=A0_run, cache_enabled=True)
+            VA_all, VB_all, VT_all, N_event = run_with_flow(flw, A_parent, X1_parent, rngs)
+            methods.append("flow")
+            VT_rel_by_method["flow"] = np.asarray(VT_all) / max(A_parent, 1e-16)
+            ZA_by_method["flow"] = np.asarray(VA_all) / max(A_parent, 1e-16)
+            ZB_by_method["flow"] = np.asarray(VB_all) / max(A_parent, 1e-16)
+            stats_by_method["flow"] = _collect_stats(VA_all, VB_all, VT_all, N_event, A_parent, X1_parent)
 
     # --- LIVE ---
     if USE_LIVE:
@@ -331,9 +362,9 @@ def main():
             print("[WARN] live sampling produced no events.")
         else:
             methods.append("live")
-            VT_rel_by_method["live"] = np.asarray(VT_all, dtype=float) / max(A_parent, 1e-16)
-            ZA_by_method["live"] = np.asarray(VA_all, dtype=float) / max(A_parent, 1e-16)
-            ZB_by_method["live"] = np.asarray(VB_all, dtype=float) / max(A_parent, 1e-16)
+            VT_rel_by_method["live"] = np.asarray(VT_all) / max(A_parent, 1e-16)
+            ZA_by_method["live"] = np.asarray(VA_all) / max(A_parent, 1e-16)
+            ZB_by_method["live"] = np.asarray(VB_all) / max(A_parent, 1e-16)
             stats_by_method["live"] = _collect_stats(VA_all, VB_all, VT_all, N_event, A_parent, X1_parent)
 
     # --- 输出统计 ---
@@ -347,6 +378,8 @@ def main():
               f"rel_err_T={s.get('rel_err_T',0):.3e}")
 
     # --- 绘图 ---
+    live_H, _, _ = np.histogram2d(ZA_by_method["live"], ZB_by_method["live"], bins=50, range=[[0,1],[0,0.3]])
+    live_max = live_H.max()
     if methods:
         _plot_results(
             fig_title=f"Compare methods @ A={A_parent}, X1={X1_parent}",
@@ -355,7 +388,8 @@ def main():
             ZA_by_method=ZA_by_method,
             ZB_by_method=ZB_by_method,
             bins_1d=80,
-            bins_2d=50
+            bins_2d=50,
+            vmax=live_max,
         )
 
 

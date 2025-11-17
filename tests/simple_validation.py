@@ -17,10 +17,10 @@ if __name__ == "__main__":
     # so theoretically, the initial conditions for all three methods remain the same.
     c = 1e-2  # m3/m3
     x = 2e-5  # m
-    beta0 = 1e-16 # /m3
+    beta0 = 1e-13 # /m3
     P1 = 1e12
     P2 = 1.0
-    use_psd = True
+    use_psd = False
     rel_mom = True
     
     ## generate initial PSD
@@ -32,15 +32,15 @@ if __name__ == "__main__":
     maxscale = 100
     dist_path = full_psd(x50, resigma, minscale=minscale, maxscale=maxscale, plot_psd=False, output_dir=output_dir)
     
-    dim = 2
+    dim = 1
     grid = "geo"
-    NS1 = 10
+    NS1 = 15
     NS2 = None
     S1 = 2
     # S2 = 2
     kernel = "sum"
-    process = "mix"
-    t = np.arange(0, 1, 0.1, dtype=float)
+    process = "agglomeration"
+    t = np.arange(0, 10, 1, dtype=float)
     
     v = PBEValidation(dim, grid, NS1, S1, kernel, process, t=t, c=c, x=x, 
                       beta0=beta0, use_psd=use_psd, dist_path=dist_path)
@@ -48,8 +48,8 @@ if __name__ == "__main__":
     v.P2 = P2
     v.V_unit = 1
     v.init_all()
-    v.calculate_case(calc_mc=True, calc_pbm=True)
-    v.init_plot(size = 'half', extra = True, mrksize=6)
+    v.calculate_case(calc_mc=True, calc_pbm=False)
+    v.init_plot(size ='half', extra=True, mrksize=6)
     v.plot_all_moments(REL=rel_mom)
     v.add_new_moments(NS=NS2,REL=rel_mom)
     v.show_plot()

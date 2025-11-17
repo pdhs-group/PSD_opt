@@ -2,13 +2,13 @@ import numpy as np
 
 config = {
     
-    "t_total": 100,
+    "t_total": 101,
     # Agglomeration time [s]
     
-    "savesteps": 11,
+    "savesteps": 10,
     # Numer of equally spaced, saved timesteps [-]
     
-    "a0": 1e3,
+    "a0": 1000,
     # Total amount of particles in control volume (initially)
     
     # "c": np.array([1e0]), 
@@ -31,18 +31,21 @@ config = {
     
     "VERBOSE": True,
 
-    "process_type": "breakage",  
+    "process_type": "mix",  
     # Type of process being simulated.
     # "agglomeration": pure agglomeration
     # "breakage": pure breakage
     # "mix": both agglomeration and breakage
 
     "CDF_method": "disc", 
-    "use_lmc_tables": False,
-    "use_lmc_rank_tables": True,
+    "use_lmc_pre_model": True,
+    "lmc_pre_model": "table",     # "table" | "rank" | "copula" | "flow"
     "lmc_A0_runtime": 1e-9,
     "lmc_tables_path": "lmc_tables_grid.npz",
     "lmc_rank_tables_path": "lmc_rank_tables_grid.npz",
+    "lmc_copula_path": "lmc_copula_grid.npz",
+    "lmc_flow_pure_path": "lmc_cond_flow_pure.pt",
+    "lmc_flow_mix_path": "lmc_cond_flow_mix.pt",
     "lmc_interp ": "bilinear",
     "lmc_tables_cache": True,
     
@@ -94,7 +97,7 @@ config = {
     # Flag that determines which model to use for calculating the fragment distribution function.
     # Can be checked in dpbe_core.py's `calc_int_B_F`.
 
-    "pl_v": 1.0,  
+    "pl_v": 1.0/3.0,  
     # Parameter in fragment distribution function.
     
     "pl_P1": 1e5,  

@@ -2,6 +2,7 @@ from __future__ import annotations
 import numpy as np
 from typing import Tuple, Dict, Any, Optional, List
 import math
+from numba import njit
 from lmcann.core.lmc.lmc import LMCSimulator
 
 
@@ -115,72 +116,72 @@ class LMCBaseAdapter:
         s = self.A0_tab / max(self.A0_run, self.eps)
         return float(A_run) * s
 
-    # ----- CDF/PMF helpers -----
-    @staticmethod
-    def _pmf_from_cdf_1d(cdf: np.ndarray) -> np.ndarray:
-        N = cdf.shape[0]
-        p = np.empty_like(cdf)
-        p[0] = cdf[0]
-        for k in range(1, N):
-            p[k] = cdf[k] - cdf[k - 1]
-        return p
+# ----- CDF/PMF helpers -----
+@njit(fastmath=True)
+def _pmf_from_cdf_1d(cdf: np.ndarray) -> np.ndarray:
+    N = cdf.shape[0]
+    p = np.empty_like(cdf)
+    p[0] = cdf[0]
+    for k in range(1, N):
+        p[k] = cdf[k] - cdf[k - 1]
+    return p
 
-    @staticmethod
-    def _cdf_from_pmf_1d(p: np.ndarray) -> np.ndarray:
-        c = np.cumsum(p)
-        if c[-1] != 1.0:
-            c[-1] = 1.0
-        return c
+@njit(fastmath=True)
+def _cdf_from_pmf_1d(p: np.ndarray) -> np.ndarray:
+    c = np.cumsum(p)
+    if c[-1] != 1.0:
+        c[-1] = 1.0
+    return c
 
-    @staticmethod
-    def _pmf2_from_twolevel(rowsum_cdf: np.ndarray, row_cdf: np.ndarray) -> np.ndarray:
-        N = rowsum_cdf.shape[0]
-        P = np.zeros_like(row_cdf)
-        # 行质量
-        r = np.empty(N, dtype=np.float64)
-        r[0] = rowsum_cdf[0]
-        for i in range(1, N):
-            r[i] = rowsum_cdf[i] - rowsum_cdf[i - 1]
-        r = np.maximum(r, 0.0)
-        # 每行列 pmf
-        for i in range(N):
-            p_row = np.empty(N, dtype=np.float64)
-            p_row[0] = row_cdf[i, 0]
-            for j in range(1, N):
-                p_row[j] = row_cdf[i, j] - row_cdf[i, j - 1]
-            p_row = np.maximum(p_row, 0.0)
-            s = p_row.sum()
-            if s <= 0.0:
-                p_row[:] = 1.0 / N
-            else:
-                p_row /= s
-            P[i, :] = r[i] * p_row
-        # 归一
-        S = P.sum()
-        if S > 0.0:
-            P /= S
-        return P
+@njit(fastmath=True)
+def _pmf2_from_twolevel(rowsum_cdf: np.ndarray, row_cdf: np.ndarray) -> np.ndarray:
+    N = rowsum_cdf.shape[0]
+    P = np.zeros_like(row_cdf)
+    # 行质量
+    r = np.empty(N, dtype=np.float64)
+    r[0] = rowsum_cdf[0]
+    for i in range(1, N):
+        r[i] = rowsum_cdf[i] - rowsum_cdf[i - 1]
+    r = np.maximum(r, 0.0)
+    # 每行列 pmf
+    for i in range(N):
+        p_row = np.empty(N, dtype=np.float64)
+        p_row[0] = row_cdf[i, 0]
+        for j in range(1, N):
+            p_row[j] = row_cdf[i, j] - row_cdf[i, j - 1]
+        p_row = np.maximum(p_row, 0.0)
+        s = p_row.sum()
+        if s <= 0.0:
+            p_row[:] = 1.0 / N
+        else:
+            p_row /= s
+        P[i, :] = r[i] * p_row
+    # 归一
+    S = P.sum()
+    if S > 0.0:
+        P /= S
+    return P
 
-    @staticmethod
-    def _twolevel_from_pmf2(P: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-        N = P.shape[0]
-        rowsum = P.sum(axis=1)
-        tot = rowsum.sum()
-        if tot <= 0.0:
-            rowsum[:] = 1.0 / N
-            tot = 1.0
-        rowsum /= tot
-        rowsum_cdf = np.cumsum(rowsum)
-        row_cdf = np.zeros_like(P)
-        for i in range(N):
-            s = P[i, :].sum()
-            if s <= 0.0:
-                row_cdf[i, :] = np.cumsum(np.full(N, 1.0 / N))
-            else:
-                row_cdf[i, :] = np.cumsum(P[i, :] / s)
-        rowsum_cdf[-1] = 1.0
-        row_cdf[:, -1] = 1.0
-        return rowsum_cdf, row_cdf
+@njit(fastmath=True)
+def _twolevel_from_pmf2(P: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    N = P.shape[0]
+    rowsum = P.sum(axis=1)
+    tot = rowsum.sum()
+    if tot <= 0.0:
+        rowsum[:] = 1.0 / N
+        tot = 1.0
+    rowsum /= tot
+    rowsum_cdf = np.cumsum(rowsum)
+    row_cdf = np.zeros_like(P)
+    for i in range(N):
+        s = P[i, :].sum()
+        if s <= 0.0:
+            row_cdf[i, :] = np.cumsum(np.full(N, 1.0 / N))
+        else:
+            row_cdf[i, :] = np.cumsum(P[i, :] / s)
+    rowsum_cdf[-1] = 1.0
+    row_cdf[:, -1] = 1.0
+    return rowsum_cdf, row_cdf
 
 
 # ==============================
@@ -228,14 +229,14 @@ class LMCTableAdapter(LMCBaseAdapter):
 
         def pmf_at(i, j):
             c = np.asarray(self.cdf1d_grid[i, j], dtype=np.float64)
-            return self._pmf_from_cdf_1d(c)
+            return _pmf_from_cdf_1d(c)
 
         p = w00 * pmf_at(i0, j0) + w01 * pmf_at(i0, j1) + w10 * pmf_at(i1, j0) + w11 * pmf_at(i1, j1)
         p = np.maximum(p, 0.0)
         s = p.sum()
         if s > 0.0:
             p /= s
-        cdf = self._cdf_from_pmf_1d(p)
+        cdf = _cdf_from_pmf_1d(p)
 
         pe = w00 * self.p_expected_grid[i0, j0] + w01 * self.p_expected_grid[i0, j1] + w10 * self.p_expected_grid[i1, j0] + w11 * self.p_expected_grid[i1, j1]
         zmin1d = float(np.clip(self.A0_run / max(A, 1e-20), 0.0, 1.0))
@@ -256,14 +257,14 @@ class LMCTableAdapter(LMCBaseAdapter):
         def P_at(i, j):
             rowsum_cdf = np.asarray(self.rowsum_cdf_grid[i, j], dtype=np.float64)
             row_cdf = np.asarray(self.row_cdf_grid[i, j], dtype=np.float64)
-            return self._pmf2_from_twolevel(rowsum_cdf, row_cdf)
+            return _pmf2_from_twolevel(rowsum_cdf, row_cdf)
 
         P = w00 * P_at(i0, j0) + w01 * P_at(i0, j1) + w10 * P_at(i1, j0) + w11 * P_at(i1, j1)
         P = np.maximum(P, 0.0)
         S = P.sum()
         if S > 0.0:
             P /= S
-        rowsum_cdf, row_cdf = self._twolevel_from_pmf2(P)
+        rowsum_cdf, row_cdf = _twolevel_from_pmf2(P)
 
         pe = w00 * self.p_expected_grid[i0, j0] + w01 * self.p_expected_grid[i0, j1] + w10 * self.p_expected_grid[i1, j0] + w11 * self.p_expected_grid[i1, j1]
         denom1 = A * X1
@@ -901,6 +902,27 @@ _C_CLIP = 1e-6
 def _c_clip01(x: np.ndarray, eps: float = _C_CLIP) -> np.ndarray:
     return np.clip(x, eps, 1.0 - eps)
 
+class _C_ECDFMarginal:
+    def __init__(self, xs: np.ndarray, ps: np.ndarray):
+        self.xs = np.asarray(xs, dtype=float)
+        self.ps = np.asarray(ps, dtype=float)
+        if self.xs.ndim != 1 or self.ps.ndim != 1:
+            raise ValueError("ECDF marginal expects 1D xs, ps.")
+        if self.xs.size != self.ps.size:
+            raise ValueError("ECDF marginal: xs and ps must have same length.")
+        # 保底
+        if self.ps[0] > 0.0 or self.ps[-1] < 1.0:
+            # 可选：扩一下头尾
+            pass
+
+    def cdf(self, x: np.ndarray) -> np.ndarray:
+        x = np.asarray(x, dtype=float)
+        return np.interp(x, self.xs, self.ps, left=self.ps[0], right=self.ps[-1])
+
+    def ppf(self, u: np.ndarray) -> np.ndarray:
+        u = np.asarray(u, dtype=float)
+        u = np.clip(u, self.ps[0], self.ps[-1])
+        return np.interp(u, self.ps, self.xs)
 
 class _C_BetaMarginal:
     """和训练脚本里一致的边缘，用来做 inverse-CDF。"""
@@ -970,14 +992,13 @@ class _C_VineCopula:
 
     def sample(self, n: int, rng: np.random.Generator) -> np.ndarray:
         seed = int(rng.integers(0, 2**31 - 1))
-        return self.model.simulate(int(n), seed=seed)
-
+        return self.model.simulate(int(n), seeds=[seed])
 
 class LMCCopulaAdapter(LMCBaseAdapter):
     """
-    读取 copula 预处理脚本生成的 lmc_copula_grid.npz，并根据
-    - 纯相模型 (is_pure=True): 只对 Y_1..Y_K 做 K 维 copula
-    - 混相模型 (is_pure=False): 对 (Y_1..Y_K, pA_1..pA_K) 做 2K 维 copula
+    读取新版 copula 预处理脚本生成的 lmc_copula_grid.npz，并根据
+    - 纯相模型 (is_pure=True): 只对 Y_1..Y_K 做 K 维 copula，采样 Y→stick-breaking→碎片
+    - 混相模型 (is_pure=False): 对 Y_1..Y_K 做 K 维 copula，pA_1..pA_K 不进 copula，只各自用 Beta 边缘抽样
     采样出一次破碎的 (rA, rB)，接口与 LMCRankAdapter.sample_one_shot 对齐。
     """
 
@@ -992,7 +1013,9 @@ class LMCCopulaAdapter(LMCBaseAdapter):
             interp=interp, A0_run=A0_run, cache_enabled=cache_enabled
         )
 
-        self.models = d["models"]    # object[nA, nX] of dict or None
+        # object[nA, nX] of dict or None
+        self.models = d["models"]
+        # 全局 K 只是默认值，实际每个 cell 里也会存 K
         self.K = int(self.meta.get("stick_breaking_K", 4))
 
     # ---------- helpers ----------
@@ -1013,6 +1036,7 @@ class LMCCopulaAdapter(LMCBaseAdapter):
         """
         按四邻权重挑一个模型，优先挑类型一致（纯/混）的；
         若没有同类型，则退而求其次。
+        返回 (i, j, w, model_obj) 或 None
         """
         i0, i1, j0, j1, w00, w01, w10, w11 = self._neighbors_weights(A_lookup, X1)
         cand = [
@@ -1022,9 +1046,8 @@ class LMCCopulaAdapter(LMCBaseAdapter):
             (i1, j1, w11),
         ]
 
-        # 先收集同类型的
-        same_type: List[Tuple[int,int,float,Dict[str,Any]]] = []
-        other_type: List[Tuple[int,int,float,Dict[str,Any]]] = []
+        same_type: List[Tuple[int, int, float, Dict[str, Any]]] = []
+        other_type: List[Tuple[int, int, float, Dict[str, Any]]] = []
 
         for (i, j, w) in cand:
             obj = self.models[i, j]
@@ -1049,51 +1072,76 @@ class LMCCopulaAdapter(LMCBaseAdapter):
             return _pick(same_type)
         if other_type:
             return _pick(other_type)
-        return None  # 四邻都没模型
+        return None
 
     def _sample_from_cell(self, model_obj: Dict[str, Any],
                           rng: np.random.Generator) -> Tuple[np.ndarray, Optional[np.ndarray], bool]:
         """
-        返回:
-          Y: (K,) always
-          pA: (K,) or None
-          is_pure_cell: bool
+        使用新版存储结构采样：
+          - Y: 先从 y_copula 采样一条 U_y，再用 y_marginals.ppf 变回 Y
+          - pA: 若有 pA_marginals，则对每一维单独抽一个 u~U(0,1)，走 pA_marginal.ppf
+          - 返回 (Y, pA or None, is_pure_cell)
         """
         is_pure_cell = bool(model_obj.get("is_pure", False))
         K = int(model_obj.get("K", self.K))
-        mj = model_obj["marginals"]
-        # 纯相: marginals 长度 = K
-        # 混相: marginals 长度 = 2K
-        marginals = [_C_BetaMarginal(float(m["alpha"]), float(m["beta"])) for m in mj]
 
-        copinfo = model_obj["copula"]
-        if copinfo.get("type") == "vine":
+        # 1) 还原 Y 的边缘
+        y_mj = model_obj["y_marginals"]
+        y_marginals = []
+        for m in y_mj:
+            mtype = m.get("type", "beta")
+            if mtype == "ecdf":
+                xs = np.asarray(m["xs"], dtype=float)
+                ps = np.asarray(m["ps"], dtype=float)
+                y_marginals.append(_C_ECDFMarginal(xs, ps))
+            else:
+                # 兼容以前的 beta 格式
+                y_marginals.append(_C_BetaMarginal(float(m["alpha"]), float(m["beta"])))
+        if len(y_marginals) != K:
+            raise RuntimeError(f"cell: y_marginals length {len(y_marginals)} != K {K}")
+
+        # 2) 还原 Y 的 copula
+        ycop = model_obj["y_copula"]
+        if ycop.get("type") == "vine":
             if not _PV_OK:
                 raise RuntimeError("vine model present but pyvinecopulib not installed.")
-            backend = _C_VineCopula(copinfo["json"])
-            U = backend.sample(1, rng).reshape(-1)
+            backend = _C_VineCopula(ycop["json"])
+            U_y = backend.sample(1, rng).reshape(-1)
         else:
-            R = np.asarray(copinfo["R"], dtype=float)
+            R = np.asarray(ycop["R"], dtype=float)
             backend = _C_GaussianCopula(R)
-            U = backend.sample(1, rng).reshape(-1)
+            U_y = backend.sample(1, rng).reshape(-1)
 
+        # 3) 反变换得到 Y
+        Y = np.zeros(K, dtype=float)
+        for d in range(K):
+            Y[d] = y_marginals[d].ppf(np.array([U_y[d]], dtype=float))[0]
+        Y = _c_clip01(Y)
+
+        # 4) pA 部分（只在混相时有，而且是独立的一维 Beta）
         if is_pure_cell:
-            if len(marginals) != K:
-                raise RuntimeError("pure cell: marginals length mismatch")
-            Y = np.zeros(K, dtype=float)
-            for d in range(K):
-                Y[d] = marginals[d].ppf(np.array([U[d]], dtype=float))[0]
-            Y = _c_clip01(Y)
             return Y, None, True
-        else:
-            if len(marginals) != 2*K:
-                raise RuntimeError("mixed cell: marginals length mismatch")
-            vals = np.zeros(2*K, dtype=float)
-            for d in range(2*K):
-                vals[d] = marginals[d].ppf(np.array([U[d]], dtype=float))[0]
-            Y = _c_clip01(vals[:K])
-            pA = _c_clip01(vals[K:])
-            return Y, pA, False
+
+        pA_list_raw = model_obj.get("pA_marginals", None)
+        if pA_list_raw is None:
+            # 没有存，就交给上层用 X1、可行域去兜底
+            return Y, None, False
+
+        pA = np.zeros(K, dtype=float)
+        for d, m in enumerate(pA_list_raw):
+            mtype = m.get("type", "beta")
+            u = rng.random()
+            if mtype == "ecdf":
+                xs = np.asarray(m["xs"], dtype=float)
+                ps = np.asarray(m["ps"], dtype=float)
+                mm = _C_ECDFMarginal(xs, ps)
+                pA[d] = mm.ppf(np.array([u], dtype=float))[0]
+            else:
+                bm = _C_BetaMarginal(float(m["alpha"]), float(m["beta"]))
+                pA[d] = bm.ppf(np.array([u], dtype=float))[0]
+        pA = _c_clip01(pA)
+
+        return Y, pA, False
 
     # ---------- public API ----------
     def sample_one_shot(
@@ -1106,7 +1154,6 @@ class LMCCopulaAdapter(LMCBaseAdapter):
         tail_strategy: str = "equal",
     ) -> Tuple[List[float], List[float]]:
 
-        # 标准碎片数
         if N is None:
             N = max(2, int(self.NO_FRAG))
         pick = max(0, N - 1)
@@ -1116,11 +1163,9 @@ class LMCCopulaAdapter(LMCBaseAdapter):
         pure_B_req = (X1 <= self.eps)
         want_pure = pure_A_req or pure_B_req
 
-        # 统一的小颗粒策略（和表的一样）
+        # 小颗粒策略
         if self.small_particle_policy == "disable":
             if not self.eligible_for_tables(A):
-                # 不给破碎，直接返回“原粒子”
-                # 为了接口一致，返回一个碎片=整粒子
                 if pure_A_req:
                     return [1.0], [0.0]
                 elif pure_B_req:
@@ -1131,12 +1176,12 @@ class LMCCopulaAdapter(LMCBaseAdapter):
         A_lookup = self._A_lookup(A)
         picked = self._pick_cell_model(A_lookup, X1, want_pure, rng)
         if picked is None:
-            # 四邻都没有模型，保守 fallback
+            # 全无 → 均分回退
             z = np.full(pick, 1.0 / max(N, 1), dtype=float)
             if pure_A_req:
-                rA = z.tolist(); rB = [0.0]*pick
+                rA = z.tolist(); rB = [0.0] * pick
             elif pure_B_req:
-                rA = [0.0]*pick; rB = z.tolist()
+                rA = [0.0] * pick; rB = z.tolist()
             else:
                 rA = (X1 * z / max(X1, 1e-12)).tolist()
                 rB = ((1.0 - X1) * z / max(1.0 - X1, 1e-12)).tolist()
@@ -1144,17 +1189,17 @@ class LMCCopulaAdapter(LMCBaseAdapter):
             rB.append(max(0.0, 1.0 - float(np.sum(rB))))
             return rA, rB
 
-        model_obj = picked
+        i_sel, j_sel, w_sel, model_obj = picked
 
         try:
             Y, pA, is_pure_cell = self._sample_from_cell(model_obj, rng)
         except Exception:
-            # 同上 fallback
+            # cell 内部失败 → 均分回退
             z = np.full(pick, 1.0 / max(N, 1), dtype=float)
             if pure_A_req:
-                rA = z.tolist(); rB = [0.0]*pick
+                rA = z.tolist(); rB = [0.0] * pick
             elif pure_B_req:
-                rA = [0.0]*pick; rB = z.tolist()
+                rA = [0.0] * pick; rB = z.tolist()
             else:
                 rA = (X1 * z / max(X1, 1e-12)).tolist()
                 rB = ((1.0 - X1) * z / max(1.0 - X1, 1e-12)).tolist()
@@ -1162,7 +1207,7 @@ class LMCCopulaAdapter(LMCBaseAdapter):
             rB.append(max(0.0, 1.0 - float(np.sum(rB))))
             return rA, rB
 
-        # 逆 stick-breaking
+        # 逆 stick-breaking 得到前 K 的体积分配
         z_all, T = self._inv_stick_breaking(Y)
         if K_use is None:
             K_use = min(self.K, pick)
@@ -1174,7 +1219,7 @@ class LMCCopulaAdapter(LMCBaseAdapter):
         rB: List[float] = []
 
         if is_pure_cell or pure_A_req or pure_B_req:
-            # 单相走这里；以实际请求的相为准
+            # 单相
             if pure_A_req or (is_pure_cell and X1 >= 0.5):
                 for zk in z:
                     rA.append(float(zk)); rB.append(0.0)
@@ -1182,17 +1227,23 @@ class LMCCopulaAdapter(LMCBaseAdapter):
                 for zk in z:
                     rA.append(0.0); rB.append(float(zk))
         else:
-            # 混相：我们有 pA
+            # 混相：pA 是独立的 Beta 边缘
             X3 = 1.0 - X1
             for idx in range(K_use):
                 zk = float(np.clip(z[idx], 0.0, 1.0))
                 if zk <= 0.0:
                     rA.append(0.0); rB.append(0.0); continue
-                p = float(np.clip(pA[idx], 0.0, 1.0))
+                if pA is None:
+                    # 训练端没给，就用全局 X1
+                    p = float(np.clip(X1, 0.0, 1.0))
+                else:
+                    p = float(np.clip(pA[idx], 0.0, 1.0))
+
                 # 可行域投影
                 Lk = max(0.0, 1.0 - X3 / max(zk, _C_EPS))
                 Uk = min(1.0, X1 / max(zk, _C_EPS))
                 p = float(np.clip(p, Lk, Uk))
+
                 rA.append(zk * p / max(X1, _C_EPS))
                 rB.append(zk * (1.0 - p) / max(X3, _C_EPS))
 
@@ -1205,19 +1256,18 @@ class LMCCopulaAdapter(LMCBaseAdapter):
             elif pure_B_req:
                 rA.extend([0.0] * tail_count); rB.extend([t] * tail_count)
             elif is_pure_cell:
-                # 纯相模型但请求是混一点的 → 按请求的X1分
                 rA.extend([t] * tail_count); rB.extend([0.0] * tail_count)
             else:
                 for _ in range(tail_count):
                     rA.append(0.5 * t / max(X1, 1e-12))
                     rB.append(0.5 * t / max(1.0 - X1, 1e-12))
 
-        # 追加余量确保守恒
+        # 追加余量
         sA = float(np.sum(rA)); sB = float(np.sum(rB))
         rA.append(max(0.0, 1.0 - sA))
         rB.append(max(0.0, 1.0 - sB))
 
-        # 最小体积兜底
+        # 最小体积兜底 + 归一
         vt_rel_min = self.A0_run / max(A, 1e-20)
         X3 = 1.0 - X1
         vt_rel = np.array(rA) * X1 + np.array(rB) * X3
@@ -1229,7 +1279,6 @@ class LMCCopulaAdapter(LMCBaseAdapter):
                     rA[idx] += need / max(X1, 1e-12)
                 else:
                     rB[idx] += need / max(X3, 1e-12)
-            # 再归一
             sA = float(np.sum(rA)); sB = float(np.sum(rB))
             gA = 1.0 / max(sA, 1e-20); gB = 1.0 / max(sB, 1e-20)
             for t in range(len(rA)):
@@ -1239,10 +1288,325 @@ class LMCCopulaAdapter(LMCBaseAdapter):
         sA = float(np.sum(rA)); sB = float(np.sum(rB))
         if abs(sA - 1.0) > 1e-12:
             gA = 1.0 / max(sA, 1e-20)
-            for t in range(len(rA)): rA[t] *= gA
+            for t in range(len(rA)):
+                rA[t] *= gA
         if abs(sB - 1.0) > 1e-12:
             gB = 1.0 / max(sB, 1e-20)
-            for t in range(len(rB)): rB[t] *= gB
+            for t in range(len(rB)):
+                rB[t] *= gB
 
         return rA, rB
+
+# -----------------------------------------------
+#  Flow-based (conditional RealNVP) 适配器（pure / mix 双模型 + K-1 维）
+# -----------------------------------------------
+try:
+    import torch
+    _TORCH_OK = True
+except Exception:
+    _TORCH_OK = False
+
+
+class LMCFlowAdapter(LMCBaseAdapter):
+    """
+    使用离线训练好的条件流模型，分别针对纯净物和混合物建立两套模型：
+      - pure 模型：target_dim = K-1，只预测前 K-1 块的 stick-breaking 体积分布
+      - mix  模型：target_dim = 2*(K-1)，预测前 K-1 块的 stick-breaking + 各块的 pA
+    adapter 负责：
+      1) 根据 X1 判定用哪套模型
+      2) 用剩余量补第 K 块
+      3) 对混合物做可行域投影并拆成 rA / rB
+    调用接口保持和 rank / copula 一致：
+        rA, rB = flow.sample_one_shot(A, X1, rng, N=None)
+    """
+
+    def __init__(self,
+                 pure_model_path: str = None,
+                 mix_model_path: str = None,
+                 *,
+                 interp: str = "bilinear",
+                 A0_run: float = None,
+                 cache_enabled: bool = True):
+        if not _TORCH_OK:
+            raise RuntimeError("PyTorch is required for LMCFlowAdapter.")
+
+        # 我们仍然需要网格信息（A_grid / X1_grid）来取 meta 和 NO_FRAG，
+        # 但 flow 训练是全局的，这里就做一个最小网格
+        A_grid = np.array([1.0], dtype=float)
+        X1_grid = np.array([0.0, 1.0], dtype=float)
+        meta = {"NO_FRAG": 4, "A0": 1.0}
+        super()._init_common(A_grid, X1_grid, meta,
+                             interp=interp, A0_run=A0_run, cache_enabled=cache_enabled)
+
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+
+        self.pure_model = None
+        self.pure_meta = None
+        self.mix_model = None
+        self.mix_meta = None
+
+        if pure_model_path is not None:
+            self.pure_model, self.pure_meta = self._load_flow_model(pure_model_path)
+        if mix_model_path is not None:
+            self.mix_model, self.mix_meta = self._load_flow_model(mix_model_path)
+
+        if self.pure_meta is None and self.mix_meta is None:
+            raise ValueError("LMCFlowAdapter needs at least one of pure_model_path / mix_model_path.")
+
+        # 取一个 K 基准
+        if self.pure_meta is not None:
+            self.K = int(self.pure_meta["K"])
+        else:
+            self.K = int(self.mix_meta["K"])
+
+    # ====== 下面是和训练脚本同构的几个小模块 ======
+    class _CondMLP(torch.nn.Module):
+        def __init__(self, in_dim: int, out_dim: int, hidden: int = 128, n_layers: int = 3):
+            super().__init__()
+            layers = []
+            d = in_dim
+            for _ in range(n_layers - 1):
+                layers.append(torch.nn.Linear(d, hidden))
+                layers.append(torch.nn.ReLU())
+                d = hidden
+            layers.append(torch.nn.Linear(d, out_dim))
+            self.net = torch.nn.Sequential(*layers)
+
+        def forward(self, x):
+            return self.net(x)
+
+    class _RealNVPCoupling(torch.nn.Module):
+        def __init__(self, dim: int, cond_dim: int, mask: torch.Tensor, hidden: int = 128):
+            super().__init__()
+            self.dim = dim
+            self.cond_dim = cond_dim
+            self.register_buffer("mask", mask)
+            in_net = dim + cond_dim
+            self.s_net = LMCFlowAdapter._CondMLP(in_net, dim, hidden=hidden)
+            self.t_net = LMCFlowAdapter._CondMLP(in_net, dim, hidden=hidden)
+            self.max_s = 2.0  # 可以和训练时的保持一致
+
+        def forward(self, x, cond):
+            m = self.mask
+            x_masked = x * m
+            inp = torch.cat([x_masked, cond], dim=1)
+            s = self.s_net(inp).tanh() * self.max_s
+            t = self.t_net(inp)
+            s = s * (1.0 - m)
+            t = t * (1.0 - m)
+            y = x_masked + (1.0 - m) * (x * torch.exp(s) + t)
+            logdet = ((1.0 - m) * s).sum(dim=1)
+            return y, logdet
+
+        def inverse(self, y, cond):
+            m = self.mask
+            y_masked = y * m
+            inp = torch.cat([y_masked, cond], dim=1)
+            s = self.s_net(inp).tanh() * self.max_s
+            t = self.t_net(inp)
+            s = s * (1.0 - m)
+            t = t * (1.0 - m)
+            x = y_masked + (1.0 - m) * ((y - t) * torch.exp(-s))
+            logdet = -((1.0 - m) * s).sum(dim=1)
+            return x, logdet
+
+    class _CondRealNVP(torch.nn.Module):
+        def __init__(self, dim: int, cond_dim: int, n_flows: int = 6, hidden: int = 128):
+            super().__init__()
+            masks = []
+            for i in range(n_flows):
+                if i % 2 == 0:
+                    m = torch.cat([torch.ones(dim // 2), torch.zeros(dim - dim // 2)])
+                else:
+                    m = torch.cat([torch.zeros(dim // 2), torch.ones(dim - dim // 2)])
+                masks.append(m)
+            self.flows = torch.nn.ModuleList([
+                LMCFlowAdapter._RealNVPCoupling(dim, cond_dim, mask=m, hidden=hidden) for m in masks
+            ])
+            self.dim = dim
+            self.cond_dim = cond_dim
+    
+            # base dist = N(0,1)
+            self.register_buffer("base_mu", torch.zeros(dim))
+            self.register_buffer("base_logstd", torch.zeros(dim))
+    
+        def fwd(self, x, cond):
+            logdet_sum = torch.zeros(x.size(0), device=x.device)
+            h = x
+            for flow in self.flows:
+                h, logdet = flow(h, cond)
+                logdet_sum = logdet_sum + logdet
+            return h, logdet_sum
+    
+        def inv(self, z, cond):
+            h = z
+            logdet_sum = torch.zeros(z.size(0), device=z.device)
+            for flow in reversed(self.flows):
+                h, logdet = flow.inverse(h, cond)
+                logdet_sum = logdet_sum + logdet
+            return h, logdet_sum
+    
+        def log_prob(self, x, cond):
+            z, logdet = self.fwd(x, cond)
+            log_base = -0.5 * ((z - self.base_mu) ** 2 / torch.exp(self.base_logstd * 2) + math.log(2 * math.pi)).sum(dim=1)
+            return log_base + logdet
+    
+        def sample(self, n: int, cond: torch.Tensor):
+            # cond: (n, cond_dim)
+            z = torch.randn(n, self.dim, device=cond.device)
+            x, _ = self.inv(z, cond)
+            return x
+
+    # ====== 加载模型 ======
+    def _load_flow_model(self, path: str):
+        ck = torch.load(path, map_location="cpu", weights_only=False)
+        meta = ck["meta"]
+        mk = ck["model_kwargs"]
+        model = LMCFlowAdapter._CondRealNVP(
+            dim=int(meta["target_dim"]),
+            cond_dim=int(meta["cond_dim"]),
+            n_flows=int(mk.get("n_flows", 6)),
+            hidden=int(mk.get("hidden", 256)),
+        ).to(self.device)
+        model.load_state_dict(ck["state_dict"])
+        model.eval()
+        return model, meta
+
+    @staticmethod
+    def _is_pure_x1(x1: float, eps: float = 1e-6) -> bool:
+        return (x1 <= eps) or (x1 >= 1.0 - eps)
+
+    # ====== 公共的采样入口 ======
+    def sample_one_shot(
+        self,
+        A: float,
+        X1: float,
+        rng: np.random.Generator,
+        N: Optional[int] = None,
+    ) -> Tuple[List[float], List[float]]:
+        """
+        一次性返回 N 个碎片（前 N-1 由模型预测，最后 1 个为余量）。
+        兼容 pure/mix 双模型（K-1 / 2*(K-1) 维）。
+        """
+        if N is None:
+            N = max(2, int(self.NO_FRAG))
+        pick = max(1, N - 1)  # 只预测前 N-1
+    
+        A = float(A)
+        A_lookup = self._A_lookup(A)
+        X1 = float(np.clip(X1, 0.0, 1.0))
+        is_pure_req = (X1 <= self.eps) or (X1 >= 1.0 - self.eps)
+    
+        # 选模型：纯净优先 pure，否则 mix；缺哪套就用另一套兜底
+        if is_pure_req:
+            model, meta = (self.pure_model, self.pure_meta) if (self.pure_model is not None) else (self.mix_model, self.mix_meta)
+        else:
+            model, meta = (self.mix_model, self.mix_meta) if (self.mix_model is not None) else (self.pure_model, self.pure_meta)
+    
+        if model is None:
+            # 极端兜底：均分 + 余量
+            z = np.full(pick, 1.0 / max(N, 1), dtype=float)
+            rA = (X1 * z / max(X1, 1e-12)).tolist()
+            rB = ((1.0 - X1) * z / max(1.0 - X1, 1e-12)).tolist()
+            rA.append(max(0.0, 1.0 - float(np.sum(rA))))
+            rB.append(max(0.0, 1.0 - float(np.sum(rB))))
+            return rA, rB
+    
+        # 条件向量（与训练完全一致）：[logA, X1]
+        cond_np = np.array([np.log(max(A_lookup, 1e-8)), X1], dtype=np.float32)[None, :]  # (1, 2)
+        cond_t  = torch.from_numpy(cond_np).to(self.device)                         # (1, cond_dim)
+    
+        # 采样无界变量：一次只要 1 条（一个 K-1 或 2*(K-1) 向量）
+        with torch.no_grad():
+            x_u = model.sample(n=1, cond=cond_t)   # (1, target_dim)
+            x_u = x_u[0]                           # (target_dim,)
+    
+        # 从无界空间映回 (0,1)
+        if meta.get("support_transform") == "logit":
+            x = torch.sigmoid(x_u).cpu().numpy()
+        else:
+            x = x_u.cpu().numpy()
+            x = np.clip(x, 1e-6, 1.0 - 1e-6)
+    
+        K   = int(meta["K"])
+        Km1 = K - 1
+    
+        # 纯净物：只学 Y[:K-1]，stick-breaking 得到 z，再按相别放到 rA 或 rB；末块用余量补齐
+        if meta.get("model_kind") == "pure":
+            Y = np.zeros(K, dtype=float)
+            Y[:Km1] = x[:Km1]
+            z_all= self._inv_stick_breaking(Y)   # 正确解包
+            z_use = z_all[:pick]
+    
+            rA, rB = [], []
+            if X1 >= 0.5:  # 纯 A
+                rA.extend([float(zk) for zk in z_use])
+                rB.extend([0.0] * len(z_use))
+                rA.append(max(0.0, 1.0 - float(np.sum(rA))))  # 末块余量
+                rB.append(0.0)
+            else:          # 纯 B
+                rA.extend([0.0] * len(z_use))
+                rB.extend([float(zk) for zk in z_use])
+                rA.append(0.0)
+                rB.append(max(0.0, 1.0 - float(np.sum(rB))))
+            return rA, rB
+    
+        # 混合物：学 [Y[:K-1], pA[:K-1]]
+        Y = np.zeros(K, dtype=float)
+        Y[:Km1] = x[:Km1]
+        z_all= self._inv_stick_breaking(Y)
+        z_use = z_all[:pick]
+    
+        pA = np.zeros(K, dtype=float)
+        pA[:Km1] = x[Km1: Km1 + Km1]
+        pA[Km1] = X1  # 末块材料分数就用母粒的 X1
+    
+        rA: List[float] = []
+        rB: List[float] = []
+        X3 = 1.0 - X1
+    
+        # 可行域投影 + 相内归一
+        for k in range(pick):
+            zk = float(np.clip(z_use[k], 0.0, 1.0))
+            if zk <= 0.0:
+                rA.append(0.0); rB.append(0.0); continue
+            pk = float(np.clip(pA[k], 0.0, 1.0))
+            # 可行域：VA ≤ A*X1, VB ≤ A*(1-X1)  ⇒  p ∈ [max(0,1 - X3/zk), min(1, X1/zk)]
+            Lk = max(0.0, 1.0 - X3 / max(zk, 1e-12))
+            Uk = min(1.0, X1 / max(zk, 1e-12))
+            pk = float(np.clip(pk, Lk, Uk))
+            rA.append(zk * pk / max(X1, 1e-12))
+            rB.append(zk * (1.0 - pk) / max(X3, 1e-12))
+    
+        # 末块严格守恒（各相单独补余量），保持与其它 adapter 一致
+        sA = float(np.sum(rA)); sB = float(np.sum(rB))
+        rA.append(max(0.0, 1.0 - sA))
+        rB.append(max(0.0, 1.0 - sB))
+    
+        # 再做一次相内归一，避免累计误差
+        sA = float(np.sum(rA)); sB = float(np.sum(rB))
+        if sA > 0:
+            gA = 1.0 / sA
+            rA = [x * gA for x in rA]
+        if sB > 0:
+            gB = 1.0 / sB
+            rB = [y * gB for y in rB]
+    
+        return rA, rB
+
+
+    # ------- stick-breaking 还原，返回长度 K 的 z 向量 -------
+    @staticmethod
+    def _inv_stick_breaking(Y: np.ndarray) -> np.ndarray:
+        K = Y.size
+        z = np.zeros(K, dtype=float)
+        remain = 1.0
+        for k in range(K):
+            yk = float(np.clip(Y[k], 0.0, 1.0))
+            z[k] = yk * remain
+            remain = max(0.0, remain - z[k])
+        # 为了数值保险，把最后一块再对齐一下
+        if remain > 1e-10:
+            z[-1] += remain
+        return z
 

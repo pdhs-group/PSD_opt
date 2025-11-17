@@ -16,8 +16,14 @@ from optframework.utils.func.jit_kernel_break import (
     calc_break_rate_1d as _kb_br1_single,
     calc_break_rate_2d_flat as _kb_br2_single,
 )
-from .lmc_adapter import  LMCTableAdapter, LMCRankAdapter, LMCLiveFallback, LMCLiveDisable
-
+from .lmc_adapter import (
+    LMCTableAdapter,
+    LMCRankAdapter,
+    LMCCopulaAdapter,
+    LMCFlowAdapter,
+    LMCLiveFallback,
+    LMCLiveDisable,
+)
 
 class MCPBEBreak:
     """Breakage logic:
@@ -143,7 +149,7 @@ class MCPBEBreak:
         - 若 use_lmc_tables=True 且 lmc_adapter 可用：从 adapter 取 1D/2D 表
         - 否则：走 JIT 路径（调用 _build_break_function()，使用 self._bf* 属性）
         """
-        use_lmc = bool(getattr(self, "use_lmc_tables", False) and getattr(self, "lmc_adapter", None) is not None)
+        use_lmc = bool(getattr(self, "use_lmc_pre_model", False) and getattr(self, "lmc_adapter", None) is not None)
         if not use_lmc:
             if not getattr(self, "_bf_ready", False):
                 self._build_break_function()
@@ -343,39 +349,57 @@ class MCPBEBreak:
                 frags, _E = self.lmc_live.sample_one_shot(Vrem_k, self._rng)
                 return "ok", frags
             except LMCLiveFallback:
+                # 继续往下走，用离线模型兜底
                 pass
             except LMCLiveDisable:
+                # 上层看到 "disable" 后可以把该粒子的破碎率置零
                 return "disable", []
-
-        # 2) Rank tables（若存在）：one-shot
+    
+        # 2) 一次性分布类适配器：rank / copula / flow
         lmc_ad = getattr(self, "lmc_adapter", None)
-        if isinstance(lmc_ad, LMCRankAdapter):
-            # --- 小颗粒策略（仅当表格策略为 disable 时才判定；fallback 不判定直接用表） ---
+        if isinstance(lmc_ad, (LMCRankAdapter, LMCCopulaAdapter, LMCFlowAdapter)):
+            # --- 小颗粒策略（仅当策略为 disable 时才判定；fallback 直接用） ---
             if getattr(lmc_ad, "small_particle_policy", "fallback") == "disable":
                 A = float(Vrem_k[0]) if self.dim == 1 else float(Vrem_k[0] + Vrem_k[1])
                 if not lmc_ad.eligible_for_tables(A):
-                    return "disable", []  # 交给上层把该粒子破碎率清零
-
+                    return "disable", []
+    
+            # 构造 A, X1
             if self.dim == 1:
                 A = float(Vrem_k[0])
                 X1 = 1.0
-                rA_list, rB_list = lmc_ad.sample_one_shot(A, X1, self._rng, N=None, K_use=None, tail_strategy="equal")
-                frags = [np.array([r * Vrem_k[0]], dtype=float) for r in rA_list]
             else:
                 A = float(Vrem_k[0] + Vrem_k[1])
-                X1 = float(Vrem_k[0] / A) if A > 0 else 0.5
-                rA_list, rB_list = lmc_ad.sample_one_shot(A, X1, self._rng, N=None, K_use=None, tail_strategy="equal")
-                frags = [np.array([rA * Vrem_k[0], rB * Vrem_k[1]], dtype=float) for (rA, rB) in zip(rA_list, rB_list)]
+                X1 = float(Vrem_k[0] / A) if A > 0.0 else 0.5
+    
+            # 不同适配器的 one-shot 调用签名略有区别，这里分开调
+            if isinstance(lmc_ad, LMCFlowAdapter):
+                # flow: sample_one_shot(A, X1, rng, N=None)
+                rA_list, rB_list = lmc_ad.sample_one_shot(A, X1, self._rng, N=None)
+            else:
+                # rank / copula: sample_one_shot(A, X1, rng, N=None, K_use=None, tail_strategy="equal")
+                rA_list, rB_list = lmc_ad.sample_one_shot(
+                    A, X1, self._rng, N=None, K_use=None, tail_strategy="equal"
+                )
+    
+            # 按维数还原成体积碎片
+            if self.dim == 1:
+                frags = [np.array([r * Vrem_k[0]], dtype=float) for r in rA_list]
+            else:
+                frags = [
+                    np.array([rA * Vrem_k[0], rB * Vrem_k[1]], dtype=float)
+                    for (rA, rB) in zip(rA_list, rB_list)
+                ]
             return "ok", frags
-
+    
         # 3) 边际表 / 数学函数：分步切（LMCTableAdapter 或 纯 JIT 数学函数）
         if isinstance(lmc_ad, LMCTableAdapter):
-            # --- 小颗粒策略（仅当表格策略为 disable 时才判定） ---
             if getattr(lmc_ad, "small_particle_policy", "fallback") == "disable":
                 A = float(Vrem_k[0]) if self.dim == 1 else float(Vrem_k[0] + Vrem_k[1])
                 if not lmc_ad.eligible_for_tables(A):
-                    return "disable", []  # 交给上层把该粒子破碎率清零
-
+                    return "disable", []
+    
+        # 走原来的逐步切分逻辑
         return "ok", self._build_fragments_stepwise(Vrem_k)
     
     # 主入口：预处理 -> 生成碎片 -> 统一维护

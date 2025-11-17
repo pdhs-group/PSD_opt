@@ -26,15 +26,20 @@ Key Features:
 import numpy as np
 import copy
 import time
-from optframework.mcpbe.mcpbe_old_stru import MCPBESolver
+import warnings
+# from optframework.mcpbe.mcpbe_old_stru import MCPBESolver
 from optframework.mcpbe import MCPBESolver as MCPBESolver_new
-from optframework.mcpbe.lmc_adapter import LMCRankAdapter, LMCTableAdapter
 
 import cProfile, pstats
 
 import matplotlib.pyplot as plt
 import optframework.utils.plotter.plotter as pt
-from optframework.utils.plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
+from optframework.utils.plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue, c_KIT_orange, c_KIT_purple
+
+compare_models = ["all"]  # 可选："table", "rank", "copula", "flow", 或 ["all"]
+dim = 2
+N_MC = 2
+seed = 42
 
 def run_mcpbe_new(m_new, seed, N_MC):
     """
@@ -62,7 +67,7 @@ def run_mcpbe_new(m_new, seed, N_MC):
     t_start = time.time()
     mu_tmp = []
     # Run Monte Carlo simulation
-    results = m_new.solve_repeats(N_MC, base_seed=seed)
+    results = m_new.solve_repeats(N_MC, base_seed=seed, workers=1)
     # Execute N_MC independent Monte Carlo realizations
     for l in range(N_MC):
         # Moments provide statistical characterization of the particle distribution
@@ -101,55 +106,105 @@ def run_mcpbe(m):
     t_run = time.time()-t_start
     return mu_mc, std_mu_mc, t_run
 
-def plot_moment_t(tp, mu_mc, std_mu_mc, mu_mc_new, std_mu_mc_new, i=0, j=0):
-    fig=plt.figure()    
-    ax=fig.add_subplot(1,1,1) 
-    ylbl = 'Moment $\mu_{' + f'{i}{j}' + '}$ / '+'$m^{3\cdot'+str(i+j)+'}$'
-    ax, fig = pt.plot_data(tp,mu_mc[i,j,:], err=std_mu_mc[i,j,:], fig=fig, ax=ax,
-                           xlbl='time $t_\mathrm{A}$ / $s$',
-                           ylbl=ylbl, lbl='MC, $N_{\mathrm{MC}}='+str(N_MC)+'$',
-                           clr=c_KIT_red,mrk='s', alpha=1, mrkedgecolor='k')
-    ax, fig = pt.plot_data(tp,mu_mc_new[i,j,:], err=std_mu_mc_new[i,j,:], fig=fig, ax=ax,
-                           xlbl='time $t_\mathrm{A}$ / $s$',
-                           ylbl=ylbl, lbl='MC_new, $N_{\mathrm{MC}}='+str(N_MC)+'$',
-                           clr=c_KIT_green,mrk='^', alpha=1, mrkedgecolor='k')
-    ax.grid('minor')
-    plt.tight_layout()   
+def plot_moment_t(tp, curves, i=0, j=0):
+    fig = plt.figure()
+    ax = fig.add_subplot(1, 1, 1)
+    ylbl = r"Moment $\mu_{%d%d}$" % (i, j)
+    for (lbl, clr, mu, std) in curves:
+        ax, fig = pt.plot_data(
+            tp,
+            mu[i, j, :],
+            err=std if np.isscalar(std) else std[i, j, :],
+            fig=fig,
+            ax=ax,
+            xlbl=r"time $t_\mathrm{A}$ / $s$",
+            ylbl=ylbl,
+            lbl=lbl,
+            clr=clr,
+            mrk="o",
+            alpha=1,
+            mrkedgecolor="k",
+        )
+    ax.grid("minor")
+    plt.tight_layout()
     plt.show()
-    return 
-
-if __name__ == "__main__":
-    # Simulation Configuration
-    # ========================
-
-    N_MC = 2        # Number of Monte Carlo realizations for statistical reliability
-                    # More realizations → better statistics but longer computation time
-                    # Recommended: 5-20 for testing, 50-100 for production runs
-    dim = 2         # System dimension:
-    seed = 42
-    # Other key parameters can be modified in MCPBE_config.py
-
-    m = MCPBESolver(dim=dim)
-    m_new = MCPBESolver_new(dim=dim, init=False)
-    m_new2 = MCPBESolver_new(dim=dim, init=False)
-
-    print(f"Running {N_MC} Monte Carlo realizations for {dim}D system...")
-    print(f"Initial particle count: {m.a_tot}")
-    print(f"Initial particle concentrations: {m.c}")
-    print(f"Simulation time: 0 to {m.t_total} seconds")
-    print(f"Process type: {m.process_type}")
     
-    # mu_mc, std_mu_mc, t_run = run_mcpbe(m)
+def build_solver_with_lmc(dim: int, pre_model: str):
+    """
+    按指定的预处理模型构建一个 MCPBESolver。
+    pre_model: "table" | "rank" | "copula" | "flow"
+    """
+    m = MCPBESolver_new(dim=dim, init=False)
+    m.use_lmc_live = False
+    m.use_lmc_pre_model = True
+    m.lmc_pre_model = pre_model
+
+    # 初始化 adapter
+    m._init_lmc()
+    return m
+
+def main():
+    # 颜色映射
+    color_map = {
+        "live": c_KIT_red,
+        "table": c_KIT_green,
+        "rank": c_KIT_blue,
+        "copula": c_KIT_orange,
+        "flow": c_KIT_purple,
+    }
+
+    # baseline: live
+    print("[run] baseline: live + table fallback")
     # profiler = cProfile.Profile()
     # profiler.enable()
-    mu_mc_new, std_mu_mc_new, t_run_new, mu_tmp_new = run_mcpbe_new(m_new, seed, N_MC)
-    m_new2.use_lmc_live = False
-    mu_mc, std_mu_mc, t_run, _ = run_mcpbe_new(m_new2, seed, N_MC)
+    m_live = MCPBESolver_new(dim=dim, init=False)
+    mu_live, std_live, t_live, _ = run_mcpbe_new(m_live, seed, N_MC)
     # profiler.disable()
     # stats = pstats.Stats(profiler).strip_dirs().sort_stats("cumtime")
     # stats.print_stats(20)
     
-    tp = m.t_vec
-    plot_moment_t(tp, mu_mc, std_mu_mc, mu_mc_new, std_mu_mc_new, i=0, j=0)
-    plot_moment_t(tp, mu_mc, std_mu_mc, mu_mc_new, std_mu_mc_new, i=1, j=0)
-    plot_moment_t(tp, mu_mc, std_mu_mc, mu_mc_new, std_mu_mc_new, i=2, j=0)
+    tp = m_live.t_vec
+    results = {"live": (mu_live, std_live)}
+
+    # 对比模型
+    if "all" in compare_models:
+        models = ["table", "rank", "copula", "flow"]
+    else:
+        models = compare_models
+
+    for mdl in models:
+        print(f"[run] comparing live vs {mdl}")
+        try:
+            m_other = build_solver_with_lmc(dim, mdl)
+        except Exception as e:
+            warnings.warn(f"failed to init solver with lmc_pre_model='{mdl}': {e}")
+            continue
+        mu_o, std_o, t_o, _ = run_mcpbe_new(m_other, seed, N_MC)
+        results[mdl] = (mu_o, std_o)
+        print(f"[ok] {mdl} finished in {t_o:.2f}s")
+
+    # 绘图
+    for i in (0, 1, 2):
+        curves = [
+            (
+                "live (baseline)",
+                color_map["live"],
+                results["live"][0],
+                results["live"][1],
+            )
+        ]
+        for mdl in models:
+            if mdl in results:
+                mu_o, std_o = results[mdl]
+                curves.append(
+                    (
+                        f"{mdl} model",
+                        color_map.get(mdl, "gray"),
+                        mu_o,
+                        std_o,
+                    )
+                )
+        plot_moment_t(tp, curves, i=i, j=0)
+        
+if __name__ == "__main__":
+    main()

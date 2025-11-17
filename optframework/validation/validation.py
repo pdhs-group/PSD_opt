@@ -108,8 +108,8 @@ class PBEValidation():
         
         N = self.p.N / self.p.V_unit
         self.p_mc.n0 = np.sum(N[..., 0])
-        self.p_mc.Vc = self.p_mc.a0 / self.p_mc.n0
-        a_array = np.round(N[..., 0] * self.p_mc.Vc).astype(int)
+        self.Vc = self.p_mc.a0 / self.p_mc.n0
+        a_array = np.round(N[..., 0] * self.Vc).astype(int)
         self.V_flat = np.zeros((dim+1, np.sum(a_array)))
         
         cnt = 0
@@ -209,7 +209,7 @@ class PBEValidation():
     def calculate_mc_pbe(self):
         mu_tmp = []
         results = self.p_mc.solve_repeats(N=self.N_MC, base_seed=42, maxiter=1e8,
-                                          init_Vc=False, V_flat=self.V_flat)
+                                          init_Vc=False, Vc=self.Vc, V_flat=self.V_flat)
         for i in range(self.N_MC):
             mu_tmp.append(results[i]['moments'])
         self.mu_mc = np.mean(mu_tmp, axis=0)

@@ -7,6 +7,8 @@ import os
 import time
 import warnings
 from typing import Optional, Sequence
+from concurrent.futures import ProcessPoolExecutor, as_completed
+import copy
 
 import numpy as np
 
@@ -80,46 +82,103 @@ class MCPBEBase(BaseSolver):
         # cache for breakage CDF tables (keyed by dim, N, BREAKFVAL, pl_v, pl_q)
         self._bf_cache = {}
 
-        # --- 读取配置（保持原有方式） ---
-        self.use_lmc_tables       = bool(getattr(self, "use_lmc_tables", False))
-        self.use_lmc_rank_tables  = bool(getattr(self, "use_lmc_rank_tables", False))
+        self._init_lmc()
+                        
+    def _init_lmc(self):
+        """
+        初始化 MCPBE 用到的各类 LMC 适配器：
+          - 预处理/离线类: table | rank | copula | flow
+          - 在线 lmc: live
+        规则：
+          1) use_lmc_pre_model=False → 不加载任何离线 adapter
+          2) use_lmc_pre_model=True → 看 lmc_pre_model 选择具体的 adapter
+          3) live 若 small_particle_policy='fallback'，则必须有一个离线 adapter 可用
+          4) 路径缺失时给出清晰报错；同时传进多个路径但实际没用到的给出警告
+        """
+        # -------------- 基本配置取值 --------------
+        self.use_lmc_pre_model    = bool(getattr(self, "use_lmc_pre_model", False))
+        self.lmc_pre_model        = str(getattr(self, "lmc_pre_model", "table"))  # table|rank|copula|flow
         self.lmc_tables_path      = getattr(self, "lmc_tables_path", None)
         self.lmc_rank_tables_path = getattr(self, "lmc_rank_tables_path", None)
+        self.lmc_copula_path      = getattr(self, "lmc_copula_path", None)
+        self.lmc_flow_pure_path        = getattr(self, "lmc_flow_pure_path", None)
+        self.lmc_flow_mix_path        = getattr(self, "lmc_flow_mix_path", None)
         self.lmc_A0_runtime       = getattr(self, "lmc_A0_runtime", None)
         self.lmc_interp           = str(getattr(self, "lmc_interp", "bilinear"))
         self.lmc_tables_cache     = bool(getattr(self, "lmc_tables_cache", False))
         self.lmc_small_particle_policy = str(getattr(self, "lmc_small_particle_policy", "fallback"))
-        
-        # --- 互斥处理：tables vs rank_tables ---
-        if self.use_lmc_tables and self.use_lmc_rank_tables:
-            # 两者不可同时启用：优先 rank，并提示
-            warnings.warn("Both use_lmc_tables and use_lmc_rank_tables are True; prefer rank tables. "
-                          "Proceeding with use_lmc_rank_tables=True and disabling use_lmc_tables.")
-            self.use_lmc_tables = False
-        
-        # --- 构建 lmc_adapter（若启用任一表） ---
+    
+        # 这里保存最终实际创建出来的 adapter
         self.lmc_adapter = None
-        if self.use_lmc_tables or self.use_lmc_rank_tables:
-            from .lmc_adapter import LMCTableAdapter, LMCRankAdapter
-            if self.use_lmc_rank_tables:
-                if not self.lmc_rank_tables_path:
-                    raise ValueError("use_lmc_rank_tables=True but lmc_rank_tables_path is missing.")
-                self.lmc_adapter = LMCRankAdapter(self.lmc_rank_tables_path, interp=self.lmc_interp, A0_run=self.lmc_A0_runtime,
-                                                  cache_enabled=self.lmc_tables_cache)
-            else:
+    
+        # -------------- 离线/预处理模型的构建 --------------
+        if self.use_lmc_pre_model:
+            # 统一从同一个地方 import，避免上面那段老代码的循环 import
+            from .lmc_adapter import (
+                LMCTableAdapter,
+                LMCRankAdapter,
+                LMCCopulaAdapter,
+                LMCFlowAdapter,
+            )
+    
+            pre = self.lmc_pre_model.lower().strip()
+            valid = {"table", "rank", "copula", "flow"}
+            if pre not in valid:
+                raise ValueError(f"lmc_pre_model='{self.lmc_pre_model}' is not in {valid}")
+    
+            # 根据选择的类型构建
+            if pre == "table":
                 if not self.lmc_tables_path:
-                    raise ValueError("use_lmc_tables=True but lmc_tables_path is missing.")
-                self.lmc_adapter = LMCTableAdapter(self.lmc_tables_path, interp=self.lmc_interp, A0_run=self.lmc_A0_runtime,
-                                                  cache_enabled=self.lmc_tables_cache)
-            self.lmc_adapter.set_small_particle_policy(policy=self.lmc_small_particle_policy)
-        # --- Live LMC 初始化 + 依赖检查（fallback 策略需要至少一个表） ---
+                    raise ValueError("lmc_pre_model='table' but lmc_tables_path is not set.")
+                self.lmc_adapter = LMCTableAdapter(
+                    self.lmc_tables_path,
+                    interp=self.lmc_interp,
+                    A0_run=self.lmc_A0_runtime,
+                    cache_enabled=self.lmc_tables_cache,
+                )
+    
+            elif pre == "rank":
+                if not self.lmc_rank_tables_path:
+                    raise ValueError("lmc_pre_model='rank' but lmc_rank_tables_path is not set.")
+                self.lmc_adapter = LMCRankAdapter(
+                    self.lmc_rank_tables_path,
+                    interp=self.lmc_interp,
+                    A0_run=self.lmc_A0_runtime,
+                    cache_enabled=self.lmc_tables_cache,
+                )
+    
+            elif pre == "copula":
+                if not self.lmc_copula_path:
+                    raise ValueError("lmc_pre_model='copula' but lmc_copula_path is not set.")
+                self.lmc_adapter = LMCCopulaAdapter(
+                    self.lmc_copula_path,
+                    interp=self.lmc_interp,
+                    A0_run=self.lmc_A0_runtime,
+                    cache_enabled=self.lmc_tables_cache,
+                )
+    
+            elif pre == "flow":
+                if not self.lmc_flow_pure_path or not self.lmc_flow_mix_path:
+                    raise ValueError("lmc_pre_model='flow' but lmc_flow_path is not set.")
+                self.lmc_adapter = LMCFlowAdapter(
+                    pure_model_path=self.lmc_flow_pure_path,
+                    mix_model_path=self.lmc_flow_mix_path,
+                    A0_run=self.lmc_A0_runtime,
+                    cache_enabled=self.lmc_tables_cache,
+                )
+    
+            # 无论哪种 adapter，都让它知道小颗粒策略
+            if self.lmc_adapter is not None and hasattr(self.lmc_adapter, "set_small_particle_policy"):
+                self.lmc_adapter.set_small_particle_policy(policy=self.lmc_small_particle_policy)
+    
+        # -------------- Live LMC 的初始化 --------------
         self.use_lmc_live = bool(getattr(self, "use_lmc_live", False))
         self.lmc_live = None
         if self.use_lmc_live:
             from .lmc_adapter import LMCLiveAdapter
             self.lmc_live = LMCLiveAdapter()
             self.lmc_live.configure_simulator(
-                STR=self.STR if hasattr(self, "STR") else np.array([1.0,1.0,1.0]),
+                STR=self.STR if hasattr(self, "STR") else np.array([1.0, 1.0, 1.0]),
                 NO_FRAG=int(getattr(self, "NO_FRAG", 4)),
                 gamma=float(getattr(self, "gamma", 1.0)),
                 allow_loops=bool(getattr(self, "allow_loops", True)),
@@ -128,21 +187,18 @@ class MCPBEBase(BaseSolver):
                 aspect_ratio=float(getattr(self, "aspect_ratio", 1.0)),
                 int_bre=float(getattr(self, "int_bre", 0.0)),
                 A0_run=float(getattr(self, "lmc_A0_runtime", 1.0)),
-                small_particle_policy=str(getattr(self, "lmc_small_particle_policy", "fallback")),  # 'fallback' | 'disable'
+                small_particle_policy=str(getattr(self, "lmc_small_particle_policy", "fallback")),
                 delta_cells=float(getattr(self, "lmc_delta_cells", 0.1)),
                 rebuild=True,
             )
-            # 若策略为 fallback，则要求至少有一个表；若两个表都关了，报错
-            if self.lmc_live.small_particle_policy == "fallback":
-                if self.lmc_adapter is None:
-                    raise ValueError("use_lmc_live=True with small_particle_policy='fallback' "
-                                     "requires either use_lmc_rank_tables or use_lmc_tables to be True.")
-                # 若两者都配了（上面已互斥处理为只留 rank），也提示一下优先级
-                if isinstance(self.lmc_adapter, LMCTableAdapter):
-                    # 如果用户同时提供了 rank 和 table 的路径但前面没有冲突，这里提示一下
-                    if self.use_lmc_rank_tables:
-                        warnings.warn("Live LMC fallback: rank tables are available; "
-                                      "prefer LMCRankAdapter over LMCTableAdapter when both provided.")
+    
+            # live 的 fallback 依赖一个离线 adapter
+            if self.lmc_live.small_particle_policy == "fallback" and self.lmc_adapter is None:
+                raise ValueError(
+                    "use_lmc_live=True with small_particle_policy='fallback' requires a pre LMC adapter "
+                    "(set use_lmc_pre_model=True and choose one of table/rank/copula/flow)."
+                )
+    
     # ---------------------------------------------------------------------
     # Validation & helpers
     # ---------------------------------------------------------------------
@@ -359,7 +415,7 @@ class MCPBEBase(BaseSolver):
             f"[MC-PBE] Capacity grown at t={getattr(self,'_elapsed',0.0):.6g} "
             f"after {getattr(self,'_iter_count',0)} events: cap {old_cap} -> {new_cap} "
             f"(x{new_cap/max(old_cap,1):.2f})"
-            f"[TEST] dt_break = {self.test_dt_break}"
+            # f"[TEST] dt_break = {self.test_dt_break}"
         )
 
     def _maybe_double_control_volume(self, elapsed_time: float, iter_count: int):
@@ -503,6 +559,7 @@ class MCPBEBase(BaseSolver):
             self._maybe_double_control_volume(self.t[-1], count)
 
             count += 1
+            # if count%100 == 0: print([f"[Test] events = {count}"])
             if self.a_tot < 2 and pt in ("agglomeration", "mix"):
                 break
 
@@ -510,29 +567,90 @@ class MCPBEBase(BaseSolver):
         if self.VERBOSE:
             print(f"[MC-PBE] The calculation took {getattr(self,'MACHINE_TIME',0.0):.4g}s after {count} events")
         return self
-    def solve_repeats(self,N:int=5,base_seed:int=42,seeds:Optional[Sequence[int]]=None,maxiter:int=int(1e8),
-                      init_Vc: bool = True, V_flat: Optional[np.ndarray] = None):
+    def solve_repeats(
+        self,
+        N: int = 5,
+        base_seed: int = 42,
+        seeds: Optional[Sequence[int]] = None,
+        maxiter: int = int(1e8),
+        init_Vc: bool = True,
+        Vc: float = None,
+        V_flat: Optional[np.ndarray] = None,
+        workers: int = 1,
+    ):
+        """
+        Run N Monte Carlo realizations (repeats).
+
+        workers = 1  -> serial (original behavior)
+        workers > 1  -> parallel with ProcessPoolExecutor
+
+        We serialize the current solver state (self.__dict__) and send it
+        to workers, where a fresh solver is rebuilt.
+        """
+        # ----- build seeds -----
         if seeds is None:
-            master=np.random.SeedSequence(base_seed)
-            seeds=master.spawn(N)
-        if len(seeds)!=N:
+            master = np.random.SeedSequence(base_seed)
+            seeds = master.spawn(N)
+        if len(seeds) != N:
             raise ValueError("Length of seeds must equal N.")
-        if not hasattr(self,'_bf_cache'): self._bf_cache={}
-        results=[]
+
+        # ----- serial path (original behavior) -----
+        if workers == 1:
+            results = []
+            for k in range(N):
+                # local run, just deepcopy self and do what we did before
+                m = copy.deepcopy(self)
+                sk = seeds[k]
+                if isinstance(sk, np.random.SeedSequence):
+                    rng = np.random.default_rng(sk)
+                    seed_info = {"spawn_key": tuple(sk.spawn_key)}
+                else:
+                    rng = np.random.default_rng(int(sk))
+                    seed_info = {"seed": int(sk)}
+                m._rng = rng
+                m.V_flat = None
+                if not init_Vc and Vc is not None:
+                    m.Vc = Vc
+                m._initialize_particles(init_Vc=init_Vc, V_flat=V_flat)
+                m._initialize_samplers()
+                m.solve(maxiter=maxiter)
+                mu, tv = m.calc_moments_over_time(normalize=True)
+                results.append({"seed_info": seed_info, "t_vec": tv, "moments": mu})
+            return results
+
+        # ----- parallel path -----
+        # 1) snapshot current solver state into a picklable dict
+        #    deep copy to detach from parent
+        base_state = copy.deepcopy(self.__dict__)
+
+        # 2) build payloads for each worker
+        payloads = []
         for k in range(N):
-            seed_k=seeds[k]
-            if isinstance(seed_k,np.random.SeedSequence):
-                self._rng=np.random.default_rng(seed_k)
-                seed_info={"base_seed":base_seed,"spawn_key":tuple(seed_k.spawn_key)}
-            else:
-                self._rng=np.random.default_rng(int(seed_k))
-                seed_info={"seed":int(seed_k)}
-            self.V_flat=None
-            self._initialize_particles(init_Vc=init_Vc, V_flat=V_flat)
-            self._initialize_samplers()
-            self.solve(maxiter=maxiter)
-            mu,tv=self.calc_moments_over_time(normalize=True)
-            results.append({"seed_info":seed_info,"t_vec":tv,"moments":mu})
+            payloads.append(
+                {
+                    "cls": self.__class__,   # MCPBEBase or subclass
+                    "state": base_state,
+                    "seed": seeds[k],
+                    "maxiter": maxiter,
+                    "init_Vc": init_Vc,
+                    "Vc": Vc,
+                    "V_flat": V_flat,
+                }
+            )
+
+        results = []
+        with ProcessPoolExecutor(max_workers=workers) as ex:
+            fut_map = {ex.submit(_mcpbe_run_single_parallel, pl): i for i, pl in enumerate(payloads)}
+            for fut in as_completed(fut_map):
+                idx = fut_map[fut]
+                try:
+                    res = fut.result()
+                except Exception as e:
+                    # 这里你可以选择 raise，也可以选择记录失败的那个
+                    raise RuntimeError(f"[parallel] worker {idx} failed: {e}")
+                else:
+                    results.append(res)
+
         return results
     # ---------------------------------------------------------------------
     # Column ops (capacity style)
@@ -622,3 +740,55 @@ class MCPBEBase(BaseSolver):
             return
         if self._break_sampler is None:
             self._break_sampler = FenwickSampler(self._break_rate[:self.a_tot])
+
+def _mcpbe_run_single_parallel(payload: dict):
+    """
+    Top-level worker for running a single MCPBE repeat in a subprocess.
+
+    payload keys:
+        - "cls": the class object (e.g. MCPBEBase)
+        - "state": dict copied from solver.__dict__ (picklable)
+        - "seed": np.random.SeedSequence or int
+        - "maxiter", "init_Vc", "Vc", "V_flat"
+    """
+    cls = payload["cls"]
+    state = payload["state"]
+    seed_k = payload["seed"]
+    maxiter = payload["maxiter"]
+    init_Vc = payload["init_Vc"]
+    Vc = payload["Vc"]
+    V_flat = payload["V_flat"]
+
+    # 1) rebuild solver skeleton
+    # we create an instance with minimal init (init=False) and then restore dict
+    dim = int(state.get("dim", 2))
+    obj = cls(dim=dim, init=False)
+
+    # 2) restore all attributes (what we saved in parent)
+    # this is shallow here because it was deepcopied in parent
+    obj.__dict__.update(state)
+
+    # 3) re-seed RNG
+    if isinstance(seed_k, np.random.SeedSequence):
+        rng = np.random.default_rng(seed_k)
+        seed_info = {"spawn_key": tuple(seed_k.spawn_key)}
+    else:
+        rng = np.random.default_rng(int(seed_k))
+        seed_info = {"seed": int(seed_k)}
+    obj._rng = rng
+
+    # 4) re-init LMC adapter (some adapters open files, so do it in child)
+    obj._init_lmc()
+
+    # 5) re-init particles / samplers
+    if not init_Vc and Vc is not None:
+        obj.Vc = Vc
+    obj._initialize_particles(init_Vc=init_Vc, V_flat=V_flat)
+    obj._initialize_samplers()
+
+    # 6) run solve
+    obj.solve(maxiter=maxiter)
+
+    # 7) collect moments
+    mu, tv = obj.calc_moments_over_time(normalize=True)
+    return {"seed_info": seed_info, "t_vec": tv, "moments": mu}
