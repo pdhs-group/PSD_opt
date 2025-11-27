@@ -36,8 +36,8 @@ import matplotlib.pyplot as plt
 import optframework.utils.plotter.plotter as pt
 from optframework.utils.plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue, c_KIT_orange, c_KIT_purple
 
-compare_models = ["all"]  # 可选："table", "rank", "copula", "flow", 或 ["all"]
-dim = 2
+compare_models = []  # 可选："table", "rank", "copula", "flow", 或 ["all"]
+dim = 1
 N_MC = 2
 seed = 42
 
@@ -67,7 +67,8 @@ def run_mcpbe_new(m_new, seed, N_MC):
     t_start = time.time()
     mu_tmp = []
     # Run Monte Carlo simulation
-    results = m_new.solve_repeats(N_MC, base_seed=seed, workers=1)
+    results, psd_info = m_new.solve_repeats(N_MC, base_seed=seed, workers=1,
+                                            psd_enable=True)
     # Execute N_MC independent Monte Carlo realizations
     for l in range(N_MC):
         # Moments provide statistical characterization of the particle distribution
@@ -81,7 +82,7 @@ def run_mcpbe_new(m_new, seed, N_MC):
     else: 
         std_mu_mc = 0
     t_run = time.time()-t_start
-    return mu_mc, std_mu_mc, t_run, mu_tmp
+    return mu_mc, std_mu_mc, t_run, mu_tmp, psd_info
 def run_mcpbe(m):
     t_start = time.time()
     mu_tmp = []
@@ -152,13 +153,10 @@ def main():
         "copula": c_KIT_orange,
         "flow": c_KIT_purple,
     }
-
-    # baseline: live
-    print("[run] baseline: live + table fallback")
     # profiler = cProfile.Profile()
     # profiler.enable()
     m_live = MCPBESolver_new(dim=dim, init=False)
-    mu_live, std_live, t_live, _ = run_mcpbe_new(m_live, seed, N_MC)
+    mu_live, std_live, t_live, _, psd_info = run_mcpbe_new(m_live, seed, N_MC)
     # profiler.disable()
     # stats = pstats.Stats(profiler).strip_dirs().sort_stats("cumtime")
     # stats.print_stats(20)
@@ -179,7 +177,7 @@ def main():
         except Exception as e:
             warnings.warn(f"failed to init solver with lmc_pre_model='{mdl}': {e}")
             continue
-        mu_o, std_o, t_o, _ = run_mcpbe_new(m_other, seed, N_MC)
+        mu_o, std_o, t_o, _, _ = run_mcpbe_new(m_other, seed, N_MC)
         results[mdl] = (mu_o, std_o)
         print(f"[ok] {mdl} finished in {t_o:.2f}s")
 
@@ -205,6 +203,7 @@ def main():
                     )
                 )
         plot_moment_t(tp, curves, i=i, j=0)
+    return psd_info
         
 if __name__ == "__main__":
-    main()
+    psd_info = main()

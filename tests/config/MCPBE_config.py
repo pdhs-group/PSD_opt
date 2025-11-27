@@ -11,19 +11,19 @@ config = {
     "a0": 1000,
     # Total amount of particles in control volume (initially)
     
-    # "c": np.array([1e0]), 
-    "c": np.array([0.5,0.5]), 
+    "c": np.array([1e0]), 
+    # "c": np.array([0.5,0.5]), 
     # Volume concentration array of components [m3/m3]
     ## The Volume concentration of components specifies the proportion of the two primary particles 
     ## in the initial total amount a_0.
     ## It also affects/scales the control volume to calculate the PBE!
     
-    # "x": np.array([1e0]),
-    "x": np.array([1e-2, 1e-2]),
+    "x": np.array([1e-2]),
+    # "x": np.array([1e-2, 1e-2]),
     # (Mean) equivalent diameter of primary particles for each component
     
-    # "PGV": np.array(['mono']),
-    "PGV": np.array(['mono','mono']),
+    "PGV": np.array(['mono']),
+    # "PGV": np.array(['mono','mono']),
     # PGV defines which initial particle size distribution is assumed for each component
     # 'mono': Monodisperse at x = x[i]
     # 'norm': Normal distribution at x_mean = x[i] with sigma defined in SIG 
@@ -31,7 +31,7 @@ config = {
     
     "VERBOSE": True,
 
-    "process_type": "mix",  
+    "process_type": "breakage",  
     # Type of process being simulated.
     # "agglomeration": pure agglomeration
     # "breakage": pure breakage
@@ -40,7 +40,7 @@ config = {
     "CDF_method": "disc", 
     "use_lmc_pre_model": True,
     "lmc_pre_model": "table",     # "table" | "rank" | "copula" | "flow"
-    "lmc_A0_runtime": 1e-9,
+    "lmc_A0_runtime": 1e-10,
     "lmc_tables_path": "lmc_tables_grid.npz",
     "lmc_rank_tables_path": "lmc_rank_tables_grid.npz",
     "lmc_copula_path": "lmc_copula_grid.npz",
@@ -50,8 +50,11 @@ config = {
     "lmc_tables_cache": True,
     
     "use_lmc_live": True,
-    "lmc_small_particle_policy": "fallback", # 'fallback' | 'disable'
-
+    "lmc_small_particle_policy": "disable", # 'fallback' | 'disable'
+    "lmc_pool_dir": r"C:\Users\px2030\Code\LMC_ANN\agggenerator",
+    "lmc_Df": 1.8,
+    "lmc_MAS": 0.4,
+    
     "USE_PSD": True,  
     # Flag indicating whether a particle size distribution (PSD) should be used. If True, 
     # the solver will use the provided PSD files to initialize N.
@@ -84,8 +87,8 @@ config = {
     "CORR_BETA": 1e-2,
     # Correction factor for the collision frequency kernel, controlling the rate of aggregation.
 
-    # 'alpha_prim': np.array([1]),
-    'alpha_prim': np.array([1,1,1,1]),  
+    'alpha_prim': np.array([1]),
+    # 'alpha_prim': np.array([1,1,1,1]),  
     # Factors for collision efficiency.
     # The length of the alpha_prim array must be the square of the dpbe's dimensionality (dim^2).
 

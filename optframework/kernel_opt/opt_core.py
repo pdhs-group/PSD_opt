@@ -99,13 +99,14 @@ class OptCore():
         data_path : str
             The path to the data directory for loading component parameters.
         """
+        adapter = str(getattr(self, "adapter", "dpbe"))
         # Initialize the PBE solver
-        self.p = make_solver("dpbe", opt=self, role="main", dim=self.dim, disc='geo', t_vec=self.t_vec, load_attr=False)
+        self.p = make_solver(adapter, opt=self, role="main", dim=self.dim, t_vec=self.t_vec, load_attr=False)
         # self.p = DPBESolver(dim=self.dim, disc='geo', t_vec=self.t_vec, load_attr=False)
         # If the dimension is 2, also create a 1D population for initialization
         if self.dim == 2:
-            self.p_NM = make_solver("dpbe", opt=self, role="NM", dim=1, disc='geo', t_vec=self.t_vec, load_attr=False)
-            self.p_M = make_solver("dpbe", opt=self, role="M", dim=1, disc='geo', t_vec=self.t_vec, load_attr=False)
+            self.p_NM = make_solver(adapter, opt=self, role="NM", dim=1, t_vec=self.t_vec, load_attr=False)
+            self.p_M = make_solver(adapter, opt=self, role="M", dim=1, t_vec=self.t_vec, load_attr=False)
         # Set the initial population parameters and component parameters
         self.opt_pbe.set_init_pop_para(pop_params)
         self.p.set_comp_para(data_path)

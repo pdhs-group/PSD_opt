@@ -14,18 +14,18 @@ config = {
     'multi_flag': True, 
     # Input only one/one set of PSD data
     'single_case': True, 
-    
     ## Core parameters for optimization
     'algo_params': {
+        'adapter': "mcpbe",
         # The dimensionality of the PBE
-        'dim': 2, 
+        'dim': 1, 
         # Initial time points for simulation. 
         # These values are used to initialize N in dPBE wenn calc_init_N is True.
         # Note: The first value in t_init must be zero.
         't_init': np.array([0, 0]), 
         # Time vector for the entire simulation, specifying the time points at which 
         # calculations are performed.
-        't_vec' : np.arange(0, 601, 10, dtype=float),
+        't_vec' : np.arange(0, 21, 5, dtype=float),
         # Specifies the number of initial time steps to skip during optimization, 
         # often useful to avoid the impact of initialization errors.
         'delta_t_start_step': 1, 
@@ -129,26 +129,45 @@ config = {
     ## PBE parameters
     ## For a detailed explanation of the PBE parameters, please refer to the `PBE_config.py` file.
     'pop_params': {
-        'NS': 10, 
-        'S': 4, 
+        "NC": 2,
+        "MC_seed": 42,
+        
+        "a0": 1000,
+        "c": np.array([1.0]), 
+        "x": np.array([1e-2]),
+        "PGV": np.array(['mono']),
+        "VERBOSE": True,
         'USE_PSD': True, 
         'SIZEEVAL': 1, 
         'COLEVAL': 1, 
         'BREAKRVAL': 4, 
         'BREAKFVAL': 5, 
-        'aggl_crit': 100, 
-        'process_type': 'mix', 
-        'V_unit': 1e-12, 
-        'USE_MC_BOND': False, 
-        'solve_algo': 'ivp', 
-        'CORR_BETA': 1, 
-        'alpha_prim': np.array([0.01, 0.01, 0.01]), 
+        'process_type': 'breakage', 
+        'CORR_BETA': 1e-2, 
+        'alpha_prim': np.array([1, 1, 1]), 
         'pl_v': 2, 
-        'pl_P1': 1e13, 
+        'pl_P1': 1e5, 
         'pl_P2': 1, 
-        'pl_P3': 1e13, 
+        'pl_P3': 1e5, 
         'pl_P4': 1, 
-        'G': 80
+        'G': 1,
+        "CDF_method": "disc", 
+        "use_lmc_pre_model": True,
+        "lmc_pre_model": "table",     # "table" | "rank" | "copula" | "flow"
+        "lmc_A0_runtime": 1e-10,
+        "lmc_tables_path": "lmc_tables_grid.npz",
+        "lmc_rank_tables_path": "lmc_rank_tables_grid.npz",
+        "lmc_copula_path": "lmc_copula_grid.npz",
+        "lmc_flow_pure_path": "lmc_cond_flow_pure.pt",
+        "lmc_flow_mix_path": "lmc_cond_flow_mix.pt",
+        "lmc_interp ": "bilinear",
+        "lmc_tables_cache": True,
+        
+        "use_lmc_live": True,
+        "lmc_small_particle_policy": "disable", # 'fallback' | 'disable'
+        "lmc_pool_dir": r"C:\Users\px2030\Code\LMC_ANN\agggenerator",
+        "lmc_Df": 1.8,
+        "lmc_MAS": 0.4,
         },
     
     ## Optimized parameters and their search ranges.

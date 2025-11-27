@@ -20,7 +20,7 @@ from .lmc_adapter import (
     LMCTableAdapter,
     LMCRankAdapter,
     LMCCopulaAdapter,
-    LMCFlowAdapter,
+    # LMCFlowAdapter,
     LMCLiveFallback,
     LMCLiveDisable,
 )
@@ -357,7 +357,8 @@ class MCPBEBreak:
     
         # 2) 一次性分布类适配器：rank / copula / flow
         lmc_ad = getattr(self, "lmc_adapter", None)
-        if isinstance(lmc_ad, (LMCRankAdapter, LMCCopulaAdapter, LMCFlowAdapter)):
+        # if isinstance(lmc_ad, (LMCRankAdapter, LMCCopulaAdapter, LMCFlowAdapter)):
+        if isinstance(lmc_ad, (LMCRankAdapter, LMCCopulaAdapter)):
             # --- 小颗粒策略（仅当策略为 disable 时才判定；fallback 直接用） ---
             if getattr(lmc_ad, "small_particle_policy", "fallback") == "disable":
                 A = float(Vrem_k[0]) if self.dim == 1 else float(Vrem_k[0] + Vrem_k[1])
@@ -373,14 +374,14 @@ class MCPBEBreak:
                 X1 = float(Vrem_k[0] / A) if A > 0.0 else 0.5
     
             # 不同适配器的 one-shot 调用签名略有区别，这里分开调
-            if isinstance(lmc_ad, LMCFlowAdapter):
-                # flow: sample_one_shot(A, X1, rng, N=None)
-                rA_list, rB_list = lmc_ad.sample_one_shot(A, X1, self._rng, N=None)
-            else:
-                # rank / copula: sample_one_shot(A, X1, rng, N=None, K_use=None, tail_strategy="equal")
-                rA_list, rB_list = lmc_ad.sample_one_shot(
-                    A, X1, self._rng, N=None, K_use=None, tail_strategy="equal"
-                )
+            # if isinstance(lmc_ad, LMCFlowAdapter):
+            #     # flow: sample_one_shot(A, X1, rng, N=None)
+            #     rA_list, rB_list = lmc_ad.sample_one_shot(A, X1, self._rng, N=None)
+            # else:
+            # rank / copula: sample_one_shot(A, X1, rng, N=None, K_use=None, tail_strategy="equal")
+            rA_list, rB_list = lmc_ad.sample_one_shot(
+                A, X1, self._rng, N=None, K_use=None, tail_strategy="equal"
+            )
     
             # 按维数还原成体积碎片
             if self.dim == 1:

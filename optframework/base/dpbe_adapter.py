@@ -27,7 +27,8 @@ class DPBEAdapter(WriteThroughAdapter):
     """
 
     def __init__(self, *, opt, role: Literal["main","NM","M"]="main", **kw: Any):
-        impl = DPBESolver(**kw)
+        kw.pop("disc", None)
+        impl = DPBESolver(disc="geo", **kw)
         super().__init__(impl)
         
         # Optional: name mappings
@@ -49,16 +50,24 @@ class DPBEAdapter(WriteThroughAdapter):
             arr = np.asarray(value)
             dim = impl.dim  
             if dim is None:
-                raise ValueError("DPBEAdapter: 'dim' must be set on impl before alpha_prim.")
+                raise ValueError("MCPBEAdapter: 'dim' must be set on impl before alpha_prim.")
         
             r = self.role  
             if dim == 1:
                 if arr.ndim == 0:
                     impl.alpha_prim = float(arr)
                 else:
-                    if arr.size < 1:
+                    flat = arr.ravel()
+                    if flat.size < 1:
                         raise ValueError("alpha_prim must contain at least one value for dim=1.")
-                    impl.alpha_prim = float(arr.ravel()[0])
+                    if r == "NM" or r == "main":
+                        impl.alpha_prim = float(flat[0])
+                    elif r == "M":
+                        if flat.size < 3:
+                            raise ValueError("alpha_prim must contain at least a2 (index 2) for M in 2D.")
+                        impl.alpha_prim = float(flat[-1])
+                    else:
+                        raise ValueError(f"Unknown role '{r}'.")
             elif dim == 2:
                 flat = arr.ravel()
                 if r == "main":
@@ -72,22 +81,12 @@ class DPBEAdapter(WriteThroughAdapter):
                             f"alpha_prim for main 2D should have length 3 (a0,a1,a2)"
                             f" or 4 (a0,a1,a1,a2); got {flat.size}."
                         )
-                elif r == "NM":
-                    if flat.size < 1:
-                        raise ValueError("alpha_prim must contain at least a0 for NM in 2D.")
-                    impl.alpha_prim = float(flat[0])
-                elif r == "M":
-                    if flat.size < 3:
-                        raise ValueError("alpha_prim must contain at least a2 (index 2) for M in 2D.")
-                    impl.alpha_prim = float(flat[2])
-                else:
-                    raise ValueError(f"Unknown role '{r}'.")
             else:
                 raise ValueError(f"Unsupported dim={dim} for DPBEAdapter alpha_prim handling.")
         
         self._setters["alpha_prim"] = set_alpha_prim
         
-        if self.role == "M" and impl.dim == 2:
+        if self.role == "M":
             def set_pl_P3(impl, value):
                 impl.pl_P1 = value
         

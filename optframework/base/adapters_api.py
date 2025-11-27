@@ -8,6 +8,7 @@ Created on Tue Aug 26 11:38:37 2025
 from typing import Any, Protocol, runtime_checkable, Dict, Type
 import numpy as np
 from .dpbe_adapter import DPBEAdapter
+from .mcpbe_adapter import MCPBEAdapter
 
 @runtime_checkable
 class SolverProtocol(Protocol):
@@ -44,14 +45,12 @@ class SolverProtocol(Protocol):
         """
         Reset and update solver parameters that depend on other attributes.
         
-        This method is called multiple times: first after set_comp_para(), then
-        after each update to solver attributes. It ensures that dependent
+        This method is called multiple times: first after set_comp_para(). It ensures that dependent
         parameters are properly synchronized with their controlling attributes.
         
         Notes
         -----
         - Called first after set_comp_para()
-        - Called after each attribute update
         - Should update dynamically dependent parameters
         - If no updates needed, implement as `return None`
         """
@@ -233,6 +232,8 @@ def validate_solver(obj: Any) -> None:
 # Registry of available solver adapters
 REGISTRY: Dict[str, Type] = {
     "dpbe": DPBEAdapter,
+    "mcpbe": MCPBEAdapter,
+    
     # "other": OtherAdapter,
 }
 

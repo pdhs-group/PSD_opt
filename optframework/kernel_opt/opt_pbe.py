@@ -70,9 +70,9 @@ class OptPBE():
         """
         self.set_pop_para(self.base.p, pop_params)
         
-        if hasattr(self, 'p_NM'):
+        if hasattr(self.base, 'p_NM'):
             self.set_pop_para(self.base.p_NM, pop_params)
-        if hasattr(self, 'p_M'):
+        if hasattr(self.base, 'p_M'):
             self.set_pop_para(self.base.p_M, pop_params)
         
         self.base.set_init_pop_para_flag = True

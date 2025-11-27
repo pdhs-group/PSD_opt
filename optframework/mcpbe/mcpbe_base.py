@@ -6,7 +6,7 @@ import math
 import os
 import time
 import warnings
-from typing import Optional, Sequence
+from typing import Optional, Sequence, Any, Tuple
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import copy
 
@@ -73,16 +73,16 @@ class MCPBEBase(BaseSolver):
         else:
             self._rng = np.random.default_rng()
 
+        # cache for breakage CDF tables (keyed by dim, N, BREAKFVAL, pl_v, pl_q)
+        self._bf_cache = {}
         # Initialize state
         if init:
             self._initialize_particles()
             self._initialize_samplers()
+            self._init_lmc()
             self._bf_ready = False  # breakage CDFs (mix-in will build on demand)
 
-        # cache for breakage CDF tables (keyed by dim, N, BREAKFVAL, pl_v, pl_q)
-        self._bf_cache = {}
 
-        self._init_lmc()
                         
     def _init_lmc(self):
         """
@@ -107,6 +107,10 @@ class MCPBEBase(BaseSolver):
         self.lmc_interp           = str(getattr(self, "lmc_interp", "bilinear"))
         self.lmc_tables_cache     = bool(getattr(self, "lmc_tables_cache", False))
         self.lmc_small_particle_policy = str(getattr(self, "lmc_small_particle_policy", "fallback"))
+        self.lmc_pool_dir = getattr(self, "lmc_pool_dir", None)
+        self.lmc_Df = getattr(self, "lmc_Df", None)
+        self.lmc_MAS = getattr(self, "lmc_MAS", None)
+        
     
         # 这里保存最终实际创建出来的 adapter
         self.lmc_adapter = None
@@ -118,7 +122,7 @@ class MCPBEBase(BaseSolver):
                 LMCTableAdapter,
                 LMCRankAdapter,
                 LMCCopulaAdapter,
-                LMCFlowAdapter,
+                # LMCFlowAdapter,
             )
     
             pre = self.lmc_pre_model.lower().strip()
@@ -157,15 +161,15 @@ class MCPBEBase(BaseSolver):
                     cache_enabled=self.lmc_tables_cache,
                 )
     
-            elif pre == "flow":
-                if not self.lmc_flow_pure_path or not self.lmc_flow_mix_path:
-                    raise ValueError("lmc_pre_model='flow' but lmc_flow_path is not set.")
-                self.lmc_adapter = LMCFlowAdapter(
-                    pure_model_path=self.lmc_flow_pure_path,
-                    mix_model_path=self.lmc_flow_mix_path,
-                    A0_run=self.lmc_A0_runtime,
-                    cache_enabled=self.lmc_tables_cache,
-                )
+            # elif pre == "flow":
+            #     if not self.lmc_flow_pure_path or not self.lmc_flow_mix_path:
+            #         raise ValueError("lmc_pre_model='flow' but lmc_flow_path is not set.")
+            #     self.lmc_adapter = LMCFlowAdapter(
+            #         pure_model_path=self.lmc_flow_pure_path,
+            #         mix_model_path=self.lmc_flow_mix_path,
+            #         A0_run=self.lmc_A0_runtime,
+            #         cache_enabled=self.lmc_tables_cache,
+            #     )
     
             # 无论哪种 adapter，都让它知道小颗粒策略
             if self.lmc_adapter is not None and hasattr(self.lmc_adapter, "set_small_particle_policy"):
@@ -189,6 +193,9 @@ class MCPBEBase(BaseSolver):
                 A0_run=float(getattr(self, "lmc_A0_runtime", 1.0)),
                 small_particle_policy=str(getattr(self, "lmc_small_particle_policy", "fallback")),
                 delta_cells=float(getattr(self, "lmc_delta_cells", 0.1)),
+                pool_dir=str(getattr(self, "lmc_pool_dir", "Pool_Path")),
+                Df=float(getattr(self, "lmc_Df", 1.6)),
+                MAS=float(getattr(self, "lmc_MAS", 0.5)),
                 rebuild=True,
             )
     
@@ -562,7 +569,8 @@ class MCPBEBase(BaseSolver):
             # if count%100 == 0: print([f"[Test] events = {count}"])
             if self.a_tot < 2 and pt in ("agglomeration", "mix"):
                 break
-
+        if self.use_lmc_live:
+            self.lmc_live._sim.agg_pool.close_pool_cache()
         self.MACHINE_TIME = time.time() - t0
         if self.VERBOSE:
             print(f"[MC-PBE] The calculation took {getattr(self,'MACHINE_TIME',0.0):.4g}s after {count} events")
@@ -577,15 +585,46 @@ class MCPBEBase(BaseSolver):
         Vc: float = None,
         V_flat: Optional[np.ndarray] = None,
         workers: int = 1,
+        psd_enable: bool = False,
+        psd_basis: str = "volume",                 # "volume" or "number"
+        psd_x_grid: Optional[np.ndarray] = None,   # if given -> output Q(x)
+        psd_Q_grid: Optional[np.ndarray] = None,   # if given -> output x(Q)
     ):
         """
         Run N Monte Carlo realizations (repeats).
 
-        workers = 1  -> serial (original behavior)
-        workers > 1  -> parallel with ProcessPoolExecutor
+        workers = 1  -> serial (original behavior + optional PSD computation)
+        workers > 1  -> parallel with ProcessPoolExecutor (PSD currently unsupported)
 
-        We serialize the current solver state (self.__dict__) and send it
-        to workers, where a fresh solver is rebuilt.
+        Returns
+        -------
+        If psd_enable == False:
+            List[{"seed_info", "t_vec", "moments"}]
+
+        If psd_enable == True and workers == 1:
+            (results, psd_info)  # tuple
+
+            results: list of dicts as above
+
+            If psd_x_grid is used (Q(x) mode):
+                psd_info = {
+                    "mode": "Q_of_x",
+                    "basis": "volume" or "number",
+                    "t_vec": t_vec_reference,    # shape (T,)
+                    "x_grid": x_grid,            # shape (M,)
+                    "Q_mean": Q_mean,            # shape (T, M)
+                    "note": "...",
+                }
+
+            If psd_Q_grid is used (x(Q) mode):
+                psd_info = {
+                    "mode": "x_of_Q",
+                    "basis": "volume" or "number",
+                    "t_vec": t_vec_reference,    # shape (T,)
+                    "Q_grid": Q_grid,            # shape (M,)
+                    "x_mean": x_mean,            # shape (T, M)
+                    "note": "...",
+                }
         """
         # ----- build seeds -----
         if seeds is None:
@@ -594,11 +633,28 @@ class MCPBEBase(BaseSolver):
         if len(seeds) != N:
             raise ValueError("Length of seeds must equal N.")
 
-        # ----- serial path (original behavior) -----
+        # warn if PSD grids are given but PSD is disabled
+        if not psd_enable and (psd_x_grid is not None or psd_Q_grid is not None):
+            warnings.warn(
+                "psd_enable=False but psd_x_grid/psd_Q_grid are provided; PSD computation will be skipped.",
+                RuntimeWarning,
+            )
+
+        if psd_enable and workers > 1:
+            raise NotImplementedError(
+                "psd_enable=True is currently only supported for workers=1 (serial mode). "
+            )
+
+        # ----- serial path (supports PSD) -----
         if workers == 1:
-            results = []
+            results: list[dict[str, Any]] = []
+
+            # For PSD aggregation across repeats
+            cdf_repeats: list[Sequence[Optional[Tuple[np.ndarray, np.ndarray]]]] = []
+            t_vec_ref: Optional[np.ndarray] = None
+
             for k in range(N):
-                # local run, just deepcopy self and do what we did before
+                # Deep copy self and run a single realization
                 m = copy.deepcopy(self)
                 sk = seeds[k]
                 if isinstance(sk, np.random.SeedSequence):
@@ -613,22 +669,64 @@ class MCPBEBase(BaseSolver):
                     m.Vc = Vc
                 m._initialize_particles(init_Vc=init_Vc, V_flat=V_flat)
                 m._initialize_samplers()
+                m._init_lmc()
                 m.solve(maxiter=maxiter)
                 mu, tv = m.calc_moments_over_time(normalize=True)
                 results.append({"seed_info": seed_info, "t_vec": tv, "moments": mu})
-            return results
 
-        # ----- parallel path -----
-        # 1) snapshot current solver state into a picklable dict
-        #    deep copy to detach from parent
+                # PSD CDFs for this realization over all saved times
+                if psd_enable:
+                    cdf_list, t_vec_local = m.compute_psd_cdf_over_time(psd_basis=psd_basis)
+                    if t_vec_ref is None:
+                        t_vec_ref = np.asarray(t_vec_local, dtype=float)
+                    else:
+                        if len(t_vec_ref) != len(t_vec_local) or not np.allclose(
+                            t_vec_ref, t_vec_local, rtol=1e-6, atol=1e-12
+                        ):
+                            warnings.warn(
+                                "t_vec differs between repeats. PSD averaging assumes identical t_vec; "
+                                "results may be inconsistent.",
+                                RuntimeWarning,
+                            )
+                    cdf_repeats.append(cdf_list)
+
+            if not psd_enable:
+                # original behavior: only moments
+                return results, None
+
+            # Aggregate PSD over repeats using post-processing utilities
+            if t_vec_ref is None:
+                # No PSD data collected
+                psd_info = {
+                    "basis": psd_basis,
+                    "mode": None,
+                    "t_vec": None,
+                    "x_grid": None,
+                    "Q_mean": None,
+                    "Q_grid": None,
+                    "x_mean": None,
+                    "note": "No PSD snapshots were available.",
+                }
+            else:
+                # `self` is a MCPBESolver (MCPBEPost is in MRO), so we can call aggregate_psd_repeats
+                psd_info = self.aggregate_psd_repeats(
+                    cdf_repeats=cdf_repeats,
+                    t_vec=t_vec_ref,
+                    psd_basis=psd_basis,
+                    psd_x_grid=psd_x_grid,
+                    psd_Q_grid=psd_Q_grid,
+                )
+
+            return results, psd_info
+
+        # ----- parallel path (PSD not implemented here) -----
         base_state = copy.deepcopy(self.__dict__)
 
-        # 2) build payloads for each worker
         payloads = []
         for k in range(N):
             payloads.append(
                 {
-                    "cls": self.__class__,   # MCPBEBase or subclass
+                    "cls": self.__class__,
                     "state": base_state,
                     "seed": seeds[k],
                     "maxiter": maxiter,
@@ -638,7 +736,7 @@ class MCPBEBase(BaseSolver):
                 }
             )
 
-        results = []
+        results: list[dict[str, Any]] = []
         with ProcessPoolExecutor(max_workers=workers) as ex:
             fut_map = {ex.submit(_mcpbe_run_single_parallel, pl): i for i, pl in enumerate(payloads)}
             for fut in as_completed(fut_map):
@@ -646,12 +744,20 @@ class MCPBEBase(BaseSolver):
                 try:
                     res = fut.result()
                 except Exception as e:
-                    # 这里你可以选择 raise，也可以选择记录失败的那个
                     raise RuntimeError(f"[parallel] worker {idx} failed: {e}")
                 else:
                     results.append(res)
 
-        return results
+        if psd_enable:
+            warnings.warn(
+                "psd_enable=True but workers>1: PSD computation on parallel path is not implemented; "
+                "only moments are returned.",
+                RuntimeWarning,
+            )
+
+        return results, None
+
+
     # ---------------------------------------------------------------------
     # Column ops (capacity style)
     # ---------------------------------------------------------------------
@@ -740,6 +846,20 @@ class MCPBEBase(BaseSolver):
             return
         if self._break_sampler is None:
             self._break_sampler = FenwickSampler(self._break_rate[:self.a_tot])
+    
+    def _close(self, gc_clean=True):
+        big_attrs = ("V_flat", "X", "V0", "X0",
+             "V0_save", "V_save", "Vc_save",
+             "_r_agg", "_break_rate",
+             "_agg_sampler", "_break_sampler")
+        for name in big_attrs:
+            setattr(self, name, None)
+        self._bf_cache.clear()
+        self.lmc_live = None
+        if gc_clean:
+            import gc
+            gc.collect()
+        
 
 def _mcpbe_run_single_parallel(payload: dict):
     """
