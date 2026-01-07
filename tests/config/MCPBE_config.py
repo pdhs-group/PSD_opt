@@ -38,7 +38,7 @@ config = {
     # "mix": both agglomeration and breakage
 
     "CDF_method": "disc", 
-    "use_lmc_pre_model": True,
+    "use_lmc_pre_model": False,
     "lmc_pre_model": "table",     # "table" | "rank" | "copula" | "flow"
     "lmc_A0_runtime": 1e-10,
     "lmc_tables_path": "lmc_tables_grid.npz",
@@ -50,10 +50,15 @@ config = {
     "lmc_tables_cache": True,
     
     "use_lmc_live": True,
-    "lmc_small_particle_policy": "disable", # 'fallback' | 'disable'
-    "lmc_pool_dir": r"C:\Users\px2030\Code\LMC_ANN\agggenerator",
+    "lmc_small_particle_policy": "fallback", # 'fallback' | 'disable'
+    "lmc_pool_dir": r"C:\Users\px2030\Code\PSD_opt\tests\data_mcpbe_CB",
     "lmc_Df": 1.8,
     "lmc_MAS": 0.4,
+    
+    "lmc_use_breakage_model": True,
+    "lmc_breakage_model_path": r"C:\Users\px2030\Code\PSD_opt\tests\data_mcpbe_CB\mlp_model.pkl",
+    "lmc_lambda_E": 1e-7,
+    "lmc_energy_exp": 2.0,
     
     "USE_PSD": True,  
     # Flag indicating whether a particle size distribution (PSD) should be used. If True, 

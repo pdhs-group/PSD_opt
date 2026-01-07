@@ -4,8 +4,12 @@ Created on Tue Aug 26 12:54:06 2025
 
 @author: px2030
 """
+import os
 from typing import Any, Literal
 import numpy as np
+import h5py
+import threading
+from typing import Any, Literal
 from .adapters_api_basics import WriteThroughAdapter
 from optframework.mcpbe import MCPBESolver
 
@@ -34,11 +38,13 @@ class MCPBEAdapter(WriteThroughAdapter):
         # })
         
         # Optional: Adapter-only field (won't write-through)
-        self._skip.update({"role", "opt"})
+        self._skip.update({"role", "opt", "NC", "MC_seed", "init_Vc", "Vc_init", 
+                           "V_flat_init", "_psd_basis", "_psd_x_grid", "_psd_Q_grid",
+                           "data_mod"})
         self.role = role
         self.opt = opt
         
-        # Write-through attributes
+        # p.calc_status will be checked during the optimization process and must exist
         self.calc_status = True
 
         # ---------- alpha_prim  ----------
@@ -78,7 +84,7 @@ class MCPBEAdapter(WriteThroughAdapter):
                             f" or 4 (a0,a1,a1,a2); got {flat.size}."
                         )
             else:
-                raise ValueError(f"Unsupported dim={dim} for DPBEAdapter alpha_prim handling.")
+                raise ValueError(f"Unsupported dim={dim} for MCPBEAdapter alpha_prim handling.")
         
         self._setters["alpha_prim"] = set_alpha_prim
         # ---------- c and x and PGV  ----------
@@ -116,6 +122,28 @@ class MCPBEAdapter(WriteThroughAdapter):
 
     # %% ESSENTIAL METHOD INTERFACE
     def set_comp_para(self, data_path: str) -> None:
+        opt = self.opt
+        flag = getattr(opt, "delta_flag", None)
+        if flag is None:
+            # fallback for older configs
+            flag = getattr(opt, "data_flag", "Q0")
+        flag = str(flag).upper()
+        if flag not in ("Q0", "Q3"):
+            raise ValueError(
+                f"opt.delta_flag / opt.data_flag must be 'Q0' or 'Q3' for MCPBEAdapter, "
+                f"got {flag!r}."
+            )
+        if flag == "Q0":
+            self._psd_basis = "number"
+        else:  # flag == "Q3"
+            self._psd_basis = "volume"
+            
+        self.init_Vc = False            # tell solver to use provided Vc
+        self._psd_Q_grid = None         # we only use Q(x), not x(Q), here
+        self.opt.set_comp_para_flag = True
+        
+        self.impl.lmc_pool_dir = data_path
+        self.impl.lmc_breakage_model_path = os.path.join(data_path, "mlp_model.pkl")
         return None
         
     def reset_params(self) -> None:
@@ -126,28 +154,322 @@ class MCPBEAdapter(WriteThroughAdapter):
             
     def calc_matrix(self, init_N) -> None:
         return None
-            
-    def solve(self, t_vec) -> None:
-        self.init_Vc = True
-        self.Vc_init = None
-        self.V_flat_init = None
-        results, psd_info = self.impl.solve_repeats(N=self.NC, base_seed=self.MC_seed, init_Vc=self.init_Vc, 
-                                                Vc=self.Vc_init, V_flat=self.V_flat_init,
-                                                workers=1, psd_enable=False,) 
-                                                # psd_basis=self.psd_basis,
-                                                # psd_x_grid=self.psd_x_grid, psd_Q_grid=self.psd_Q_grid)
-        mu_tmp = []
-        for l in range(self.NC):
-            # Moments provide statistical characterization of the particle distribution
-            mu_tmp.append(results[l]['moments'])
-        mu_mc = np.mean(mu_tmp,axis=0)
-        self.test_out_m20 = np.mean(mu_mc[2,0,:])
+
+    def solve(self, t_vec):
+        if not np.allclose(np.asarray(t_vec), np.asarray(self.opt.t_vec)):
+            raise ValueError("Adapter.solve: provided t_vec differs from opt.t_vec.")
+    
+        self.calc_status = True
+        max_time = float(getattr(self.opt, "max_iter_time", 0.0) or 0.0)
+    
+        # 共享的取消标志：所有拷贝都应该指向它
+        shared_flag = {"cancel": False}
+        self.impl.cancel_flag = shared_flag
+    
+        result_container = {}
+    
+        def _worker():
+            try:
+                r, p = self.impl.solve_repeats(
+                    N=self.NC,
+                    base_seed=self.MC_seed,
+                    init_Vc=self.init_Vc,
+                    Vc=self.opt.Vc_init,
+                    V_flat=self.opt.V_flat_init,
+                    workers=1,
+                    psd_enable=True,
+                    psd_basis=self._psd_basis,
+                    psd_x_grid=self.opt._psd_x_grid,
+                    psd_Q_grid=self._psd_Q_grid,
+                )
+                result_container["result"] = (r, p)
+            except Exception as e:
+                result_container["error"] = e
+    
+        # --- start worker thread ---
+        th = threading.Thread(target=_worker)
+        th.daemon = True
+        th.start()
+    
+        # --- wait with timeout ---
+        th.join(timeout=max_time if max_time > 0 else None)
+    
+        # --- check timeout ---
+        if th.is_alive():
+            # Timeout: request cancellation
+            shared_flag["cancel"] = True
+            self.calc_status = False
+            self.data_mod = None
+            return
+    
+        # --- thread finished normally ---
+        if "error" in result_container:
+            self.calc_status = False
+            raise result_container["error"]
+    
+        results, psd_info = result_container["result"]
+    
+        if "Q_mean" not in psd_info:
+            self.calc_status = False
+            raise KeyError("psd_info missing Q_mean")
+    
+        self.data_mod = psd_info["Q_mean"]
+        self.x_50_mod = psd_info["x_50"]
+        self.calc_status = True
         
     def get_all_data(self, exp_data_path) -> tuple[np.ndarray, np.ndarray]:
-        return None, None
+        """
+        Load experimental PSD data from an HDF5 file and prepare it for optimization.
+
+        The HDF5 file is assumed to contain multiple groups (labels), each
+        corresponding to a measurement time. Under each group, the following
+        datasets and attributes are expected (as produced by Import_PSD_CPS_h5):
+
+            Datasets:
+                - d_agg       : aggregate diameters used for MC initialization
+                - x_dis       : log-spaced diameter grid (for Q0)
+                - q0_sum_log  : cumulative number-based PSD Q0(x_dis)
+                - d3_cent     : original linear diameter grid (for Q3)
+                - q3_sum_agg  : cumulative volume-based PSD Q3(d3_cent)
+
+            Attributes:
+                - exp_t   : experimental sampling time (float, in seconds)
+                - Vc      : control volume used for this measurement (float)
+                - N_bins, N_aggs_target, N_aggs_eff, cell_size, phi_s, V_mean, ...
+
+        This method:
+          1) Scans all groups in the HDF5 file and reads their exp_t.
+          2) For each time in self.opt.t_vec, selects the group whose exp_t
+             matches that time (within a small tolerance).
+          3) According to self.opt.delta_flag ('Q0' or 'Q3'), collects the
+             cumulative distribution at these times into a 2D array data_exp
+             with shape (Nx, Nt), where Nx is the number of x points and
+             Nt = len(self.opt.t_vec).
+          4) Uses the first time point's group to initialize MCPBE:
+             - x_uni is set from x_dis (Q0) or d3_cent (Q3).
+             - self.Vc_init is set from that group's Vc.
+             - self.V_flat_init is built from that group's d_agg
+               (diameters → volumes, dim=1).
+             - self.init_Vc is set to False so that MCPBE uses the provided Vc.
+             - self._psd_basis is set to "number" (Q0) or "volume" (Q3).
+             - self._psd_x_grid is set to x_uni so MCPBE PSD is computed on
+               the same x-grid as the experimental data.
+
+        Parameters
+        ----------
+        exp_data_path : str
+            Full path to the HDF5 file containing experimental PSD data.
+
+        Returns
+        -------
+        x_uni : ndarray, shape (Nx,)
+            Diameter grid on which the experimental PSD CDF is defined.
+        data_exp : ndarray, shape (Nx, Nt)
+            Experimental cumulative PSD data (Q0 or Q3) at the requested
+            time points, ordered according to self.opt.t_vec.
+        """
+        opt = self.opt
+        t_vec = np.asarray(opt.t_vec, dtype=float)
+
+        # MCPBE here is assumed to be 1D
+        if getattr(self.impl, "dim", None) != 1:
+            raise ValueError(
+                f"MCPBEAdapter.get_all_data currently assumes dim=1, "
+                f"but impl.dim={getattr(self.impl, 'dim', None)!r}."
+            )
+
+        # Decide which experimental quantity to read: cumulative Q0 or Q3.
+        flag = getattr(opt, "delta_flag", None)
+        if flag is None:
+            # fallback for older configs
+            flag = getattr(opt, "data_flag", "Q0")
+        flag = str(flag).upper()
+
+        if flag == "Q0":
+            grid_key = "x_dis"
+            data_key = "q0_sum_log"
+            x_50_key = "x50_Q0"
+        else:  # flag == "Q3"
+            grid_key = "d3_cent"
+            data_key = "q3_sum_agg"
+            x_50_key = "x50_Q3"
+
+        with h5py.File(exp_data_path, mode="r") as h5f:
+            group_names = [name for name in h5f.keys()]
+            if not group_names:
+                raise ValueError(
+                    f"No groups found in HDF5 file {exp_data_path!r}."
+                )
+
+            # ------------------------------------------------------------------
+            # 1) Scan all groups and collect their exp_t
+            # ------------------------------------------------------------------
+            exp_t_list = []
+            for name in group_names:
+                grp = h5f[name]
+                if "exp_t" not in grp.attrs:
+                    raise KeyError(
+                        f"Group {name!r} in {exp_data_path!r} has no 'exp_t' attribute."
+                    )
+                exp_t_list.append(float(grp.attrs["exp_t"]))
+            exp_t_arr = np.asarray(exp_t_list, dtype=float)
+
+            # ------------------------------------------------------------------
+            # 2) For each time in t_vec, find the matching group by exp_t
+            # ------------------------------------------------------------------
+            tol = 1e-8
+            group_idx_for_t: list[int] = []
+            for t in t_vec:
+                idx = np.where(np.isclose(exp_t_arr, t, rtol=0.0, atol=tol))[0]
+                if idx.size == 0:
+                    raise ValueError(
+                        f"No group with exp_t matching t={t} found in {exp_data_path!r}."
+                    )
+                if idx.size > 1:
+                    raise ValueError(
+                        f"Multiple groups with exp_t ~ {t} found in {exp_data_path!r}; "
+                        f"exp_t values: {exp_t_arr[idx]}."
+                    )
+                group_idx_for_t.append(int(idx[0]))
+
+            # ------------------------------------------------------------------
+            # 3) Use the first time point's group to define x_uni and init state
+            # ------------------------------------------------------------------
+            first_grp_name = group_names[group_idx_for_t[0]]
+            first_grp = h5f[first_grp_name]
+
+            # Diameter grid: x_dis (for Q0) or d3_cent (for Q3)
+            if grid_key not in first_grp:
+                raise KeyError(
+                    f"Group {first_grp_name!r} has no dataset {grid_key!r}."
+                )
+            x_uni = first_grp[grid_key][...].astype(float)
+
+            # Read control volume Vc and aggregate diameters d_agg for initialization
+            if "Vc" not in first_grp.attrs:
+                raise KeyError(
+                    f"Group {first_grp_name!r} has no attribute 'Vc'."
+                )
+            Vc = float(first_grp.attrs["Vc"])
+
+            if "d_agg" not in first_grp:
+                raise KeyError(
+                    f"Group {first_grp_name!r} has no dataset 'd_agg'."
+                )
+            d_agg_init = first_grp["d_agg"][...].astype(float)
+
+            # Build V_flat_init for 1D MCPBE: volume from diameters
+            # V = (pi/6) * d^3
+            v_init = (np.pi / 6.0) * d_agg_init**3
+            v_init = np.asarray(v_init, dtype=float).ravel()
+            V_flat_init = np.vstack([v_init, v_init])
+
+            # Store into optimizer for later use in solve()
+            opt.Vc_init = Vc
+            opt.V_flat_init = V_flat_init
+            opt._psd_x_grid = x_uni        # MCPBE PSD grid = experimental grid
+
+            # ------------------------------------------------------------------
+            # 4) Collect cumulative PSD data for all requested times into data_exp
+            # ------------------------------------------------------------------
+            Nx = x_uni.size
+            Nt = t_vec.size
+            data_exp = np.zeros((Nx, Nt), dtype=float)
+            V_mean_exp = np.zeros(Nt, dtype=float)
+            x_50_exp = np.zeros(Nt, dtype=float)
+
+            for it, gidx in enumerate(group_idx_for_t):
+                gname = group_names[gidx]
+                grp = h5f[gname]
+
+                if data_key not in grp:
+                    raise KeyError(
+                        f"Group {gname!r} has no dataset {data_key!r} "
+                        f"required for flag={flag!r}."
+                    )
+                y = grp[data_key][...].astype(float)
+
+                if y.size != Nx:
+                    raise ValueError(
+                        f"Dataset size mismatch in group {gname!r}: "
+                        f"expected {Nx} points (same as {grid_key}), got {y.size}."
+                    )
+
+                data_exp[:, it] = y
+                
+                # V_mean (experimental mean volume) from group attributes
+                if "V_mean" in grp.attrs:
+                    V_mean_exp[it] = float(grp.attrs["V_mean"])
+                else:
+                    # If missing, mark as NaN to avoid silently using 0
+                    V_mean_exp[it] = np.nan
+                if x_50_key in grp.attrs:
+                    x_50_exp[it] = float(grp.attrs[x_50_key])
+                else:
+                    # If missing, mark as NaN to avoid silently using 0
+                    x_50_exp[it] = np.nan
+                    
+        # Store V_mean_exp for later plotting
+        self.V_mean_exp = V_mean_exp
+        self.x_50_exp = x_50_exp
+
+        return x_uni, data_exp
     
     def calc_delta_pop(self, x_uni_exp, data_exp) -> float:
-        return self.test_out_m20
+        """Compute the mismatch between experimental PSD and MCPBE result.
+
+        Parameters
+        ----------
+        x_uni_exp : ndarray or list of ndarray
+            Experimental x-grid(s). For the current implementation
+            (sample_num == 1), this is a single 1D array and is not used
+            explicitly here, because the MCPBE PSD has already been
+            computed on the same x-grid via `psd_x_grid`.
+        data_exp : ndarray or list of ndarray
+            Experimental PSD data. For the current implementation
+            (sample_num == 1), this is a single 2D array with shape
+            (Nx, Nt), where Nx is the number of x points and Nt is the
+            number of time points in t_vec.
+
+        Returns
+        -------
+        delta : float
+            Scalar cost value computed by opt.cost_fun.
+
+        Notes
+        -----
+        - The current implementation only supports the case where the
+          experimental PSD is provided as a single dataset (sample_num == 1).
+        - For sample_num > 1 (multiple experimental repeats), the intended
+          design is that x_uni_exp and data_exp become lists of arrays,
+          one per experiment. Since get_all_data has not yet been extended
+          to read multiple repeats from HDF5, this branch is not implemented
+          and returns 0.0 with a warning.
+        """
+        opt = self.opt
+        sample_num = getattr(opt, "sample_num", 1)
+
+        # Multi-repeat experimental data is not supported yet.
+        if sample_num != 1:
+            import warnings
+
+            warnings.warn(
+                "MCPBEAdapter.calc_delta_pop: sample_num > 1 is not implemented yet. "
+                "For now, this branch returns 0.0 without using the data.",
+                RuntimeWarning,
+            )
+            return 0.0
+
+        # For sample_num == 1, we expect data_exp to be a single 2D array
+        # with the same shape as self.data_mod: (Nx, Nt).
+        if np.shape(data_exp) != np.shape(self.data_mod):
+            raise ValueError(
+                f"MCPBEAdapter.calc_delta_pop: shape mismatch between experimental "
+                f"data {np.shape(data_exp)} and model data {np.shape(self.data_mod)}."
+            )
+
+        delta = opt.cost_fun(data_exp, self.data_mod, opt.cost_flag, opt.data_flag)
+        return float(delta)
         
     def close(self) -> None:
         self.impl._close()

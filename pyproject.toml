@@ -1,29 +1,30 @@
 [tool.poetry]
 name = "optframework"
-version = "0.6.4"
+version = "0.6.5"
 description = "A dPBE solver based framework used to find kernel parameters."
 authors = ["HR94 <haoran.ji@kit.edu>"]
 license = "GPL-3.0-only"
 readme = "README.md"
 packages = [
     { include = "optframework" },
+    { include = "agggenerator" },
+    { include = "lmcann" },
 ]
 
 [tool.poetry.dependencies]
 python = ">=3.9,<3.12"
-numpy = "^1.26.0"
-pandas = "^2.2.3"
-numba = "^0.60.0"
-scipy = "^1.14.1"
-scikit-optimize = "^0.10.2"
-matplotlib = "^3.10.0"
-openpyxl = "^3.1.5"
-optuna = "^4.1.0"
-cmaes = "^0.11.1"
-ray = {extras = ["default,train,tune"], version = "^2.40.0"}
-libcst = "^1.8.2"
-yappi = "^1.6.10"
-
+numpy = "^2.3.5"
+pandas = "^2.3.3"
+numba = "^0.63.1"
+scipy = "^1.16.3"
+scikit-learn = "^1.8.0"
+matplotlib = "^3.10.8"
+yappi = "^1.7.3"
+torch = "^2.9.1"
+h5py = "^3.15.1"
+optuna = "^4.6.0"
+cmaes = "^0.12.0"
+ray = {extras = ["default,train,tune"], version = "^2.52.1"}
 
 [build-system]
 requires = ["poetry-core"]

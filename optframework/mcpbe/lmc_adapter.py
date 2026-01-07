@@ -1156,8 +1156,9 @@ class LMCRankAdapter(LMCBaseAdapter):
 class LMCLiveFallback(Exception):
     """
     Raised when the parent particle does not contain enough lattice cells
-    to perform an online LMC breakage according to the current settings,
-    and the policy is to fall back to a table/rank-based model.
+    to perform an online LMC breakage according to the current settings.
+    The PBE solver is expected to apply its own fallback strategy
+    (e.g. table/rank-based model or uniform splitting).
     """
     pass
 
@@ -2066,316 +2067,316 @@ class LMCCopulaAdapter(LMCBaseAdapter):
 
         return rA, rB
 
-# # -----------------------------------------------
-# #  Flow-based (conditional RealNVP) 适配器（pure / mix 双模型 + K-1 维）
-# # -----------------------------------------------
-# try:
-#     import torch
-#     _TORCH_OK = True
-# except Exception:
-#     _TORCH_OK = False
+# -----------------------------------------------
+#  Flow-based (conditional RealNVP) 适配器（pure / mix 双模型 + K-1 维）
+# -----------------------------------------------
+try:
+    import torch
+    _TORCH_OK = True
+except Exception:
+    _TORCH_OK = False
 
 
-# class LMCFlowAdapter(LMCBaseAdapter):
-#     """
-#     使用离线训练好的条件流模型，分别针对纯净物和混合物建立两套模型：
-#       - pure 模型：target_dim = K-1，只预测前 K-1 块的 stick-breaking 体积分布
-#       - mix  模型：target_dim = 2*(K-1)，预测前 K-1 块的 stick-breaking + 各块的 pA
-#     adapter 负责：
-#       1) 根据 X1 判定用哪套模型
-#       2) 用剩余量补第 K 块
-#       3) 对混合物做可行域投影并拆成 rA / rB
-#     调用接口保持和 rank / copula 一致：
-#         rA, rB = flow.sample_one_shot(A, X1, rng, N=None)
-#     """
+class LMCFlowAdapter(LMCBaseAdapter):
+    """
+    使用离线训练好的条件流模型，分别针对纯净物和混合物建立两套模型：
+      - pure 模型：target_dim = K-1，只预测前 K-1 块的 stick-breaking 体积分布
+      - mix  模型：target_dim = 2*(K-1)，预测前 K-1 块的 stick-breaking + 各块的 pA
+    adapter 负责：
+      1) 根据 X1 判定用哪套模型
+      2) 用剩余量补第 K 块
+      3) 对混合物做可行域投影并拆成 rA / rB
+    调用接口保持和 rank / copula 一致：
+        rA, rB = flow.sample_one_shot(A, X1, rng, N=None)
+    """
 
-#     def __init__(self,
-#                  pure_model_path: str = None,
-#                  mix_model_path: str = None,
-#                  *,
-#                  interp: str = "bilinear",
-#                  A0_run: float = None,
-#                  cache_enabled: bool = True):
-#         if not _TORCH_OK:
-#             raise RuntimeError("PyTorch is required for LMCFlowAdapter.")
+    def __init__(self,
+                 pure_model_path: str = None,
+                 mix_model_path: str = None,
+                 *,
+                 interp: str = "bilinear",
+                 A0_run: float = None,
+                 cache_enabled: bool = True):
+        if not _TORCH_OK:
+            raise RuntimeError("PyTorch is required for LMCFlowAdapter.")
 
-#         # 我们仍然需要网格信息（A_grid / X1_grid）来取 meta 和 NO_FRAG，
-#         # 但 flow 训练是全局的，这里就做一个最小网格
-#         A_grid = np.array([1.0], dtype=float)
-#         X1_grid = np.array([0.0, 1.0], dtype=float)
-#         meta = {"NO_FRAG": 4, "A0": 1.0}
-#         super()._init_common(A_grid, X1_grid, meta,
-#                              interp=interp, A0_run=A0_run, cache_enabled=cache_enabled)
+        # 我们仍然需要网格信息（A_grid / X1_grid）来取 meta 和 NO_FRAG，
+        # 但 flow 训练是全局的，这里就做一个最小网格
+        A_grid = np.array([1.0], dtype=float)
+        X1_grid = np.array([0.0, 1.0], dtype=float)
+        meta = {"NO_FRAG": 4, "A0": 1.0}
+        super()._init_common(A_grid, X1_grid, meta,
+                             interp=interp, A0_run=A0_run, cache_enabled=cache_enabled)
 
-#         self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
-#         self.pure_model = None
-#         self.pure_meta = None
-#         self.mix_model = None
-#         self.mix_meta = None
+        self.pure_model = None
+        self.pure_meta = None
+        self.mix_model = None
+        self.mix_meta = None
 
-#         if pure_model_path is not None:
-#             self.pure_model, self.pure_meta = self._load_flow_model(pure_model_path)
-#         if mix_model_path is not None:
-#             self.mix_model, self.mix_meta = self._load_flow_model(mix_model_path)
+        if pure_model_path is not None:
+            self.pure_model, self.pure_meta = self._load_flow_model(pure_model_path)
+        if mix_model_path is not None:
+            self.mix_model, self.mix_meta = self._load_flow_model(mix_model_path)
 
-#         if self.pure_meta is None and self.mix_meta is None:
-#             raise ValueError("LMCFlowAdapter needs at least one of pure_model_path / mix_model_path.")
+        if self.pure_meta is None and self.mix_meta is None:
+            raise ValueError("LMCFlowAdapter needs at least one of pure_model_path / mix_model_path.")
 
-#         # 取一个 K 基准
-#         if self.pure_meta is not None:
-#             self.K = int(self.pure_meta["K"])
-#         else:
-#             self.K = int(self.mix_meta["K"])
+        # 取一个 K 基准
+        if self.pure_meta is not None:
+            self.K = int(self.pure_meta["K"])
+        else:
+            self.K = int(self.mix_meta["K"])
 
-#     # ====== 下面是和训练脚本同构的几个小模块 ======
-#     class _CondMLP(torch.nn.Module):
-#         def __init__(self, in_dim: int, out_dim: int, hidden: int = 128, n_layers: int = 3):
-#             super().__init__()
-#             layers = []
-#             d = in_dim
-#             for _ in range(n_layers - 1):
-#                 layers.append(torch.nn.Linear(d, hidden))
-#                 layers.append(torch.nn.ReLU())
-#                 d = hidden
-#             layers.append(torch.nn.Linear(d, out_dim))
-#             self.net = torch.nn.Sequential(*layers)
+    # ====== 下面是和训练脚本同构的几个小模块 ======
+    class _CondMLP(torch.nn.Module):
+        def __init__(self, in_dim: int, out_dim: int, hidden: int = 128, n_layers: int = 3):
+            super().__init__()
+            layers = []
+            d = in_dim
+            for _ in range(n_layers - 1):
+                layers.append(torch.nn.Linear(d, hidden))
+                layers.append(torch.nn.ReLU())
+                d = hidden
+            layers.append(torch.nn.Linear(d, out_dim))
+            self.net = torch.nn.Sequential(*layers)
 
-#         def forward(self, x):
-#             return self.net(x)
+        def forward(self, x):
+            return self.net(x)
 
-#     class _RealNVPCoupling(torch.nn.Module):
-#         def __init__(self, dim: int, cond_dim: int, mask: torch.Tensor, hidden: int = 128):
-#             super().__init__()
-#             self.dim = dim
-#             self.cond_dim = cond_dim
-#             self.register_buffer("mask", mask)
-#             in_net = dim + cond_dim
-#             self.s_net = LMCFlowAdapter._CondMLP(in_net, dim, hidden=hidden)
-#             self.t_net = LMCFlowAdapter._CondMLP(in_net, dim, hidden=hidden)
-#             self.max_s = 2.0  # 可以和训练时的保持一致
+    class _RealNVPCoupling(torch.nn.Module):
+        def __init__(self, dim: int, cond_dim: int, mask: torch.Tensor, hidden: int = 128):
+            super().__init__()
+            self.dim = dim
+            self.cond_dim = cond_dim
+            self.register_buffer("mask", mask)
+            in_net = dim + cond_dim
+            self.s_net = LMCFlowAdapter._CondMLP(in_net, dim, hidden=hidden)
+            self.t_net = LMCFlowAdapter._CondMLP(in_net, dim, hidden=hidden)
+            self.max_s = 2.0  # 可以和训练时的保持一致
 
-#         def forward(self, x, cond):
-#             m = self.mask
-#             x_masked = x * m
-#             inp = torch.cat([x_masked, cond], dim=1)
-#             s = self.s_net(inp).tanh() * self.max_s
-#             t = self.t_net(inp)
-#             s = s * (1.0 - m)
-#             t = t * (1.0 - m)
-#             y = x_masked + (1.0 - m) * (x * torch.exp(s) + t)
-#             logdet = ((1.0 - m) * s).sum(dim=1)
-#             return y, logdet
+        def forward(self, x, cond):
+            m = self.mask
+            x_masked = x * m
+            inp = torch.cat([x_masked, cond], dim=1)
+            s = self.s_net(inp).tanh() * self.max_s
+            t = self.t_net(inp)
+            s = s * (1.0 - m)
+            t = t * (1.0 - m)
+            y = x_masked + (1.0 - m) * (x * torch.exp(s) + t)
+            logdet = ((1.0 - m) * s).sum(dim=1)
+            return y, logdet
 
-#         def inverse(self, y, cond):
-#             m = self.mask
-#             y_masked = y * m
-#             inp = torch.cat([y_masked, cond], dim=1)
-#             s = self.s_net(inp).tanh() * self.max_s
-#             t = self.t_net(inp)
-#             s = s * (1.0 - m)
-#             t = t * (1.0 - m)
-#             x = y_masked + (1.0 - m) * ((y - t) * torch.exp(-s))
-#             logdet = -((1.0 - m) * s).sum(dim=1)
-#             return x, logdet
+        def inverse(self, y, cond):
+            m = self.mask
+            y_masked = y * m
+            inp = torch.cat([y_masked, cond], dim=1)
+            s = self.s_net(inp).tanh() * self.max_s
+            t = self.t_net(inp)
+            s = s * (1.0 - m)
+            t = t * (1.0 - m)
+            x = y_masked + (1.0 - m) * ((y - t) * torch.exp(-s))
+            logdet = -((1.0 - m) * s).sum(dim=1)
+            return x, logdet
 
-#     class _CondRealNVP(torch.nn.Module):
-#         def __init__(self, dim: int, cond_dim: int, n_flows: int = 6, hidden: int = 128):
-#             super().__init__()
-#             masks = []
-#             for i in range(n_flows):
-#                 if i % 2 == 0:
-#                     m = torch.cat([torch.ones(dim // 2), torch.zeros(dim - dim // 2)])
-#                 else:
-#                     m = torch.cat([torch.zeros(dim // 2), torch.ones(dim - dim // 2)])
-#                 masks.append(m)
-#             self.flows = torch.nn.ModuleList([
-#                 LMCFlowAdapter._RealNVPCoupling(dim, cond_dim, mask=m, hidden=hidden) for m in masks
-#             ])
-#             self.dim = dim
-#             self.cond_dim = cond_dim
+    class _CondRealNVP(torch.nn.Module):
+        def __init__(self, dim: int, cond_dim: int, n_flows: int = 6, hidden: int = 128):
+            super().__init__()
+            masks = []
+            for i in range(n_flows):
+                if i % 2 == 0:
+                    m = torch.cat([torch.ones(dim // 2), torch.zeros(dim - dim // 2)])
+                else:
+                    m = torch.cat([torch.zeros(dim // 2), torch.ones(dim - dim // 2)])
+                masks.append(m)
+            self.flows = torch.nn.ModuleList([
+                LMCFlowAdapter._RealNVPCoupling(dim, cond_dim, mask=m, hidden=hidden) for m in masks
+            ])
+            self.dim = dim
+            self.cond_dim = cond_dim
     
-#             # base dist = N(0,1)
-#             self.register_buffer("base_mu", torch.zeros(dim))
-#             self.register_buffer("base_logstd", torch.zeros(dim))
+            # base dist = N(0,1)
+            self.register_buffer("base_mu", torch.zeros(dim))
+            self.register_buffer("base_logstd", torch.zeros(dim))
     
-#         def fwd(self, x, cond):
-#             logdet_sum = torch.zeros(x.size(0), device=x.device)
-#             h = x
-#             for flow in self.flows:
-#                 h, logdet = flow(h, cond)
-#                 logdet_sum = logdet_sum + logdet
-#             return h, logdet_sum
+        def fwd(self, x, cond):
+            logdet_sum = torch.zeros(x.size(0), device=x.device)
+            h = x
+            for flow in self.flows:
+                h, logdet = flow(h, cond)
+                logdet_sum = logdet_sum + logdet
+            return h, logdet_sum
     
-#         def inv(self, z, cond):
-#             h = z
-#             logdet_sum = torch.zeros(z.size(0), device=z.device)
-#             for flow in reversed(self.flows):
-#                 h, logdet = flow.inverse(h, cond)
-#                 logdet_sum = logdet_sum + logdet
-#             return h, logdet_sum
+        def inv(self, z, cond):
+            h = z
+            logdet_sum = torch.zeros(z.size(0), device=z.device)
+            for flow in reversed(self.flows):
+                h, logdet = flow.inverse(h, cond)
+                logdet_sum = logdet_sum + logdet
+            return h, logdet_sum
     
-#         def log_prob(self, x, cond):
-#             z, logdet = self.fwd(x, cond)
-#             log_base = -0.5 * ((z - self.base_mu) ** 2 / torch.exp(self.base_logstd * 2) + math.log(2 * math.pi)).sum(dim=1)
-#             return log_base + logdet
+        def log_prob(self, x, cond):
+            z, logdet = self.fwd(x, cond)
+            log_base = -0.5 * ((z - self.base_mu) ** 2 / torch.exp(self.base_logstd * 2) + math.log(2 * math.pi)).sum(dim=1)
+            return log_base + logdet
     
-#         def sample(self, n: int, cond: torch.Tensor):
-#             # cond: (n, cond_dim)
-#             z = torch.randn(n, self.dim, device=cond.device)
-#             x, _ = self.inv(z, cond)
-#             return x
+        def sample(self, n: int, cond: torch.Tensor):
+            # cond: (n, cond_dim)
+            z = torch.randn(n, self.dim, device=cond.device)
+            x, _ = self.inv(z, cond)
+            return x
 
-#     # ====== 加载模型 ======
-#     def _load_flow_model(self, path: str):
-#         ck = torch.load(path, map_location="cpu", weights_only=False)
-#         meta = ck["meta"]
-#         mk = ck["model_kwargs"]
-#         model = LMCFlowAdapter._CondRealNVP(
-#             dim=int(meta["target_dim"]),
-#             cond_dim=int(meta["cond_dim"]),
-#             n_flows=int(mk.get("n_flows", 6)),
-#             hidden=int(mk.get("hidden", 256)),
-#         ).to(self.device)
-#         model.load_state_dict(ck["state_dict"])
-#         model.eval()
-#         return model, meta
+    # ====== 加载模型 ======
+    def _load_flow_model(self, path: str):
+        ck = torch.load(path, map_location="cpu", weights_only=False)
+        meta = ck["meta"]
+        mk = ck["model_kwargs"]
+        model = LMCFlowAdapter._CondRealNVP(
+            dim=int(meta["target_dim"]),
+            cond_dim=int(meta["cond_dim"]),
+            n_flows=int(mk.get("n_flows", 6)),
+            hidden=int(mk.get("hidden", 256)),
+        ).to(self.device)
+        model.load_state_dict(ck["state_dict"])
+        model.eval()
+        return model, meta
 
-#     @staticmethod
-#     def _is_pure_x1(x1: float, eps: float = 1e-6) -> bool:
-#         return (x1 <= eps) or (x1 >= 1.0 - eps)
+    @staticmethod
+    def _is_pure_x1(x1: float, eps: float = 1e-6) -> bool:
+        return (x1 <= eps) or (x1 >= 1.0 - eps)
 
-#     # ====== 公共的采样入口 ======
-#     def sample_one_shot(
-#         self,
-#         A: float,
-#         X1: float,
-#         rng: np.random.Generator,
-#         N: Optional[int] = None,
-#     ) -> Tuple[List[float], List[float]]:
-#         """
-#         一次性返回 N 个碎片（前 N-1 由模型预测，最后 1 个为余量）。
-#         兼容 pure/mix 双模型（K-1 / 2*(K-1) 维）。
-#         """
-#         if N is None:
-#             N = max(2, int(self.NO_FRAG))
-#         pick = max(1, N - 1)  # 只预测前 N-1
+    # ====== 公共的采样入口 ======
+    def sample_one_shot(
+        self,
+        A: float,
+        X1: float,
+        rng: np.random.Generator,
+        N: Optional[int] = None,
+    ) -> Tuple[List[float], List[float]]:
+        """
+        一次性返回 N 个碎片（前 N-1 由模型预测，最后 1 个为余量）。
+        兼容 pure/mix 双模型（K-1 / 2*(K-1) 维）。
+        """
+        if N is None:
+            N = max(2, int(self.NO_FRAG))
+        pick = max(1, N - 1)  # 只预测前 N-1
     
-#         A = float(A)
-#         A_lookup = self._A_lookup(A)
-#         X1 = float(np.clip(X1, 0.0, 1.0))
-#         is_pure_req = (X1 <= self.eps) or (X1 >= 1.0 - self.eps)
+        A = float(A)
+        A_lookup = self._A_lookup(A)
+        X1 = float(np.clip(X1, 0.0, 1.0))
+        is_pure_req = (X1 <= self.eps) or (X1 >= 1.0 - self.eps)
     
-#         # 选模型：纯净优先 pure，否则 mix；缺哪套就用另一套兜底
-#         if is_pure_req:
-#             model, meta = (self.pure_model, self.pure_meta) if (self.pure_model is not None) else (self.mix_model, self.mix_meta)
-#         else:
-#             model, meta = (self.mix_model, self.mix_meta) if (self.mix_model is not None) else (self.pure_model, self.pure_meta)
+        # 选模型：纯净优先 pure，否则 mix；缺哪套就用另一套兜底
+        if is_pure_req:
+            model, meta = (self.pure_model, self.pure_meta) if (self.pure_model is not None) else (self.mix_model, self.mix_meta)
+        else:
+            model, meta = (self.mix_model, self.mix_meta) if (self.mix_model is not None) else (self.pure_model, self.pure_meta)
     
-#         if model is None:
-#             # 极端兜底：均分 + 余量
-#             z = np.full(pick, 1.0 / max(N, 1), dtype=float)
-#             rA = (X1 * z / max(X1, 1e-12)).tolist()
-#             rB = ((1.0 - X1) * z / max(1.0 - X1, 1e-12)).tolist()
-#             rA.append(max(0.0, 1.0 - float(np.sum(rA))))
-#             rB.append(max(0.0, 1.0 - float(np.sum(rB))))
-#             return rA, rB
+        if model is None:
+            # 极端兜底：均分 + 余量
+            z = np.full(pick, 1.0 / max(N, 1), dtype=float)
+            rA = (X1 * z / max(X1, 1e-12)).tolist()
+            rB = ((1.0 - X1) * z / max(1.0 - X1, 1e-12)).tolist()
+            rA.append(max(0.0, 1.0 - float(np.sum(rA))))
+            rB.append(max(0.0, 1.0 - float(np.sum(rB))))
+            return rA, rB
     
-#         # 条件向量（与训练完全一致）：[logA, X1]
-#         cond_np = np.array([np.log(max(A_lookup, 1e-8)), X1], dtype=np.float32)[None, :]  # (1, 2)
-#         cond_t  = torch.from_numpy(cond_np).to(self.device)                         # (1, cond_dim)
+        # 条件向量（与训练完全一致）：[logA, X1]
+        cond_np = np.array([np.log(max(A_lookup, 1e-8)), X1], dtype=np.float32)[None, :]  # (1, 2)
+        cond_t  = torch.from_numpy(cond_np).to(self.device)                         # (1, cond_dim)
     
-#         # 采样无界变量：一次只要 1 条（一个 K-1 或 2*(K-1) 向量）
-#         with torch.no_grad():
-#             x_u = model.sample(n=1, cond=cond_t)   # (1, target_dim)
-#             x_u = x_u[0]                           # (target_dim,)
+        # 采样无界变量：一次只要 1 条（一个 K-1 或 2*(K-1) 向量）
+        with torch.no_grad():
+            x_u = model.sample(n=1, cond=cond_t)   # (1, target_dim)
+            x_u = x_u[0]                           # (target_dim,)
     
-#         # 从无界空间映回 (0,1)
-#         if meta.get("support_transform") == "logit":
-#             x = torch.sigmoid(x_u).cpu().numpy()
-#         else:
-#             x = x_u.cpu().numpy()
-#             x = np.clip(x, 1e-6, 1.0 - 1e-6)
+        # 从无界空间映回 (0,1)
+        if meta.get("support_transform") == "logit":
+            x = torch.sigmoid(x_u).cpu().numpy()
+        else:
+            x = x_u.cpu().numpy()
+            x = np.clip(x, 1e-6, 1.0 - 1e-6)
     
-#         K   = int(meta["K"])
-#         Km1 = K - 1
+        K   = int(meta["K"])
+        Km1 = K - 1
     
-#         # 纯净物：只学 Y[:K-1]，stick-breaking 得到 z，再按相别放到 rA 或 rB；末块用余量补齐
-#         if meta.get("model_kind") == "pure":
-#             Y = np.zeros(K, dtype=float)
-#             Y[:Km1] = x[:Km1]
-#             z_all= self._inv_stick_breaking(Y)   # 正确解包
-#             z_use = z_all[:pick]
+        # 纯净物：只学 Y[:K-1]，stick-breaking 得到 z，再按相别放到 rA 或 rB；末块用余量补齐
+        if meta.get("model_kind") == "pure":
+            Y = np.zeros(K, dtype=float)
+            Y[:Km1] = x[:Km1]
+            z_all= self._inv_stick_breaking(Y)   # 正确解包
+            z_use = z_all[:pick]
     
-#             rA, rB = [], []
-#             if X1 >= 0.5:  # 纯 A
-#                 rA.extend([float(zk) for zk in z_use])
-#                 rB.extend([0.0] * len(z_use))
-#                 rA.append(max(0.0, 1.0 - float(np.sum(rA))))  # 末块余量
-#                 rB.append(0.0)
-#             else:          # 纯 B
-#                 rA.extend([0.0] * len(z_use))
-#                 rB.extend([float(zk) for zk in z_use])
-#                 rA.append(0.0)
-#                 rB.append(max(0.0, 1.0 - float(np.sum(rB))))
-#             return rA, rB
+            rA, rB = [], []
+            if X1 >= 0.5:  # 纯 A
+                rA.extend([float(zk) for zk in z_use])
+                rB.extend([0.0] * len(z_use))
+                rA.append(max(0.0, 1.0 - float(np.sum(rA))))  # 末块余量
+                rB.append(0.0)
+            else:          # 纯 B
+                rA.extend([0.0] * len(z_use))
+                rB.extend([float(zk) for zk in z_use])
+                rA.append(0.0)
+                rB.append(max(0.0, 1.0 - float(np.sum(rB))))
+            return rA, rB
     
-#         # 混合物：学 [Y[:K-1], pA[:K-1]]
-#         Y = np.zeros(K, dtype=float)
-#         Y[:Km1] = x[:Km1]
-#         z_all= self._inv_stick_breaking(Y)
-#         z_use = z_all[:pick]
+        # 混合物：学 [Y[:K-1], pA[:K-1]]
+        Y = np.zeros(K, dtype=float)
+        Y[:Km1] = x[:Km1]
+        z_all= self._inv_stick_breaking(Y)
+        z_use = z_all[:pick]
     
-#         pA = np.zeros(K, dtype=float)
-#         pA[:Km1] = x[Km1: Km1 + Km1]
-#         pA[Km1] = X1  # 末块材料分数就用母粒的 X1
+        pA = np.zeros(K, dtype=float)
+        pA[:Km1] = x[Km1: Km1 + Km1]
+        pA[Km1] = X1  # 末块材料分数就用母粒的 X1
     
-#         rA: List[float] = []
-#         rB: List[float] = []
-#         X3 = 1.0 - X1
+        rA: List[float] = []
+        rB: List[float] = []
+        X3 = 1.0 - X1
     
-#         # 可行域投影 + 相内归一
-#         for k in range(pick):
-#             zk = float(np.clip(z_use[k], 0.0, 1.0))
-#             if zk <= 0.0:
-#                 rA.append(0.0); rB.append(0.0); continue
-#             pk = float(np.clip(pA[k], 0.0, 1.0))
-#             # 可行域：VA ≤ A*X1, VB ≤ A*(1-X1)  ⇒  p ∈ [max(0,1 - X3/zk), min(1, X1/zk)]
-#             Lk = max(0.0, 1.0 - X3 / max(zk, 1e-12))
-#             Uk = min(1.0, X1 / max(zk, 1e-12))
-#             pk = float(np.clip(pk, Lk, Uk))
-#             rA.append(zk * pk / max(X1, 1e-12))
-#             rB.append(zk * (1.0 - pk) / max(X3, 1e-12))
+        # 可行域投影 + 相内归一
+        for k in range(pick):
+            zk = float(np.clip(z_use[k], 0.0, 1.0))
+            if zk <= 0.0:
+                rA.append(0.0); rB.append(0.0); continue
+            pk = float(np.clip(pA[k], 0.0, 1.0))
+            # 可行域：VA ≤ A*X1, VB ≤ A*(1-X1)  ⇒  p ∈ [max(0,1 - X3/zk), min(1, X1/zk)]
+            Lk = max(0.0, 1.0 - X3 / max(zk, 1e-12))
+            Uk = min(1.0, X1 / max(zk, 1e-12))
+            pk = float(np.clip(pk, Lk, Uk))
+            rA.append(zk * pk / max(X1, 1e-12))
+            rB.append(zk * (1.0 - pk) / max(X3, 1e-12))
     
-#         # 末块严格守恒（各相单独补余量），保持与其它 adapter 一致
-#         sA = float(np.sum(rA)); sB = float(np.sum(rB))
-#         rA.append(max(0.0, 1.0 - sA))
-#         rB.append(max(0.0, 1.0 - sB))
+        # 末块严格守恒（各相单独补余量），保持与其它 adapter 一致
+        sA = float(np.sum(rA)); sB = float(np.sum(rB))
+        rA.append(max(0.0, 1.0 - sA))
+        rB.append(max(0.0, 1.0 - sB))
     
-#         # 再做一次相内归一，避免累计误差
-#         sA = float(np.sum(rA)); sB = float(np.sum(rB))
-#         if sA > 0:
-#             gA = 1.0 / sA
-#             rA = [x * gA for x in rA]
-#         if sB > 0:
-#             gB = 1.0 / sB
-#             rB = [y * gB for y in rB]
+        # 再做一次相内归一，避免累计误差
+        sA = float(np.sum(rA)); sB = float(np.sum(rB))
+        if sA > 0:
+            gA = 1.0 / sA
+            rA = [x * gA for x in rA]
+        if sB > 0:
+            gB = 1.0 / sB
+            rB = [y * gB for y in rB]
     
-#         return rA, rB
+        return rA, rB
 
 
-#     # ------- stick-breaking 还原，返回长度 K 的 z 向量 -------
-#     @staticmethod
-#     def _inv_stick_breaking(Y: np.ndarray) -> np.ndarray:
-#         K = Y.size
-#         z = np.zeros(K, dtype=float)
-#         remain = 1.0
-#         for k in range(K):
-#             yk = float(np.clip(Y[k], 0.0, 1.0))
-#             z[k] = yk * remain
-#             remain = max(0.0, remain - z[k])
-#         # 为了数值保险，把最后一块再对齐一下
-#         if remain > 1e-10:
-#             z[-1] += remain
-#         return z
+    # ------- stick-breaking 还原，返回长度 K 的 z 向量 -------
+    @staticmethod
+    def _inv_stick_breaking(Y: np.ndarray) -> np.ndarray:
+        K = Y.size
+        z = np.zeros(K, dtype=float)
+        remain = 1.0
+        for k in range(K):
+            yk = float(np.clip(Y[k], 0.0, 1.0))
+            z[k] = yk * remain
+            remain = max(0.0, remain - z[k])
+        # 为了数值保险，把最后一块再对齐一下
+        if remain > 1e-10:
+            z[-1] += remain
+        return z
 

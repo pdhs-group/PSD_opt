@@ -20,7 +20,7 @@ from .lmc_adapter import (
     LMCTableAdapter,
     LMCRankAdapter,
     LMCCopulaAdapter,
-    # LMCFlowAdapter,
+    LMCFlowAdapter,
     LMCLiveFallback,
     LMCLiveDisable,
 )
@@ -37,11 +37,44 @@ class MCPBEBreak:
     # Breakage rate (full table and single-point)
     # ------------------------------------------------------------------
     def _calc_break_rates_full(self):
-        """Compute breakage rates B_R for active slice using external JIT kernels."""
-        a = self.a_tot
-        if not hasattr(self, "_break_rate") or self._break_rate is None or self._break_rate.shape[0] < getattr(self, "_cap", a):
-            self._break_rate = np.zeros(getattr(self, "_cap", max(8, a)), dtype=float)
+        """Compute breakage rates B_R for active slice.
 
+        优先顺序：
+          1) 若启用了基于 LMC-MLP 的破碎率模型 (lmc_use_breakage_model=True 且 adapter 可用)，
+             则调用 self.lmc_breakage_adapter.compute_rates_full(self)；
+          2) 否则，使用外部 JIT kernels 计算（原有行为）。
+        """
+        a = self.a_tot
+        cap = getattr(self, "_cap", a)
+        if (not hasattr(self, "_break_rate")
+                or self._break_rate is None
+                or self._break_rate.shape[0] < cap):
+            self._break_rate = np.zeros(max(8, cap), dtype=float)
+
+        # --------- 分支 1：使用 MLP 破碎率模型 ---------
+        use_mlp = bool(getattr(self, "lmc_use_breakage_model", False)) and (
+            getattr(self, "lmc_breakage_adapter", None) is not None
+        )
+        if use_mlp:
+            # 让适配器基于当前 pbe 状态（V_flat, dim, lmc_* 参数等）计算全部颗粒的破碎率
+            rates = self.lmc_breakage_adapter.compute_rates_full(self)
+            rates = np.asarray(rates, dtype=float)
+
+            if rates.shape[0] < a:
+                # 若返回数量不足，补零（保守处理）
+                tmp = np.zeros(a, dtype=float)
+                tmp[: rates.shape[0]] = rates
+                rates = tmp
+            elif rates.shape[0] > a:
+                # 若数量多于 a，则截断
+                rates = rates[:a]
+
+            self._break_rate[:a] = rates
+            if self._break_rate.shape[0] > a:
+                self._break_rate[a:] = 0.0
+            return
+
+        # --------- 分支 2：原有 JIT 内核路径 ---------
         self.V = self.V_flat[-1, :a]  # match external wrappers' expectation
         self.B_R = np.zeros(a, dtype=float)
 
@@ -57,10 +90,24 @@ class MCPBEBreak:
             self._break_rate[a:] = 0.0
 
     def _break_rate_single(self, i: int) -> float:
-        """Single-particle breakage rate using external JIT kernels (no fallbacks)."""
+        """Single-particle breakage rate.
+
+        优先顺序：
+          1) 若启用了 LMC-MLP 破碎率模型，则调用 adapter.compute_rate_single(self, i)
+          2) 否则，使用原有 JIT 单点公式。
+        """
         a = self.a_tot
         if i < 0 or i >= a:
             return 0.0
+
+        # --------- 分支 1：使用 MLP 破碎率模型 ---------
+        use_mlp = bool(getattr(self, "lmc_use_breakage_model", False)) and (
+            getattr(self, "lmc_breakage_adapter", None) is not None
+        )
+        if use_mlp:
+            return float(self.lmc_breakage_adapter.compute_rate_single(self, i))
+
+        # --------- 分支 2：原有 JIT 内核路径 ---------
         if self.dim == 1:
             return float(
                 _kb_br1_single(
@@ -88,6 +135,7 @@ class MCPBEBreak:
                     i,
                 )
             )
+
 
     # ------------------------------------------------------------------
     # Two-level CDF builder (cached)
@@ -333,6 +381,39 @@ class MCPBEBreak:
         frags.append(Vrem)
         return frags
     
+    # Live LMC 小颗粒 fallback：均匀产生 NO_FRAG 个碎片
+    def _build_uniform_live_fragments(self, Vrem_k: np.ndarray) -> list[np.ndarray]:
+        """
+        When live LMC raises LMCLiveFallback (particle too small to host
+        the desired number of lattice cells), fall back to a simple,
+        deterministic uniform split into NO_FRAG fragments.
+
+        - For dim=1: split total volume V into NO_FRAG equal parts.
+        - For dim=2: split each phase volume (VA, VB) evenly into NO_FRAG
+          fragments, keeping the overall composition unchanged.
+        """
+        # Prefer NO_FRAG from the live LMC adapter; fall back to 2 if missing.
+        n = int(getattr(getattr(self, "lmc_live", None), "NO_FRAG", 0))
+        if n < 2:
+            n = 2
+
+        frags: list[np.ndarray] = []
+
+        if self.dim == 1:
+            V = float(Vrem_k[0])
+            v = V / float(n) if n > 0 else 0.0
+            for _ in range(n):
+                frags.append(np.array([v], dtype=float))
+        else:
+            VA = float(Vrem_k[0])
+            VB = float(Vrem_k[1])
+            vA = VA / float(n) if n > 0 else 0.0
+            vB = VB / float(n) if n > 0 else 0.0
+            for _ in range(n):
+                frags.append(np.array([vA, vB], dtype=float))
+
+        return frags
+    
     # 统一的“构建碎片来源分派”：Rank one-shot / Live LMC / 分步切
     def _break_build_fragments(self, k: int, Vrem_k: np.ndarray) -> tuple[str, list[np.ndarray]]:
         """
@@ -348,17 +429,33 @@ class MCPBEBreak:
             try:
                 frags, _E = self.lmc_live.sample_one_shot(Vrem_k, self._rng)
                 return "ok", frags
+
             except LMCLiveFallback:
-                # 继续往下走，用离线模型兜底
-                pass
+                # Conditional fallback:
+                #   - if a table/rank model (or adapter) is available, keep the
+                #     original behavior and fall through to those models;
+                #   - otherwise, fall back to a simple uniform NO_FRAG split.
+                has_tables = bool(getattr(self, "use_lmc_tables", False))
+                has_adapter = getattr(self, "lmc_adapter", None) is not None
+
+                if has_tables or has_adapter:
+                    # Old behavior: do nothing here and let the code fall through
+                    # to the table / rank-based breakage models below.
+                    pass
+                else:
+                    # New behavior: no table/rank model available, so we use a
+                    # simple deterministic uniform split into NO_FRAG fragments.
+                    frags = self._build_uniform_live_fragments(Vrem_k)
+                    return "ok", frags
+
             except LMCLiveDisable:
                 # 上层看到 "disable" 后可以把该粒子的破碎率置零
                 return "disable", []
     
         # 2) 一次性分布类适配器：rank / copula / flow
         lmc_ad = getattr(self, "lmc_adapter", None)
-        # if isinstance(lmc_ad, (LMCRankAdapter, LMCCopulaAdapter, LMCFlowAdapter)):
-        if isinstance(lmc_ad, (LMCRankAdapter, LMCCopulaAdapter)):
+        if isinstance(lmc_ad, (LMCRankAdapter, LMCCopulaAdapter, LMCFlowAdapter)):
+        # if isinstance(lmc_ad, (LMCRankAdapter, LMCCopulaAdapter)):
             # --- 小颗粒策略（仅当策略为 disable 时才判定；fallback 直接用） ---
             if getattr(lmc_ad, "small_particle_policy", "fallback") == "disable":
                 A = float(Vrem_k[0]) if self.dim == 1 else float(Vrem_k[0] + Vrem_k[1])
@@ -374,14 +471,14 @@ class MCPBEBreak:
                 X1 = float(Vrem_k[0] / A) if A > 0.0 else 0.5
     
             # 不同适配器的 one-shot 调用签名略有区别，这里分开调
-            # if isinstance(lmc_ad, LMCFlowAdapter):
-            #     # flow: sample_one_shot(A, X1, rng, N=None)
-            #     rA_list, rB_list = lmc_ad.sample_one_shot(A, X1, self._rng, N=None)
-            # else:
+            if isinstance(lmc_ad, LMCFlowAdapter):
+                # flow: sample_one_shot(A, X1, rng, N=None)
+                rA_list, rB_list = lmc_ad.sample_one_shot(A, X1, self._rng, N=None)
+            else:
             # rank / copula: sample_one_shot(A, X1, rng, N=None, K_use=None, tail_strategy="equal")
-            rA_list, rB_list = lmc_ad.sample_one_shot(
-                A, X1, self._rng, N=None, K_use=None, tail_strategy="equal"
-            )
+                rA_list, rB_list = lmc_ad.sample_one_shot(
+                    A, X1, self._rng, N=None, K_use=None, tail_strategy="equal"
+                )
     
             # 按维数还原成体积碎片
             if self.dim == 1:

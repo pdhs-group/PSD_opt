@@ -11,7 +11,7 @@ import os
 _config_opt_path = os.path.dirname(__file__)
 config = {
     # Use only 2D Data or 1D+2D
-    'multi_flag': True, 
+    'multi_flag': False, 
     # Input only one/one set of PSD data
     'single_case': True, 
     ## Core parameters for optimization
@@ -25,7 +25,8 @@ config = {
         't_init': np.array([0, 0]), 
         # Time vector for the entire simulation, specifying the time points at which 
         # calculations are performed.
-        't_vec' : np.arange(0, 21, 5, dtype=float),
+        # 't_vec' : np.arange(0, 21, 4, dtype=float),
+        't_vec': np.array([0, 2, 4, 9, 14, 29])*60, 
         # Specifies the number of initial time steps to skip during optimization, 
         # often useful to avoid the impact of initialization errors.
         'delta_t_start_step': 1, 
@@ -59,9 +60,9 @@ config = {
         # Seed for reproducible results, int or None. 
         # This value will change global random states for numpy and torch on 
         # initalization and loading from checkpoint.
-        'random_seed': 1, 
+        'random_seed': 42, 
         # Number of iterations for the optimization process.
-        'n_iter': 20, 
+        'n_iter': 400, 
         # Whether to initialize the PBE using the first few time points of experimental data (True).
         'calc_init_N': False, 
         # Whether to use R01_0 and R03_0 below to get the particle size in the PSD data as 
@@ -103,11 +104,8 @@ config = {
         # - 'RMSE': Root Mean Squared Error
         # - 'MAE': Mean Absolute Error
         # - 'KL': Kullback-Leibler divergence (only compatible with q3 and Q3)
-        'delta_flag': [# ('qx','MSE'), 
-                       ('Qx','MSE'), 
-                       # ('x_50','MSE'),
-                       # ('y_weibull','MSE'),
-                       ],
+        'data_flag': 'Q0',
+        'cost_flag': 'MSE',
         # Path to store Ray Tune optimization infomation.
         'tune_storage_path': os.path.join(_config_opt_path, 'Ray_Tune'), 
         # Whether to print information during the Ray Tune run.
@@ -121,9 +119,12 @@ config = {
         # Number of parallel optimization jobs to run.
         'num_jobs': 3, 
         # Number of CPU cores allocated to each optimization trial.
-        'cpus_per_trail': 2, 
+        'cpus_per_trail': 4, 
         # Maximum number of trials that can be run concurrently.
-        'max_concurrent': 2
+        'max_concurrent': 4,
+        
+        # Maximum
+        'max_iter_time': 0.0,
         }, 
     
     ## PBE parameters
@@ -131,57 +132,68 @@ config = {
     'pop_params': {
         "NC": 2,
         "MC_seed": 42,
+        "mcpbe_debug": False,
         
-        "a0": 1000,
-        "c": np.array([1.0]), 
-        "x": np.array([1e-2]),
-        "PGV": np.array(['mono']),
-        "VERBOSE": True,
-        'USE_PSD': True, 
-        'SIZEEVAL': 1, 
-        'COLEVAL': 1, 
-        'BREAKRVAL': 4, 
-        'BREAKFVAL': 5, 
+        # "a0": 1000,
+        # "c": np.array([1.0]), 
+        # "x": np.array([1e-2]),
+        # "PGV": np.array(['mono']),
+        "VERBOSE": False,
+        # 'USE_PSD': True, 
+        # 'SIZEEVAL': 1, 
+        # 'COLEVAL': 1, 
+        # 'BREAKRVAL': 4, 
+        # 'BREAKFVAL': 5, 
         'process_type': 'breakage', 
-        'CORR_BETA': 1e-2, 
-        'alpha_prim': np.array([1, 1, 1]), 
-        'pl_v': 2, 
-        'pl_P1': 1e5, 
-        'pl_P2': 1, 
-        'pl_P3': 1e5, 
-        'pl_P4': 1, 
-        'G': 1,
-        "CDF_method": "disc", 
-        "use_lmc_pre_model": True,
-        "lmc_pre_model": "table",     # "table" | "rank" | "copula" | "flow"
-        "lmc_A0_runtime": 1e-10,
-        "lmc_tables_path": "lmc_tables_grid.npz",
-        "lmc_rank_tables_path": "lmc_rank_tables_grid.npz",
-        "lmc_copula_path": "lmc_copula_grid.npz",
-        "lmc_flow_pure_path": "lmc_cond_flow_pure.pt",
-        "lmc_flow_mix_path": "lmc_cond_flow_mix.pt",
-        "lmc_interp ": "bilinear",
-        "lmc_tables_cache": True,
+        # 'CORR_BETA': 1e-2, 
+        # 'alpha_prim': np.array([1, 1, 1]), 
+        # 'pl_v': 2, 
+        # 'pl_P1': 1, 
+        # 'pl_P2': 1, 
+        # 'pl_P3': 1e5, 
+        # 'pl_P4': 1, 
+        # 'G': 1,
+        # "CDF_method": "disc", 
+        "use_lmc_pre_model": False,
+        # "lmc_pre_model": "table",     # "table" | "rank" | "copula" | "flow"
+        "lmc_A0_runtime": 2.1e-22,  # d_min = 74 nm
+        # "lmc_tables_path": "lmc_tables_grid.npz",
+        # "lmc_rank_tables_path": "lmc_rank_tables_grid.npz",
+        # "lmc_copula_path": "lmc_copula_grid.npz",
+        # "lmc_flow_pure_path": "lmc_cond_flow_pure.pt",
+        # "lmc_flow_mix_path": "lmc_cond_flow_mix.pt",
+        # "lmc_interp ": "bilinear",
+        # "lmc_tables_cache": True,
+        "lmc_allow_loops": True,
+        "lmc_accept_all_cracks": False,
         
         "use_lmc_live": True,
-        "lmc_small_particle_policy": "disable", # 'fallback' | 'disable'
-        "lmc_pool_dir": r"C:\Users\px2030\Code\LMC_ANN\agggenerator",
+        "lmc_small_particle_policy": "fallback", # 'fallback' | 'disable'
+        # "lmc_pool_dir": r"C:\Users\px2030\Code\LMC_ANN\agggenerator",
         "lmc_Df": 1.8,
         "lmc_MAS": 0.4,
+        
+        "lmc_use_breakage_model": True,
+        # "lmc_breakage_model_path": r"C:\Users\px2030\Code\LMC_ANN\tests\mlp_model.pkl",
+        "lmc_rate_min": 0.0,
+        "lmc_rate_max": None,
+        
+        "lmc_NO_FRAG": 4,
+        "lmc_gamma": 1.0,
+        "lmc_int_bre": 0.0,
+        "lmc_lambda_E": 1e-6,
+        "lmc_energy_exp": 2.0,
         },
     
     ## Optimized parameters and their search ranges.
     # Except for corr_agg, the names of the optimized parameters should be consistent with 
     # their actual names in the PBE.
     'opt_params': {
-        'corr_agg_0': {'bounds': (-4.0, 0.0), 'log_scale': True}, 
-        'corr_agg_1': {'bounds': (-4.0, 0.0), 'log_scale': True}, 
-        'corr_agg_2': {'bounds': (-4.0, 0.0), 'log_scale': True}, 
-        'pl_v': {'bounds': (0.5, 2.0), 'log_scale': False}, 
-        'pl_P1': {'bounds': (10.0, 15.0), 'log_scale': True}, 
-        'pl_P2': {'bounds': (0.3, 3.0), 'log_scale': False}, 
-        'pl_P3': {'bounds': (10.0, 15.0), 'log_scale': True}, 
-        'pl_P4': {'bounds': (0.3, 3.0), 'log_scale': False},
+        'lmc_gamma': {'bounds': (0.1, 10.0), 'log_scale': False},
+        'lmc_int_bre': {'bounds': (0.0, 1.0), 'log_scale': False},
+        'lmc_energy_exp': {'bounds': (0.2, 1.0), 'log_scale': False},
+        'lmc_lambda_E': {'bounds': (-12, -8), 'log_scale': True},
+        'lmc_NO_FRAG': {'int_bounds':  (2, 8)},
         
         ## Fixed parameters passed to the internal optimizer Actor.
         # Whether to wait after each calculation is completed.
@@ -190,6 +202,6 @@ config = {
         'wait_time': {"fixed": 1},
         # The maximum number of times a single Actor can be reused. 
         # After this number is exceeded, the Actor will be reset and resources released to prevent memory overflow.
-        'max_reuse': {"fixed": 10}
+        'max_reuse': {"fixed": 50}
         }
     }

@@ -37,3 +37,4 @@ poetry.lock
 /optframework/examples/config/Ray_Tune
 /docs/api
 
+*.h5

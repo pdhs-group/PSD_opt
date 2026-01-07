@@ -26,6 +26,21 @@ class OptBaseRay():
     def __init__(self, base):
         self.base = base
         
+    def _filter_points_to_evaluate(self, points: list[dict], rt_space: dict) -> list[dict]:
+        """Keep only keys that correspond to search distributions (tune.*),
+        drop fixed constants and any extra metadata keys not in Optuna space.
+        """
+        from ray.tune.search.sample import Domain
+    
+        # Keys that OptunaSearch will consider "searchable"
+        searchable = {k for k, v in rt_space.items() if isinstance(v, Domain)}
+    
+        filtered = []
+        for p in points:
+            q = {k: p[k] for k in searchable if k in p}
+            filtered.append(q)
+        return filtered
+    
     def print_current_actors(self):
         """
         Print the current number of active Ray actors.
@@ -69,15 +84,35 @@ class OptBaseRay():
         # --- build the Ray Tune search space once ---
         base.RT_space = {}
         for name, info in opt_params_space.items():
+            # 1) fixed
             if "fixed" in info:
-                # just hand back the literal value
                 base.RT_space[name] = info["fixed"]
+                continue
+        
+            # 2) discrete choices: e.g. integers in [2,3,4,5,6,7,8]
+            if "choices" in info:
+                choices = info["choices"]
+                if not isinstance(choices, (list, tuple)) or len(choices) == 0:
+                    raise ValueError(f"{name}: 'choices' must be a non-empty list/tuple.")
+                base.RT_space[name] = tune.choice(list(choices))
+                continue
+        
+            # 3) integer range: all integers in [lo, hi]
+            if "int_bounds" in info:
+                lo, hi = info["int_bounds"]
+                lo = int(lo); hi = int(hi)
+                if hi < lo:
+                    raise ValueError(f"{name}: int_bounds hi < lo.")
+                # tune.randint upper is exclusive, so +1
+                base.RT_space[name] = tune.randint(lo, hi + 1)
+                continue
+        
+            # 4) existing float bounds
+            lo, hi = info["bounds"]
+            if info.get("log_scale", False):
+                base.RT_space[name] = tune.loguniform(10**lo, 10**hi)
             else:
-                lo, hi = info["bounds"]
-                if info.get("log_scale", False):
-                    base.RT_space[name] = tune.loguniform(10**lo, 10**hi)
-                else:
-                    base.RT_space[name] = tune.uniform(lo, hi)
+                base.RT_space[name] = tune.uniform(lo, hi)
     
         # Build the job queue
         job_queue = list(zip(exp_data_paths or [], known_params or []))
@@ -236,17 +271,39 @@ class OptBaseRay():
         if opt_params_space is not None:   
             base.RT_space = {}
             for name, info in opt_params_space.items():
+                # 1) fixed
                 if "fixed" in info:
-                    # just hand back the literal value
                     base.RT_space[name] = info["fixed"]
+                    continue
+            
+                # 2) discrete choices: e.g. integers in [2,3,4,5,6,7,8]
+                if "choices" in info:
+                    choices = info["choices"]
+                    if not isinstance(choices, (list, tuple)) or len(choices) == 0:
+                        raise ValueError(f"{name}: 'choices' must be a non-empty list/tuple.")
+                    base.RT_space[name] = tune.choice(list(choices))
+                    continue
+            
+                # 3) integer range: all integers in [lo, hi]
+                if "int_bounds" in info:
+                    lo, hi = info["int_bounds"]
+                    lo = int(lo); hi = int(hi)
+                    if hi < lo:
+                        raise ValueError(f"{name}: int_bounds hi < lo.")
+                    # tune.randint upper is exclusive, so +1
+                    base.RT_space[name] = tune.randint(lo, hi + 1)
+                    continue
+            
+                # 4) existing float bounds
+                lo, hi = info["bounds"]
+                if info.get("log_scale", False):
+                    base.RT_space[name] = tune.loguniform(10**lo, 10**hi)
                 else:
-                    lo, hi = info["bounds"]
-                    if info.get("log_scale", False):
-                        base.RT_space[name] = tune.loguniform(10**lo, 10**hi)
-                    else:
-                        base.RT_space[name] = tune.uniform(lo, hi)
-        base.RT_space["__exp_paths"] = tune.choice([exp_data_paths])
-        base.RT_space["__known_params"] = tune.choice([known_params])
+                    base.RT_space[name] = tune.uniform(lo, hi)
+        base.RT_space["__exp_paths"] = exp_data_paths
+        base.RT_space["__known_params"] = known_params
+        if resume_unfinished and evaluated_params:
+            evaluated_params = self._filter_points_to_evaluate(evaluated_params, base.RT_space)
         # Create the search algorithm
         algo = self.create_algo(evaluated_params=evaluated_params, evaluated_rewards=evaluated_rewards)
         # Clean up the data name for output storage 

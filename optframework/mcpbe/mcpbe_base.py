@@ -75,62 +75,98 @@ class MCPBEBase(BaseSolver):
 
         # cache for breakage CDF tables (keyed by dim, N, BREAKFVAL, pl_v, pl_q)
         self._bf_cache = {}
+        
+        self.mcpbe_debug = False
         # Initialize state
         if init:
             self._initialize_particles()
-            self._initialize_samplers()
             self._init_lmc()
+            self._initialize_samplers()
             self._bf_ready = False  # breakage CDFs (mix-in will build on demand)
-
-
                         
     def _init_lmc(self):
         """
         初始化 MCPBE 用到的各类 LMC 适配器：
           - 预处理/离线类: table | rank | copula | flow
           - 在线 lmc: live
+          - 破碎率 MLP 模型: breakage_adapter
+
         规则：
           1) use_lmc_pre_model=False → 不加载任何离线 adapter
           2) use_lmc_pre_model=True → 看 lmc_pre_model 选择具体的 adapter
           3) live 若 small_particle_policy='fallback'，则必须有一个离线 adapter 可用
           4) 路径缺失时给出清晰报错；同时传进多个路径但实际没用到的给出警告
         """
-        # -------------- 基本配置取值 --------------
-        self.use_lmc_pre_model    = bool(getattr(self, "use_lmc_pre_model", False))
-        self.lmc_pre_model        = str(getattr(self, "lmc_pre_model", "table"))  # table|rank|copula|flow
-        self.lmc_tables_path      = getattr(self, "lmc_tables_path", None)
+        # -------------- 基本配置取值（全部收束到 lmc_ 前缀） --------------
+        # 是否使用预处理 LMC
+        self.use_lmc_pre_model = bool(getattr(self, "use_lmc_pre_model", False))
+        self.lmc_pre_model = str(getattr(self, "lmc_pre_model", "table"))  # table|rank|copula|flow
+
+        # 预处理模型路径
+        self.lmc_tables_path = getattr(self, "lmc_tables_path", None)
         self.lmc_rank_tables_path = getattr(self, "lmc_rank_tables_path", None)
-        self.lmc_copula_path      = getattr(self, "lmc_copula_path", None)
-        self.lmc_flow_pure_path        = getattr(self, "lmc_flow_pure_path", None)
-        self.lmc_flow_mix_path        = getattr(self, "lmc_flow_mix_path", None)
-        self.lmc_A0_runtime       = getattr(self, "lmc_A0_runtime", None)
-        self.lmc_interp           = str(getattr(self, "lmc_interp", "bilinear"))
-        self.lmc_tables_cache     = bool(getattr(self, "lmc_tables_cache", False))
-        self.lmc_small_particle_policy = str(getattr(self, "lmc_small_particle_policy", "fallback"))
-        self.lmc_pool_dir = getattr(self, "lmc_pool_dir", None)
-        self.lmc_Df = getattr(self, "lmc_Df", None)
-        self.lmc_MAS = getattr(self, "lmc_MAS", None)
-        
-    
+        self.lmc_copula_path = getattr(self, "lmc_copula_path", None)
+        self.lmc_flow_pure_path = getattr(self, "lmc_flow_pure_path", None)
+        self.lmc_flow_mix_path = getattr(self, "lmc_flow_mix_path", None)
+
+        # 其它通用 LMC 设置
+        self.lmc_A0_runtime = float(getattr(self, "lmc_A0_runtime", 1.0))
+        self.lmc_interp = str(getattr(self, "lmc_interp", "bilinear"))
+        self.lmc_tables_cache = bool(getattr(self, "lmc_tables_cache", False))
+        self.lmc_small_particle_policy = str(
+            getattr(self, "lmc_small_particle_policy", "fallback")
+        )
+        self.lmc_pool_dir = getattr(self, "lmc_pool_dir", "Pool_Path")
+
+        # -------------- LMC 几何/破碎参数 --------------
+        self.lmc_STR = np.asarray(
+            getattr(self, "lmc_STR", np.array([1.0, 1.0, 1.0], dtype=float)),
+            dtype=float,
+        )
+        self.lmc_NO_FRAG = int(getattr(self, "lmc_NO_FRAG", 4))
+        self.lmc_gamma = float(getattr(self, "lmc_gamma", 1.0))
+        self.lmc_allow_loops = bool(getattr(self, "lmc_allow_loops", True))
+        self.lmc_accept_all_cracks = bool(getattr(self, "lmc_accept_all_cracks", False))
+        self.lmc_use_weighted_start = bool(getattr(self, "lmc_use_weighted_start", False))
+        self.lmc_aspect_ratio = float(getattr(self, "lmc_aspect_ratio", 1.0))
+        self.lmc_int_bre = float(getattr(self, "lmc_int_bre", 0.0))
+        self.lmc_delta_cells = float(getattr(self, "lmc_delta_cells", 0.1))
+        self.lmc_Df = float(getattr(self, "lmc_Df", 1.6))
+        self.lmc_MAS = float(getattr(self, "lmc_MAS", 0.5))
+        self.use_lmc_live = bool(getattr(self, "use_lmc_live", False))
+        # —— 破碎率 MLP 模型相关配置 —— 
+        self.lmc_use_breakage_model = bool(
+            getattr(self, "lmc_use_breakage_model", False)
+        )
+        self.lmc_breakage_model_path = getattr(
+            self, "lmc_breakage_model_path", None
+        )
+        # E_in(V) = lambda_E * V^energy_exp
+        self.lmc_lambda_E = float(getattr(self, "lmc_lambda_E", 1.0))
+        self.lmc_energy_exp = float(getattr(self, "lmc_energy_exp", 1.0))
+        # 破碎率裁剪
+        self.lmc_rate_min = float(getattr(self, "lmc_rate_min", 0.0))
+        self.lmc_rate_max = getattr(self, "lmc_rate_max", None)
         # 这里保存最终实际创建出来的 adapter
-        self.lmc_adapter = None
-    
+        self.lmc_adapter = None          # 离线碎片分布 adapter（table/rank/...）
+        self.lmc_live = None             # 在线 LMC 碎片生成
+        self.lmc_breakage_adapter = None # 基于 MLP 的破碎率模型
+
         # -------------- 离线/预处理模型的构建 --------------
         if self.use_lmc_pre_model:
-            # 统一从同一个地方 import，避免上面那段老代码的循环 import
+            # 统一从同一个地方 import，避免循环 import
             from .lmc_adapter import (
                 LMCTableAdapter,
                 LMCRankAdapter,
                 LMCCopulaAdapter,
-                # LMCFlowAdapter,
+                LMCFlowAdapter,
             )
-    
+
             pre = self.lmc_pre_model.lower().strip()
             valid = {"table", "rank", "copula", "flow"}
             if pre not in valid:
                 raise ValueError(f"lmc_pre_model='{self.lmc_pre_model}' is not in {valid}")
-    
-            # 根据选择的类型构建
+
             if pre == "table":
                 if not self.lmc_tables_path:
                     raise ValueError("lmc_pre_model='table' but lmc_tables_path is not set.")
@@ -140,7 +176,7 @@ class MCPBEBase(BaseSolver):
                     A0_run=self.lmc_A0_runtime,
                     cache_enabled=self.lmc_tables_cache,
                 )
-    
+
             elif pre == "rank":
                 if not self.lmc_rank_tables_path:
                     raise ValueError("lmc_pre_model='rank' but lmc_rank_tables_path is not set.")
@@ -150,7 +186,7 @@ class MCPBEBase(BaseSolver):
                     A0_run=self.lmc_A0_runtime,
                     cache_enabled=self.lmc_tables_cache,
                 )
-    
+
             elif pre == "copula":
                 if not self.lmc_copula_path:
                     raise ValueError("lmc_pre_model='copula' but lmc_copula_path is not set.")
@@ -160,51 +196,69 @@ class MCPBEBase(BaseSolver):
                     A0_run=self.lmc_A0_runtime,
                     cache_enabled=self.lmc_tables_cache,
                 )
-    
-            # elif pre == "flow":
-            #     if not self.lmc_flow_pure_path or not self.lmc_flow_mix_path:
-            #         raise ValueError("lmc_pre_model='flow' but lmc_flow_path is not set.")
-            #     self.lmc_adapter = LMCFlowAdapter(
-            #         pure_model_path=self.lmc_flow_pure_path,
-            #         mix_model_path=self.lmc_flow_mix_path,
-            #         A0_run=self.lmc_A0_runtime,
-            #         cache_enabled=self.lmc_tables_cache,
-            #     )
-    
+
+            elif pre == "flow":
+                if not self.lmc_flow_pure_path or not self.lmc_flow_mix_path: 
+                    raise ValueError("lmc_pre_model='flow' but lmc_flow_path is not set.") 
+                self.lmc_adapter = LMCFlowAdapter( 
+                        pure_model_path=self.lmc_flow_pure_path, 
+                        mix_model_path=self.lmc_flow_mix_path, 
+                        A0_run=self.lmc_A0_runtime, 
+                        cache_enabled=self.lmc_tables_cache, 
+                    )
+
             # 无论哪种 adapter，都让它知道小颗粒策略
             if self.lmc_adapter is not None and hasattr(self.lmc_adapter, "set_small_particle_policy"):
-                self.lmc_adapter.set_small_particle_policy(policy=self.lmc_small_particle_policy)
-    
+                self.lmc_adapter.set_small_particle_policy(
+                    policy=self.lmc_small_particle_policy
+                )
+
         # -------------- Live LMC 的初始化 --------------
-        self.use_lmc_live = bool(getattr(self, "use_lmc_live", False))
-        self.lmc_live = None
         if self.use_lmc_live:
             from .lmc_adapter import LMCLiveAdapter
+
             self.lmc_live = LMCLiveAdapter()
             self.lmc_live.configure_simulator(
-                STR=self.STR if hasattr(self, "STR") else np.array([1.0, 1.0, 1.0]),
-                NO_FRAG=int(getattr(self, "NO_FRAG", 4)),
-                gamma=float(getattr(self, "gamma", 1.0)),
-                allow_loops=bool(getattr(self, "allow_loops", True)),
-                accept_all_cracks=bool(getattr(self, "accept_all_cracks", False)),
-                use_weighted_start=bool(getattr(self, "use_weighted_start", False)),
-                aspect_ratio=float(getattr(self, "aspect_ratio", 1.0)),
-                int_bre=float(getattr(self, "int_bre", 0.0)),
-                A0_run=float(getattr(self, "lmc_A0_runtime", 1.0)),
-                small_particle_policy=str(getattr(self, "lmc_small_particle_policy", "fallback")),
-                delta_cells=float(getattr(self, "lmc_delta_cells", 0.1)),
-                pool_dir=str(getattr(self, "lmc_pool_dir", "Pool_Path")),
-                Df=float(getattr(self, "lmc_Df", 1.6)),
-                MAS=float(getattr(self, "lmc_MAS", 0.5)),
+                STR=self.lmc_STR,
+                NO_FRAG=self.lmc_NO_FRAG,
+                gamma=self.lmc_gamma,
+                allow_loops=self.lmc_allow_loops,
+                accept_all_cracks=self.lmc_accept_all_cracks,
+                use_weighted_start=self.lmc_use_weighted_start,
+                aspect_ratio=self.lmc_aspect_ratio,
+                int_bre=self.lmc_int_bre,
+                A0_run=self.lmc_A0_runtime,
+                small_particle_policy=self.lmc_small_particle_policy,
+                delta_cells=self.lmc_delta_cells,
+                pool_dir=self.lmc_pool_dir,
+                Df=self.lmc_Df,
+                MAS=self.lmc_MAS,
                 rebuild=True,
             )
-    
-            # live 的 fallback 依赖一个离线 adapter
-            if self.lmc_live.small_particle_policy == "fallback" and self.lmc_adapter is None:
+
+        # -------------- 基于 MLP 的破碎率模型初始化 --------------
+        if self.lmc_use_breakage_model:
+            if not self.lmc_breakage_model_path:
                 raise ValueError(
-                    "use_lmc_live=True with small_particle_policy='fallback' requires a pre LMC adapter "
-                    "(set use_lmc_pre_model=True and choose one of table/rank/copula/flow)."
+                    "lmc_use_breakage_model=True but lmc_breakage_model_path is not set."
                 )
+
+            from .mlp_breakage_adapter import MLPBreakageRateAdapter
+
+            self.lmc_breakage_adapter = MLPBreakageRateAdapter(
+                model_path=self.lmc_breakage_model_path,
+                lambda_E=self.lmc_lambda_E,
+                energy_exp=self.lmc_energy_exp,
+                gamma=self.lmc_gamma,
+                NO_FRAG=self.lmc_NO_FRAG,
+                int_bre=self.lmc_int_bre,
+                Df=self.lmc_Df,
+                MAS=self.lmc_MAS,
+                rate_min=self.lmc_rate_min,
+                rate_max=self.lmc_rate_max,
+                A0_run=self.lmc_A0_runtime,
+            )
+
     
     # ---------------------------------------------------------------------
     # Validation & helpers
@@ -352,6 +406,11 @@ class MCPBEBase(BaseSolver):
         self.V_save = [self.V_flat[:, :self.a_tot].copy()]
         self.Vc_save = [float(self.Vc)]
         self.step = 1
+        # initialize left/right snapshot containers for post-processing
+        # right snapshots remain in self.V_save / self.Vc_save as before
+        self.V_save_left = [self.V_flat[:, :self.a_tot].copy()]
+        self.t_left = [0.0]
+        self.t_right = [0.0]
 
     def _initialize_samplers(self):
         """Build (or resize) samplers for agglomeration/breakage based on process_type."""
@@ -418,12 +477,13 @@ class MCPBEBase(BaseSolver):
             self._break_rate = b_new
 
         # Print expansion info
-        print(
-            f"[MC-PBE] Capacity grown at t={getattr(self,'_elapsed',0.0):.6g} "
-            f"after {getattr(self,'_iter_count',0)} events: cap {old_cap} -> {new_cap} "
-            f"(x{new_cap/max(old_cap,1):.2f})"
-            # f"[TEST] dt_break = {self.test_dt_break}"
-        )
+        if self.VERBOSE:   
+            print(
+                f"[MC-PBE] Capacity grown at t={getattr(self,'_elapsed',0.0):.6g} "
+                f"after {getattr(self,'_iter_count',0)} events: cap {old_cap} -> {new_cap} "
+                f"(x{new_cap/max(old_cap,1):.2f})"
+                # f"[TEST] dt_break = {self.test_dt_break}"
+            )
 
     def _maybe_double_control_volume(self, elapsed_time: float, iter_count: int):
         """Duplicate state to keep statistics when particle count drops (agglomeration dominates)."""
@@ -521,15 +581,26 @@ class MCPBEBase(BaseSolver):
                 print(f"Initial dt_agg = {dtd_agg:.3e} s")
             if np.isfinite(dtd_break):
                 print(f"Initial dt_break = {dtd_break:.3e} s")
+                
+        if self.mcpbe_debug:
+            self._check_state_before_solve()
+            self._log_debug_config()
 
         next_save_idx = 1 if len(self.t_vec) > 1 else 0
         self._elapsed = 0.0
         self._iter_count = 0
 
+        cancel_flag = getattr(self, "cancel_flag", None)
         while self.t[-1] <= float(self.t_vec[-1]) and count < maxiter:
+            if cancel_flag is not None and cancel_flag.get("cancel", False):
+                break
             # keep context for logging/expansion
             self._elapsed = self.t[-1]
             self._iter_count = count
+            
+            # cache "left" state: state after previous event
+            t_prev = self.t[-1]
+            V_prev_active = self.V_flat[:, :self.a_tot].copy()
 
             if pt == "agglomeration":
                 self._do_one_agg()  # from AgglomerationMixin
@@ -554,12 +625,22 @@ class MCPBEBase(BaseSolver):
                     timer_break += dtd_break
 
             self.t.append(elapsed_time)
+            
+            # current "right" state after this event
+            V_right_active = self.V_flat[:, :self.a_tot]
 
             # Save snapshots at requested times (active slice only)
             while next_save_idx < len(self.t_vec) and elapsed_time >= self.t_vec[next_save_idx]:
-                self.V_save.append(self.V_flat[:, :self.a_tot].copy())
+                # right snapshots: same behavior as original code
+                self.V_save.append(V_right_active.copy())
                 self.Vc_save.append(float(self.Vc))
                 self.step += 1
+
+                # left/right metadata for this time point
+                self.V_save_left.append(V_prev_active.copy())
+                self.t_left.append(t_prev)
+                self.t_right.append(elapsed_time)
+
                 next_save_idx += 1
 
             # agglomeration-dominated safety (duplicate CV)
@@ -611,6 +692,7 @@ class MCPBEBase(BaseSolver):
                     "mode": "Q_of_x",
                     "basis": "volume" or "number",
                     "t_vec": t_vec_reference,    # shape (T,)
+                    "x_50": x_50_mean,           # shape (T,)
                     "x_grid": x_grid,            # shape (M,)
                     "Q_mean": Q_mean,            # shape (T, M)
                     "note": "...",
@@ -621,6 +703,7 @@ class MCPBEBase(BaseSolver):
                     "mode": "x_of_Q",
                     "basis": "volume" or "number",
                     "t_vec": t_vec_reference,    # shape (T,)
+                    "x_50": x_50_mean,           # shape (T,)
                     "Q_grid": Q_grid,            # shape (M,)
                     "x_mean": x_mean,            # shape (T, M)
                     "note": "...",
@@ -648,14 +731,19 @@ class MCPBEBase(BaseSolver):
         # ----- serial path (supports PSD) -----
         if workers == 1:
             results: list[dict[str, Any]] = []
+            cancel_flag = getattr(self, "cancel_flag", None)
 
             # For PSD aggregation across repeats
             cdf_repeats: list[Sequence[Optional[Tuple[np.ndarray, np.ndarray]]]] = []
             t_vec_ref: Optional[np.ndarray] = None
 
             for k in range(N):
+                if cancel_flag is not None and cancel_flag.get("cancel", False):
+                    break
                 # Deep copy self and run a single realization
                 m = copy.deepcopy(self)
+                if cancel_flag is not None:
+                    m.cancel_flag = cancel_flag
                 sk = seeds[k]
                 if isinstance(sk, np.random.SeedSequence):
                     rng = np.random.default_rng(sk)
@@ -668,15 +756,16 @@ class MCPBEBase(BaseSolver):
                 if not init_Vc and Vc is not None:
                     m.Vc = Vc
                 m._initialize_particles(init_Vc=init_Vc, V_flat=V_flat)
-                m._initialize_samplers()
                 m._init_lmc()
+                m._initialize_samplers()
                 m.solve(maxiter=maxiter)
                 mu, tv = m.calc_moments_over_time(normalize=True)
                 results.append({"seed_info": seed_info, "t_vec": tv, "moments": mu})
 
                 # PSD CDFs for this realization over all saved times
                 if psd_enable:
-                    cdf_list, t_vec_local = m.compute_psd_cdf_over_time(psd_basis=psd_basis)
+                    cdf_list, t_vec_local = m.compute_psd_cdf_over_time(psd_basis=psd_basis,
+                                                                        time_scheme="interp")
                     if t_vec_ref is None:
                         t_vec_ref = np.asarray(t_vec_local, dtype=float)
                     else:
@@ -705,6 +794,7 @@ class MCPBEBase(BaseSolver):
                     "Q_mean": None,
                     "Q_grid": None,
                     "x_mean": None,
+                    "x_50":   None,
                     "note": "No PSD snapshots were available.",
                 }
             else:
@@ -859,7 +949,222 @@ class MCPBEBase(BaseSolver):
         if gc_clean:
             import gc
             gc.collect()
-        
+            
+    def _check_state_before_solve(self):
+        """Light-weight sanity checks before entering the main solve loop.
+
+        This is only called when `mcpbe_debug` is True. It is meant to catch
+        obvious configuration/state issues early, with minimal overhead.
+        """
+        # --- dimension & basic attributes ---
+        if not isinstance(self.dim, int) or self.dim <= 0:
+            raise ValueError(f"[MC-PBE][DEBUG] `dim` must be a positive integer, got {self.dim!r}.")
+
+        # time grid checks
+        if self.t_vec is None:
+            raise ValueError("[MC-PBE][DEBUG] `t_vec` is None; time grid must be initialized.")
+        tv = np.asarray(self.t_vec, dtype=float)
+        if tv.ndim != 1 or tv.size == 0:
+            raise ValueError("[MC-PBE][DEBUG] `t_vec` must be a non-empty 1D array.")
+        if not np.all(np.diff(tv) > 0):
+            raise ValueError("[MC-PBE][DEBUG] `t_vec` must be strictly increasing.")
+        if abs(float(tv[-1]) - float(self.t_total)) > 1e-8:
+            warnings.warn(
+                f"[MC-PBE][DEBUG] t_vec[-1]={tv[-1]:.6g} differs from t_total={float(self.t_total):.6g}.",
+                RuntimeWarning,
+            )
+
+        # validate input arrays (c, x, PGV, SIG) against dim
+        try:
+            self._validate_input_arrays()
+        except Exception as exc:
+            raise ValueError(f"[MC-PBE][DEBUG] Input arrays invalid: {exc}") from exc
+
+        # process_type consistency
+        pt = str(getattr(self, "process_type", "agglomeration")).lower()
+        if pt not in ("agglomeration", "breakage", "mix"):
+            raise ValueError(
+                f"[MC-PBE][DEBUG] Unsupported process_type={pt!r}. "
+                "Use 'agglomeration' | 'breakage' | 'mix'."
+            )
+
+        # state containers: V_flat, X, a_tot, capacity
+        if self.V_flat is None or not isinstance(self.V_flat, np.ndarray):
+            raise ValueError(
+                "[MC-PBE][DEBUG] `V_flat` is not initialized. "
+                "Make sure `_initialize_particles` has been called."
+            )
+        if self.V_flat.shape[0] != self.dim + 1:
+            raise ValueError(
+                f"[MC-PBE][DEBUG] `V_flat` must have shape (dim+1, cap); "
+                f"got {self.V_flat.shape}, dim={self.dim}."
+            )
+        if not hasattr(self, "X") or self.X is None:
+            raise ValueError(
+                "[MC-PBE][DEBUG] `X` (diameter array) is not initialized. "
+                "Make sure `_initialize_particles` has been called."
+            )
+        if not hasattr(self, "a_tot"):
+            raise ValueError("[MC-PBE][DEBUG] `a_tot` is missing on solver instance.")
+        if not hasattr(self, "_cap"):
+            raise ValueError("[MC-PBE][DEBUG] `_cap` (capacity) is missing on solver instance.")
+        if self.a_tot < 0 or self.a_tot > self._cap:
+            raise ValueError(
+                f"[MC-PBE][DEBUG] Inconsistent a_tot={self.a_tot}, cap={self._cap}."
+            )
+
+        # sampler presence (only sanity check; they may be rebuilt during solve)
+        if pt in ("agglomeration", "mix"):
+            if not hasattr(self, "_agg_sampler") or self._agg_sampler is None:
+                warnings.warn(
+                    "[MC-PBE][DEBUG] Agglomeration enabled but `_agg_sampler` is None. "
+                    "It will be rebuilt, but this may indicate that `_initialize_samplers` "
+                    "was not called explicitly.",
+                    RuntimeWarning,
+                )
+        if pt in ("breakage", "mix"):
+            if not hasattr(self, "_break_sampler") or self._break_sampler is None:
+                warnings.warn(
+                    "[MC-PBE][DEBUG] Breakage enabled but `_break_sampler` is None. "
+                    "It will be rebuilt, but this may indicate that `_initialize_samplers` "
+                    "was not called explicitly.",
+                    RuntimeWarning,
+                )
+
+        # LMC configuration sanity
+        use_lmc_pre = bool(getattr(self, "use_lmc_pre_model", False))
+        if use_lmc_pre and getattr(self, "lmc_adapter", None) is None:
+            warnings.warn(
+                "[MC-PBE][DEBUG] use_lmc_pre_model=True but `lmc_adapter` is None. "
+                "Check LMC table/rank/copula/flow paths in config.",
+                RuntimeWarning,
+            )
+
+    
+    def _log_debug_config(self):
+        """Print a categorized snapshot of key MCPBE configuration parameters.
+
+        Categories:
+          - General parameters
+          - Agglomeration parameters
+          - Breakage & LMC parameters
+        """
+        print("\n[MC-PBE][DEBUG] Configuration snapshot")
+
+        # -------------------------
+        # General parameters
+        # -------------------------
+        print("  [General parameters]")
+        print(f"    dim          = {getattr(self, 'dim', None)}")
+        print(f"    t_total      = {getattr(self, 't_total', None)}")
+        print(f"    t_write      = {getattr(self, 't_write', None)}")
+
+        tv = np.asarray(getattr(self, "t_vec", []), dtype=float)
+        if tv.size > 0:
+            print(
+                f"    t_vec        = len={tv.size}, "
+                f"first={tv[0]:.6g}, last={tv[-1]:.6g}"
+            )
+        else:
+            print("    t_vec        = <empty or None>")
+
+        print(f"    a0           = {getattr(self, 'a0', None)}")
+        print(f"    c            = {getattr(self, 'c', None)}")
+        print(f"    x            = {getattr(self, 'x', None)}")
+        print(f"    Vc           = {getattr(self, 'Vc', None)}")
+        print(f"    PGV          = {getattr(self, 'PGV', None)}")
+        print(f"    SIG          = {getattr(self, 'SIG', None)}")
+        print(f"    VERBOSE      = {getattr(self, 'VERBOSE', None)}")
+        print(f"    process_type = {getattr(self, 'process_type', None)}")
+        print(f"    CDF_method   = {getattr(self, 'CDF_method', None)}")
+        print(f"    USE_PSD      = {getattr(self, 'USE_PSD', None)}")
+        print(f"    DIST1_path   = {getattr(self, 'DIST1_path', None)}")
+        print(f"    DIST1_name   = {getattr(self, 'DIST1_name', None)}")
+        print(f"    DIST3_path   = {getattr(self, 'DIST3_path', None)}")
+        print(f"    DIST3_name   = {getattr(self, 'DIST3_name', None)}")
+
+        # -------------------------
+        # Agglomeration parameters
+        # -------------------------
+        print("  [Agglomeration parameters]")
+        print(f"    COLEVAL      = {getattr(self, 'COLEVAL', None)}")
+        print(f"    SIZEEVAL     = {getattr(self, 'SIZEEVAL', None)}")
+        print(f"    CORR_BETA    = {getattr(self, 'CORR_BETA', None)}")
+        print(f"    alpha_prim   = {getattr(self, 'alpha_prim', None)}")
+        print(f"    G (shear)    = {getattr(self, 'G', None)}")
+
+        # If current state already has propensities, log basic stats
+        if hasattr(self, "_r_agg") and isinstance(self._r_agg, np.ndarray):
+            r_active = self._r_agg[: getattr(self, "a_tot", 0)]
+            if r_active.size > 0:
+                print(
+                    "    r_agg       = active size={}, min={:.3e}, max={:.3e}, mean={:.3e}".format(
+                        r_active.size,
+                        float(np.min(r_active)),
+                        float(np.max(r_active)),
+                        float(np.mean(r_active)),
+                    )
+                )
+            else:
+                print("    r_agg       = <no active entries>")
+        else:
+            print("    r_agg       = <not initialized>")
+
+        # -------------------------
+        # Breakage & LMC parameters
+        # -------------------------
+        print("  [Breakage & LMC parameters]")
+        print(f"    BREAKRVAL    = {getattr(self, 'BREAKRVAL', None)}")
+        print(f"    BREAKFVAL    = {getattr(self, 'BREAKFVAL', None)}")
+        print(f"    pl_v         = {getattr(self, 'pl_v', None)}")
+        print(f"    pl_P1        = {getattr(self, 'pl_P1', None)}")
+        print(f"    pl_P2        = {getattr(self, 'pl_P2', None)}")
+        print(f"    pl_P3        = {getattr(self, 'pl_P3', None)}")
+        print(f"    pl_P4        = {getattr(self, 'pl_P4', None)}")
+        if hasattr(self, "frag_num"):
+            print(f"    frag_num     = {getattr(self, 'frag_num', None)}")
+
+        if hasattr(self, "_break_rate") and isinstance(self._break_rate, np.ndarray):
+            br_active = self._break_rate[: getattr(self, "a_tot", 0)]
+            if br_active.size > 0:
+                print(
+                    "    break_rate  = active size={}, min={:.3e}, max={:.3e}, mean={:.3e}".format(
+                        br_active.size,
+                        float(np.min(br_active)),
+                        float(np.max(br_active)),
+                        float(np.mean(br_active)),
+                    )
+                )
+            else:
+                print("    break_rate  = <no active entries>")
+        else:
+            print("    break_rate  = <not initialized>")
+
+        # LMC-related configuration
+        print(f"    CDF_method   = {getattr(self, 'CDF_method', None)}")
+        print(f"    use_lmc_pre_model  = {getattr(self, 'use_lmc_pre_model', None)}")
+        print(f"    lmc_pre_model      = {getattr(self, 'lmc_pre_model', None)}")
+        print(f"    lmc_tables_path    = {getattr(self, 'lmc_tables_path', None)}")
+        print(f"    lmc_rank_tables_path = {getattr(self, 'lmc_rank_tables_path', None)}")
+        print(f"    lmc_copula_path    = {getattr(self, 'lmc_copula_path', None)}")
+        print(f"    lmc_flow_pure_path = {getattr(self, 'lmc_flow_pure_path', None)}")
+        print(f"    lmc_flow_mix_path  = {getattr(self, 'lmc_flow_mix_path', None)}")
+        print(f"    lmc_A0_runtime     = {getattr(self, 'lmc_A0_runtime', None)}")
+        print(f"    lmc_interp         = {getattr(self, 'lmc_interp', None)}")
+        print(f"    lmc_tables_cache   = {getattr(self, 'lmc_tables_cache', None)}")
+        print(f"    use_lmc_live       = {getattr(self, 'use_lmc_live', None)}")
+        print(f"    lmc_small_particle_policy = {getattr(self, 'lmc_small_particle_policy', None)}")
+        print(f"    lmc_pool_dir       = {getattr(self, 'lmc_pool_dir', None)}")
+        print(f"    lmc_Df             = {getattr(self, 'lmc_Df', None)}")
+        print(f"    lmc_MAS            = {getattr(self, 'lmc_MAS', None)}")
+
+        # LMC adapter/live presence
+        adapter = getattr(self, "lmc_adapter", None)
+        live = getattr(self, "lmc_live", None)
+        print(f"    lmc_adapter        = {type(adapter).__name__ if adapter is not None else None}")
+        print(f"    lmc_live           = {type(live).__name__ if live is not None else None}")
+        print("[MC-PBE][DEBUG] End of configuration snapshot\n")
+
 
 def _mcpbe_run_single_parallel(payload: dict):
     """

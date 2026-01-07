@@ -128,6 +128,7 @@ class MCPBEPost:
     def compute_psd_cdf_over_time(
         self,
         psd_basis: str = "volume",
+        time_scheme: str = "right",
     ) -> Tuple[List[Optional[Tuple[np.ndarray, np.ndarray]]], np.ndarray]:
         """Compute empirical PSD CDF at all saved times for a single realization.
 
@@ -135,25 +136,182 @@ class MCPBEPost:
         ----------
         psd_basis : {"number", "volume"}
             Weighting basis for the CDF.
+        time_scheme : {"right", "left", "interp", "nearest"}, default "right"
+            Time alignment scheme used to build the CDF at self.t_vec[t]:
+                - "right": use the snapshot saved in V_save (state after the
+                  event that crossed t_vec[t]); this is the original behavior.
+                - "left": use the corresponding snapshot in V_save_left
+                  (state just before that event).
+                - "interp": compute CDFs for both left and right snapshots and
+                  linearly interpolate them in time between t_left[t] and
+                  t_right[t].
+                - "nearest": choose left or right based on which time stamp
+                  (t_left or t_right) is closer to t_vec[t].
 
         Returns
         -------
         cdf_list : list of length T
-            cdf_list[t] is either (x_sorted, Q_sorted) or None if no valid data at that time.
+            cdf_list[t] is either (x_sorted, Q_sorted) or None if no valid
+            data at that time, where T is the number of saved times.
         t_vec : ndarray, shape (T,)
-            Time vector aligned with cdf_list.
+            Time vector aligned with cdf_list. This is always self.t_vec[:T].
         """
-        T = min(len(self.V_save), len(self.t_vec))
+        time_scheme = str(time_scheme).lower()
+        if time_scheme not in ("right", "left", "interp", "nearest"):
+            raise ValueError(
+                f"time_scheme must be one of 'right', 'left', 'interp', 'nearest', "
+                f"got {time_scheme!r}."
+            )
+
+        # base number of times from right snapshots (original behavior)
+        T_base = min(len(self.V_save), len(self.t_vec))
+        if T_base == 0:
+            return [], np.asarray([], dtype=float)
+
+        # if we need left/right metadata, check availability and align lengths
+        use_left_side = time_scheme in ("left", "interp", "nearest")
+        if use_left_side:
+            if not hasattr(self, "V_save_left") or not hasattr(self, "t_left") or not hasattr(self, "t_right"):
+                raise RuntimeError(
+                    "time_scheme uses left/right information but V_save_left / t_left / t_right "
+                    "are not available. Make sure MCPBEBase.solve() has been run with the "
+                    "updated left/right snapshot logic."
+                )
+            T = min(
+                T_base,
+                len(self.V_save_left),
+                len(self.t_left),
+                len(self.t_right),
+            )
+        else:
+            T = T_base
+
+        if T == 0:
+            return [], np.asarray([], dtype=float)
+
         t_vec = np.asarray(self.t_vec[:T], dtype=float)
         cdf_list: List[Optional[Tuple[np.ndarray, np.ndarray]]] = []
 
+        # helper to compute CDF from an index t and a choice of "left" / "right"
+        def _cdf_from_side(idx: int, side: str) -> Optional[Tuple[np.ndarray, np.ndarray]]:
+            if side == "right":
+                V_snap = self.V_save[idx]
+            elif side == "left":
+                V_snap = self.V_save_left[idx]
+            else:
+                raise ValueError(f"Unknown side {side!r} in _cdf_from_side.")
+            return self._compute_psd_cdf_from_snapshot(V_snap, psd_basis=psd_basis)
+
         for t in range(T):
-            V_snap = self.V_save[t]
-            cdf = self._compute_psd_cdf_from_snapshot(V_snap, psd_basis=psd_basis)
-            cdf_list.append(cdf)
+            if time_scheme == "right":
+                # original behavior: only use V_save[t]
+                V_snap = self.V_save[t]
+                cdf = self._compute_psd_cdf_from_snapshot(V_snap, psd_basis=psd_basis)
+                cdf_list.append(cdf)
+                continue
+
+            # left/right-based schemes
+            tl = float(self.t_left[t])
+            tr = float(self.t_right[t])
+            tt = float(t_vec[t])
+
+            # numerical safety: enforce tl <= tt <= tr when possible
+            # (do not crash if there is small rounding noise)
+            if tr < tl:
+                # very pathological; swap as a last resort
+                tl, tr = tr, tl
+
+            if time_scheme == "left":
+                cdf = _cdf_from_side(t, "left")
+                cdf_list.append(cdf)
+                continue
+
+            if time_scheme == "nearest":
+                # choose side whose time is closer to t_vec[t]
+                dl = abs(tt - tl)
+                dr = abs(tr - tt)
+                side = "left" if dl <= dr else "right"
+                cdf = _cdf_from_side(t, side)
+                cdf_list.append(cdf)
+                continue
+
+            # time_scheme == "interp": interpolate CDFs of left/right in time
+            cdf_left = _cdf_from_side(t, "left")
+            cdf_right = _cdf_from_side(t, "right")
+
+            if cdf_left is None and cdf_right is None:
+                cdf_list.append(None)
+                continue
+            if cdf_left is None:
+                # only right available
+                cdf_list.append(cdf_right)
+                continue
+            if cdf_right is None:
+                # only left available
+                cdf_list.append(cdf_left)
+                continue
+
+            xL, QL = cdf_left
+            xR, QR = cdf_right
+
+            # build a common x grid as the union of both supports
+            x_union = np.unique(np.concatenate([xL, xR]))
+            # evaluate both CDFs on the common grid
+            QL_u = self._eval_Q_of_x(xL, QL, x_union)
+            QR_u = self._eval_Q_of_x(xR, QR, x_union)
+
+            # interpolation weight alpha in [0, 1]
+            if tr <= tl:
+                alpha = 1.0  # degenerate interval; fall back to right
+            else:
+                alpha = (tt - tl) / (tr - tl)
+            alpha = float(np.clip(alpha, 0.0, 1.0))
+
+            Q_interp = (1.0 - alpha) * QL_u + alpha * QR_u
+            cdf_list.append((x_union, Q_interp))
 
         return cdf_list, t_vec
 
+
+    def _invert_cdf_monotone(self, x_axis: np.ndarray, Q_vals: np.ndarray, q: float = 0.5) -> float:
+        """Invert a (nearly) monotone CDF to find x at probability q.
+    
+        Enforces monotonicity (cummax) to reduce numerical noise, then uses
+        linear interpolation in (Q, x). Returns NaN if q is outside range.
+        """
+        x_axis = np.asarray(x_axis, dtype=float)
+        Q_vals = np.asarray(Q_vals, dtype=float)
+        if x_axis.size == 0 or Q_vals.size == 0 or x_axis.size != Q_vals.size:
+            return float("nan")
+    
+        mask = np.isfinite(x_axis) & np.isfinite(Q_vals)
+        if not np.any(mask):
+            return float("nan")
+    
+        x = x_axis[mask]
+        Q = Q_vals[mask]
+    
+        order = np.argsort(x)
+        x = x[order]
+        Q = Q[order]
+    
+        # enforce monotone non-decreasing
+        Q = np.maximum.accumulate(Q)
+    
+        if Q[0] > q or Q[-1] < q:
+            return float("nan")
+    
+        k = int(np.searchsorted(Q, q, side="left"))
+        if k <= 0:
+            return float(x[0])
+        if k >= Q.size:
+            return float(x[-1])
+    
+        q0, q1 = float(Q[k - 1]), float(Q[k])
+        x0, x1 = float(x[k - 1]), float(x[k])
+        if q1 <= q0 + 1e-15:
+            return float(x1)
+        return float(x0 + (q - q0) * (x1 - x0) / (q1 - q0))
     # ------------------------------------------------------------------
     # PSD aggregation over repeats
     # ------------------------------------------------------------------
@@ -222,6 +380,7 @@ class MCPBEPost:
             )
 
         T = int(len(t_vec))
+        x_50 = np.full(T, np.nan, dtype=float)
         psd_info: dict[str, Any] = {
             "basis": psd_basis,
             "mode": psd_mode,
@@ -280,6 +439,7 @@ class MCPBEPost:
                     )
                     psd_info["x_grid"] = None
                     psd_info["Q_mean"] = None
+                    psd_info["x_50"] = np.full(T, np.nan, dtype=float)
                     return psd_info
 
                 xmin_global = float(np.min(finite_min))
@@ -321,7 +481,11 @@ class MCPBEPost:
                     Q_mean[it] = np.nan
 
             psd_info["x_grid"] = x_grid
-            psd_info["Q_mean"] = Q_mean
+            psd_info["Q_mean"] = Q_mean.T
+            
+            for it in range(T):
+                x_50[it] = self._invert_cdf_monotone(x_grid, Q_mean[it, :], q=0.5)
+            psd_info["x_50"] = x_50
 
         elif psd_mode == "x_of_Q":
             # ------------------------------------------------------------------
@@ -352,7 +516,30 @@ class MCPBEPost:
 
             psd_info["Q_grid"] = Q_grid
             psd_info["x_mean"] = x_mean
-
+            
+            q = 0.5
+            hit = np.where(np.isclose(Q_grid, q, rtol=0.0, atol=1e-12))[0]
+            if hit.size > 0:
+                j = int(hit[0])
+                x_50 = x_mean[:, j].astype(float, copy=False)
+            else:
+                for it in range(T):
+                    xq = np.asarray(x_mean[it], dtype=float)
+                    mask = np.isfinite(Q_grid) & np.isfinite(xq)
+                    if not np.any(mask):
+                        x_50[it] = float("nan")
+                        continue
+                    Qm = Q_grid[mask]
+                    xm = xq[mask]
+                    order = np.argsort(Qm)
+                    Qm = Qm[order]
+                    xm = xm[order]
+                    xm = np.maximum.accumulate(xm)
+                    if Qm[0] > q or Qm[-1] < q:
+                        x_50[it] = float("nan")
+                    else:
+                        x_50[it] = float(np.interp(q, Qm, xm))
+            psd_info["x_50"] = x_50
         else:
             raise RuntimeError(f"Unknown psd_mode={psd_mode!r}.")
 
