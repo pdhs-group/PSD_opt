@@ -208,7 +208,7 @@ class PBEValidation():
         
     def calculate_mc_pbe(self):
         mu_tmp = []
-        results = self.p_mc.solve_repeats(N=self.N_MC, base_seed=42, maxiter=1e8,
+        results, _ = self.p_mc.solve_repeats(N=self.N_MC, base_seed=42, maxiter=1e8,
                                           init_Vc=False, Vc=self.Vc, V_flat=self.V_flat)
         for i in range(self.N_MC):
             mu_tmp.append(results[i]['moments'])

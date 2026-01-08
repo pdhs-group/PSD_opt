@@ -178,26 +178,27 @@ if __name__ == '__main__':
     prev_iter = 0
     opt.core.result_dir = result_dir
     
-    ray.init(log_to_driver=True)
-    # Run optimization
-    for n_iter in n_iter_list:
-        if n_iter <= prev_iter:
-            continue
-        inc = n_iter - prev_iter
-        opt.core.n_iter = int(n_iter)
-        opt.core.n_iter_prev = int(prev_iter)
-        opt.core.resume_unfinished = prev_iter > 0
-        if getattr(opt.core, 'resume_unfinished', False):
-            prev_path = os.path.join(result_dir, f"{opt.core.n_iter_prev}.sqlite")
-            if os.path.exists(prev_path):
-                print(f"Loaded previous opt_params for warm start: {prev_path}")
-            else:
-                print(f"Warning: Previous result not found: {prev_path}") 
-        result_dict = normal_test()
-        prev_iter = n_iter
-    ray.shutdown()
+    # ray.init(log_to_driver=True)
+    # # Run optimization
+    # for n_iter in n_iter_list:
+    #     if n_iter <= prev_iter:
+    #         continue
+    #     inc = n_iter - prev_iter
+    #     opt.core.n_iter = int(n_iter)
+    #     opt.core.n_iter_prev = int(prev_iter)
+    #     opt.core.resume_unfinished = prev_iter > 0
+    #     if getattr(opt.core, 'resume_unfinished', False):
+    #         prev_path = os.path.join(result_dir, f"{opt.core.n_iter_prev}.sqlite")
+    #         if os.path.exists(prev_path):
+    #             print(f"Loaded previous opt_params for warm start: {prev_path}")
+    #         else:
+    #             print(f"Warning: Previous result not found: {prev_path}") 
+    #     result_dict = normal_test()
+    #     prev_iter = n_iter
+    # ray.shutdown()
     
-    # with np.load('pure_CB_result_800.npz', allow_pickle=True) as data:
-    #     results = data['results'].item()
-    # pop_params = results['opt_params']
-    # x_uni_test, Q3_test , delta = calc_delta_test(var_delta=False, pop_params=pop_params, plot=True)
+    result_to_analyse = os.path.join(base_path, "opt_results_N2000", "pure_CB_result_4000.npz")
+    with np.load(result_to_analyse, allow_pickle=True) as data:
+        results = data['results'].item()
+    pop_params = results['opt_params']
+    x_uni_test, Q3_test , delta = calc_delta_test(var_delta=False, pop_params=pop_params, plot=True)

@@ -442,8 +442,6 @@ class MCPBEBase(BaseSolver):
                     br[:self.a_tot] = self._break_rate[:self.a_tot]
                 self._break_rate = br
             self._break_sampler = FenwickSampler(self._break_rate[:self.a_tot])
-            print(self._break_rate.max())
-            print(self._break_rate.min())
         else:
             self._break_rate = np.zeros(self._cap, dtype=float)
             self._break_sampler = None
@@ -854,83 +852,84 @@ class MCPBEBase(BaseSolver):
     # Column ops (capacity style)
     # ---------------------------------------------------------------------
     def _remove_particle_column(self, j: int):
-        """Swap j with last active, shrink a_tot by 1, zero freed slot, rebuild samplers."""
+        """Remove particle at index j using swap-with-last, maintain samplers incrementally (B2)."""
         a = self.a_tot
         if j < 0 or j >= a:
             raise IndexError("column index out of range")
+    
         if a <= 1:
-            # reset to empty active set
             self.a_tot = max(0, a - 1)
-            # clear slot 0
             if a == 1:
                 self.V_flat[:, 0:1] = 0.0
                 self.X[0:1] = 0.0
-                if hasattr(self, "_r_agg"):
+                if hasattr(self, "_r_agg") and self._r_agg is not None:
                     self._r_agg[0:1] = 0.0
-                if hasattr(self, "_break_rate"):
+                if hasattr(self, "_break_rate") and self._break_rate is not None:
                     self._break_rate[0:1] = 0.0
-            self._agg_sampler = FenwickSampler(np.zeros(0)) if self._agg_sampler is not None else None
-            self._break_sampler = (
-                FenwickSampler(np.zeros(0)) if self._break_sampler is not None else None
-            )
+            if self._agg_sampler is not None:
+                self._agg_sampler = FenwickSampler(np.zeros(0))
+            if self._break_sampler is not None:
+                self._break_sampler = FenwickSampler(np.zeros(0))
             return
-
+    
         last = a - 1
+    
+        # swap particle state arrays so that the 'removed' particle moves to last
         if j != last:
-            # swap active columns
             self.V_flat[:, [j, last]] = self.V_flat[:, [last, j]]
             self.X[j], self.X[last] = self.X[last], self.X[j]
-            if hasattr(self, "_r_agg") and self._r_agg is not None and self._r_agg.shape[0] >= a:
+    
+            if hasattr(self, "_r_agg") and self._r_agg is not None:
                 self._r_agg[j], self._r_agg[last] = self._r_agg[last], self._r_agg[j]
-            if (
-                hasattr(self, "_break_rate")
-                and self._break_rate is not None
-                and self._break_rate.shape[0] >= a
-            ):
-                self._break_rate[j], self._break_rate[last] = (
-                    self._break_rate[last],
-                    self._break_rate[j],
-                )
-
-        # logical shrink & zero freed slot
+            if hasattr(self, "_break_rate") and self._break_rate is not None:
+                self._break_rate[j], self._break_rate[last] = self._break_rate[last], self._break_rate[j]
+    
+        # sampler remove must happen while sampler still has size == a
+        if self._agg_sampler is not None:
+            self._agg_sampler.remove_swap_last(j)
+        if self._break_sampler is not None:
+            self._break_sampler.remove_swap_last(j)
+    
+        # shrink
         self.a_tot = last
+    
+        # zero freed slot
         self.V_flat[:, self.a_tot : self.a_tot + 1] = 0.0
         self.X[self.a_tot : self.a_tot + 1] = 0.0
-        if hasattr(self, "_r_agg") and self._r_agg is not None and self._r_agg.shape[0] > self.a_tot:
+        if hasattr(self, "_r_agg") and self._r_agg is not None:
             self._r_agg[self.a_tot : self.a_tot + 1] = 0.0
-        if (
-            hasattr(self, "_break_rate")
-            and self._break_rate is not None
-            and self._break_rate.shape[0] > self.a_tot
-        ):
+        if hasattr(self, "_break_rate") and self._break_rate is not None:
             self._break_rate[self.a_tot : self.a_tot + 1] = 0.0
+    
 
-        # rebuild samplers from active slices (simple & correct)
-        if self._agg_sampler is not None:
-            self._agg_sampler = FenwickSampler(self._r_agg[:self.a_tot])
-        if self._break_sampler is not None:
-            self._break_sampler = FenwickSampler(self._break_rate[:self.a_tot])
 
     def _append_particle_column(self, frag_vols: np.ndarray):
-        """Append one particle from its per-component volumes; capacity aware."""
+        """Append one particle from per-component volumes; maintain samplers incrementally."""
         frag_vols = np.asarray(frag_vols, dtype=float)
         if frag_vols.shape != (self.dim,):
             raise ValueError("frag_vols must have shape (dim,)")
-
+    
         self._ensure_capacity_for(1)
         Vnew = float(np.sum(frag_vols))
-
+    
         idx = self.a_tot
         self.V_flat[: self.dim, idx] = frag_vols
         self.V_flat[-1, idx] = Vnew
         self.X[idx] = float(self._vol2diam(Vnew))
         self.a_tot += 1
+    
+        # Always initialize auxiliary arrays at idx to 0 to avoid stale values
+        if hasattr(self, "_r_agg") and self._r_agg is not None:
+            self._r_agg[idx] = 0.0
+        if hasattr(self, "_break_rate") and self._break_rate is not None:
+            self._break_rate[idx] = 0.0
+    
+        # Extend samplers with 0.0; caller will update() to the true value ASAP
+        if self._agg_sampler is not None:
+            self._agg_sampler.append(0.0)
+        if self._break_sampler is not None:
+            self._break_sampler.append(0.0)
 
-        # rebuild samplers from active slices (simple baseline)
-        if self._agg_sampler is not None and hasattr(self, "_r_agg"):
-            self._agg_sampler = FenwickSampler(self._r_agg[:self.a_tot])
-        if self._break_sampler is not None and hasattr(self, "_break_rate"):
-            self._break_sampler = FenwickSampler(self._break_rate[:self.a_tot])
 
     def _ensure_break_sampler(self):
         """(Re)build break sampler from active slice if needed."""

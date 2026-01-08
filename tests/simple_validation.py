@@ -39,8 +39,8 @@ if __name__ == "__main__":
     S1 = 2
     # S2 = 2
     kernel = "sum"
-    process = "agglomeration"
-    t = np.arange(0, 10, 1, dtype=float)
+    process = "breakage"
+    t = np.arange(0, 1, 0.1, dtype=float)
     
     v = PBEValidation(dim, grid, NS1, S1, kernel, process, t=t, c=c, x=x, 
                       beta0=beta0, use_psd=use_psd, dist_path=dist_path)

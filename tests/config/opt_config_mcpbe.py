@@ -104,7 +104,7 @@ config = {
         # - 'RMSE': Root Mean Squared Error
         # - 'MAE': Mean Absolute Error
         # - 'KL': Kullback-Leibler divergence (only compatible with q3 and Q3)
-        'data_flag': 'Q0',
+        'data_flag': 'Q3',
         'cost_flag': 'MSE',
         # Path to store Ray Tune optimization infomation.
         'tune_storage_path': os.path.join(_config_opt_path, 'Ray_Tune'), 

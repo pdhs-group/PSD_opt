@@ -324,7 +324,7 @@ class MCPBEBreak:
         if self._break_sampler is not None:
             self._break_sampler.update(k, br_k)
     
-        # 统一的 agg 维护（和你之前一致）
+        # 统一的 agg 维护
         pt = getattr(self, "process_type", "agglomeration")
         if pt in ("agglomeration", "mix") and self._agg_sampler is not None:
             a_now = self.a_tot
@@ -517,6 +517,7 @@ class MCPBEBreak:
             if self._break_sampler.total() <= 0.0:
                 return
             k = self._break_sampler.sample(self._rng)
+            # assert 0 <= k < self._break_sampler._n, (k, self._break_sampler._n, self._break_sampler.total())
             # 剩余体积向量（便于传给各分支）
             if self.dim == 1:
                 Vrem_k = np.array([self.V_flat[0, k]], dtype=float)

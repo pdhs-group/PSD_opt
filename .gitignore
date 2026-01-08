@@ -38,3 +38,6 @@ poetry.lock
 /docs/api
 
 *.h5
+*.pt
+*.gif
+*.lock
