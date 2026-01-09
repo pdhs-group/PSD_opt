@@ -24,6 +24,7 @@ torch = "^2.9.1"
 h5py = "^3.15.1"
 optuna = "^4.6.0"
 cmaes = "^0.12.0"
+openpyxl = "^3.1.5"
 ray = {extras = ["default,train,tune"], version = "^2.52.1"}
 
 [build-system]

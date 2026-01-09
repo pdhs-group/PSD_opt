@@ -104,7 +104,7 @@ config = {
         # - 'RMSE': Root Mean Squared Error
         # - 'MAE': Mean Absolute Error
         # - 'KL': Kullback-Leibler divergence (only compatible with q3 and Q3)
-        'data_flag': 'Q0',
+        'data_flag': 'Q3',
         'cost_flag': 'MSE',
         # Path to store Ray Tune optimization infomation.
         'tune_storage_path': os.path.join(_config_opt_path, 'Ray_Tune'), 
@@ -119,9 +119,9 @@ config = {
         # Number of parallel optimization jobs to run.
         'num_jobs': 3, 
         # Number of CPU cores allocated to each optimization trial.
-        'cpus_per_trail': 4, 
+        'cpus_per_trail': 8, 
         # Maximum number of trials that can be run concurrently.
-        'max_concurrent': 4,
+        'max_concurrent': 2,
         
         # Maximum
         'max_iter_time': 0.0,
@@ -192,7 +192,7 @@ config = {
         'lmc_gamma': {'bounds': (0.1, 10.0), 'log_scale': False},
         'lmc_int_bre': {'bounds': (0.0, 1.0), 'log_scale': False},
         'lmc_energy_exp': {'bounds': (0.2, 1.0), 'log_scale': False},
-        'lmc_lambda_E': {'bounds': (-12, -8), 'log_scale': True},
+        'lmc_lambda_E': {'bounds': (-4, -3), 'log_scale': True},
         'lmc_NO_FRAG': {'int_bounds':  (2, 8)},
         
         ## Fixed parameters passed to the internal optimizer Actor.
