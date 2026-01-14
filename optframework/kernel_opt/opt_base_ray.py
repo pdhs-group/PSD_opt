@@ -7,7 +7,7 @@ import os
 import sqlite3
 from filelock import FileLock
 import json
-# import numpy as np
+import numpy as np
 # import math
 # import ray
 from ray import tune
@@ -265,7 +265,7 @@ class OptBaseRay():
             n_prev = getattr(base.core, 'n_iter_prev', 0)
             warm_params_path = os.path.join(result_dir, f"{n_prev}.sqlite")
             evaluated_params, evaluated_rewards = self._load_warm_params(warm_params_path, data_name)
-            evaluated_rewards = None
+            # evaluated_rewards = None
                 
         # Set up the Ray Tune search space    
         if opt_params_space is not None:   
@@ -397,14 +397,30 @@ class OptBaseRay():
             if score is not None:
                 all_params.append(config)
                 all_score.append(score)
-
-        warm_params_path = os.path.join(result_dir, f"{base.core.n_iter}.sqlite")
+        n_save = base.core.n_iter + getattr(base.core, 'n_iter_prev', 0)
+        warm_params_path = os.path.join(result_dir, f"{n_save}.sqlite")
         self._save_warm_params(warm_params_path, data_name, all_params, all_score)
         # Get the best result from the optimization
         opt_result = results.get_best_result(metric="loss", mode="min")
-        opt_params = opt_result.config
         opt_exp_data_paths = data_name
-        opt_score = opt_result.metrics["loss"]
+        new_params = opt_result.config
+        new_score = opt_result.metrics["loss"]
+        # Historical best
+        if evaluated_rewards:
+            hist_best_idx = int(np.argmin(evaluated_rewards))
+            hist_score = evaluated_rewards[hist_best_idx]
+            hist_params = evaluated_params[hist_best_idx]
+        else:
+            hist_score = None
+        
+        # Final decision
+        if hist_score is not None and hist_score < new_score:
+            opt_score = hist_score
+            opt_params = hist_params
+        else:
+            opt_score = new_score
+            opt_params = new_params
+        
         result_dict = {
             "opt_score": opt_score,
             "opt_params": opt_params,

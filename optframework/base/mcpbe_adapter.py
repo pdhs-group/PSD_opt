@@ -123,29 +123,30 @@ class MCPBEAdapter(WriteThroughAdapter):
     # %% ESSENTIAL METHOD INTERFACE
     def set_comp_para(self, data_path: str) -> None:
         opt = self.opt
-        flag = getattr(opt, "delta_flag", None)
-        if flag is None:
-            # fallback for older configs
-            flag = getattr(opt, "data_flag", "Q0")
+        flag = getattr(opt, "data_flag", "Q0")
         flag = str(flag).upper()
-        if flag not in ("Q0", "Q3"):
+    
+        allowed = {"Q0", "Q3", "Q0_X_50", "Q3_X_50"}
+        if flag not in allowed:
             raise ValueError(
-                f"opt.delta_flag / opt.data_flag must be 'Q0' or 'Q3' for MCPBEAdapter, "
+                f"opt.data_flag must be one of {sorted(allowed)} for MCPBEAdapter, "
                 f"got {flag!r}."
             )
-        if flag == "Q0":
+    
+        # Map flag -> PSD basis used by MCPBE
+        if flag.startswith("Q0"):
             self._psd_basis = "number"
-        else:  # flag == "Q3"
+        else:  # Q3 / Q3_X_50
             self._psd_basis = "volume"
-            
+    
         self.init_Vc = False            # tell solver to use provided Vc
         self._psd_Q_grid = None         # we only use Q(x), not x(Q), here
         self.opt.set_comp_para_flag = True
-        
+    
         self.impl.lmc_pool_dir = data_path
         self.impl.lmc_breakage_model_path = os.path.join(data_path, "mlp_model.pkl")
         return None
-        
+
     def reset_params(self) -> None:
         self.impl._reset_params()
     
@@ -217,6 +218,36 @@ class MCPBEAdapter(WriteThroughAdapter):
         self.x_50_mod = psd_info["x_50"]
         self.calc_status = True
         
+    # def solve(self, t_vec):
+    #     if not np.allclose(np.asarray(t_vec), np.asarray(self.opt.t_vec)):
+    #         raise ValueError("Adapter.solve: provided t_vec differs from opt.t_vec.")
+    
+    #     self.calc_status = True
+    #     # 共享的取消标志：所有拷贝都应该指向它
+    #     shared_flag = {"cancel": False}
+    #     self.impl.cancel_flag = shared_flag
+    #     results, psd_info = self.impl.solve_repeats(
+    #         N=self.NC,
+    #         base_seed=self.MC_seed,
+    #         init_Vc=self.init_Vc,
+    #         Vc=self.opt.Vc_init,
+    #         V_flat=self.opt.V_flat_init,
+    #         workers=1,
+    #         psd_enable=True,
+    #         psd_basis=self._psd_basis,
+    #         psd_x_grid=self.opt._psd_x_grid,
+    #         psd_Q_grid=self._psd_Q_grid,
+    #     )
+    
+    #     if "Q_mean" not in psd_info:
+    #         self.calc_status = False
+    #         raise KeyError("psd_info missing Q_mean")
+    
+    #     self.data_mod = psd_info["Q_mean"]
+    #     self.x_50_mod = psd_info["x_50"]
+    #     self.calc_status = True
+        
+        
     def get_all_data(self, exp_data_path) -> tuple[np.ndarray, np.ndarray]:
         """
         Load experimental PSD data from an HDF5 file and prepare it for optimization.
@@ -241,7 +272,7 @@ class MCPBEAdapter(WriteThroughAdapter):
           1) Scans all groups in the HDF5 file and reads their exp_t.
           2) For each time in self.opt.t_vec, selects the group whose exp_t
              matches that time (within a small tolerance).
-          3) According to self.opt.delta_flag ('Q0' or 'Q3'), collects the
+          3) According to self.opt.data_flag ('Q0' or 'Q3'), collects the
              cumulative distribution at these times into a 2D array data_exp
              with shape (Nx, Nt), where Nx is the number of x points and
              Nt = len(self.opt.t_vec).
@@ -279,17 +310,14 @@ class MCPBEAdapter(WriteThroughAdapter):
             )
 
         # Decide which experimental quantity to read: cumulative Q0 or Q3.
-        flag = getattr(opt, "delta_flag", None)
-        if flag is None:
-            # fallback for older configs
-            flag = getattr(opt, "data_flag", "Q0")
+        flag = getattr(opt, "data_flag", "Q0")
         flag = str(flag).upper()
-
-        if flag == "Q0":
+        
+        if flag.startswith("Q0"):
             grid_key = "x_dis"
             data_key = "q0_sum_log"
             x_50_key = "x50_Q0"
-        else:  # flag == "Q3"
+        else:  # Q3*
             grid_key = "d3_cent"
             data_key = "q3_sum_agg"
             x_50_key = "x50_Q3"
@@ -467,8 +495,11 @@ class MCPBEAdapter(WriteThroughAdapter):
                 f"MCPBEAdapter.calc_delta_pop: shape mismatch between experimental "
                 f"data {np.shape(data_exp)} and model data {np.shape(self.data_mod)}."
             )
-
-        delta = opt.cost_fun(data_exp, self.data_mod, opt.cost_flag, opt.data_flag)
+        
+        if opt.data_flag in ("Q0_X_50", "Q3_X_50"):
+            delta = opt.cost_fun(self.x_50_exp, self.x_50_mod, opt.cost_flag, opt.data_flag)
+        else:
+            delta = opt.cost_fun(data_exp, self.data_mod, opt.cost_flag, opt.data_flag)
         return float(delta)
         
     def close(self) -> None:

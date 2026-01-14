@@ -21,7 +21,7 @@ def normal_test():
     elapsed_time = end_time - start_time
     print(f"The execution of optimierer takes：{elapsed_time} seconds")
     
-    file_path = os.path.join(result_dir, f'pure_CB_result_{opt.core.n_iter}.npz')
+    file_path = os.path.join(result_dir, f'pure_CB_result_{n_iter}.npz')
     np.savez(file_path, results=result_dict)
     
     return result_dict
@@ -125,7 +125,11 @@ def calc_delta_test(var_delta=False, pop_params=None, plot=False):
             # --- 3.2 x_50(t) comparison ---
             x_50_exp = getattr(p, "x_50_exp", None)
             x_50_mod = getattr(p, "x_50_mod", None)
-
+            data_flag = getattr(opt.core, "data_flag", "Q0")
+            if data_flag.startswith("Q0"):
+                y_label = "mean volume x_50 of Q0"
+            else:  # Q3 / Q3_X_50
+                y_label = "mean volume x_50 of Q3"
             if (x_50_exp is not None) or (x_50_mod is not None):
                 fig_vm, ax_vm = plt.subplots(figsize=(5, 4))
                 if x_50_exp is not None:
@@ -133,14 +137,13 @@ def calc_delta_test(var_delta=False, pop_params=None, plot=False):
                 if x_50_mod is not None:
                     ax_vm.plot(t_vec, x_50_mod, "s--", label="x_50_mod")
                 ax_vm.set_xlabel("time")
-                ax_vm.set_ylabel("mean volume x_50")
+                ax_vm.set_ylabel(y_label)
                 ax_vm.set_title("Mean particle volume vs. time")
                 ax_vm.legend()
                 fig_vm.tight_layout()
 
             plt.show()
-
-        # 返回更有用的信息：x_grid / exp CDF / delta
+            print("Model ratio :", x_50_mod[-1]/x_50_mod[0])
         return x_uni_exp, data_exp, delta
 
 
@@ -150,7 +153,7 @@ if __name__ == '__main__':
     ## data is used, while algo determines the optimization process.
     base_path = Path(os.getcwd()).resolve()
     config_path = os.path.join(base_path, "config", "opt_config_mcpbe.py")
-    data_name = "CB_pur_N10000.h5"
+    data_name = "CB_pur_N2000.h5"
     
     result_dir = os.path.join(base_path, "opt_results")
     data_path = os.path.join(base_path, "data_mcpbe_CB")
@@ -173,10 +176,10 @@ if __name__ == '__main__':
         # 'pl_P4' : P4,
         }
     
-    n_iter_list = [20]
-    # n_iter_list = [10]
-    prev_iter = 0
-    opt.core.result_dir = result_dir
+    # n_iter_list = [10,20,30,40,50,60]
+    # # n_iter_list = [10]
+    # prev_iter = 0
+    # opt.core.result_dir = result_dir
     
     # ray.init(log_to_driver=True)
     # # Run optimization
@@ -184,7 +187,8 @@ if __name__ == '__main__':
     #     if n_iter <= prev_iter:
     #         continue
     #     inc = n_iter - prev_iter
-    #     opt.core.n_iter = int(n_iter)
+    #     # opt.core.n_iter = int(n_iter)
+    #     opt.core.n_iter = int(inc)
     #     opt.core.n_iter_prev = int(prev_iter)
     #     opt.core.resume_unfinished = prev_iter > 0
     #     if getattr(opt.core, 'resume_unfinished', False):
@@ -197,10 +201,16 @@ if __name__ == '__main__':
     #     prev_iter = n_iter
     # ray.shutdown()
     
-    result_to_analyse = os.path.join(base_path, "opt_results_N10000_Q3", "pure_CB_result_4000.npz")
+    result_to_analyse = os.path.join(base_path, "opt_results_N2000_Q0", "pure_CB_result_8000.npz")
     with np.load(result_to_analyse, allow_pickle=True) as data:
         results = data['results'].item()
     pop_params = results['opt_params']
+    pop_params['lmc_gamma'] = 5
+    pop_params['lmc_int_bre'] = 0.5
+    pop_params['lmc_energy_exp'] = 3
+    pop_params['lmc_lambda_E'] = 1e-8
+    pop_params['lmc_NO_FRAG'] = 4
+    pop_params['CORR_BETA'] = 1e1
     start_time = time.time()
     x_uni_test, Q3_test , delta = calc_delta_test(var_delta=False, pop_params=pop_params, plot=True)
     end_time = time.time()

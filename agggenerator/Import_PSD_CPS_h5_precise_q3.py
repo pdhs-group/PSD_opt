@@ -181,7 +181,109 @@ def sample_d_agg_from_Q0_quantiles_derived_from_Q3(
     d_agg = invert_cdf(d3_cent, Q0, u)
     return d_agg.astype(float)
 
+def truncate_Q3_by_min_volume(
+    d3_cent: np.ndarray,
+    q3_sum_agg: np.ndarray,
+    V_cut: float,
+    *,
+    verbose: bool = True,
+) -> Tuple[np.ndarray, np.ndarray, float, float, float]:
+    """
+    Truncate small particles by a minimum particle volume V_cut.
 
+    Interpretation:
+      - particles with volume < V_cut (diameter < d_cut) are removed from the system
+      - remaining cumulative volume-based CDF Q3 is re-normalized to end at 1
+      - returns the kept fraction f_keep = 1 - Q3(d_cut)
+
+    Returns
+    -------
+    d_new : ndarray
+        New diameter grid (starts at d_cut).
+    Q3_new : ndarray
+        Renormalized cumulative Q3 on d_new.
+    d_cut : float
+        Cutoff diameter corresponding to V_cut.
+    Q3_cut : float
+        Original cumulative Q3(d_cut) before truncation.
+    f_keep : float
+        Remaining volume fraction after truncation, i.e. 1 - Q3_cut.
+    """
+    d = np.asarray(d3_cent, dtype=float).ravel()
+    Q3 = np.asarray(q3_sum_agg, dtype=float).ravel()
+
+    if d.size < 3 or d.size != Q3.size:
+        raise ValueError("truncate_Q3_by_min_volume: d3_cent and q3_sum_agg must be same length >= 3.")
+    if not np.all(np.diff(d) > 0.0):
+        raise ValueError("truncate_Q3_by_min_volume: d3_cent must be strictly increasing.")
+    if V_cut is None:
+        # no truncation
+        return d, Q3, float("nan"), float("nan"), 1.0
+    if V_cut <= 0.0:
+        raise ValueError(f"V_cut must be positive, got {V_cut}.")
+
+    # sphere: V = (pi/6) d^3  -> d = (6V/pi)^(1/3)
+    d_cut = float((6.0 * float(V_cut) / np.pi) ** (1.0 / 3.0))
+
+    # sanitize & monotone repair the CDF
+    Q3 = np.clip(Q3, 0.0, 1.0)
+    Q3 = np.maximum.accumulate(Q3)
+
+    # handle edge cases
+    if d_cut <= float(d[0]):
+        # cutoff below measured range: effectively no truncation
+        if verbose:
+            print(f"[truncate] d_cut={d_cut:.6g} <= d_min={d[0]:.6g}: no truncation applied (f_keep=1.0).")
+        return d, Q3, d_cut, 0.0, 1.0
+
+    if d_cut >= float(d[-1]):
+        raise ValueError(
+            f"truncate_Q3_by_min_volume: d_cut={d_cut:.6g} >= d_max={d[-1]:.6g}. "
+            "Cutoff too large; nothing would remain."
+        )
+
+    # get Q3(d_cut) by interpolation on original grid
+    Q3_cut = float(np.interp(d_cut, d, Q3))
+    Q3_cut = float(np.clip(Q3_cut, 0.0, 1.0))
+    f_keep = 1.0 - Q3_cut
+
+    if f_keep <= 0.0:
+        raise ValueError(
+            f"truncate_Q3_by_min_volume: remaining fraction f_keep={f_keep:.6g} <= 0. "
+            "Cutoff removes (almost) everything."
+        )
+
+    # build new grid: start with (d_cut, Q3_cut) then all points >= d_cut
+    idx0 = int(np.searchsorted(d, d_cut, side="left"))
+    d_tail = d[idx0:]
+    Q3_tail = Q3[idx0:]
+
+    # ensure cutoff point included as first
+    d_new = np.concatenate(([d_cut], d_tail))
+    Q3_new_raw = np.concatenate(([Q3_cut], Q3_tail))
+
+    # shift & renormalize:
+    #   for d >= d_cut: Q3_new = (Q3 - Q3_cut) / (1 - Q3_cut)
+    Q3_new = (Q3_new_raw - Q3_cut) / f_keep
+    Q3_new = np.clip(Q3_new, 0.0, 1.0)
+    Q3_new = np.maximum.accumulate(Q3_new)
+    Q3_new[0] = 0.0
+    Q3_new[-1] = 1.0
+
+    if d_new.size < 3:
+        raise ValueError(
+            "truncate_Q3_by_min_volume: too few points remain after truncation. "
+            "Lower V_cut or provide PSD with more points."
+        )
+
+    if verbose:
+        print(
+            f"[truncate] V_cut={V_cut:.6g} m^3 -> d_cut={d_cut:.6g} m | "
+            f"kept volume fraction f_keep={f_keep:.6g} "
+            f"({f_keep*100:.3f}% of original)."
+        )
+
+    return d_new, Q3_new, d_cut, Q3_cut, f_keep
 
 # ----------------------------------------------------------------------
 # PSD transformation
@@ -492,7 +594,6 @@ def _eval_Q_of_x_stepwise(
 
 # ----------------------------------------------------------------------
 # HDF5 writer for a single .dat file
-# ----------------------------------------------------------------------
 def save_psd_to_h5(
     dat_path: str,
     h5_filename: str,
@@ -506,7 +607,9 @@ def save_psd_to_h5(
     # V_mean: float,
     sio2_size: float,
     carbon_concentration: float,
+    V_cut: float = 0.0,
 ) -> None:
+
     """Process a single PSD .dat file and store results into an HDF5 file.
 
     This creates (or overwrites) one group under `group_label` inside the
@@ -544,6 +647,8 @@ def save_psd_to_h5(
         Silica primary particle size (nm).
     carbon_concentration : float
         Carbon concentration during synthesis (user-defined units).
+    V_cut: float
+        minimum particle volume cutoff (m^3); 0.0 disables
 
     Notes
     -----
@@ -561,15 +666,32 @@ def save_psd_to_h5(
 
     # 1) Read original cumulative Q3-PSD
     d3_cent, q3_sum_agg = read_origin_dat(dat_path)
-
+    
+    # --- NEW: truncate tiny particles by minimum volume V_cut (if enabled) ---
+    phi_s_original = float(phi_s)
+    d_cut = float("nan")
+    Q3_cut = float("nan")
+    f_keep = 1.0
+    
+    if V_cut is not None and float(V_cut) > 0.0:
+        d3_cent, q3_sum_agg, d_cut, Q3_cut, f_keep = truncate_Q3_by_min_volume(
+            d3_cent, q3_sum_agg, float(V_cut), verbose=True
+        )
+    
+    # NEW: solids volume fraction reduced because removed particles are considered "not in system"
+    phi_s_eff = phi_s_original * float(f_keep)
+    if phi_s_eff <= 0.0:
+        raise ValueError(f"phi_s_eff <= 0 after truncation: {phi_s_eff}. Check V_cut / PSD.")
+    
     # 2) Transform to log-space Q0-PSD and generate MC diameters
     d_agg, x_dis, q0_sum_log, V_mean = transform_PSD(
         d3_cent, q3_sum_agg, N_bins, N_aggs, init_mode="q0_quantile_from_q3"
-        )
+    )
     N_eff = d_agg.size
     
-    # 3) Compute control volume Vc
-    Vc = float(N_eff) * float(V_mean) / float(phi_s)
+    # 3) Compute control volume Vc (use phi_s_eff!)
+    Vc = float(N_eff) * float(V_mean) / float(phi_s_eff)
+
 
     x50_Q3 = invert_cdf_x50(d3_cent, q3_sum_agg, q=0.5)
     x50_Q0 = invert_cdf_x50(x_dis, q0_sum_log, q=0.5)
@@ -645,7 +767,12 @@ def save_psd_to_h5(
         grp.attrs["N_aggs_eff"] = int(N_eff)
         grp.attrs["cell_size"] = float(cell_size)
         grp.attrs["exp_t"] = float(exp_t)
-        grp.attrs["phi_s"] = float(phi_s)
+        grp.attrs["phi_s"] = float(phi_s_eff)                # CHANGED: effective phi_s after truncation
+        grp.attrs["phi_s_original"] = float(phi_s_original)  # NEW
+        grp.attrs["V_cut"] = float(V_cut)                    # NEW (0.0 means disabled)
+        grp.attrs["d_cut"] = float(d_cut)                    # NEW (nan if disabled)
+        grp.attrs["Q3_cut"] = float(Q3_cut)                  # NEW (nan if disabled)
+        grp.attrs["f_keep_vol"] = float(f_keep)              # NEW remaining volume fraction
         grp.attrs["V_mean"] = float(V_mean)
         grp.attrs["x50_Q0"] = float(x50_Q0)
         grp.attrs["x50_Q3"] = float(x50_Q3)
@@ -667,9 +794,11 @@ def batch_save_folder_to_h5(
     # V_mean: float,
     sio2_size: float,
     carbon_concentration: float,
+    V_cut: float = 0.0,  # NEW
     override: bool = False,
     group_labels: Optional[Sequence[str]] = None,
 ) -> None:
+
     """Process all .dat files in a folder and store them into one HDF5 file.
 
     Parameters
@@ -727,10 +856,11 @@ def batch_save_folder_to_h5(
             cell_size=cell_size,
             exp_t=float(t_exp),
             phi_s=phi_s,
-            # V_mean=V_mean,
             sio2_size=sio2_size,
             carbon_concentration=carbon_concentration,
+            V_cut=V_cut,   # NEW
         )
+
 
 
 # ----------------------------------------------------------------------
@@ -742,7 +872,7 @@ if __name__ == "__main__":
     dat_folder = os.path.join("input", "PSD_agg")
 
     # One HDF5 file for the whole series
-    h5_file = "CB_pur_N2000.h5"
+    h5_file = "CB_pur_N100000_cut.h5"
 
     # Experimental times (in minutes) corresponding to the sorted .dat files
     # e.g. ["CPS 1 min ...", "CPS 3 min ...", "CPS 5 min ...", ...]
@@ -753,12 +883,13 @@ if __name__ == "__main__":
     group_labels = [f"t_{int(t_min)}min" for t_min in exp_t_min_list]
 
     N_bins = 200
-    N_aggs = 2000
+    N_aggs = 100000
     cell_size = 0.01       # micrometers (for bookkeeping only)
     phi_s = 0.00005        # solids volume fraction (e.g. 0.005 mass % CB in water)
     # V_mean = 1e-18         # mean aggregate volume [m^3]; can be computed from PSD
     sio2_size = 0.0        # silica primary particle size in nm
     carbon_concentration = 1.0  # carbon concentration during synthesis
+    V_cut = 1.76e-21       # d_cut = 150 nm
 
     batch_save_folder_to_h5(
         dat_folder=dat_folder,
@@ -771,8 +902,10 @@ if __name__ == "__main__":
         # V_mean=V_mean,
         sio2_size=sio2_size,
         carbon_concentration=carbon_concentration,
+        V_cut=V_cut,
         override=True,
         group_labels=group_labels,
+        
     )
 
     print(f"Saved PSD data series into {h5_file!r}.")

@@ -558,7 +558,7 @@ class MCPBEBase(BaseSolver):
         s = float(np.mean(self._break_rate[:a])) if a > 0 else 0.0
         if s <= 0.0:
             return float("inf")
-        self.test_dt_break = 1.0 / (a * s)
+        # self.test_dt_break = 1.0 / (a * s)
         return 1.0 / (a * s)
 
     # ---------------------------------------------------------------------
@@ -751,6 +751,8 @@ class MCPBEBase(BaseSolver):
                 m.V_flat = None
                 if not init_Vc and Vc is not None:
                     m.Vc = Vc
+                    # m.Vc = 1e-10
+                    # print("Controll volume : ", m.Vc)
                 m._initialize_particles(init_Vc=init_Vc, V_flat=V_flat)
                 m._init_lmc()
                 m._initialize_samplers()

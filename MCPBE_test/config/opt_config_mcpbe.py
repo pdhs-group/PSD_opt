@@ -138,7 +138,7 @@ config = {
         # "c": np.array([1.0]), 
         # "x": np.array([1e-2]),
         # "PGV": np.array(['mono']),
-        "VERBOSE": False,
+        "VERBOSE": True,
         # 'USE_PSD': True, 
         # 'SIZEEVAL': 1, 
         # 'COLEVAL': 1, 
@@ -183,6 +183,13 @@ config = {
         "lmc_int_bre": 0.0,
         "lmc_lambda_E": 1e-6,
         "lmc_energy_exp": 2.0,
+        
+        "SIZEEVAL": 1,
+        "COLEVAL": 1,
+        "EFFEVAL": 1,
+        "aggl_crit" : 100,
+        "alpha_prim": np.array([1]),
+        "G": 1.0,
         },
     
     ## Optimized parameters and their search ranges.
@@ -191,15 +198,15 @@ config = {
     'opt_params': {
         'lmc_gamma': {'bounds': (0.1, 10.0), 'log_scale': False},
         'lmc_int_bre': {'bounds': (0.0, 1.0), 'log_scale': False},
-        'lmc_energy_exp': {'bounds': (0.2, 1.0), 'log_scale': False},
-        'lmc_lambda_E': {'bounds': (-4, -3), 'log_scale': True},
+        'lmc_energy_exp': {'bounds': (1.0, 2.0), 'log_scale': False},
+        'lmc_lambda_E': {'bounds': (-6, -5), 'log_scale': True},
         'lmc_NO_FRAG': {'int_bounds':  (2, 8)},
         
         ## Fixed parameters passed to the internal optimizer Actor.
         # Whether to wait after each calculation is completed.
         'actor_wait': {"fixed": True},
         # Waiting time.
-        'wait_time': {"fixed": 1},
+        'wait_time': {"fixed": 5.0},
         # The maximum number of times a single Actor can be reused. 
         # After this number is exceeded, the Actor will be reset and resources released to prevent memory overflow.
         'max_reuse': {"fixed": 50}

@@ -311,12 +311,21 @@ def process_folders(
 if __name__ == "__main__":
     # ✅ 在这里手动输入一个或多个结果文件夹
     RESULT_FOLDERS = [
-        "opt_results_N2000_Q0",
-        "opt_results_N2000_Q3",
-        "opt_results_N5000_Q0",
-        "opt_results_N5000_Q0",
-        "opt_results_N10000_Q0",
-        "opt_results_N10000_Q0",
+        # "opt_results_N2000_Q0",
+        # "opt_results_N2000_Q3",
+        # "opt_results_N5000_Q0",
+        # "opt_results_N5000_Q3",
+        # "opt_results_N10000_Q0",
+        # "opt_results_N10000_Q3",
+        # "opt_results_N20000_Q0",
+        # "opt_results_N20000_Q3",
+        # "opt_results_N50000_Q0",
+        # "opt_results_N50000_Q3",
+        # "opt_results_N100000_Q0",
+        # "opt_results_N100000_Q3",
+        # "opt_results_N200000_Q0",
+        # "opt_results_N200000_Q3",
+        # "opt_results",
     ]
 
     # 可选：把所有 excel 统一输出到某个目录；不填则每个文件夹各自生成
