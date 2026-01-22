@@ -104,7 +104,7 @@ config = {
         # - 'RMSE': Root Mean Squared Error
         # - 'MAE': Mean Absolute Error
         # - 'KL': Kullback-Leibler divergence (only compatible with q3 and Q3)
-        'data_flag': 'Q3',
+        'data_flag': 'Q0',
         'cost_flag': 'MSE',
         # Path to store Ray Tune optimization infomation.
         'tune_storage_path': os.path.join(_config_opt_path, 'Ray_Tune'), 
@@ -138,7 +138,7 @@ config = {
         # "c": np.array([1.0]), 
         # "x": np.array([1e-2]),
         # "PGV": np.array(['mono']),
-        "VERBOSE": True,
+        "VERBOSE": False,
         # 'USE_PSD': True, 
         # 'SIZEEVAL': 1, 
         # 'COLEVAL': 1, 
@@ -157,6 +157,9 @@ config = {
         "use_lmc_pre_model": False,
         # "lmc_pre_model": "table",     # "table" | "rank" | "copula" | "flow"
         "lmc_A0_runtime": 2.1e-22,  # d_min = 74 nm
+        # "lmc_A0_runtime": 1.76e-21,  # d_min = 150 nm
+        "Qx_filter": True,
+        
         # "lmc_tables_path": "lmc_tables_grid.npz",
         # "lmc_rank_tables_path": "lmc_rank_tables_grid.npz",
         # "lmc_copula_path": "lmc_copula_grid.npz",
@@ -190,6 +193,12 @@ config = {
         "aggl_crit" : 100,
         "alpha_prim": np.array([1]),
         "G": 1.0,
+        
+        "BREAKRVAL": 4,
+        "BREAKFVAL": 5,
+        "pl_v": 2,
+        "pl_P1": 1e10,
+        "pl_P2": 1,
         },
     
     ## Optimized parameters and their search ranges.

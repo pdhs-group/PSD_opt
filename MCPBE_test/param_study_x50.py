@@ -73,7 +73,11 @@ def _run_one_case(args):
     """
     global _G_OPT, _G_X_UNI_EXP, _G_DATA_EXP
 
-    (lmc_gamma, lmc_int_bre, lmc_energy_exp, lmc_lambda_E, lmc_NO_FRAG, CORR_BETA) = args
+    (
+        lmc_gamma, lmc_int_bre, lmc_energy_exp,
+        lmc_lambda_E, lmc_NO_FRAG, CORR_BETA,
+        pl_v, pl_P1, pl_P2
+    ) = args
 
     pop_params = {
         "lmc_gamma": float(lmc_gamma),
@@ -82,6 +86,9 @@ def _run_one_case(args):
         "lmc_lambda_E": float(lmc_lambda_E),
         "lmc_NO_FRAG": int(lmc_NO_FRAG),
         "CORR_BETA": float(CORR_BETA),
+        "pl_v": float(pl_v),
+        "pl_P1": float(pl_P1),
+        "pl_P2": float(pl_P2),
     }
 
     ratio = -1.0  # default: invalid (non-monotone or failed)
@@ -111,6 +118,9 @@ def _run_one_case(args):
         float(lmc_lambda_E),
         int(lmc_NO_FRAG),
         float(CORR_BETA),
+        float(pl_v),
+        float(pl_P1),
+        float(pl_P2),
         float(ratio),
     ]
 
@@ -134,11 +144,15 @@ def run_param_sweep():
     # --------------------------------------------------------
     lmc_gamma_list = np.array([5.0])
     lmc_int_bre_list = np.array([0.5])
-    lmc_energy_exp_list = np.array([2.0, 3.0])
+    lmc_energy_exp_list = np.array([3.0])
     lmc_NO_FRAG_list = np.array([4])
-    lmc_lambda_E_list = np.array([1e-5, 1e-8, 1e-12])
-    CORR_BETA_list = np.array([1e6])
+    # lmc_lambda_E_list = np.array([1e-5, 1e-8, 1e-12])
+    lmc_lambda_E_list = np.array([1])
+    CORR_BETA_list = np.array([1])
     # CORR_BETA_list = np.array([1e-10, 1e-8, 1e-6])*1e3
+    pl_v_list = np.array([0.5, 2.0])
+    pl_P1_list = np.array([1e10, 1e15, 1e20])
+    pl_P2_list = np.array([1.0,2.0,3.0])
 
     # --------------------------------------------------------
     # Prepare combinations
@@ -150,6 +164,9 @@ def run_param_sweep():
         lmc_lambda_E_list,
         lmc_NO_FRAG_list,
         CORR_BETA_list,
+        pl_v_list,
+        pl_P1_list,
+        pl_P2_list,
     ))
 
     total_cases = len(combos)
@@ -189,8 +206,12 @@ def run_param_sweep():
         records=records,
         exp_ratio=np.asarray(exp_ratio, dtype=float),
         columns=np.asarray(
-            ["lmc_gamma", "lmc_int_bre", "lmc_energy_exp", "lmc_lambda_E",
-             "lmc_NO_FRAG", "CORR_BETA", "ratio"],
+            [
+                "lmc_gamma", "lmc_int_bre", "lmc_energy_exp",
+                "lmc_lambda_E", "lmc_NO_FRAG", "CORR_BETA",
+                "pl_v", "pl_P1", "pl_P2",
+                "ratio",
+            ],
             dtype=object,
         ),
         meta=np.asarray(

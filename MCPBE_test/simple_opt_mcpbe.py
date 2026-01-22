@@ -83,6 +83,7 @@ def calc_delta_test(var_delta=False, pop_params=None, plot=False):
         # ------------------------------------------------------------------
         if plot:
             p = opt.core.p
+            data_flag = getattr(opt.core, "data_flag", "Q0")
             t_vec = np.asarray(opt.core.t_vec, dtype=float)
 
             # Model data Q(x, t), shape (Nx, Nt)
@@ -110,14 +111,17 @@ def calc_delta_test(var_delta=False, pop_params=None, plot=False):
             fig_psd, axes = plt.subplots(n_rows, n_cols,
                                          figsize=(4 * n_cols, 3 * n_rows),
                                          squeeze=False)
-
+            if data_flag.startswith("Q0"):
+                y_label = r"CDF $\mathrm{Q}_0$(x)"
+            else:  # Q3 / Q3_X_50
+                y_label = "CDF $\mathrm{Q}_3$(x)"
             for j in range(Nt):
                 ax = axes[j // n_cols][j % n_cols]
                 ax.plot(x_plot, data_exp_plot[:, j], label="exp")
                 ax.plot(x_plot, data_mod[:, j], "--", label="model")
                 ax.set_xscale("log")
                 ax.set_xlabel("diameter x")
-                ax.set_ylabel("CDF Q(x)")
+                ax.set_ylabel(y_label)
                 ax.set_title(f"t = {t_vec[j]:.3g}")
             axes[0][0].legend()
             fig_psd.tight_layout()
@@ -125,20 +129,19 @@ def calc_delta_test(var_delta=False, pop_params=None, plot=False):
             # --- 3.2 x_50(t) comparison ---
             x_50_exp = getattr(p, "x_50_exp", None)
             x_50_mod = getattr(p, "x_50_mod", None)
-            data_flag = getattr(opt.core, "data_flag", "Q0")
             if data_flag.startswith("Q0"):
-                y_label = "mean volume x_50 of Q0"
+                y_label = "median volume $x_{50}$ of $\mathrm{Q}_0$"
             else:  # Q3 / Q3_X_50
-                y_label = "mean volume x_50 of Q3"
+                y_label = "median volume $x_{50}$ of $\mathrm{Q}_3$"
             if (x_50_exp is not None) or (x_50_mod is not None):
                 fig_vm, ax_vm = plt.subplots(figsize=(5, 4))
                 if x_50_exp is not None:
-                    ax_vm.plot(t_vec, x_50_exp, "o-", label="x_50_exp")
+                    ax_vm.plot(t_vec, x_50_exp, "o-", label="$x_{50,exp}$")
                 if x_50_mod is not None:
-                    ax_vm.plot(t_vec, x_50_mod, "s--", label="x_50_mod")
+                    ax_vm.plot(t_vec, x_50_mod, "s--", label="$x_{50,mod}$")
                 ax_vm.set_xlabel("time")
                 ax_vm.set_ylabel(y_label)
-                ax_vm.set_title("Mean particle volume vs. time")
+                ax_vm.set_title("median particle volume vs. time")
                 ax_vm.legend()
                 fig_vm.tight_layout()
 
@@ -153,10 +156,11 @@ if __name__ == '__main__':
     ## data is used, while algo determines the optimization process.
     base_path = Path(os.getcwd()).resolve()
     config_path = os.path.join(base_path, "config", "opt_config_mcpbe.py")
+    data_group = "data_mcpbe_CB_S1"
     data_name = "CB_pur_N2000.h5"
     
     result_dir = os.path.join(base_path, "opt_results")
-    data_path = os.path.join(base_path, "data_mcpbe_CB")
+    data_path = os.path.join(base_path, data_group, "data_mcpbe_CB")
     # tmpdir = os.environ.get('TMP_PATH')
     # data_path = os.path.join(tmpdir, "data_mcpbe_CB")
     # test_group = os.environ.get('TEST_GROUP')
@@ -176,10 +180,10 @@ if __name__ == '__main__':
         # 'pl_P4' : P4,
         }
     
-    # n_iter_list = [10,20,30,40,50,60]
-    # # n_iter_list = [10]
-    # prev_iter = 0
-    # opt.core.result_dir = result_dir
+    n_iter_list = [10,20,30]
+    # n_iter_list = [10]
+    prev_iter = 0
+    opt.core.result_dir = result_dir
     
     # ray.init(log_to_driver=True)
     # # Run optimization
@@ -201,16 +205,19 @@ if __name__ == '__main__':
     #     prev_iter = n_iter
     # ray.shutdown()
     
-    result_to_analyse = os.path.join(base_path, "opt_results_N2000_Q0", "pure_CB_result_8000.npz")
+    result_to_analyse = os.path.join(base_path, data_group, "opt_results_N2000_Q0", "pure_CB_result_14000.npz")
     with np.load(result_to_analyse, allow_pickle=True) as data:
         results = data['results'].item()
     pop_params = results['opt_params']
-    pop_params['lmc_gamma'] = 5
-    pop_params['lmc_int_bre'] = 0.5
-    pop_params['lmc_energy_exp'] = 3
-    pop_params['lmc_lambda_E'] = 1e-8
-    pop_params['lmc_NO_FRAG'] = 4
-    pop_params['CORR_BETA'] = 1e1
+    # pop_params['lmc_gamma'] = 5
+    # pop_params['lmc_int_bre'] = 0.5
+    # pop_params['lmc_energy_exp'] = 3
+    # pop_params['lmc_lambda_E'] = 1e-8
+    # pop_params['lmc_NO_FRAG'] = 4
+    # pop_params['CORR_BETA'] = 1.0
+    # pop_params['pl_v'] = 1.0
+    # pop_params['pl_P1'] = 1e10
+    # pop_params['pl_P2'] = 1.0
     start_time = time.time()
     x_uni_test, Q3_test , delta = calc_delta_test(var_delta=False, pop_params=pop_params, plot=True)
     end_time = time.time()

@@ -15,29 +15,40 @@ class MCPBEPost:
         self, max_i: int = 2, max_j: int = 2, normalize: bool = True
     ) -> Tuple[np.ndarray, np.ndarray]:
         """Return (mu, t_vec) where mu[i,j,t] are mixed moments over components.
-
-        For dim==1, the j-axis is used with j=0 only.
-        If normalize=True, each time slice is divided by Vc(t).
-        Only active particles saved at each time are used (capacity padding excluded).
+    
+        Weighted version:
+            mu = sum_k W_k * V1_k^i * V3_k^j / Vc(t)   (dim>1)
+            mu = sum_k W_k * V_k^i / Vc(t)            (dim==1)
+        If no W_save exists, fall back to W=1 (backward compatible).
         """
         T = min(len(self.V_save), len(self.Vc_save), len(self.t_vec))
         mu = np.zeros((max_i + 1, max_j + 1, T), dtype=float)
-
+    
+        has_W = hasattr(self, "W_save") and self.W_save is not None and len(self.W_save) >= T
+    
         for t in range(T):
             Vc = float(self.Vc_save[t]) if (normalize and self.Vc_save) else 1.0
-            if self.dim == 1:
-                V = np.asarray(self.V_save[t][0, :], dtype=float)
-                for i in range(max_i + 1):
-                    mu[i, 0, t] = np.sum(np.power(V, i)) / Vc
+            V_snap = np.asarray(self.V_save[t], dtype=float)
+    
+            if has_W:
+                W = np.asarray(self.W_save[t], dtype=float)
             else:
-                V1 = np.asarray(self.V_save[t][0, :], dtype=float)
-                V3 = np.asarray(self.V_save[t][1, :], dtype=float)
+                W = np.ones(V_snap.shape[1], dtype=float)
+    
+            if self.dim == 1:
+                V = np.asarray(V_snap[0, :], dtype=float)
+                for i in range(max_i + 1):
+                    mu[i, 0, t] = float(np.sum(W * np.power(V, i))) / Vc
+            else:
+                V1 = np.asarray(V_snap[0, :], dtype=float)
+                V3 = np.asarray(V_snap[1, :], dtype=float)
                 for i in range(max_i + 1):
                     Vi = np.power(V1, i)
                     for j in range(max_j + 1):
-                        mu[i, j, t] = float(np.dot(Vi, np.power(V3, j))) / Vc
-
+                        mu[i, j, t] = float(np.sum(W * Vi * np.power(V3, j))) / Vc
+    
         return mu, self.t_vec[:T]
+
 
     # ------------------------------------------------------------------
     # PSD helpers (single realization)
@@ -46,44 +57,54 @@ class MCPBEPost:
         self,
         V_snap: np.ndarray,
         psd_basis: str = "volume",
+        W_snap: Optional[np.ndarray] = None,
     ) -> Optional[Tuple[np.ndarray, np.ndarray]]:
-        """Build an empirical CDF from a particle snapshot.
-
+        """Build an empirical CDF from a particle snapshot (weighted).
+    
         Parameters
         ----------
         V_snap : ndarray, shape (dim+1, a)
             Snapshot of particle volumes at a given time (last row is total volume).
         psd_basis : {"number", "volume"}
             Weighting basis for the CDF.
-
+        W_snap : ndarray, shape (a,), optional
+            Statistical/number weight for each compute particle (how many real particles it represents).
+            If None, assumes W=1 (backward compatible).
+    
         Returns
         -------
-        x_sorted : ndarray, shape (n_valid,)
-            Sorted diameters.
-        Q_sorted : ndarray, shape (n_valid,)
-            Corresponding cumulative fractions in (0, 1], based on the chosen psd_basis.
+        (x_sorted, Q_sorted) or None
         """
         if V_snap.size == 0 or V_snap.shape[1] == 0:
             return None
-
-        V_tot = V_snap[-1, :]  # total volume per particle
+    
+        V_tot = np.asarray(V_snap[-1, :], dtype=float)  # total volume per particle
+    
+        if W_snap is None:
+            W = np.ones_like(V_tot, dtype=float)
+        else:
+            W = np.asarray(W_snap, dtype=float)
+            if W.shape[0] != V_tot.shape[0]:
+                raise ValueError("W_snap length must match number of particles in V_snap")
+    
+        # CDF weight
         if psd_basis == "number":
-            w = np.ones_like(V_tot, dtype=float)
+            w = W
         elif psd_basis == "volume":
-            w = V_tot.astype(float)
+            w = W * V_tot
         else:
             raise ValueError(f"psd_basis must be 'number' or 'volume', got {psd_basis!r}")
-
+    
         # convert to diameter
-        x = self._vol2diam(V_tot.astype(float))
-
-        # filter out non-positive entries
-        mask = (w > 0.0) & (x > 0.0)
+        x = self._vol2diam(V_tot)
+    
+        mask = (w > 0.0) & (x > 0.0) & np.isfinite(w) & np.isfinite(x)
         if not np.any(mask):
             return None
+    
         x = x[mask]
         w = w[mask]
-
+    
         idx = np.argsort(x)
         x_sorted = x[idx]
         w_sorted = w[idx]
@@ -91,8 +112,10 @@ class MCPBEPost:
         total = float(w_cum[-1])
         if total <= 0.0:
             return None
+    
         Q_sorted = w_cum / total
         return x_sorted, Q_sorted
+
 
     @staticmethod
     def _eval_Q_of_x(
@@ -130,148 +153,101 @@ class MCPBEPost:
         psd_basis: str = "volume",
         time_scheme: str = "right",
     ) -> Tuple[List[Optional[Tuple[np.ndarray, np.ndarray]]], np.ndarray]:
-        """Compute empirical PSD CDF at all saved times for a single realization.
-
-        Parameters
-        ----------
-        psd_basis : {"number", "volume"}
-            Weighting basis for the CDF.
-        time_scheme : {"right", "left", "interp", "nearest"}, default "right"
-            Time alignment scheme used to build the CDF at self.t_vec[t]:
-                - "right": use the snapshot saved in V_save (state after the
-                  event that crossed t_vec[t]); this is the original behavior.
-                - "left": use the corresponding snapshot in V_save_left
-                  (state just before that event).
-                - "interp": compute CDFs for both left and right snapshots and
-                  linearly interpolate them in time between t_left[t] and
-                  t_right[t].
-                - "nearest": choose left or right based on which time stamp
-                  (t_left or t_right) is closer to t_vec[t].
-
-        Returns
-        -------
-        cdf_list : list of length T
-            cdf_list[t] is either (x_sorted, Q_sorted) or None if no valid
-            data at that time, where T is the number of saved times.
-        t_vec : ndarray, shape (T,)
-            Time vector aligned with cdf_list. This is always self.t_vec[:T].
-        """
+        """Compute empirical PSD CDF at all saved times for a single realization (weighted)."""
         time_scheme = str(time_scheme).lower()
         if time_scheme not in ("right", "left", "interp", "nearest"):
             raise ValueError(
                 f"time_scheme must be one of 'right', 'left', 'interp', 'nearest', "
                 f"got {time_scheme!r}."
             )
-
-        # base number of times from right snapshots (original behavior)
+    
         T_base = min(len(self.V_save), len(self.t_vec))
         if T_base == 0:
             return [], np.asarray([], dtype=float)
-
-        # if we need left/right metadata, check availability and align lengths
+    
         use_left_side = time_scheme in ("left", "interp", "nearest")
         if use_left_side:
             if not hasattr(self, "V_save_left") or not hasattr(self, "t_left") or not hasattr(self, "t_right"):
                 raise RuntimeError(
                     "time_scheme uses left/right information but V_save_left / t_left / t_right "
-                    "are not available. Make sure MCPBEBase.solve() has been run with the "
-                    "updated left/right snapshot logic."
+                    "are not available."
                 )
-            T = min(
-                T_base,
-                len(self.V_save_left),
-                len(self.t_left),
-                len(self.t_right),
-            )
+            T = min(T_base, len(self.V_save_left), len(self.t_left), len(self.t_right))
         else:
             T = T_base
-
+    
         if T == 0:
             return [], np.asarray([], dtype=float)
-
+    
         t_vec = np.asarray(self.t_vec[:T], dtype=float)
-        cdf_list: List[Optional[Tuple[np.ndarray, np.ndarray]]] = []
-
-        # helper to compute CDF from an index t and a choice of "left" / "right"
+    
+        has_W_right = hasattr(self, "W_save") and self.W_save is not None and len(self.W_save) >= T
+        has_W_left = hasattr(self, "W_save_left") and self.W_save_left is not None and len(self.W_save_left) >= T
+    
         def _cdf_from_side(idx: int, side: str) -> Optional[Tuple[np.ndarray, np.ndarray]]:
             if side == "right":
                 V_snap = self.V_save[idx]
+                W_snap = self.W_save[idx] if has_W_right else None
             elif side == "left":
                 V_snap = self.V_save_left[idx]
+                W_snap = self.W_save_left[idx] if has_W_left else None
             else:
                 raise ValueError(f"Unknown side {side!r} in _cdf_from_side.")
-            return self._compute_psd_cdf_from_snapshot(V_snap, psd_basis=psd_basis)
-
+            return self._compute_psd_cdf_from_snapshot(V_snap, psd_basis=psd_basis, W_snap=W_snap)
+    
+        cdf_list: List[Optional[Tuple[np.ndarray, np.ndarray]]] = []
+    
         for t in range(T):
             if time_scheme == "right":
-                # original behavior: only use V_save[t]
-                V_snap = self.V_save[t]
-                cdf = self._compute_psd_cdf_from_snapshot(V_snap, psd_basis=psd_basis)
-                cdf_list.append(cdf)
+                cdf_list.append(_cdf_from_side(t, "right"))
                 continue
-
-            # left/right-based schemes
-            tl = float(self.t_left[t])
-            tr = float(self.t_right[t])
-            tt = float(t_vec[t])
-
-            # numerical safety: enforce tl <= tt <= tr when possible
-            # (do not crash if there is small rounding noise)
-            if tr < tl:
-                # very pathological; swap as a last resort
-                tl, tr = tr, tl
-
+    
             if time_scheme == "left":
-                cdf = _cdf_from_side(t, "left")
-                cdf_list.append(cdf)
+                cdf_list.append(_cdf_from_side(t, "left"))
                 continue
-
+    
             if time_scheme == "nearest":
-                # choose side whose time is closer to t_vec[t]
-                dl = abs(tt - tl)
-                dr = abs(tr - tt)
-                side = "left" if dl <= dr else "right"
-                cdf = _cdf_from_side(t, side)
-                cdf_list.append(cdf)
+                tl = float(self.t_left[t])
+                tr = float(self.t_right[t])
+                target = float(t_vec[t])
+                side = "left" if abs(target - tl) <= abs(tr - target) else "right"
+                cdf_list.append(_cdf_from_side(t, side))
                 continue
-
-            # time_scheme == "interp": interpolate CDFs of left/right in time
-            cdf_left = _cdf_from_side(t, "left")
-            cdf_right = _cdf_from_side(t, "right")
-
-            if cdf_left is None and cdf_right is None:
+    
+            # interp
+            # compute left/right CDF and interpolate in time
+            cL = _cdf_from_side(t, "left")
+            cR = _cdf_from_side(t, "right")
+            if cL is None and cR is None:
                 cdf_list.append(None)
                 continue
-            if cdf_left is None:
-                # only right available
-                cdf_list.append(cdf_right)
+            if cL is None:
+                cdf_list.append(cR)
                 continue
-            if cdf_right is None:
-                # only left available
-                cdf_list.append(cdf_left)
+            if cR is None:
+                cdf_list.append(cL)
                 continue
-
-            xL, QL = cdf_left
-            xR, QR = cdf_right
-
-            # build a common x grid as the union of both supports
+    
+            xL, QL = cL
+            xR, QR = cR
+    
             x_union = np.unique(np.concatenate([xL, xR]))
-            # evaluate both CDFs on the common grid
             QL_u = self._eval_Q_of_x(xL, QL, x_union)
             QR_u = self._eval_Q_of_x(xR, QR, x_union)
-
-            # interpolation weight alpha in [0, 1]
-            if tr <= tl:
-                alpha = 1.0  # degenerate interval; fall back to right
+    
+            tl = float(self.t_left[t])
+            tr = float(self.t_right[t])
+            target = float(t_vec[t])
+            if tr <= tl + 1e-15:
+                alpha = 1.0
             else:
-                alpha = (tt - tl) / (tr - tl)
-            alpha = float(np.clip(alpha, 0.0, 1.0))
-
+                alpha = float((target - tl) / (tr - tl))
+                alpha = float(np.clip(alpha, 0.0, 1.0))
+    
             Q_interp = (1.0 - alpha) * QL_u + alpha * QR_u
             cdf_list.append((x_union, Q_interp))
-
+    
         return cdf_list, t_vec
-
 
     def _invert_cdf_monotone(self, x_axis: np.ndarray, Q_vals: np.ndarray, q: float = 0.5) -> float:
         """Invert a (nearly) monotone CDF to find x at probability q.
@@ -312,68 +288,6 @@ class MCPBEPost:
         if q1 <= q0 + 1e-15:
             return float(x1)
         return float(x0 + (q - q0) * (x1 - x0) / (q1 - q0))
-    
-    def _filter_and_renormalize_cdf_by_xmin(
-        self,
-        x_sorted: np.ndarray,
-        Q_sorted: np.ndarray,
-        x_min: float,
-    ) -> Optional[Tuple[np.ndarray, np.ndarray]]:
-        """
-        Filter an empirical CDF (x_sorted, Q_sorted) by removing x < x_min,
-        then re-normalize so that:
-          - Q(x_min) = 0
-          - Q(max)   = 1
-    
-        Returns None if nothing remains.
-        """
-        x_sorted = np.asarray(x_sorted, dtype=float).ravel()
-        Q_sorted = np.asarray(Q_sorted, dtype=float).ravel()
-        x_min = float(x_min)
-    
-        if x_sorted.size == 0 or Q_sorted.size == 0 or x_sorted.size != Q_sorted.size:
-            return None
-    
-        # enforce monotone & bounds (numerical safety)
-        Q_sorted = np.clip(Q_sorted, 0.0, 1.0)
-        Q_sorted = np.maximum.accumulate(Q_sorted)
-    
-        # if x_min is below support -> nothing to do
-        if x_min <= float(x_sorted[0]):
-            return x_sorted, Q_sorted
-    
-        # if x_min is above support -> everything removed
-        if x_min >= float(x_sorted[-1]):
-            return None
-    
-        # Q at cutoff (stepwise: right-continuous convention consistent with _eval_Q_of_x)
-        # For x<x_sorted[0], Q=0. Here x_min within support.
-        j = int(np.searchsorted(x_sorted, x_min, side="right") - 1)
-        j = max(j, 0)
-        Q_cut = float(Q_sorted[j])
-    
-        denom = 1.0 - Q_cut
-        if denom <= 0.0:
-            return None
-    
-        # keep points with x >= x_min
-        k0 = int(np.searchsorted(x_sorted, x_min, side="left"))
-        x_tail = x_sorted[k0:]
-        Q_tail = Q_sorted[k0:]
-    
-        # ensure x_min included as first point (use Q_cut at x_min)
-        x_new = np.concatenate(([x_min], x_tail))
-        Q_new_raw = np.concatenate(([Q_cut], Q_tail))
-    
-        # shift & renormalize: Q' = (Q - Q_cut)/(1 - Q_cut)
-        Q_new = (Q_new_raw - Q_cut) / denom
-        Q_new = np.clip(Q_new, 0.0, 1.0)
-        Q_new = np.maximum.accumulate(Q_new)
-        Q_new[0] = 0.0
-        Q_new[-1] = 1.0
-    
-        return x_new, Q_new
-
     # ------------------------------------------------------------------
     # PSD aggregation over repeats
     # ------------------------------------------------------------------
@@ -525,26 +439,12 @@ class MCPBEPost:
             M = x_grid.shape[0]
             Q_sum = np.zeros((T, M), dtype=float)
             Q_count = np.zeros(T, dtype=int)
-            use_qx_filter = bool(getattr(self, "Qx_filter", False)) and (not auto_x_grid)
-            
-            x_min_user = None
-            if use_qx_filter:
-                # psd_x_grid case: x_grid == user grid
-                x_min_user = float(np.min(x_grid))
-            
+
             for cdf_list in cdf_repeats:
                 for it, cdf in enumerate(cdf_list):
                     if cdf is None:
                         continue
                     x_sorted, Q_sorted = cdf
-            
-                    # NEW: filter cdf below min(psd_x_grid) and renormalize
-                    if use_qx_filter and x_min_user is not None:
-                        cdf2 = self._filter_and_renormalize_cdf_by_xmin(x_sorted, Q_sorted, x_min_user)
-                        if cdf2 is None:
-                            continue
-                        x_sorted, Q_sorted = cdf2
-            
                     Q_r = self._eval_Q_of_x(x_sorted, Q_sorted, x_grid)
                     Q_sum[it] += Q_r
                     Q_count[it] += 1

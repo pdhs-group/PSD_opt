@@ -240,8 +240,8 @@ class OptBaseRay():
         base = self.base
         # evaluated_params = getattr(self.core, 'evaluated_params', None)
         # evaluated_rewards = getattr(self.core, 'evaluated_rewards', None)
-        evaluated_params = None
-        evaluated_rewards = None
+        evaluated_params_for_algo = None
+        evaluated_rewards_for_algo = None
         
         # Prepare experimental data (either for 1D or 2D)
         if isinstance(exp_data_paths, list):
@@ -261,10 +261,13 @@ class OptBaseRay():
         # Reuse the previous parameters as warm-up for new optimization
         resume_unfinished = getattr(base.core, 'resume_unfinished', False)
         result_dir = getattr(base.core, 'result_dir', base.core.tune_storage_path)
+        evaluated_params_full = []
+        evaluated_rewards_full = []
+        
         if resume_unfinished:
             n_prev = getattr(base.core, 'n_iter_prev', 0)
             warm_params_path = os.path.join(result_dir, f"{n_prev}.sqlite")
-            evaluated_params, evaluated_rewards = self._load_warm_params(warm_params_path, data_name)
+            evaluated_params_full, evaluated_rewards_full = self._load_warm_params(warm_params_path, data_name)
             # evaluated_rewards = None
                 
         # Set up the Ray Tune search space    
@@ -302,10 +305,15 @@ class OptBaseRay():
                     base.RT_space[name] = tune.uniform(lo, hi)
         base.RT_space["__exp_paths"] = exp_data_paths
         base.RT_space["__known_params"] = known_params
-        if resume_unfinished and evaluated_params:
-            evaluated_params = self._filter_points_to_evaluate(evaluated_params, base.RT_space)
-        # Create the search algorithm
-        algo = self.create_algo(evaluated_params=evaluated_params, evaluated_rewards=evaluated_rewards)
+                
+        if resume_unfinished and evaluated_params_full:
+            evaluated_params_for_algo = self._filter_points_to_evaluate(evaluated_params_full, base.RT_space)
+            evaluated_rewards_for_algo = evaluated_rewards_full
+        
+        algo = self.create_algo(
+            evaluated_params=evaluated_params_for_algo,
+            evaluated_rewards=evaluated_rewards_for_algo,
+        )
         # Clean up the data name for output storage 
         if data_name.startswith("Sim_"):
             data_name = data_name[len("Sim_"):]
@@ -389,29 +397,37 @@ class OptBaseRay():
         # df_path = os.path.join(r"C:\Users\px2030\Code\PSD_opt\optframework\utils\general_scripts\Parameter_study", data_name+".csv")
         # df.to_csv(df_path, index=False)
         
-        all_params = []
-        all_score = []
+        # Collect *current* trials
+        curr_params = []
+        curr_scores = []
         for trial in results:
             config = trial.config
             score = trial.metrics.get("loss", None)
             if score is not None:
-                all_params.append(config)
-                all_score.append(score)
-        n_save = base.core.n_iter + getattr(base.core, 'n_iter_prev', 0)
+                curr_params.append(config)
+                curr_scores.append(float(score))
+        
+        # Merge: history (full) + current
+        # NOTE: this guarantees every sqlite contains the full history up to that iteration.
+        merged_params = list(evaluated_params_full) + list(curr_params)
+        merged_scores = list(evaluated_rewards_full) + list(curr_scores)
+        
+        n_save = int(base.core.n_iter) + int(getattr(base.core, "n_iter_prev", 0))
         warm_params_path = os.path.join(result_dir, f"{n_save}.sqlite")
-        self._save_warm_params(warm_params_path, data_name, all_params, all_score)
+        self._save_warm_params(warm_params_path, data_name, merged_params, merged_scores)
         # Get the best result from the optimization
         opt_result = results.get_best_result(metric="loss", mode="min")
         opt_exp_data_paths = data_name
         new_params = opt_result.config
         new_score = opt_result.metrics["loss"]
-        # Historical best
-        if evaluated_rewards:
-            hist_best_idx = int(np.argmin(evaluated_rewards))
-            hist_score = evaluated_rewards[hist_best_idx]
-            hist_params = evaluated_params[hist_best_idx]
+        # Historical best (use FULL history configs)
+        if evaluated_rewards_full:
+            hist_best_idx = int(np.argmin(np.asarray(evaluated_rewards_full, dtype=float)))
+            hist_score = float(evaluated_rewards_full[hist_best_idx])
+            hist_params = evaluated_params_full[hist_best_idx]
         else:
             hist_score = None
+            hist_params = None
         
         # Final decision
         if hist_score is not None and hist_score < new_score:

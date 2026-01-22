@@ -287,7 +287,8 @@ def process_folders(
     out_base = Path(output_dir).resolve() if output_dir else None
 
     for folder in folder_list:
-        folder_path = Path(folder).resolve()
+        base_dir = Path(__file__).resolve().parent / data_group
+        folder_path = (base_dir / folder).resolve()
         records = load_folder_results(folder_path, prefix=prefix)
 
         # 终端打印
@@ -309,18 +310,27 @@ def process_folders(
 # main：手动填写文件夹（支持多个）
 # -----------------------------
 if __name__ == "__main__":
+    data_group = "data_mcpbe_CB_S4"
     # ✅ 在这里手动输入一个或多个结果文件夹
     RESULT_FOLDERS = [
-        # "opt_results_N2000_Q0",
+        "opt_results_N2000_Q0",
+        # "opt_results_N2000_Q0_cut",
         # "opt_results_N2000_Q3",
         # "opt_results_N5000_Q0",
         # "opt_results_N5000_Q3",
-        # "opt_results_N10000_Q0",
+        # "opt_results_N10000_Q3",
+        "opt_results_N10000_Q3_cut",
+        "opt_results_N10000_Q3_func",
+        # "opt_results_N10000_Q3_min_max",
+        # "opt_results_N10000_Q0_mix",
+        # "opt_results_N10000_Q3_x50",
         # "opt_results_N10000_Q3",
         # "opt_results_N20000_Q0",
         # "opt_results_N20000_Q3",
+        "opt_results_N20000_Q3_x50",
         # "opt_results_N50000_Q0",
         # "opt_results_N50000_Q3",
+        "opt_results_N50000_Q3_cut",
         # "opt_results_N100000_Q0",
         # "opt_results_N100000_Q3",
         # "opt_results_N200000_Q0",

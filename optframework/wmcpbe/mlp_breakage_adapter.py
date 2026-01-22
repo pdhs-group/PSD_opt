@@ -261,19 +261,6 @@ class MLPBreakageRateAdapter:
         if self.rate_max is not None:
             rates = np.minimum(rates, self.rate_max)
 
-        # --------------------------------------------------
-        # debug print if very small volumes appear
-        # --------------------------------------------------
-        # mask_small = V < 1.0
-        # if np.any(mask_small):
-        #     idx = np.where(mask_small)[0]
-        #     print(
-        #         "[MLPBreakageRateAdapter] Detected V < 1.0 in compute_rates_full:\n"
-        #         f"  indices : {idx.tolist()}\n"
-        #         f"  V       : {V[mask_small]}\n"
-        #         f"  rates   : {rates[mask_small]}"
-        #     )
-        
         return rates
 
     # ------------------------------------------------------------------

@@ -327,27 +327,22 @@ class MCPBEBase(BaseSolver):
     # ---------------------------------------------------------------------
     # Initialization
     # ---------------------------------------------------------------------
-    def _initialize_particles(self, init_Vc: bool = True, V_flat: Optional[np.ndarray] = None):
-        """Build initial V_flat (capacity style), X, and save initial snapshots."""
-        dim = self.dim
-        self._validate_input_arrays()
-
-        if init_Vc:
-            self.c = np.asarray(self.c, dtype=float)
-            self.x = np.asarray(self.x, dtype=float)
-            self.PGV = np.asarray(self.PGV)
-            self.SIG = np.asarray(self.SIG, dtype=float)
-            self.v = (self.x ** 3) * math.pi / 6.0
-            self.n = np.round(self.c / self.v)
-            self.n0 = float(np.sum(self.n))
-            if self.n0 <= 0:
-                raise ValueError("Total primary particle count `n0` must be > 0 (check c and x).")
-            self.Vc = self.a0 / self.n0
-            self.a = np.round(self.n * self.Vc).astype(int)
-            total_cols = int(np.sum(self.a))
-            if total_cols <= 0:
-                raise ValueError("No particles to initialize (sum(a) == 0). Check c/x/PGV/SIG.")
-
+    def _initialize_particles(self, V_flat: np.ndarray = None):
+        """
+        Initialize particle arrays (V_flat, X) and NEW: weight array W.
+        This version keeps the original DSMC logic, but adds weight tracking.
+        """
+        dim = int(self.dim)
+        if dim <= 0:
+            raise ValueError("dim must be > 0")
+    
+        # -------------------------
+        # Original init of V_init
+        # -------------------------
+        total_cols = int(np.sum(self.a)) if hasattr(self, "a") else 0
+        if total_cols <= 0 and V_flat is None:
+            raise ValueError("No particles: sum(a) <= 0 and V_flat is None")
+    
         if V_flat is None:
             V_init = np.zeros((dim + 1, total_cols), dtype=float)
             cnt = 0
@@ -363,54 +358,74 @@ class MCPBEBase(BaseSolver):
                     sig = float(self.SIG[i]) * mu
                     V_init[i, cnt : cnt + ai] = self._rng.normal(mu, sig, ai)
                 elif p == "weibull":
-                    V_init[i, cnt : cnt + ai] = self._rng.weibull(2.0, ai) * (
-                        self.SIG[i] * self.v[i]
-                    )
+                    V_init[i, cnt : cnt + ai] = self._rng.weibull(2.0, ai) * (self.SIG[i] * self.v[i])
                 else:
-                    raise ValueError(f"Unsupported PGV[{i}]='{p}'. Use 'mono' | 'norm' | 'weibull'.")
+                    raise ValueError(
+                        f"Unsupported PGV[{i}]='{p}'. Use 'mono' | 'norm' | 'weibull'."
+                    )
                 cnt += ai
+    
             # total volume row & filter invalid columns
             V_init[-1, :] = np.sum(V_init[:dim, :], axis=0)
             keep = V_init[-1, :] > 0.0
             V_init = V_init[:, keep]
         else:
-            V_init = V_flat
-
+            V_init = np.asarray(V_flat, dtype=float)
+    
         a0_eff = V_init.shape[1]
         if a0_eff <= 0:
             raise ValueError("No particles initialized after filtering non-positive volumes.")
-
-        # Capacity buffers (>= active + ~10%)
+    
+        # -------------------------
+        # Capacity buffers
+        # -------------------------
         cap = max(a0_eff + max(8, a0_eff // 10), 16)
         self._cap = int(cap)
+    
         self.V_flat = np.zeros((dim + 1, self._cap), dtype=float)
         self.V_flat[:, :a0_eff] = V_init
         self.a_tot = a0_eff
-
+    
         self.X = np.zeros(self._cap, dtype=float)
         self.X[:a0_eff] = self._vol2diam(self.V_flat[-1, :a0_eff])
-
+    
+        # -------------------------
+        # NEW: weight array W
+        # -------------------------
+        self.W = np.zeros(self._cap, dtype=float)
+        self.W[:a0_eff] = 1.0  # DSMC baseline: each compute particle represents 1 real particle
+    
+        # -------------------------
         # Time & saved snapshots
+        # -------------------------
         self.t = [0.0]
         if self.t_vec is None:
             steps = max(1, int(self.t_total // max(1, self.t_write)))
             self.t_vec = np.linspace(0.0, float(self.t_total), steps + 1)
-
+    
         # Expected fragment number for breakage
         self._compute_frag_num()
-
+    
         # Save initial state (only active slice)
         self.V0 = self.V_flat[:, :self.a_tot].copy()
         self.X0 = self.X[:self.a_tot].copy()
+        self.W0 = self.W[:self.a_tot].copy()
+    
         self.V0_save = [self.V0.copy()]
+        self.W0_save = [self.W0.copy()]
+    
         self.V_save = [self.V_flat[:, :self.a_tot].copy()]
+        self.W_save = [self.W[:self.a_tot].copy()]
+    
         self.Vc_save = [float(self.Vc)]
         self.step = 1
-        # initialize left/right snapshot containers for post-processing
-        # right snapshots remain in self.V_save / self.Vc_save as before
+    
+        # left/right snapshot containers for post-processing
         self.V_save_left = [self.V_flat[:, :self.a_tot].copy()]
+        self.W_save_left = [self.W[:self.a_tot].copy()]
         self.t_left = [0.0]
         self.t_right = [0.0]
+
 
     def _initialize_samplers(self):
         """Build (or resize) samplers for agglomeration/breakage based on process_type."""
@@ -601,6 +616,7 @@ class MCPBEBase(BaseSolver):
             # cache "left" state: state after previous event
             t_prev = self.t[-1]
             V_prev_active = self.V_flat[:, :self.a_tot].copy()
+            W_prev_active = self.W[:self.a_tot].copy()
 
             if pt == "agglomeration":
                 self._do_one_agg()  # from AgglomerationMixin
@@ -628,19 +644,24 @@ class MCPBEBase(BaseSolver):
             
             # current "right" state after this event
             V_right_active = self.V_flat[:, :self.a_tot]
+            W_right_active = self.W[:self.a_tot]
 
             # Save snapshots at requested times (active slice only)
             while next_save_idx < len(self.t_vec) and elapsed_time >= self.t_vec[next_save_idx]:
                 # right snapshots: same behavior as original code
                 self.V_save.append(V_right_active.copy())
+                self.W_save.append(W_right_active.copy())
+            
                 self.Vc_save.append(float(self.Vc))
                 self.step += 1
-
+            
                 # left/right metadata for this time point
                 self.V_save_left.append(V_prev_active.copy())
+                self.W_save_left.append(W_prev_active.copy())
+            
                 self.t_left.append(t_prev)
                 self.t_right.append(elapsed_time)
-
+            
                 next_save_idx += 1
 
             # agglomeration-dominated safety (duplicate CV)
@@ -655,7 +676,6 @@ class MCPBEBase(BaseSolver):
         self.MACHINE_TIME = time.time() - t0
         if self.VERBOSE:
             print(f"[MC-PBE] The calculation took {getattr(self,'MACHINE_TIME',0.0):.4g}s after {count} events")
-            print("The samlles particle is : ", np.min(self.V_save[-1][0,:]))
         return self
     
     def solve_repeats(

@@ -8,6 +8,7 @@ import os
 import numpy as np
 import math
 import copy
+import time
 import matplotlib.pyplot as plt
 from matplotlib.ticker import ScalarFormatter
 from optframework.dpbe import DPBESolver, ExtruderPBESolver
@@ -16,7 +17,7 @@ from optframework.pbm import PBMSolver
 import optframework.utils.plotter.plotter as pt
 from optframework.utils.plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
 
-MIN = 1e-20
+MIN = 1e-40
 
 class PBEValidation():
     def __init__(self, dim, grid, NS, S, kernel, process,
@@ -84,7 +85,11 @@ class PBEValidation():
         self.p.NS = NS
         self.p.S = S
         self.p.USE_PSD = self.use_psd
-        self.p.R01, self.p.R03 = self.x/2, self.x/2
+        new_x = getattr(self, 'new_x', None)
+        if new_x is None:
+            self.p.R01, self.p.R03 = self.x/2, self.x/2
+        else:
+            self.p.R01, self.p.R03 = new_x/2, new_x/2
         self.p.DIST1, self.p.DIST3 = self.dist_path, self.dist_path
         self.p.alpha_prim = np.ones(dim**2)
         self.p.G = self.G
@@ -131,7 +136,7 @@ class PBEValidation():
         self.p_mom.n_order = mom_n_order                          # Number of the simple nodes [-]
         self.p_mom.n_add = mom_n_add                          # Number of additional nodes [-] 
         self.p_mom.GQMOM = False
-        self.p_mom.GQMOM_method = "lognormal"
+        self.p_mom.GQMOM_method = "gaussian"
         self.p_mom.USE_PSD = self.use_psd
         self.p_mom.process_type = process
         self.p_mom.G = self.G
@@ -251,9 +256,9 @@ class PBEValidation():
                     self.mu_as[2,0,:] = self.c*(v10+self.c*self.beta0*n0_tot*t/n0_tot) 
                     self.mu_as[0,2,:] = self.c*(v30+self.c*self.beta0*n0_tot*t/n0_tot) 
                 elif self.p.process_type == "breakage":
-                    for k in range(2):
-                        for l in range(2):
-                            self.mu_as[k,l,:] = (self.p.V1[-1])**k*(self.p.V3[-1])**l*np.exp((2/((k+1)*(l+1))-1)*t)
+                    for k in range(3):
+                        for l in range(3):
+                            self.mu_as[k,l,:] = self.mu_pbe[k,l,0]*np.exp(self.P1*(2/((k+1)*(l+1))-1)*t)
                 else:
                     print("Analytical solution for breakage case in 1-d not yet coded!")
                     
@@ -317,15 +322,24 @@ class PBEValidation():
         
         # if calc_pbe:
         self.set_kernel_params(self.p)
+        time_start = time.time()
         self.calculate_pbe()
+        time_end = time.time()
+        print("dPBE calculate : ", time_end-time_start)
         if calc_mc:
             self.set_kernel_params(self.p_mc)
+            time_start = time.time()
             self.calculate_mc_pbe()
+            time_end = time.time()
+            print("MC calculate : ", time_end-time_start)
         if calc_pbm:
             self.set_kernel_params(self.p_mom)
+            time_start = time.time()
             self.calculate_pbm()
-        if not self.use_psd:
-            self.calculate_as_pbe()
+            time_end = time.time()
+            print("QMOM calculate : ", time_end-time_start)
+        # if not self.use_psd:
+        self.calculate_as_pbe()
               
     def init_plot(self, default = False, size = 'half', extra = False, mrksize = 5):
         
@@ -346,22 +360,22 @@ class PBEValidation():
                          mrksze=mrksize,use_locale=True, fontsize=9, labelfontsize=9, tickfontsize=8)
     
     def plot_all_moments(self, ALPHA=0.7, REL=True):
-        self.ax1, self.fig1 = self.plot_moment_t(i=0, j=0, label='(a)', rel=REL, alpha = ALPHA)
-        self.ax2, self.fig2 = self.plot_moment_t(i=1, j=0, label='(b)', rel=REL, alpha = ALPHA)
-        self.ax4, self.fig4 = self.plot_moment_t(i=2, j=0, label='(d)',labelpos='se', rel=REL, alpha = ALPHA)
+        self.ax1, self.fig1 = self.plot_moment_t(i=0, j=0, label=None, rel=REL, alpha = ALPHA)
+        self.ax2, self.fig2 = self.plot_moment_t(i=1, j=0, label=None, rel=REL, alpha = ALPHA)
+        self.ax4, self.fig4 = self.plot_moment_t(i=2, j=0, label=None,labelpos='se', rel=REL, alpha = ALPHA)
         if self.p.dim == 2:
             self.ax3, self.fig3 = self.plot_moment_t(self.mu_as[:,:,1:], self.mu_pbe[:,:,1:], self.mu_mc[:,:,1:], std_mu_mc = self.std_mu_mc[:,:,1:], 
-                                      i=1, j=1, t_mod=self.p.t_vec[1:], label='(c)',labelpos='se', rel=REL, alpha = ALPHA)
+                                      i=1, j=1, t_mod=self.p.t_vec[1:], label=None,labelpos='se', rel=REL, alpha = ALPHA)
             
     def add_new_moments(self, NS=None, S=None, ALPHA=0.7, REL=True):
-        if self.p.process_type == "breakage":
-            print(
-                "Breakage process does not support modifying NS or S in validation. "
-                "The initial conditions of the breakage process are directly tied to NS and S. "
-                "Modifying them is equivalent to changing the initial conditions.\n"
-                "add_new_moments() function will be skipped."
-            )
-            return
+        # if self.p.process_type == "breakage":
+        #     print(
+        #         "Breakage process does not support modifying NS or S in validation. "
+        #         "The initial conditions of the breakage process are directly tied to NS and S. "
+        #         "Modifying them is equivalent to changing the initial conditions.\n"
+        #         "add_new_moments() function will be skipped."
+        #     )
+        #     return
         NS = self.p.NS if NS is None else NS
         S = self.p.S if S is None else S
         self.init_pbe(NS, S, self.p.dim, self.p.t_vec, self.p.disc, self.p.process_type)
@@ -394,10 +408,18 @@ class PBEValidation():
         if mu_as is not None:
             if rel: mu_as[i,j,:] = mu_as[i,j,:]/(mu_as[i,j,0] + MIN)
             ax, fig = pt.plot_data(tp,mu_as[i,j,:], fig=fig, ax=ax,
-                                   xlbl='Agglomeration time $t_\mathrm{A}$ / $s$',
+                                   xlbl='time  $t$ / $s$',
                                    ylbl=ylbl, alpha=alpha,
                                    lbl='Analytical Solution',clr='k',mrk='o')
 
+        if mu_pbe is not None:
+            if rel: mu_pbe[i,j,:] = mu_pbe[i,j,:]/mu_pbe[i,j,0]
+            ax, fig = pt.plot_data(tp,mu_pbe[i,j,:], fig=fig, ax=ax,
+                                   xlbl='time  $t$ / $s$',
+                                   # ylbl=ylbl, lbl='dPBE, $N_{\mathrm{S}}='+str(self.p.NS)+'$',
+                                   ylbl=ylbl, lbl='dPBE',
+                                   clr=c_KIT_green,mrk='^', alpha=alpha, mrkedgecolor='k')
+        
         if mu_mc is not None:
             if rel: 
                 if std_mu_mc is not None:
@@ -406,22 +428,17 @@ class PBEValidation():
             
             if std_mu_mc is not None:
                 ax, fig = pt.plot_data(tp,mu_mc[i,j,:], err=std_mu_mc[i,j,:], fig=fig, ax=ax,
-                                       xlbl='Agglomeration time $t_\mathrm{A}$ / $s$',
-                                       ylbl=ylbl, lbl='MC, $N_{\mathrm{MC}}='+str(self.N_MC)+'$',
+                                       xlbl='time  $t$ / $s$',
+                                       # ylbl=ylbl, lbl='MC, $N_{\mathrm{MC}}='+str(self.N_MC)+'$',
+                                       ylbl=ylbl, lbl='MC',
                                        clr=c_KIT_red,mrk='s', alpha=alpha, mrkedgecolor='k')
             else:
                 ax, fig = pt.plot_data(tp,mu_mc[i,j,:], fig=fig, ax=ax,
-                                       xlbl='Agglomeration time $t_\mathrm{A}$ / $s$',
-                                       ylbl=ylbl, lbl='MC, $N_{\mathrm{MC}}='+str(self.N_MC)+'$',
+                                       xlbl='time  $t$ / $s$',
+                                       # ylbl=ylbl, lbl='MC, $N_{\mathrm{MC}}='+str(self.N_MC)+'$',
+                                       ylbl=ylbl, lbl='MC',
                                        clr=c_KIT_red,mrk='s', alpha=alpha, mrkedgecolor='k')
             
-        if mu_pbe is not None:
-            if rel: mu_pbe[i,j,:] = mu_pbe[i,j,:]/mu_pbe[i,j,0]
-            ax, fig = pt.plot_data(tp,mu_pbe[i,j,:], fig=fig, ax=ax,
-                                   xlbl='Agglomeration time $t_\mathrm{A}$ / $s$',
-                                   ylbl=ylbl, lbl='dPBE, $N_{\mathrm{S}}='+str(self.p.NS)+'$',
-                                   clr=c_KIT_green,mrk='^', alpha=alpha, mrkedgecolor='k')
-        
         ## add moments from QMOM
         if i == 1 and j == 1:
             mu_pbm = self.mu_pbm[:,:,1:]
@@ -430,8 +447,9 @@ class PBEValidation():
         if rel:
             mu_pbm[i,j,:] = mu_pbm[i,j,:]/(mu_pbm[i,j,0] + MIN)
         ax, fig = pt.plot_data(tp,mu_pbm[i,j,:], fig=fig, ax=ax,
-                               xlbl='Agglomeration time $t_\mathrm{A}$ / $s$',
-                               ylbl=ylbl, lbl='PBM, $M_{\mathrm{order}}='+str(self.mom_order)+'$',
+                               xlbl='time  $t$ / $s$',
+                               # ylbl=ylbl, lbl='QMOM, $M_{\mathrm{order}}='+str(self.mom_order)+'$',
+                               ylbl=ylbl, lbl='QMOM',
                                clr=c_KIT_blue,mrk='D', alpha=alpha, mrkedgecolor='k')
         # if std_mu_mc is not None:
         #     ax.errorbar(tp,mu_mc[i,j,:],yerr=std_mu_mc[i,j,:],fmt='none',color=c_KIT_red,
@@ -477,7 +495,8 @@ class PBEValidation():
         tp = self.p.t_vec if t_mod is None else t_mod
             
         if lbl is None:
-            lbl = 'dPBE, $N_{\mathrm{S}}='+str(self.p.NS)+'$'
+            # lbl = 'dPBE, $N_{\mathrm{S}}='+str(self.p.NS)+'$'
+            lbl = 'dPBE_mod'
         
         if rel: mu[i,j,:] = mu[i,j,:]/mu[i,j,0]
         ax, fig = pt.plot_data(tp,mu[i,j,:], fig=fig, ax=ax, alpha=alpha,

@@ -1390,11 +1390,9 @@ class LMCLiveAdapter:
             if self.small_particle_policy == "fallback":
                 raise LMCLiveFallback()
             else:
-                print("A non-breakable particle is marked.")
                 raise LMCLiveDisable()
 
-        NO_FRAG_eff = self.NO_FRAG
-        # NO_FRAG_eff = min(self.NO_FRAG, NO_FRAG_raw)
+        NO_FRAG_eff = min(self.NO_FRAG, NO_FRAG_raw)
 
         # Temporarily override simulator NO_FRAG
         old_nf = self._sim.NO_FRAG

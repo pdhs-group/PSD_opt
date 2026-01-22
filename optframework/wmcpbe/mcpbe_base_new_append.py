@@ -558,7 +558,7 @@ class MCPBEBase(BaseSolver):
         s = float(np.mean(self._break_rate[:a])) if a > 0 else 0.0
         if s <= 0.0:
             return float("inf")
-        # self.test_dt_break = 1.0 / (a * s)
+        self.test_dt_break = 1.0 / (a * s)
         return 1.0 / (a * s)
 
     # ---------------------------------------------------------------------
@@ -655,9 +655,7 @@ class MCPBEBase(BaseSolver):
         self.MACHINE_TIME = time.time() - t0
         if self.VERBOSE:
             print(f"[MC-PBE] The calculation took {getattr(self,'MACHINE_TIME',0.0):.4g}s after {count} events")
-            print("The samlles particle is : ", np.min(self.V_save[-1][0,:]))
         return self
-    
     def solve_repeats(
         self,
         N: int = 5,
@@ -677,7 +675,7 @@ class MCPBEBase(BaseSolver):
         Run N Monte Carlo realizations (repeats).
 
         workers = 1  -> serial (original behavior + optional PSD computation)
-        workers > 1  -> parallel with ProcessPoolExecutor
+        workers > 1  -> parallel with ProcessPoolExecutor (PSD currently unsupported)
 
         Returns
         -------
@@ -725,6 +723,11 @@ class MCPBEBase(BaseSolver):
                 RuntimeWarning,
             )
 
+        if psd_enable and workers > 1:
+            raise NotImplementedError(
+                "psd_enable=True is currently only supported for workers=1 (serial mode). "
+            )
+
         # ----- serial path (supports PSD) -----
         if workers == 1:
             results: list[dict[str, Any]] = []
@@ -752,8 +755,6 @@ class MCPBEBase(BaseSolver):
                 m.V_flat = None
                 if not init_Vc and Vc is not None:
                     m.Vc = Vc
-                    # m.Vc = 1e-10
-                    # print("Controll volume : ", m.Vc)
                 m._initialize_particles(init_Vc=init_Vc, V_flat=V_flat)
                 m._init_lmc()
                 m._initialize_samplers()
@@ -808,42 +809,13 @@ class MCPBEBase(BaseSolver):
 
             return results, psd_info
 
-        # ----- parallel path -----
+        # ----- parallel path (PSD not implemented here) -----
         base_state = copy.deepcopy(self.__dict__)
-
-        # 去掉一些运行时对象，避免 pickling/文件句柄/缓存导致差异
-        base_state.pop("cancel_flag", None)
-        for k_rm in ("lmc_adapter", "lmc_live", "lmc_breakage_adapter"):
-            if k_rm in base_state:
-                base_state[k_rm] = None
-
-        # Decide parallel PSD return mode:
-        # - If user provides a fixed grid (psd_x_grid or psd_Q_grid): return gridded arrays from workers (fast).
-        # - Else (auto grid): fall back to returning cdf_list (compatible but slow).
-        psd_grid_mode = None  # None | "Q_of_x" | "x_of_Q"
-        x_grid_user = None
-        Q_grid_user = None
-        if psd_enable:
-            if psd_x_grid is not None:
-                psd_grid_mode = "Q_of_x"
-                x_grid_user = np.asarray(psd_x_grid, dtype=float)
-            elif psd_Q_grid is not None:
-                psd_grid_mode = "x_of_Q"
-                Q_grid_user = np.asarray(psd_Q_grid, dtype=float)
-            else:
-                psd_grid_mode = None
-                warnings.warn(
-                    "parallel PSD: neither psd_x_grid nor psd_Q_grid is provided. "
-                    "Falling back to returning full CDF lists from workers (may be slow due to serialization). "
-                    "For speed, provide psd_x_grid or psd_Q_grid.",
-                    RuntimeWarning,
-                )
 
         payloads = []
         for k in range(N):
             payloads.append(
                 {
-                    "idx": k,
                     "cls": self.__class__,
                     "state": base_state,
                     "seed": seeds[k],
@@ -851,299 +823,113 @@ class MCPBEBase(BaseSolver):
                     "init_Vc": init_Vc,
                     "Vc": Vc,
                     "V_flat": V_flat,
-                    # PSD options
-                    "psd_enable": psd_enable,
-                    "psd_basis": psd_basis,
-                    "psd_time_scheme": "interp",
-                    "psd_grid_mode": psd_grid_mode,
-                    "psd_x_grid": x_grid_user,
-                    "psd_Q_grid": Q_grid_user,
                 }
             )
 
-        results: list[dict[str, Any] | None] = [None] * N
-
-        # PSD containers
-        t_vec_psd_list: list[Any] | None = [None] * N if psd_enable else None
-
-        # Fast path: workers return gridded PSD arrays
-        psd_pack_list: list[Any] | None = [None] * N if (psd_enable and psd_grid_mode is not None) else None
-
-        # Slow fallback: workers return full cdf_list
-        cdf_repeats: list[Any] | None = [None] * N if (psd_enable and psd_grid_mode is None) else None
-
+        results: list[dict[str, Any]] = []
         with ProcessPoolExecutor(max_workers=workers) as ex:
-            fut_map = {ex.submit(_mcpbe_run_single_parallel, pl): pl["idx"] for pl in payloads}
+            fut_map = {ex.submit(_mcpbe_run_single_parallel, pl): i for i, pl in enumerate(payloads)}
             for fut in as_completed(fut_map):
                 idx = fut_map[fut]
                 try:
-                    out = fut.result()
+                    res = fut.result()
                 except Exception as e:
                     raise RuntimeError(f"[parallel] worker {idx} failed: {e}")
-
-                if not psd_enable:
-                    results[idx] = out
-                    continue
-
-                # psd_enable == True
-                if psd_grid_mode is not None:
-                    core_res, psd_pack, t_vec_local = out
-                    results[idx] = core_res
-                    psd_pack_list[idx] = psd_pack
-                    t_vec_psd_list[idx] = t_vec_local
                 else:
-                    core_res, cdf_list, t_vec_local = out
-                    results[idx] = core_res
-                    cdf_repeats[idx] = cdf_list
-                    t_vec_psd_list[idx] = t_vec_local
+                    results.append(res)
 
-        # Defensive checks
-        if any(r is None for r in results):
-            missing = [i for i, r in enumerate(results) if r is None]
-            raise RuntimeError(f"[parallel] missing results for indices: {missing}")
+        if psd_enable:
+            warnings.warn(
+                "psd_enable=True but workers>1: PSD computation on parallel path is not implemented; "
+                "only moments are returned.",
+                RuntimeWarning,
+            )
 
-        if not psd_enable:
-            return results, None
-
-        # Find reference t_vec
-        t_vec_ref = None
-        for t_vec_local in (t_vec_psd_list or []):
-            if t_vec_local is not None and len(t_vec_local) > 0:
-                t_vec_ref = np.asarray(t_vec_local, dtype=float)
-                break
-
-        if t_vec_ref is None:
-            psd_info = {
-                "basis": psd_basis,
-                "mode": None,
-                "t_vec": None,
-                "x_grid": None,
-                "Q_mean": None,
-                "Q_grid": None,
-                "x_mean": None,
-                "x_50": None,
-                "note": "No PSD snapshots were available.",
-            }
-            return results, psd_info
-
-        # Warn if t_vec differs between repeats
-        for t_vec_local in (t_vec_psd_list or []):
-            if t_vec_local is None or len(t_vec_local) == 0:
-                continue
-            if len(t_vec_ref) != len(t_vec_local) or not np.allclose(
-                t_vec_ref, t_vec_local, rtol=1e-6, atol=1e-12
-            ):
-                warnings.warn(
-                    "t_vec differs between repeats. PSD averaging assumes identical t_vec; "
-                    "results may be inconsistent.",
-                    RuntimeWarning,
-                )
-                break
-
-        # -------------------------
-        # Fast aggregation (gridded)
-        # -------------------------
-        if psd_grid_mode is not None:
-            T = int(len(t_vec_ref))
-            psd_info: dict[str, Any] = {
-                "basis": psd_basis,
-                "mode": psd_grid_mode,
-                "t_vec": np.asarray(t_vec_ref, dtype=float),
-                "note": (
-                    "PSD computed at all saved times (aligned with t_vec) "
-                    "and averaged over all repeats."
-                ),
-            }
-
-            if psd_pack_list is None or any(p is None for p in psd_pack_list):
-                raise RuntimeError("[parallel] PSD gridded mode but some repeats returned no psd_pack.")
-
-            if psd_grid_mode == "Q_of_x":
-                x_grid = x_grid_user
-                if x_grid is None:
-                    raise RuntimeError("[parallel] Q_of_x gridded mode requires psd_x_grid.")
-                M = int(x_grid.shape[0])
-                Q_sum = np.zeros((T, M), dtype=float)
-                Q_count = np.zeros(T, dtype=int)
-
-                for pack in psd_pack_list:
-                    Q_vals = np.asarray(pack["vals"], dtype=float)      # (T, M), may contain NaN
-                    cnt = np.asarray(pack["count"], dtype=int)          # (T,), 0/1
-                    # only add valid rows
-                    for it in range(T):
-                        if cnt[it] > 0:
-                            Q_sum[it] += Q_vals[it]
-                            Q_count[it] += 1
-
-                Q_mean = np.empty_like(Q_sum)
-                for it in range(T):
-                    if Q_count[it] > 0:
-                        Q_mean[it] = Q_sum[it] / float(Q_count[it])
-                    else:
-                        Q_mean[it] = np.nan
-
-                psd_info["x_grid"] = x_grid
-                psd_info["Q_mean"] = Q_mean.T  # keep identical to aggregate_psd_repeats
-
-                x_50 = np.full(T, np.nan, dtype=float)
-                for it in range(T):
-                    x_50[it] = self._invert_cdf_monotone(x_grid, Q_mean[it, :], q=0.5)
-                psd_info["x_50"] = x_50
-                return results, psd_info
-
-            elif psd_grid_mode == "x_of_Q":
-                Q_grid = Q_grid_user
-                if Q_grid is None:
-                    raise RuntimeError("[parallel] x_of_Q gridded mode requires psd_Q_grid.")
-                M = int(Q_grid.shape[0])
-                x_sum = np.zeros((T, M), dtype=float)
-                x_count = np.zeros(T, dtype=int)
-
-                for pack in psd_pack_list:
-                    x_vals = np.asarray(pack["vals"], dtype=float)      # (T, M), may contain NaN
-                    cnt = np.asarray(pack["count"], dtype=int)          # (T,), 0/1
-                    for it in range(T):
-                        if cnt[it] > 0:
-                            x_sum[it] += x_vals[it]
-                            x_count[it] += 1
-
-                x_mean = np.empty_like(x_sum)
-                for it in range(T):
-                    if x_count[it] > 0:
-                        x_mean[it] = x_sum[it] / float(x_count[it])
-                    else:
-                        x_mean[it] = np.nan
-
-                psd_info["Q_grid"] = Q_grid
-                psd_info["x_mean"] = x_mean
-
-                # x_50 logic identical to aggregate_psd_repeats
-                x_50 = np.full(T, np.nan, dtype=float)
-                q = 0.5
-                hit = np.where(np.isclose(Q_grid, q, rtol=0.0, atol=1e-12))[0]
-                if hit.size > 0:
-                    j = int(hit[0])
-                    x_50 = x_mean[:, j].astype(float, copy=False)
-                else:
-                    for it in range(T):
-                        xq = np.asarray(x_mean[it], dtype=float)
-                        mask = np.isfinite(Q_grid) & np.isfinite(xq)
-                        if not np.any(mask):
-                            x_50[it] = float("nan")
-                            continue
-                        Qm = Q_grid[mask]
-                        xm = xq[mask]
-                        order = np.argsort(Qm)
-                        Qm = Qm[order]
-                        xm = xm[order]
-                        xm = np.maximum.accumulate(xm)
-                        if Qm[0] > q or Qm[-1] < q:
-                            x_50[it] = float("nan")
-                        else:
-                            x_50[it] = float(np.interp(q, Qm, xm))
-                psd_info["x_50"] = x_50
-                return results, psd_info
-
-            else:
-                raise RuntimeError(f"[parallel] Unknown psd_grid_mode={psd_grid_mode!r}.")
-
-        # -------------------------
-        # Slow fallback (cdf_list)
-        # -------------------------
-        if cdf_repeats is None or any(c is None for c in cdf_repeats):
-            raise RuntimeError("[parallel] PSD enabled but some repeats returned no cdf_list.")
-
-        psd_info = self.aggregate_psd_repeats(
-            cdf_repeats=cdf_repeats,
-            t_vec=t_vec_ref,
-            psd_basis=psd_basis,
-            psd_x_grid=psd_x_grid,
-            psd_Q_grid=psd_Q_grid,
-        )
-        return results, psd_info
+        return results, None
 
 
     # ---------------------------------------------------------------------
     # Column ops (capacity style)
     # ---------------------------------------------------------------------
     def _remove_particle_column(self, j: int):
-        """Swap j with last active, shrink a_tot by 1, zero freed slot, rebuild samplers."""
+        """Remove particle at index j using swap-with-last, maintain samplers incrementally (B2)."""
         a = self.a_tot
         if j < 0 or j >= a:
             raise IndexError("column index out of range")
+    
         if a <= 1:
-            # reset to empty active set
             self.a_tot = max(0, a - 1)
-            # clear slot 0
             if a == 1:
                 self.V_flat[:, 0:1] = 0.0
                 self.X[0:1] = 0.0
-                if hasattr(self, "_r_agg"):
+                if hasattr(self, "_r_agg") and self._r_agg is not None:
                     self._r_agg[0:1] = 0.0
-                if hasattr(self, "_break_rate"):
+                if hasattr(self, "_break_rate") and self._break_rate is not None:
                     self._break_rate[0:1] = 0.0
-            self._agg_sampler = FenwickSampler(np.zeros(0)) if self._agg_sampler is not None else None
-            self._break_sampler = (
-                FenwickSampler(np.zeros(0)) if self._break_sampler is not None else None
-            )
+            if self._agg_sampler is not None:
+                self._agg_sampler = FenwickSampler(np.zeros(0))
+            if self._break_sampler is not None:
+                self._break_sampler = FenwickSampler(np.zeros(0))
             return
-
+    
         last = a - 1
+    
+        # swap particle state arrays so that the 'removed' particle moves to last
         if j != last:
-            # swap active columns
             self.V_flat[:, [j, last]] = self.V_flat[:, [last, j]]
             self.X[j], self.X[last] = self.X[last], self.X[j]
-            if hasattr(self, "_r_agg") and self._r_agg is not None and self._r_agg.shape[0] >= a:
+    
+            if hasattr(self, "_r_agg") and self._r_agg is not None:
                 self._r_agg[j], self._r_agg[last] = self._r_agg[last], self._r_agg[j]
-            if (
-                hasattr(self, "_break_rate")
-                and self._break_rate is not None
-                and self._break_rate.shape[0] >= a
-            ):
-                self._break_rate[j], self._break_rate[last] = (
-                    self._break_rate[last],
-                    self._break_rate[j],
-                )
-
-        # logical shrink & zero freed slot
+            if hasattr(self, "_break_rate") and self._break_rate is not None:
+                self._break_rate[j], self._break_rate[last] = self._break_rate[last], self._break_rate[j]
+    
+        # sampler remove must happen while sampler still has size == a
+        if self._agg_sampler is not None:
+            self._agg_sampler.remove_swap_last(j)
+        if self._break_sampler is not None:
+            self._break_sampler.remove_swap_last(j)
+    
+        # shrink
         self.a_tot = last
+    
+        # zero freed slot
         self.V_flat[:, self.a_tot : self.a_tot + 1] = 0.0
         self.X[self.a_tot : self.a_tot + 1] = 0.0
-        if hasattr(self, "_r_agg") and self._r_agg is not None and self._r_agg.shape[0] > self.a_tot:
+        if hasattr(self, "_r_agg") and self._r_agg is not None:
             self._r_agg[self.a_tot : self.a_tot + 1] = 0.0
-        if (
-            hasattr(self, "_break_rate")
-            and self._break_rate is not None
-            and self._break_rate.shape[0] > self.a_tot
-        ):
+        if hasattr(self, "_break_rate") and self._break_rate is not None:
             self._break_rate[self.a_tot : self.a_tot + 1] = 0.0
+    
 
-        # rebuild samplers from active slices (simple & correct)
-        if self._agg_sampler is not None:
-            self._agg_sampler = FenwickSampler(self._r_agg[:self.a_tot])
-        if self._break_sampler is not None:
-            self._break_sampler = FenwickSampler(self._break_rate[:self.a_tot])
 
     def _append_particle_column(self, frag_vols: np.ndarray):
-        """Append one particle from its per-component volumes; capacity aware."""
+        """Append one particle from per-component volumes; maintain samplers incrementally."""
         frag_vols = np.asarray(frag_vols, dtype=float)
         if frag_vols.shape != (self.dim,):
             raise ValueError("frag_vols must have shape (dim,)")
-
+    
         self._ensure_capacity_for(1)
         Vnew = float(np.sum(frag_vols))
-
+    
         idx = self.a_tot
         self.V_flat[: self.dim, idx] = frag_vols
         self.V_flat[-1, idx] = Vnew
         self.X[idx] = float(self._vol2diam(Vnew))
         self.a_tot += 1
+    
+        # Always initialize auxiliary arrays at idx to 0 to avoid stale values
+        if hasattr(self, "_r_agg") and self._r_agg is not None:
+            self._r_agg[idx] = 0.0
+        if hasattr(self, "_break_rate") and self._break_rate is not None:
+            self._break_rate[idx] = 0.0
+    
+        # Extend samplers with 0.0; caller will update() to the true value ASAP
+        if self._agg_sampler is not None:
+            self._agg_sampler.append(0.0)
+        if self._break_sampler is not None:
+            self._break_sampler.append(0.0)
 
-        # rebuild samplers from active slices (simple baseline)
-        if self._agg_sampler is not None and hasattr(self, "_r_agg"):
-            self._agg_sampler = FenwickSampler(self._r_agg[:self.a_tot])
-        if self._break_sampler is not None and hasattr(self, "_break_rate"):
-            self._break_sampler = FenwickSampler(self._break_rate[:self.a_tot])
 
     def _ensure_break_sampler(self):
         """(Re)build break sampler from active slice if needed."""
@@ -1382,6 +1168,15 @@ class MCPBEBase(BaseSolver):
 
 
 def _mcpbe_run_single_parallel(payload: dict):
+    """
+    Top-level worker for running a single MCPBE repeat in a subprocess.
+
+    payload keys:
+        - "cls": the class object (e.g. MCPBEBase)
+        - "state": dict copied from solver.__dict__ (picklable)
+        - "seed": np.random.SeedSequence or int
+        - "maxiter", "init_Vc", "Vc", "V_flat"
+    """
     cls = payload["cls"]
     state = payload["state"]
     seed_k = payload["seed"]
@@ -1390,20 +1185,16 @@ def _mcpbe_run_single_parallel(payload: dict):
     Vc = payload["Vc"]
     V_flat = payload["V_flat"]
 
-    # PSD opts
-    psd_enable = bool(payload.get("psd_enable", False))
-    psd_basis = payload.get("psd_basis", "volume")
-    psd_time_scheme = payload.get("psd_time_scheme", "interp")
-    psd_grid_mode = payload.get("psd_grid_mode", None)  # None | "Q_of_x" | "x_of_Q"
-    psd_x_grid = payload.get("psd_x_grid", None)
-    psd_Q_grid = payload.get("psd_Q_grid", None)
-
-    # 1) rebuild solver skeleton (IMPORTANT: load_attr=False to avoid config IO)
+    # 1) rebuild solver skeleton
+    # we create an instance with minimal init (init=False) and then restore dict
     dim = int(state.get("dim", 2))
-    obj = cls(dim=dim, init=False, load_attr=False)
+    obj = cls(dim=dim, init=False)
+
+    # 2) restore all attributes (what we saved in parent)
+    # this is shallow here because it was deepcopied in parent
     obj.__dict__.update(state)
 
-    # 2) re-seed RNG
+    # 3) re-seed RNG
     if isinstance(seed_k, np.random.SeedSequence):
         rng = np.random.default_rng(seed_k)
         seed_info = {"spawn_key": tuple(seed_k.spawn_key)}
@@ -1412,75 +1203,18 @@ def _mcpbe_run_single_parallel(payload: dict):
         seed_info = {"seed": int(seed_k)}
     obj._rng = rng
 
-    # 3) init order identical to serial
-    obj.V_flat = None
+    # 4) re-init LMC adapter (some adapters open files, so do it in child)
+    obj._init_lmc()
+
+    # 5) re-init particles / samplers
     if not init_Vc and Vc is not None:
         obj.Vc = Vc
     obj._initialize_particles(init_Vc=init_Vc, V_flat=V_flat)
-    obj._init_lmc()
     obj._initialize_samplers()
 
-    # 4) run solve
+    # 6) run solve
     obj.solve(maxiter=maxiter)
 
-    # 5) collect moments
+    # 7) collect moments
     mu, tv = obj.calc_moments_over_time(normalize=True)
-    core_res = {"seed_info": seed_info, "t_vec": tv, "moments": mu}
-
-    if not psd_enable:
-        return core_res
-
-    # 6) compute CDF list locally (no serialization of cdf itself unless fallback)
-    if not hasattr(obj, "compute_psd_cdf_over_time"):
-        raise AttributeError(
-            "psd_enable=True but solver has no method compute_psd_cdf_over_time()."
-        )
-
-    cdf_list, t_vec_local = obj.compute_psd_cdf_over_time(
-        psd_basis=psd_basis,
-        time_scheme=psd_time_scheme,
-    )
-
-    # Fast path: return gridded arrays
-    if psd_grid_mode in ("Q_of_x", "x_of_Q"):
-        if psd_grid_mode == "Q_of_x":
-            if psd_x_grid is None:
-                raise RuntimeError("psd_grid_mode='Q_of_x' but psd_x_grid is None.")
-            x_grid = np.asarray(psd_x_grid, dtype=float)
-            T = int(len(t_vec_local))
-            M = int(x_grid.shape[0])
-            vals = np.full((T, M), np.nan, dtype=float)
-            cnt = np.zeros(T, dtype=int)
-
-            for it, cdf in enumerate(cdf_list):
-                if cdf is None:
-                    continue
-                x_sorted, Q_sorted = cdf
-                vals[it, :] = obj._eval_Q_of_x(x_sorted, Q_sorted, x_grid)
-                cnt[it] = 1
-
-            psd_pack = {"mode": "Q_of_x", "vals": vals, "count": cnt}
-            return core_res, psd_pack, t_vec_local
-
-        else:  # "x_of_Q"
-            if psd_Q_grid is None:
-                raise RuntimeError("psd_grid_mode='x_of_Q' but psd_Q_grid is None.")
-            Q_grid = np.asarray(psd_Q_grid, dtype=float)
-            T = int(len(t_vec_local))
-            M = int(Q_grid.shape[0])
-            vals = np.full((T, M), np.nan, dtype=float)
-            cnt = np.zeros(T, dtype=int)
-
-            for it, cdf in enumerate(cdf_list):
-                if cdf is None:
-                    continue
-                x_sorted, Q_sorted = cdf
-                vals[it, :] = obj._eval_x_of_Q(x_sorted, Q_sorted, Q_grid)
-                cnt[it] = 1
-
-            psd_pack = {"mode": "x_of_Q", "vals": vals, "count": cnt}
-            return core_res, psd_pack, t_vec_local
-
-    # Slow fallback: return full cdf_list (compatible but heavy)
-    return core_res, cdf_list, t_vec_local
-
+    return {"seed_info": seed_info, "t_vec": tv, "moments": mu}

@@ -156,88 +156,59 @@ class MCPBEAdapter(WriteThroughAdapter):
     def calc_matrix(self, init_N) -> None:
         return None
 
-    def solve(self, t_vec):
-        if not np.allclose(np.asarray(t_vec), np.asarray(self.opt.t_vec)):
-            raise ValueError("Adapter.solve: provided t_vec differs from opt.t_vec.")
-    
-        self.calc_status = True
-        max_time = float(getattr(self.opt, "max_iter_time", 0.0) or 0.0)
-    
-        # 共享的取消标志：所有拷贝都应该指向它
-        shared_flag = {"cancel": False}
-        self.impl.cancel_flag = shared_flag
-    
-        result_container = {}
-    
-        def _worker():
-            try:
-                r, p = self.impl.solve_repeats(
-                    N=self.NC,
-                    base_seed=self.MC_seed,
-                    init_Vc=self.init_Vc,
-                    Vc=self.opt.Vc_init,
-                    V_flat=self.opt.V_flat_init,
-                    workers=1,
-                    psd_enable=True,
-                    psd_basis=self._psd_basis,
-                    psd_x_grid=self.opt._psd_x_grid,
-                    psd_Q_grid=self._psd_Q_grid,
-                )
-                result_container["result"] = (r, p)
-            except Exception as e:
-                result_container["error"] = e
-    
-        # --- start worker thread ---
-        th = threading.Thread(target=_worker)
-        th.daemon = True
-        th.start()
-    
-        # --- wait with timeout ---
-        th.join(timeout=max_time if max_time > 0 else None)
-    
-        # --- check timeout ---
-        if th.is_alive():
-            # Timeout: request cancellation
-            shared_flag["cancel"] = True
-            self.calc_status = False
-            self.data_mod = None
-            return
-    
-        # --- thread finished normally ---
-        if "error" in result_container:
-            self.calc_status = False
-            raise result_container["error"]
-    
-        results, psd_info = result_container["result"]
-    
-        if "Q_mean" not in psd_info:
-            self.calc_status = False
-            raise KeyError("psd_info missing Q_mean")
-    
-        self.data_mod = psd_info["Q_mean"]
-        self.x_50_mod = psd_info["x_50"]
-        self.calc_status = True
-        
     # def solve(self, t_vec):
     #     if not np.allclose(np.asarray(t_vec), np.asarray(self.opt.t_vec)):
     #         raise ValueError("Adapter.solve: provided t_vec differs from opt.t_vec.")
     
     #     self.calc_status = True
+    #     max_time = float(getattr(self.opt, "max_iter_time", 0.0) or 0.0)
+    
     #     # 共享的取消标志：所有拷贝都应该指向它
     #     shared_flag = {"cancel": False}
     #     self.impl.cancel_flag = shared_flag
-    #     results, psd_info = self.impl.solve_repeats(
-    #         N=self.NC,
-    #         base_seed=self.MC_seed,
-    #         init_Vc=self.init_Vc,
-    #         Vc=self.opt.Vc_init,
-    #         V_flat=self.opt.V_flat_init,
-    #         workers=1,
-    #         psd_enable=True,
-    #         psd_basis=self._psd_basis,
-    #         psd_x_grid=self.opt._psd_x_grid,
-    #         psd_Q_grid=self._psd_Q_grid,
-    #     )
+    
+    #     result_container = {}
+    
+    #     def _worker():
+    #         try:
+    #             r, p = self.impl.solve_repeats(
+    #                 N=self.NC,
+    #                 base_seed=self.MC_seed,
+    #                 init_Vc=self.init_Vc,
+    #                 Vc=self.opt.Vc_init,
+    #                 V_flat=self.opt.V_flat_init,
+    #                 workers=1,
+    #                 psd_enable=True,
+    #                 psd_basis=self._psd_basis,
+    #                 psd_x_grid=self.opt._psd_x_grid,
+    #                 psd_Q_grid=self._psd_Q_grid,
+    #             )
+    #             result_container["result"] = (r, p)
+    #         except Exception as e:
+    #             result_container["error"] = e
+    
+    #     # --- start worker thread ---
+    #     th = threading.Thread(target=_worker)
+    #     th.daemon = True
+    #     th.start()
+    
+    #     # --- wait with timeout ---
+    #     th.join(timeout=max_time if max_time > 0 else None)
+    
+    #     # --- check timeout ---
+    #     if th.is_alive():
+    #         # Timeout: request cancellation
+    #         shared_flag["cancel"] = True
+    #         self.calc_status = False
+    #         self.data_mod = None
+    #         return
+    
+    #     # --- thread finished normally ---
+    #     if "error" in result_container:
+    #         self.calc_status = False
+    #         raise result_container["error"]
+    
+    #     results, psd_info = result_container["result"]
     
     #     if "Q_mean" not in psd_info:
     #         self.calc_status = False
@@ -246,6 +217,35 @@ class MCPBEAdapter(WriteThroughAdapter):
     #     self.data_mod = psd_info["Q_mean"]
     #     self.x_50_mod = psd_info["x_50"]
     #     self.calc_status = True
+        
+    def solve(self, t_vec):
+        if not np.allclose(np.asarray(t_vec), np.asarray(self.opt.t_vec)):
+            raise ValueError("Adapter.solve: provided t_vec differs from opt.t_vec.")
+    
+        self.calc_status = True
+        # 共享的取消标志：所有拷贝都应该指向它
+        shared_flag = {"cancel": False}
+        self.impl.cancel_flag = shared_flag
+        results, psd_info = self.impl.solve_repeats(
+            N=self.NC,
+            base_seed=self.MC_seed,
+            init_Vc=self.init_Vc,
+            Vc=self.opt.Vc_init,
+            V_flat=self.opt.V_flat_init,
+            workers=1,
+            psd_enable=True,
+            psd_basis=self._psd_basis,
+            psd_x_grid=self.opt._psd_x_grid,
+            psd_Q_grid=self._psd_Q_grid,
+        )
+    
+        if "Q_mean" not in psd_info:
+            self.calc_status = False
+            raise KeyError("psd_info missing Q_mean")
+    
+        self.data_mod = psd_info["Q_mean"]
+        self.x_50_mod = psd_info["x_50"]
+        self.calc_status = True
         
         
     def get_all_data(self, exp_data_path) -> tuple[np.ndarray, np.ndarray]:

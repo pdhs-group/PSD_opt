@@ -15,32 +15,32 @@ if __name__ == "__main__":
     # As a result, the actual volume concentration may no longer match the value of c below! 
     # However, the initial conditions for MC-PBE and PBM are directly taken from dPBE, 
     # so theoretically, the initial conditions for all three methods remain the same.
-    c = 1e-2  # m3/m3
-    x = 2e-5  # m
+    c = 1e0  # m3/m3
+    x = 2e-1  # m
     beta0 = 1e-13 # /m3
-    P1 = 1e12
+    P1 = 1e-1
     P2 = 1.0
-    use_psd = False
+    use_psd = True
     rel_mom = True
     
     ## generate initial PSD
     pth = os.path.dirname( __file__ )
     output_dir = os.path.join(pth, "PSD_data")
-    x50 = x * 1e6  # convert to um  
+    x50 = 10 * x * 1e6  # convert to um  
     resigma = 0.2
     minscale = 0.01
     maxscale = 100
     dist_path = full_psd(x50, resigma, minscale=minscale, maxscale=maxscale, plot_psd=False, output_dir=output_dir)
     
-    dim = 1
+    dim = 2
     grid = "geo"
-    NS1 = 15
-    NS2 = None
+    NS1 = 10
+    NS2 = 15
     S1 = 2
-    # S2 = 2
-    kernel = "sum"
+    S2 = 2
+    kernel = "const"
     process = "breakage"
-    t = np.arange(0, 1, 0.1, dtype=float)
+    t = np.arange(0, 41, 4, dtype=float)
     
     v = PBEValidation(dim, grid, NS1, S1, kernel, process, t=t, c=c, x=x, 
                       beta0=beta0, use_psd=use_psd, dist_path=dist_path)
@@ -48,9 +48,10 @@ if __name__ == "__main__":
     v.P2 = P2
     v.V_unit = 1
     v.init_all()
-    v.calculate_case(calc_mc=True, calc_pbm=False)
+    v.calculate_case(calc_mc=True, calc_pbm=True)
     v.init_plot(size ='half', extra=True, mrksize=6)
     v.plot_all_moments(REL=rel_mom)
+    v.new_x = x/10.0
     v.add_new_moments(NS=NS2,REL=rel_mom)
     v.show_plot()
     
