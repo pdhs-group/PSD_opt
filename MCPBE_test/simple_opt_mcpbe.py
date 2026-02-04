@@ -180,9 +180,9 @@ if __name__ == '__main__':
         # 'pl_P4' : P4,
         }
     
-    n_iter_list = [10,20,30]
+    n_iter_list = [10,20,30,40]
     # n_iter_list = [10]
-    prev_iter = 0
+    prev_iter = 30
     opt.core.result_dir = result_dir
     
     # ray.init(log_to_driver=True)
@@ -205,7 +205,7 @@ if __name__ == '__main__':
     #     prev_iter = n_iter
     # ray.shutdown()
     
-    result_to_analyse = os.path.join(base_path, data_group, "opt_results_N2000_Q0", "pure_CB_result_14000.npz")
+    result_to_analyse = os.path.join(base_path, data_group, "opt_results_N2000_Q0_N", "pure_CB_result_16200.npz")
     with np.load(result_to_analyse, allow_pickle=True) as data:
         results = data['results'].item()
     pop_params = results['opt_params']

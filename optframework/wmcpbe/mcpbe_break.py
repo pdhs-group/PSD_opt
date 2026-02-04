@@ -37,12 +37,11 @@ class MCPBEBreak:
     # Breakage rate (full table and single-point)
     # ------------------------------------------------------------------
     def _calc_break_rates_full(self):
-        """Compute breakage rates B_R for active slice.
-
-        优先顺序：
-          1) 若启用了基于 LMC-MLP 的破碎率模型 (lmc_use_breakage_model=True 且 adapter 可用)，
-             则调用 self.lmc_breakage_adapter.compute_rates_full(self)；
-          2) 否则，使用外部 JIT kernels 计算（原有行为）。
+        """Compute BREAKAGE PROPENSITIES for active slice.
+    
+        Stored in self._break_rate[:a] as:
+            propensity_i = W[i] * S_i
+        where S_i is the single-particle breakage rate from MLP/JIT.
         """
         a = self.a_tot
         cap = getattr(self, "_cap", a)
@@ -50,66 +49,81 @@ class MCPBEBreak:
                 or self._break_rate is None
                 or self._break_rate.shape[0] < cap):
             self._break_rate = np.zeros(max(8, cap), dtype=float)
-
-        # --------- 分支 1：使用 MLP 破碎率模型 ---------
+    
+        # weights (number weights). If missing, fallback to 1.
+        if hasattr(self, "W") and self.W is not None:
+            W = self.W[:a]
+        else:
+            W = np.ones(a, dtype=float)
+    
+        # --------- Branch 1: MLP model ---------
         use_mlp = bool(getattr(self, "lmc_use_breakage_model", False)) and (
             getattr(self, "lmc_breakage_adapter", None) is not None
         )
         if use_mlp:
-            # 让适配器基于当前 pbe 状态（V_flat, dim, lmc_* 参数等）计算全部颗粒的破碎率
             rates = self.lmc_breakage_adapter.compute_rates_full(self)
             rates = np.asarray(rates, dtype=float)
-
+    
             if rates.shape[0] < a:
-                # 若返回数量不足，补零（保守处理）
                 tmp = np.zeros(a, dtype=float)
                 tmp[: rates.shape[0]] = rates
                 rates = tmp
             elif rates.shape[0] > a:
-                # 若数量多于 a，则截断
                 rates = rates[:a]
-
-            self._break_rate[:a] = rates
+    
+            # NEW: store propensity = W * rate
+            prop = W * rates
+            prop[prop < 0.0] = 0.0
+            self._break_rate[:a] = prop
             if self._break_rate.shape[0] > a:
                 self._break_rate[a:] = 0.0
             return
-
-        # --------- 分支 2：原有 JIT 内核路径 ---------
-        self.V = self.V_flat[-1, :a]  # match external wrappers' expectation
+    
+        # --------- Branch 2: original JIT kernels (single-particle rates) ---------
+        self.V = self.V_flat[-1, :a]
         self.B_R = np.zeros(a, dtype=float)
-
+    
         if self.dim == 1 and hasattr(JKB, "calc_B_R_1d"):
-            _kb_BR1_all(self)  # fills self.B_R
+            _kb_BR1_all(self)
         elif self.dim == 2 and hasattr(JKB, "calc_B_R_2d_flat"):
-            _kb_BR2_all(self)  # fills self.B_R
+            _kb_BR2_all(self)
         else:
             raise RuntimeError("Required breakage kernels not found in jit_kernel_break.")
-
-        self._break_rate[:a] = np.asarray(self.B_R, dtype=float)
+    
+        rates = np.asarray(self.B_R, dtype=float)
+        prop = W * rates
+        prop[prop < 0.0] = 0.0
+        self._break_rate[:a] = prop
         if self._break_rate.shape[0] > a:
             self._break_rate[a:] = 0.0
 
     def _break_rate_single(self, i: int) -> float:
-        """Single-particle breakage rate.
-
-        优先顺序：
-          1) 若启用了 LMC-MLP 破碎率模型，则调用 adapter.compute_rate_single(self, i)
-          2) 否则，使用原有 JIT 单点公式。
+        """Single-particle BREAKAGE PROPENSITY.
+    
+        Returns:
+            propensity_i = W[i] * S_i
+        where S_i is the single-particle breakage rate from MLP/JIT.
         """
         a = self.a_tot
         if i < 0 or i >= a:
             return 0.0
-
-        # --------- 分支 1：使用 MLP 破碎率模型 ---------
+    
+        Wi = float(self.W[i]) if (hasattr(self, "W") and self.W is not None) else 1.0
+        if Wi <= 0.0:
+            return 0.0
+    
+        # --------- Branch 1: MLP model ---------
         use_mlp = bool(getattr(self, "lmc_use_breakage_model", False)) and (
             getattr(self, "lmc_breakage_adapter", None) is not None
         )
         if use_mlp:
-            return float(self.lmc_breakage_adapter.compute_rate_single(self, i))
-
-        # --------- 分支 2：原有 JIT 内核路径 ---------
+            Si = float(self.lmc_breakage_adapter.compute_rate_single(self, i))
+            val = Wi * Si
+            return float(val) if val > 0.0 else 0.0
+    
+        # --------- Branch 2: original JIT single-particle rate ---------
         if self.dim == 1:
-            return float(
+            Si = float(
                 _kb_br1_single(
                     self.V_flat[-1, :a],
                     float(getattr(self, "pl_P1", 1.0)),
@@ -120,7 +134,7 @@ class MCPBEBreak:
                 )
             )
         else:
-            return float(
+            Si = float(
                 _kb_br2_single(
                     self.V_flat[-1, :a],
                     self.V_flat[0, :a],
@@ -135,7 +149,9 @@ class MCPBEBreak:
                     i,
                 )
             )
-
+    
+        val = Wi * Si
+        return float(val) if val > 0.0 else 0.0
 
     # ------------------------------------------------------------------
     # Two-level CDF builder (cached)
@@ -190,7 +206,7 @@ class MCPBEBreak:
             A = v1 + v3
             X1 = (v1 / A) if A > 0.0 else 0.5
         return A, X1
-
+            
     def _get_break_tables_for_state(self, Vrem: np.ndarray):
         """
         返回当前母颗粒状态对应的 CDF 表：
@@ -298,62 +314,118 @@ class MCPBEBreak:
     # ------------------------------------------------------------------
     
     # 统一后处理：应用碎片并维护 break/agg
-    def _break_apply_and_maintain(self, k: int, frags: list[np.ndarray]) -> None:
-        if not frags:
+    def _break_apply_and_maintain(self, k: int, frags: list[np.ndarray], dW: float) -> None:
+        """Apply one *packet* breakage event.
+    
+        Interpretation:
+          - Parent compute particle k represents W[k] real particles of volume Vk.
+          - This call breaks dW of those real particles (dW can be non-integer).
+          - The remaining (W[k]-dW) real particles stay at the same Vk (same compute particle k).
+          - Broken products are represented by appending fragment compute particles,
+            each with weight = dW and volume equal to the fragment volume of ONE real parent.
+        """
+        if (not frags) or (dW <= 0.0):
             return
-        # n = len(frags)
-        new_indices = []
-        # 先 append 前 n-1 个
-        for f in frags[:-1]:
+    
+        assert hasattr(self, "W") and self.W is not None and self.W.shape[0] >= self._cap
+    
+        w_parent_old = float(self.W[k])
+        if w_parent_old <= 0.0:
+            self._mark_unbreakable(k)
+            return
+    
+        dW = float(min(dW, w_parent_old))
+        if dW <= 0.0:
+            self._mark_unbreakable(k)
+            return
+    
+        new_indices: list[int] = []
+    
+        # 1) Append ALL fragments as new particles, each carrying weight dW
+        for f in frags:
             self._append_particle_column(f)
             new_idx = self.a_tot - 1
             new_indices.append(new_idx)
-            br_new = self._break_rate_single(new_idx)
+    
+            self.W[new_idx] = dW
+    
+            br_new = self._break_rate_single(new_idx)  # already returns W*Si
             self._break_rate[new_idx] = br_new
             if self._break_sampler is not None:
                 self._break_sampler.update(new_idx, br_new)
     
-        # 最后一块回写到 k
-        last = frags[-1]
-        self.V_flat[: self.dim, k] = last
-        self.V_flat[-1, k] = float(np.sum(last))
-        self.X[k] = float(self._vol2diam(self.V_flat[-1, k]))
+        # 2) Reduce parent weight but keep its volume unchanged
+        w_rem = w_parent_old - dW
+        self.W[k] = w_rem
     
-        br_k = self._break_rate_single(k)
-        self._break_rate[k] = br_k
-        if self._break_sampler is not None:
-            self._break_sampler.update(k, br_k)
+        if w_rem > 0.0:
+            br_k = self._break_rate_single(k)  # uses new W[k]
+            self._break_rate[k] = br_k
+            if self._break_sampler is not None:
+                self._break_sampler.update(k, br_k)
+        else:
+            # Parent population fully consumed -> remove compute particle k
+            self._remove_particle_column(k)
     
-        # 统一的 agg 维护
+        # 3) Agglomeration maintenance (only if you ever run mix mode)
         pt = getattr(self, "process_type", "agglomeration")
         if pt in ("agglomeration", "mix") and self._agg_sampler is not None:
             a_now = self.a_tot
             R_now = (self.X[:a_now] * 0.5).astype(np.float64)
     
-            # recalc r_k
-            rk = 0.0
-            for m in range(a_now):
-                if m == k:
-                    continue
-                rk += _kb_beta(int(self.COLEVAL), float(self.CORR_BETA), float(getattr(self, "G", 1.0)), R_now, k, m)
-            self._r_agg[k] = rk
-            self._agg_sampler.update(k, rk)
+            # If k still exists (not removed), recalc its agg propensity
+            if k < a_now and self.W[k] > 0.0:
+                rk = 0.0
+                for m in range(a_now):
+                    if m == k:
+                        continue
+                    rk += _kb_beta(
+                        int(self.COLEVAL),
+                        float(self.CORR_BETA),
+                        float(getattr(self, "G", 1.0)),
+                        R_now,
+                        k,
+                        m,
+                    )
+                self._r_agg[k] = rk
+                self._agg_sampler.update(k, rk)
     
-            # new indices
+            # New indices
             for new_idx in new_indices:
+                if new_idx >= a_now:
+                    continue
                 rnew = 0.0
                 for m in range(a_now):
                     if m == new_idx:
                         continue
-                    rnew += _kb_beta(int(self.COLEVAL), float(self.CORR_BETA), float(getattr(self, "G", 1.0)), R_now, new_idx, m)
+                    rnew += _kb_beta(
+                        int(self.COLEVAL),
+                        float(self.CORR_BETA),
+                        float(getattr(self, "G", 1.0)),
+                        R_now,
+                        new_idx,
+                        m,
+                    )
                 self._r_agg[new_idx] = rnew
                 self._agg_sampler.update(new_idx, rnew)
+    
                 for m in range(a_now):
                     if m == new_idx:
                         continue
-                    bmnew = _kb_beta(int(self.COLEVAL), float(self.CORR_BETA), float(getattr(self, "G", 1.0)), R_now, m, new_idx)
+                    bmnew = _kb_beta(
+                        int(self.COLEVAL),
+                        float(self.CORR_BETA),
+                        float(getattr(self, "G", 1.0)),
+                        R_now,
+                        m,
+                        new_idx,
+                    )
                     self._r_agg[m] += bmnew
                     self._agg_sampler.update(m, self._r_agg[m])
+    
+        if self._break_sampler is not None:
+            assert abs(self._break_sampler.total() - float(np.sum(self._break_rate[:self.a_tot]))) < 1e-8
+
     
     # 小颗粒禁用：破碎率清零并更新采样器
     def _mark_unbreakable(self, k: int) -> None:
@@ -499,42 +571,178 @@ class MCPBEBreak:
     
         # 走原来的逐步切分逻辑
         return "ok", self._build_fragments_stepwise(Vrem_k)
+
+    def _compute_dW(self, k: int, sum_prop_before: float) -> float:
+        """Compute packet size ΔW for a breakage event on particle k.
     
+        Design goals:
+        - Simple, tunable, and stable.
+        - ΔW increases with k's propensity fraction f_k, but is clamped by [dW_min, dW_max] and Wk.
+        - Uses only "event-before" quantities so it can be used consistently with dt = ΔW / sum_prop_before.
+    
+        Parameters
+        ----------
+        k : int
+            Selected particle index (active slice).
+        sum_prop_before : float
+            Total break propensity BEFORE applying the event (sum_i W_i*S_i).
+    
+        Config knobs (instance/class attributes)
+        --------------------------------------
+        break_dW_max : float, default 50.0
+        break_dW_min : float, default 1.0
+        break_dW_alpha : float, default 100.0   # global scaling for linear rule
+        break_dW_mode : str, default "linear"   # {"linear", "sqrt", "const"}
+        """
+        Wk = float(self.W[k])
+        if Wk <= 0.0:
+            return 0.0
+    
+        dW_max = float(getattr(self, "break_dW_max", 50.0))
+        dW_min = float(getattr(self, "break_dW_min", 1.0))
+        if dW_max <= 0.0:
+            return 0.0
+        if dW_min < 0.0:
+            dW_min = 0.0
+    
+        # If total propensity is invalid, fall back to a conservative constant packet.
+        if not np.isfinite(sum_prop_before) or sum_prop_before <= 0.0:
+            return float(min(Wk, dW_max))
+    
+        # k's propensity BEFORE event (stored already as W*S)
+        pk = float(self._break_rate[k])
+        if pk <= 0.0 or not np.isfinite(pk):
+            return 0.0
+    
+        f = pk / float(sum_prop_before)  # fraction in (0,1]
+        # numerical safety
+        if f < 0.0:
+            f = 0.0
+        elif f > 1.0:
+            f = 1.0
+    
+        mode = str(getattr(self, "break_dW_mode", "linear")).lower()
+    
+        if mode == "const":
+            dW = dW_max
+        else:
+            alpha = float(getattr(self, "break_dW_alpha", 100.0))
+            if alpha <= 0.0:
+                alpha = 1.0
+    
+            if mode == "sqrt":
+                dW = alpha * (f ** 0.5)
+            else:
+                # default: linear
+                dW = alpha * f
+    
+        # clamp by [min, max] and available weight
+        if dW < dW_min:
+            dW = dW_min
+        if dW > dW_max:
+            dW = dW_max
+        if dW > Wk:
+            dW = Wk
+    
+        # avoid negative/NaN
+        if not np.isfinite(dW) or dW <= 0.0:
+            return 0.0
+        return float(dW)
+    
+        
     # 主入口：预处理 -> 生成碎片 -> 统一维护
     def _do_one_break(self):
         a = self.a_tot
         if a < 1:
             return
+    
         self._ensure_break_sampler()
-        # 若当前没有可破碎权重，直接退出（本次事件不发生破碎）
+    
+        # 若当前没有可破碎权重，直接退出
         if self._break_sampler.total() <= 0.0:
             return
-        # -------- 在同一事件内循环采样，直到选到可破碎的颗粒 --------
+    
         attempts = 0
-        max_attempts = max(1, self.a_tot)  # 最多尝试当前颗粒数次，避免死循环
+        max_attempts = max(1, self.a_tot)
+    
         while attempts < max_attempts:
-            # 若在循环过程中所有破碎权重被清零，则退出
             if self._break_sampler.total() <= 0.0:
                 return
+    
             k = self._break_sampler.sample(self._rng)
-            # assert 0 <= k < self._break_sampler._n, (k, self._break_sampler._n, self._break_sampler.total())
-            # 剩余体积向量（便于传给各分支）
-            if self.dim == 1:
-                Vrem_k = np.array([self.V_flat[0, k]], dtype=float)
-            else:
-                Vrem_k = np.array([self.V_flat[0, k], self.V_flat[1, k]], dtype=float)
-            status, frags = self._break_build_fragments(k, Vrem_k)
-            if status == "disable":
-                # 标记该颗粒不可破碎，并继续在同一事件内重采样其它颗粒
+    
+            # 该计算颗粒的可用权重
+            Wk0 = float(self.W[k])
+            if Wk0 <= 0.0:
+                # 理论上不应发生；稳妥起见把它置为不可破碎并继续
                 self._mark_unbreakable(k)
                 attempts += 1
                 continue
-            if status == "ok":
-                # 正常生成碎片，退出循环，进入后续的更新逻辑
-                break
-            # 其它状态（稳妥）也视作本次失败，继续尝试
+    
+            # 本次事件总消耗的权重包：方案2（常数上限，允许用类/实例属性覆盖）
+            sum_prop_before = float(self._break_sampler.total())
+            dW_total = self._compute_dW(k, sum_prop_before)
+            if dW_total <= 0.0:
+                self._mark_unbreakable(k)
+                attempts += 1
+                continue
+    
+            # 将一次事件内的 ΔW_total 个“真实破碎”划分为 N 份，各份独立采样一次碎片
+            N = int(getattr(self, "break_N", 1))
+            if N < 1:
+                N = 1
+    
+            # 记录本次事件对应的真实事件数（总消耗），用于 solve() 里的 dt 计算
+            self._last_break_dW = float(dW_total)
+    
+            # 均分权重（允许非整数）；最后一份用“剩余量”兜底，避免累计误差
+            base_chunk = dW_total / float(N)
+            remaining = float(dW_total)
+    
+            for n in range(N):
+                # 若 parent 已被移除或索引已越界，停止（避免 swap/remove 后继续用旧 k）
+                if k >= self.a_tot:
+                    break
+    
+                Wk_now = float(self.W[k])
+                if Wk_now <= 0.0:
+                    break
+    
+                # 本份权重
+                if n < N - 1:
+                    dW_chunk = min(base_chunk, remaining, Wk_now)
+                else:
+                    dW_chunk = min(remaining, Wk_now)
+    
+                if dW_chunk <= 0.0:
+                    break
+    
+                # 母颗粒体积（用于生成“单个真实颗粒”的碎片体积分配）
+                if self.dim == 1:
+                    Vrem_k = np.array([self.V_flat[0, k]], dtype=float)
+                else:
+                    Vrem_k = np.array([self.V_flat[0, k], self.V_flat[1, k]], dtype=float)
+    
+                status, frags = self._break_build_fragments(k, Vrem_k)
+    
+                if status == "disable":
+                    # 该粒子不可破碎：清零 propensity，整次事件作废（返回）
+                    self._mark_unbreakable(k)
+                    return
+    
+                if status == "ok":
+                    # 应用该份碎片（以 dW_chunk 的权重 append），并减少父颗粒权重
+                    self._break_apply_and_maintain(k, frags, dW_chunk)
+                    remaining -= dW_chunk
+                    if remaining <= 0.0:
+                        break
+                else:
+                    # 未知状态：直接退出
+                    return
+    
+            return  # 本次 break 事件完成（无论是否完全用尽 remaining）
+    
             attempts += 1
-        # 若尝试用尽仍未获得可破碎颗粒，则本次事件无操作返回
-        if attempts >= max_attempts or self._break_sampler.total() <= 0.0:
-            return
-        self._break_apply_and_maintain(k, frags)
+    
+        return
+

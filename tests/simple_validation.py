@@ -26,7 +26,7 @@ if __name__ == "__main__":
     ## generate initial PSD
     pth = os.path.dirname( __file__ )
     output_dir = os.path.join(pth, "PSD_data")
-    x50 = 10 * x * 1e6  # convert to um  
+    x50 = x * 1e6  # convert to um  
     resigma = 0.2
     minscale = 0.01
     maxscale = 100
@@ -34,13 +34,13 @@ if __name__ == "__main__":
     
     dim = 2
     grid = "geo"
-    NS1 = 10
+    NS1 = 15
     NS2 = 15
     S1 = 2
     S2 = 2
     kernel = "const"
     process = "breakage"
-    t = np.arange(0, 41, 4, dtype=float)
+    t = np.arange(0, 21, 2, dtype=float)
     
     v = PBEValidation(dim, grid, NS1, S1, kernel, process, t=t, c=c, x=x, 
                       beta0=beta0, use_psd=use_psd, dist_path=dist_path)
@@ -48,10 +48,10 @@ if __name__ == "__main__":
     v.P2 = P2
     v.V_unit = 1
     v.init_all()
-    v.calculate_case(calc_mc=True, calc_pbm=True)
+    v.calculate_case(calc_mc=True, calc_pbm=False)
     v.init_plot(size ='half', extra=True, mrksize=6)
     v.plot_all_moments(REL=rel_mom)
-    v.new_x = x/10.0
-    v.add_new_moments(NS=NS2,REL=rel_mom)
+    # v.new_x = v.x/10.0
+    # v.add_new_moments(NS=NS2,REL=rel_mom)
     v.show_plot()
     

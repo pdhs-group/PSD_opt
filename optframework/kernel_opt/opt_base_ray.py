@@ -41,6 +41,19 @@ class OptBaseRay():
             filtered.append(q)
         return filtered
     
+    def _select_top_k_params(
+        self,
+        params_full: list[dict],
+        scores_full: list[float],
+        k: int,
+    ) -> list[dict]:
+        """Select top-k configs (lowest score) from history, keep original full configs."""
+        if k <= 0 or not params_full or not scores_full:
+            return []
+        k = min(int(k), len(scores_full))
+        idx = np.argsort(np.asarray(scores_full, dtype=float))[:k]
+        return [params_full[int(i)] for i in idx]
+    
     def print_current_actors(self):
         """
         Print the current number of active Ray actors.
@@ -306,10 +319,22 @@ class OptBaseRay():
         base.RT_space["__exp_paths"] = exp_data_paths
         base.RT_space["__known_params"] = known_params
                 
+        opt_top_K = int(getattr(base.core, "opt_top_K", 0))
         if resume_unfinished and evaluated_params_full:
+            # Default behavior: warm start with history (points + rewards)
             evaluated_params_for_algo = self._filter_points_to_evaluate(evaluated_params_full, base.RT_space)
             evaluated_rewards_for_algo = evaluated_rewards_full
         
+            # If opt_top_K > 0: re-evaluate the historical best K points
+            # IMPORTANT: pass only evaluated_params (points_to_evaluate), keep evaluated_rewards as None
+            if opt_top_K > 0:
+                topk_full = self._select_top_k_params(evaluated_params_full, evaluated_rewards_full, opt_top_K)
+                topk_filtered = self._filter_points_to_evaluate(topk_full, base.RT_space)
+        
+                # Override: only force these points to be evaluated; do NOT pass evaluated_rewards
+                evaluated_params_for_algo = topk_filtered
+                evaluated_rewards_for_algo = None
+                
         algo = self.create_algo(
             evaluated_params=evaluated_params_for_algo,
             evaluated_rewards=evaluated_rewards_for_algo,
@@ -430,7 +455,7 @@ class OptBaseRay():
             hist_params = None
         
         # Final decision
-        if hist_score is not None and hist_score < new_score:
+        if hist_score is not None and hist_score < new_score and opt_top_K == 0:
             opt_score = hist_score
             opt_params = hist_params
         else:

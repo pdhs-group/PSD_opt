@@ -41,24 +41,29 @@ class FenwickSampler:
     # --- updates ---
     def _add(self, idx: int, delta: float):
         nb_fenwick_add(self._tree, self._n, idx, float(delta))
-
+    
     def update(self, idx: int, new_weight: float):
         if idx < 0 or idx >= self._n:
             raise IndexError("FenwickSampler.update: idx out of range")
+        # NEW: ensure non-negative
         new_w = float(new_weight)
+        if new_w < 0.0:
+            new_w = 0.0
         delta = nb_fenwick_update(self._tree, self._n, self._w, idx, new_w)
         if delta:
             self._total += delta
-
+    
+    
     def append(self, weight: float):
         """Append a new item with given weight (>=0)."""
         w = float(weight)
-        # grow arrays by 1 (preserve existing tree structure)
+        # NEW: ensure non-negative
+        if w < 0.0:
+            w = 0.0
+    
         old_n = self._n
         self._n = old_n + 1
-        # grow weight vector
         self._w = np.append(self._w, w)
-        # grow tree with copy of old prefix structure
         new_tree = np.zeros(self._n + 1, dtype=float)
         new_tree[:old_n + 1] = self._tree
         self._tree = new_tree

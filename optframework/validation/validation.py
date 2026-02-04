@@ -12,7 +12,7 @@ import time
 import matplotlib.pyplot as plt
 from matplotlib.ticker import ScalarFormatter
 from optframework.dpbe import DPBESolver, ExtruderPBESolver
-from optframework.mcpbe import MCPBESolver
+from optframework.wmcpbe import MCPBESolver
 from optframework.pbm import PBMSolver
 import optframework.utils.plotter.plotter as pt
 from optframework.utils.plotter.KIT_cmap import c_KIT_green, c_KIT_red, c_KIT_blue
@@ -54,7 +54,7 @@ class PBEValidation():
         self.P2 = 1
         # The number of times to repeat the MC-PBE
         self.N_MC = 5
-        self.mom_a0 = 1000
+        self.mom_a0 = 2000
         ## Check if the psd file is available
         if self.use_psd:
             if self.dist_path is None:
@@ -110,6 +110,10 @@ class PBEValidation():
         self.p_mc.G = self.G
         self.p_mc.process_type = process
         self.p_mc.alpha_prim = np.ones(dim**2)
+        self.p_mc.break_dW_mode = "linear"
+        self.p_mc.break_dW_alpha = 1000.0
+        self.p_mc.break_dW_min = 20.0
+        self.p_mc.break_dW_max = 50.0
         
         N = self.p.N / self.p.V_unit
         self.p_mc.n0 = np.sum(N[..., 0])

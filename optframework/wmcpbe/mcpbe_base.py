@@ -327,21 +327,28 @@ class MCPBEBase(BaseSolver):
     # ---------------------------------------------------------------------
     # Initialization
     # ---------------------------------------------------------------------
-    def _initialize_particles(self, V_flat: np.ndarray = None):
+    def _initialize_particles(self, init_Vc: bool = True, V_flat: Optional[np.ndarray] = None):
         """
         Initialize particle arrays (V_flat, X) and NEW: weight array W.
         This version keeps the original DSMC logic, but adds weight tracking.
         """
         dim = int(self.dim)
-        if dim <= 0:
-            raise ValueError("dim must be > 0")
-    
-        # -------------------------
-        # Original init of V_init
-        # -------------------------
-        total_cols = int(np.sum(self.a)) if hasattr(self, "a") else 0
-        if total_cols <= 0 and V_flat is None:
-            raise ValueError("No particles: sum(a) <= 0 and V_flat is None")
+        self._validate_input_arrays()
+        if init_Vc:
+            self.c = np.asarray(self.c, dtype=float)
+            self.x = np.asarray(self.x, dtype=float)
+            self.PGV = np.asarray(self.PGV)
+            self.SIG = np.asarray(self.SIG, dtype=float)
+            self.v = (self.x ** 3) * math.pi / 6.0
+            self.n = np.round(self.c / self.v)
+            self.n0 = float(np.sum(self.n))
+            if self.n0 <= 0:
+                raise ValueError("Total primary particle count `n0` must be > 0 (check c and x).")
+            self.Vc = self.a0 / self.n0
+            self.a = np.round(self.n * self.Vc).astype(int)
+            total_cols = int(np.sum(self.a))
+            if total_cols <= 0:
+                raise ValueError("No particles to initialize (sum(a) == 0). Check c/x/PGV/SIG.")
     
         if V_flat is None:
             V_init = np.zeros((dim + 1, total_cols), dtype=float)
@@ -393,7 +400,7 @@ class MCPBEBase(BaseSolver):
         # NEW: weight array W
         # -------------------------
         self.W = np.zeros(self._cap, dtype=float)
-        self.W[:a0_eff] = 1.0  # DSMC baseline: each compute particle represents 1 real particle
+        self.W[:a0_eff] = 100.0  # DSMC baseline: each compute particle represents 1 real particle
     
         # -------------------------
         # Time & saved snapshots
@@ -472,7 +479,7 @@ class MCPBEBase(BaseSolver):
         old_cap = self._cap
         factor = self._growth_factor()
         new_cap = int(max(math.ceil(old_cap * factor), need))
-
+    
         V_new = np.zeros((self.dim + 1, new_cap), dtype=float)
         X_new = np.zeros(new_cap, dtype=float)
         V_new[:, :self.a_tot] = self.V_flat[:, :self.a_tot]
@@ -480,7 +487,13 @@ class MCPBEBase(BaseSolver):
         self.V_flat = V_new
         self.X = X_new
         self._cap = new_cap
-
+    
+        # NEW: Extend weight array if present (or create it lazily)
+        if hasattr(self, "W") and self.W is not None:
+            W_new = np.zeros(new_cap, dtype=float)
+            W_new[:self.a_tot] = self.W[:self.a_tot]
+            self.W = W_new
+    
         # Extend auxiliary arrays if present
         if hasattr(self, "_r_agg") and self._r_agg is not None:
             r_new = np.zeros(new_cap, dtype=float)
@@ -490,15 +503,15 @@ class MCPBEBase(BaseSolver):
             b_new = np.zeros(new_cap, dtype=float)
             b_new[:self.a_tot] = self._break_rate[:self.a_tot]
             self._break_rate = b_new
-
+    
         # Print expansion info
-        if self.VERBOSE:   
+        if self.VERBOSE:
             print(
                 f"[MC-PBE] Capacity grown at t={getattr(self,'_elapsed',0.0):.6g} "
                 f"after {getattr(self,'_iter_count',0)} events: cap {old_cap} -> {new_cap} "
                 f"(x{new_cap/max(old_cap,1):.2f})"
-                # f"[TEST] dt_break = {self.test_dt_break}"
             )
+
 
     def _maybe_double_control_volume(self, elapsed_time: float, iter_count: int):
         """Duplicate state to keep statistics when particle count drops (agglomeration dominates)."""
@@ -566,15 +579,32 @@ class MCPBEBase(BaseSolver):
         return 2.0 * float(self.Vc) * (a - 1) / (a * sum_r)
 
     def _dt_break(self) -> float:
-        """Breakage Δt with mean break rate (active slice only)."""
+        """Breakage Δt for weighted packet events.
+    
+        If break propensities are defined as:
+            propensity_i = W[i] * S_i
+        then total propensity is sum_i propensity_i (events per unit time for real particles).
+    
+        In packeted breakage (one MC event represents ΔW real break events),
+        we advance time by:
+            Δt = ΔW / sum(propensity)
+        where ΔW is stored in self._last_break_dW by _do_one_break().
+        """
         a = self.a_tot
         if a <= 0:
             return float("inf")
-        s = float(np.mean(self._break_rate[:a])) if a > 0 else 0.0
-        if s <= 0.0:
+    
+        sum_prop = float(np.sum(self._break_rate[:a]))
+        if sum_prop <= 0.0:
             return float("inf")
-        # self.test_dt_break = 1.0 / (a * s)
-        return 1.0 / (a * s)
+    
+        dW = float(getattr(self, "_last_break_dW", 1.0))
+        # dW must be > 0 for an actual break event; fall back to 1 to avoid stalling.
+        if dW <= 0.0:
+            dW = 1.0
+    
+        return dW / sum_prop
+
 
     # ---------------------------------------------------------------------
     # Main solve loop
@@ -587,9 +617,15 @@ class MCPBEBase(BaseSolver):
         timer_agg = 0.0
         timer_break = 0.0
         dtd_agg = self._dt_agg() if pt in ("agglomeration", "mix") else float("inf")
-        dtd_break = self._dt_break() if pt in ("breakage", "mix") else float("inf")
+        
+        if pt == "mix":
+            dtd_break = self._dt_break()
+            timer_break += dtd_break
+        else:
+            # breakage-only: dt depends on _last_break_dW, which is only known AFTER _do_one_break()
+            dtd_break = float("inf")
+
         timer_agg += dtd_agg
-        timer_break += dtd_break
 
         if self.VERBOSE:
             if np.isfinite(dtd_agg):
@@ -624,10 +660,18 @@ class MCPBEBase(BaseSolver):
                 dtd_agg = self._dt_agg()
                 timer_agg += dtd_agg
             elif pt == "breakage":
-                self._do_one_break()  # from BreakageMixin
-                elapsed_time = timer_break
-                dtd_break = self._dt_break()
+                # total propensity BEFORE the event (needed because Δt uses the event's ΔW)
+                sum_prop_before = float(np.sum(self._break_rate[:self.a_tot]))
+            
+                self._do_one_break()  # sets self._last_break_dW for packeted events
+            
+                if sum_prop_before > 0.0:
+                    dtd_break = float(getattr(self, "_last_break_dW", 1.0)) / sum_prop_before
+                else:
+                    dtd_break = float("inf")
+            
                 timer_break += dtd_break
+                elapsed_time = timer_break
             else:  # mix
                 if timer_agg <= timer_break:
                     self._do_one_agg()
@@ -666,6 +710,7 @@ class MCPBEBase(BaseSolver):
 
             # agglomeration-dominated safety (duplicate CV)
             self._maybe_double_control_volume(self.t[-1], count)
+            self.maybe_reconstruct(iter_count=self._iter_count, reason=f"post_event_{pt}")
 
             count += 1
             # if count%100 == 0: print([f"[Test] events = {count}"])
@@ -1087,83 +1132,96 @@ class MCPBEBase(BaseSolver):
     # Column ops (capacity style)
     # ---------------------------------------------------------------------
     def _remove_particle_column(self, j: int):
-        """Swap j with last active, shrink a_tot by 1, zero freed slot, rebuild samplers."""
+        """Swap j with last active, shrink a_tot by 1, zero freed slot, rebuild samplers.
+        Keeps W aligned with particle columns.
+        """
         a = self.a_tot
         if j < 0 or j >= a:
             raise IndexError("column index out of range")
+    
+        # Ensure W exists (lazy create for backward compatibility)
+        if not hasattr(self, "W") or self.W is None:
+            self.W = np.zeros(self._cap, dtype=float)
+            self.W[:self.a_tot] = 1.0
+    
         if a <= 1:
             # reset to empty active set
             self.a_tot = max(0, a - 1)
-            # clear slot 0
             if a == 1:
                 self.V_flat[:, 0:1] = 0.0
                 self.X[0:1] = 0.0
+                self.W[0:1] = 0.0
                 if hasattr(self, "_r_agg"):
                     self._r_agg[0:1] = 0.0
                 if hasattr(self, "_break_rate"):
                     self._break_rate[0:1] = 0.0
             self._agg_sampler = FenwickSampler(np.zeros(0)) if self._agg_sampler is not None else None
-            self._break_sampler = (
-                FenwickSampler(np.zeros(0)) if self._break_sampler is not None else None
-            )
+            self._break_sampler = FenwickSampler(np.zeros(0)) if self._break_sampler is not None else None
             return
-
+    
         last = a - 1
         if j != last:
-            # swap active columns
+            # swap active columns (V/X/W + propensities)
             self.V_flat[:, [j, last]] = self.V_flat[:, [last, j]]
             self.X[j], self.X[last] = self.X[last], self.X[j]
+            self.W[j], self.W[last] = self.W[last], self.W[j]
+    
             if hasattr(self, "_r_agg") and self._r_agg is not None and self._r_agg.shape[0] >= a:
                 self._r_agg[j], self._r_agg[last] = self._r_agg[last], self._r_agg[j]
-            if (
-                hasattr(self, "_break_rate")
-                and self._break_rate is not None
-                and self._break_rate.shape[0] >= a
-            ):
-                self._break_rate[j], self._break_rate[last] = (
-                    self._break_rate[last],
-                    self._break_rate[j],
-                )
-
+            if hasattr(self, "_break_rate") and self._break_rate is not None and self._break_rate.shape[0] >= a:
+                self._break_rate[j], self._break_rate[last] = self._break_rate[last], self._break_rate[j]
+    
         # logical shrink & zero freed slot
         self.a_tot = last
         self.V_flat[:, self.a_tot : self.a_tot + 1] = 0.0
         self.X[self.a_tot : self.a_tot + 1] = 0.0
+        self.W[self.a_tot : self.a_tot + 1] = 0.0
+    
         if hasattr(self, "_r_agg") and self._r_agg is not None and self._r_agg.shape[0] > self.a_tot:
             self._r_agg[self.a_tot : self.a_tot + 1] = 0.0
-        if (
-            hasattr(self, "_break_rate")
-            and self._break_rate is not None
-            and self._break_rate.shape[0] > self.a_tot
-        ):
+        if hasattr(self, "_break_rate") and self._break_rate is not None and self._break_rate.shape[0] > self.a_tot:
             self._break_rate[self.a_tot : self.a_tot + 1] = 0.0
-
+    
         # rebuild samplers from active slices (simple & correct)
         if self._agg_sampler is not None:
             self._agg_sampler = FenwickSampler(self._r_agg[:self.a_tot])
         if self._break_sampler is not None:
             self._break_sampler = FenwickSampler(self._break_rate[:self.a_tot])
 
+
     def _append_particle_column(self, frag_vols: np.ndarray):
-        """Append one particle from its per-component volumes; capacity aware."""
+        """Append one particle from its per-component volumes; capacity aware; keeps W aligned."""
         frag_vols = np.asarray(frag_vols, dtype=float)
         if frag_vols.shape != (self.dim,):
             raise ValueError("frag_vols must have shape (dim,)")
-
+    
+        # Ensure capacity for V/X (and W via _ensure_capacity_for)
         self._ensure_capacity_for(1)
+    
+        # Ensure W exists (lazy create in case old instances don't have it)
+        if not hasattr(self, "W") or self.W is None:
+            self.W = np.zeros(self._cap, dtype=float)
+            self.W[:self.a_tot] = 1.0
+    
         Vnew = float(np.sum(frag_vols))
-
         idx = self.a_tot
+    
         self.V_flat[: self.dim, idx] = frag_vols
         self.V_flat[-1, idx] = Vnew
         self.X[idx] = float(self._vol2diam(Vnew))
+    
+        # Default weight for new particle (DSMC baseline).
+        # Note: breakage/agglomeration code may overwrite this immediately.
+        self.W[idx] = 1.0
+    
         self.a_tot += 1
-
+    
         # rebuild samplers from active slices (simple baseline)
         if self._agg_sampler is not None and hasattr(self, "_r_agg"):
             self._agg_sampler = FenwickSampler(self._r_agg[:self.a_tot])
         if self._break_sampler is not None and hasattr(self, "_break_rate"):
             self._break_sampler = FenwickSampler(self._break_rate[:self.a_tot])
+
 
     def _ensure_break_sampler(self):
         """(Re)build break sampler from active slice if needed."""
