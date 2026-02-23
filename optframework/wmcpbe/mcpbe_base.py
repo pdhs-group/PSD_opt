@@ -13,7 +13,8 @@ import copy
 import numpy as np
 
 from optframework.base.base_solver import BaseSolver
-from .fenwick import FenwickSampler
+# from .fenwick import FenwickSampler
+from .fenwick_new import FenwickSampler
 
 
 class MCPBEBase(BaseSolver):
@@ -58,6 +59,8 @@ class MCPBEBase(BaseSolver):
 
         # State containers
         self.V_flat: Optional[np.ndarray] = None
+        self.V_eff_init = 0     # 0 -> no compression
+        self.V_eff_mod = "Q3"   # "Q0" or "Q3"
 
         # Load external configuration / physics
         if config_path is None and load_attr:
@@ -327,7 +330,12 @@ class MCPBEBase(BaseSolver):
     # ---------------------------------------------------------------------
     # Initialization
     # ---------------------------------------------------------------------
-    def _initialize_particles(self, init_Vc: bool = True, V_flat: Optional[np.ndarray] = None):
+    def _initialize_particles(
+        self,
+        init_Vc: bool = True,
+        V_flat: Optional[np.ndarray] = None,
+        init_cdf: Optional[dict] = None,
+    ):
         """
         Initialize particle arrays (V_flat, X) and NEW: weight array W.
         This version keeps the original DSMC logic, but adds weight tracking.
@@ -350,7 +358,11 @@ class MCPBEBase(BaseSolver):
             if total_cols <= 0:
                 raise ValueError("No particles to initialize (sum(a) == 0). Check c/x/PGV/SIG.")
     
-        if V_flat is None:
+        used_cdf_init = False
+        if init_cdf is not None:
+            V_init, W_cdf = self._build_init_from_cdf(init_cdf)
+            used_cdf_init = True
+        elif V_flat is None:
             V_init = np.zeros((dim + 1, total_cols), dtype=float)
             cnt = 0
             for i in range(dim):
@@ -382,26 +394,44 @@ class MCPBEBase(BaseSolver):
         a0_eff = V_init.shape[1]
         if a0_eff <= 0:
             raise ValueError("No particles initialized after filtering non-positive volumes.")
-    
+        
         # -------------------------
-        # Capacity buffers
+        # Optional: compress initial particles & define weights
         # -------------------------
-        cap = max(a0_eff + max(8, a0_eff // 10), 16)
+        if used_cdf_init:
+            a0_eff_new = int(a0_eff)
+            W_new = np.asarray(W_cdf, dtype=float)
+        else:
+            V_eff_init = int(getattr(self, "V_eff_init", 0) or 0)
+            V_eff_mod = str(getattr(self, "V_eff_mod", "Q0") or "Q0")
+
+            if V_eff_init > 0 and V_eff_init < a0_eff:
+                V_new, W_new = self._compress_init_by_quantile(V_init, V_eff_init, V_eff_mod)
+                V_init = V_new
+                a0_eff_new = int(V_eff_init)
+            else:
+                a0_eff_new = int(a0_eff)
+                W_new = np.ones(a0_eff_new, dtype=float)
+        
+        # -------------------------
+        # Capacity buffers (use *compressed* length)
+        # -------------------------
+        cap = max(a0_eff_new + max(8, a0_eff_new // 10), 16)
         self._cap = int(cap)
-    
+        
         self.V_flat = np.zeros((dim + 1, self._cap), dtype=float)
-        self.V_flat[:, :a0_eff] = V_init
-        self.a_tot = a0_eff
-    
+        self.V_flat[:, :a0_eff_new] = V_init
+        self.a_tot = a0_eff_new
+        
         self.X = np.zeros(self._cap, dtype=float)
-        self.X[:a0_eff] = self._vol2diam(self.V_flat[-1, :a0_eff])
-    
+        self.X[:a0_eff_new] = self._vol2diam(self.V_flat[-1, :a0_eff_new])
+        
         # -------------------------
-        # NEW: weight array W
+        # Weight array W (use *compressed* length)
         # -------------------------
         self.W = np.zeros(self._cap, dtype=float)
-        self.W[:a0_eff] = 100.0  # DSMC baseline: each compute particle represents 1 real particle
-    
+        self.W[:a0_eff_new] = W_new
+
         # -------------------------
         # Time & saved snapshots
         # -------------------------
@@ -433,6 +463,95 @@ class MCPBEBase(BaseSolver):
         self.t_left = [0.0]
         self.t_right = [0.0]
 
+        # Reference active-column count for control-volume doubling.
+        # Important when V_eff_init compression is enabled: using raw a0 can
+        # trigger premature doubling right after initialization.
+        self._cv_a_ref = int(self.a_tot)
+
+    def _build_init_from_cdf(self, init_cdf: dict) -> tuple[np.ndarray, np.ndarray]:
+        """Build weighted initial particles directly from experimental CDF data.
+
+        Expected keys in `init_cdf`:
+          - x_grid: diameter grid
+          - cdf: cumulative distribution on x_grid
+          - basis: "number" (Q0) or "volume" (Q3)
+        Optional keys:
+          - n_ref: reference represented-particle count
+          - total_vol_ref: reference total represented volume (used for Q3)
+          - target_n: number of representatives (defaults to V_eff_init or n_ref)
+        """
+        if int(self.dim) != 1:
+            raise ValueError("CDF-based initialization currently supports dim=1 only.")
+
+        x = np.asarray(init_cdf.get("x_grid", None), dtype=float).ravel()
+        cdf = np.asarray(init_cdf.get("cdf", None), dtype=float).ravel()
+        if x.size == 0 or cdf.size == 0 or x.size != cdf.size:
+            raise ValueError("init_cdf requires same-length non-empty x_grid and cdf.")
+
+        basis = str(init_cdf.get("basis", "number")).strip().lower()
+        if basis not in ("number", "volume"):
+            raise ValueError(f"Unsupported init_cdf basis={basis!r}; use 'number' or 'volume'.")
+
+        # finite + sorted + monotone CDF cleanup
+        mask = np.isfinite(x) & np.isfinite(cdf)
+        x = x[mask]
+        cdf = cdf[mask]
+        if x.size < 2:
+            raise ValueError("init_cdf has insufficient finite points.")
+
+        order = np.argsort(x)
+        x = x[order]
+        cdf = cdf[order]
+        cdf = np.maximum.accumulate(cdf)
+
+        cmax = float(cdf[-1])
+        if not np.isfinite(cmax) or cmax <= 0.0:
+            raise ValueError("init_cdf cdf max must be positive.")
+        cdf = cdf / cmax
+
+        # keep unique CDF points for inverse interpolation cdf -> x
+        c_u, idx_u = np.unique(cdf, return_index=True)
+        x_u = x[idx_u]
+        if c_u.size < 2:
+            raise ValueError("init_cdf cdf is degenerate after cleanup.")
+
+        if c_u[0] > 0.0:
+            c_u = np.concatenate(([0.0], c_u))
+            x_u = np.concatenate(([x_u[0]], x_u))
+        if c_u[-1] < 1.0:
+            c_u = np.concatenate((c_u, [1.0]))
+            x_u = np.concatenate((x_u, [x_u[-1]]))
+
+        n_ref = int(init_cdf.get("n_ref", x_u.size))
+        if n_ref <= 0:
+            n_ref = x_u.size
+
+        target_n = int(init_cdf.get("target_n", 0) or 0)
+        if target_n <= 0:
+            veff = int(getattr(self, "V_eff_init", 0) or 0)
+            target_n = veff if veff > 0 else n_ref
+        target_n = max(1, int(target_n))
+
+        q = (np.arange(target_n, dtype=float) + 0.5) / float(target_n)
+        x_rep = np.interp(q, c_u, x_u)
+        v_rep = (math.pi / 6.0) * np.maximum(x_rep, 0.0) ** 3
+        v_rep = np.maximum(v_rep, 1e-300)
+
+        if basis == "number":
+            w_each = float(n_ref) / float(target_n)
+            w_rep = np.full(target_n, w_each, dtype=float)
+        else:
+            total_vol_ref = float(init_cdf.get("total_vol_ref", 0.0) or 0.0)
+            if (not np.isfinite(total_vol_ref)) or total_vol_ref <= 0.0:
+                total_vol_ref = float(np.sum(v_rep)) * (float(n_ref) / float(target_n))
+            rep_vol_each = total_vol_ref / float(target_n)
+            w_rep = rep_vol_each / v_rep
+
+        V_init = np.zeros((2, target_n), dtype=float)
+        V_init[0, :] = v_rep
+        V_init[1, :] = v_rep
+        return V_init, w_rep
+
 
     def _initialize_samplers(self):
         """Build (or resize) samplers for agglomeration/breakage based on process_type."""
@@ -453,20 +572,89 @@ class MCPBEBase(BaseSolver):
 
         # Breakage
         if pt in ("breakage", "mix"):
+            self._prepare_break_config()
             self._calc_break_rates_full()  # from BreakageMixin
-            if (
-                not hasattr(self, "_break_rate")
-                or self._break_rate is None
-                or self._break_rate.shape[0] < self._cap
-            ):
-                br = np.zeros(self._cap, dtype=float)
-                if hasattr(self, "_break_rate") and self._break_rate is not None:
-                    br[:self.a_tot] = self._break_rate[:self.a_tot]
-                self._break_rate = br
             self._break_sampler = FenwickSampler(self._break_rate[:self.a_tot])
         else:
             self._break_rate = np.zeros(self._cap, dtype=float)
             self._break_sampler = None
+
+    def _compress_init_by_quantile(
+        self,
+        V_init: np.ndarray,
+        V_eff_init: int,
+        V_eff_mod: str = "Q0",
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Compress initial particles (columns) to V_eff_init representatives by uniform quantiles
+        on the *vertical axis* (CDF value), using either:
+    
+          - Q0: number-CDF  (each original column has equal probability mass)
+                -> output weights are equal: W = N / V_eff_init
+          - Q3: volume-CDF  (probability mass proportional to Vtot)
+                -> output weights are generally unequal, chosen so each representative carries
+                   equal "represented volume" share: W_k = (total_volume / V_eff_init) / Vtot_k
+    
+        Returns:
+          V_new: shape (dim+1, V_eff_init)
+          W_new: shape (V_eff_init,)
+        """
+        if V_eff_init <= 0:
+            raise ValueError("V_eff_init must be > 0 for compression.")
+    
+        V_eff_mod = str(V_eff_mod).strip().upper()
+        V = np.asarray(V_init, dtype=float)
+        if V.ndim != 2:
+            raise ValueError("V_init must be a 2D array (dim+1, N).")
+    
+        N = int(V.shape[1])
+        if V_eff_init >= N:
+            # no-op: keep all, weights=1
+            return V.copy(), np.ones(N, dtype=float)
+    
+        Vtot = np.asarray(V[-1, :], dtype=float)
+        if np.any(~np.isfinite(Vtot)) or np.any(Vtot <= 0.0):
+            raise ValueError("Compression requires finite, positive Vtot in V_init[-1,:].")
+    
+        # sort by Vtot
+        order = np.argsort(Vtot)
+        V_sorted = V[:, order]
+        Vtot_sorted = Vtot[order]
+    
+        # midpoint quantiles
+        q = (np.arange(V_eff_init, dtype=float) + 0.5) / float(V_eff_init)
+    
+        def pick_indices_from_cdf(cdf: np.ndarray, qgrid: np.ndarray) -> np.ndarray:
+            idx = np.searchsorted(cdf, qgrid, side="left")
+            return np.clip(idx, 0, cdf.size - 1).astype(int)
+    
+        if V_eff_mod == "Q0":
+            # number-CDF
+            cdf = (np.arange(N, dtype=float) + 1.0) / float(N)
+            pick = pick_indices_from_cdf(cdf, q)
+            V_new = V_sorted[:, pick].copy()
+    
+            w_each = float(N) / float(V_eff_init)
+            W_new = np.full(V_eff_init, w_each, dtype=float)
+            return V_new, W_new
+    
+        if V_eff_mod == "Q3":
+            # volume-CDF (mass proportional to Vtot)
+            tot_vol = float(np.sum(Vtot_sorted))
+            if not np.isfinite(tot_vol) or tot_vol <= 0.0:
+                raise ValueError("Invalid total volume for Q3 compression.")
+    
+            cdf = np.cumsum(Vtot_sorted) / tot_vol
+            pick = pick_indices_from_cdf(cdf, q)
+            V_new = V_sorted[:, pick].copy()
+    
+            # equal represented volume share per representative
+            rep_vol_each = tot_vol / float(V_eff_init)
+            Vp = np.maximum(V_new[-1, :].astype(float), 1e-300)
+            W_new = rep_vol_each / Vp
+            return V_new, W_new
+    
+        raise ValueError(f"Unknown V_eff_mod='{V_eff_mod}'. Use 'Q0' or 'Q3'.")
 
     # ---------------------------------------------------------------------
     # Capacity management
@@ -507,8 +695,8 @@ class MCPBEBase(BaseSolver):
         # Print expansion info
         if self.VERBOSE:
             print(
-                f"[MC-PBE] Capacity grown at t={getattr(self,'_elapsed',0.0):.6g} "
-                f"after {getattr(self,'_iter_count',0)} events: cap {old_cap} -> {new_cap} "
+                f"[MC-PBE] Capacity grown at t={self._elapsed:.6g} "
+                f"after {self._iter_count} events: cap {old_cap} -> {new_cap} "
                 f"(x{new_cap/max(old_cap,1):.2f})"
             )
 
@@ -517,9 +705,17 @@ class MCPBEBase(BaseSolver):
         """Duplicate state to keep statistics when particle count drops (agglomeration dominates)."""
         if getattr(self, "process_type", "agglomeration") not in ("agglomeration", "mix"):
             return
-        if getattr(self, "a0", 0) <= 0:
+        if self.a_tot <= 0:
             return
-        if self.a_tot > self.a0 / 2:
+
+        # Use compressed-initial active count as baseline to avoid false trigger
+        # when V_eff_init << a0.
+        a_ref = int(getattr(self, "_cv_a_ref", 0))
+        if a_ref <= 0:
+            a_ref = int(self.a_tot)
+            self._cv_a_ref = a_ref
+
+        if self.a_tot > a_ref / 2:
             return
 
         old_a = self.a_tot
@@ -569,14 +765,43 @@ class MCPBEBase(BaseSolver):
         return (6.0 * V / math.pi) ** (1.0 / 3.0)
 
     def _dt_agg(self) -> float:
-        """Agglomeration time-step Δt using current r_agg (active slice only)."""
+        """Agglomeration Δt for weighted packet events using current weighted propensities."""
         a = self.a_tot
         if a < 2:
             return float("inf")
-        sum_r = float(np.sum(self._r_agg[:a]))
-        if sum_r <= 0.0:
+        return self._dt_agg_from_sum_prop(float(np.sum(self._r_agg[:a])))
+
+    def _dt_agg_from_sum_prop(self, sum_prop: float) -> float:
+        a = self.a_tot
+        if a < 2 or sum_prop <= 0.0:
             return float("inf")
-        return 2.0 * float(self.Vc) * (a - 1) / (a * sum_r)
+
+        dW = float(getattr(self, "_last_agg_dW", 1.0))
+        if dW <= 0.0:
+            dW = 1.0
+        return dW * 2.0 * float(self.Vc) * (a - 1) / (a * sum_prop)
+
+    @staticmethod
+    def _log_mean_positive(x: float, y: float) -> float:
+        """Logarithmic mean for positive numbers, with stable limit near x==y."""
+        if (not np.isfinite(x)) or (not np.isfinite(y)) or x <= 0.0 or y <= 0.0:
+            return float("nan")
+        if np.isclose(x, y, rtol=1e-12, atol=0.0):
+            return 0.5 * (x + y)
+        return (y - x) / math.log(y / x)
+
+    def _dt_agg_from_sum_prop_pair(self, sum_prop_before: float, sum_prop_after: float) -> float:
+        a = self.a_tot
+        if a < 2:
+            return float("inf")
+        prop_eff = self._log_mean_positive(float(sum_prop_before), float(sum_prop_after))
+        if (not np.isfinite(prop_eff)) or prop_eff <= 0.0:
+            return float("inf")
+
+        dW = float(getattr(self, "_last_agg_dW", 1.0))
+        if dW <= 0.0:
+            dW = 1.0
+        return dW * 2.0 * float(self.Vc) * (a - 1) / (a * prop_eff)
 
     def _dt_break(self) -> float:
         """Breakage Δt for weighted packet events.
@@ -590,21 +815,46 @@ class MCPBEBase(BaseSolver):
             Δt = ΔW / sum(propensity)
         where ΔW is stored in self._last_break_dW by _do_one_break().
         """
-        a = self.a_tot
-        if a <= 0:
+        if self.a_tot <= 0:
             return float("inf")
-    
-        sum_prop = float(np.sum(self._break_rate[:a]))
+
+        return self._dt_break_from_sum_prop(float(np.sum(self._break_rate[:self.a_tot])))
+
+    def _dt_break_from_sum_prop(self, sum_prop: float) -> float:
         if sum_prop <= 0.0:
             return float("inf")
-    
+
         dW = float(getattr(self, "_last_break_dW", 1.0))
-        # dW must be > 0 for an actual break event; fall back to 1 to avoid stalling.
         if dW <= 0.0:
             dW = 1.0
-    
         return dW / sum_prop
 
+    def _dt_break_from_sum_prop_pair(self, sum_prop_before: float, sum_prop_after: float) -> float:
+        dW_chunks = getattr(self, "_last_break_dW_chunks", None)
+        prop_nodes = getattr(self, "_last_break_prop_nodes", None)
+        if dW_chunks is not None and prop_nodes is not None:
+            if len(dW_chunks) >= 1 and len(prop_nodes) == len(dW_chunks) + 1:
+                dt = 0.0
+                for dw_i, p0, p1 in zip(dW_chunks, prop_nodes[:-1], prop_nodes[1:]):
+                    dw_i = float(dw_i)
+                    p0 = float(p0)
+                    p1 = float(p1)
+                    if dw_i <= 0.0 or (not np.isfinite(dw_i)):
+                        continue
+                    if p0 <= 0.0 or p1 <= 0.0 or (not np.isfinite(p0)) or (not np.isfinite(p1)):
+                        return float("inf")
+                    dt += 0.5 * dw_i * (1.0 / p0 + 1.0 / p1)
+                if dt > 0.0 and np.isfinite(dt):
+                    return float(dt)
+
+        prop_eff = self._log_mean_positive(float(sum_prop_before), float(sum_prop_after))
+        if (not np.isfinite(prop_eff)) or prop_eff <= 0.0:
+            return float("inf")
+
+        dW = float(getattr(self, "_last_break_dW", 1.0))
+        if dW <= 0.0:
+            dW = 1.0
+        return dW / prop_eff
 
     # ---------------------------------------------------------------------
     # Main solve loop
@@ -616,22 +866,22 @@ class MCPBEBase(BaseSolver):
         pt = getattr(self, "process_type", "agglomeration")
         timer_agg = 0.0
         timer_break = 0.0
-        dtd_agg = self._dt_agg() if pt in ("agglomeration", "mix") else float("inf")
+        # dtd_agg = self._dt_agg() if pt in ("agglomeration", "mix") else float("inf")
         
-        if pt == "mix":
-            dtd_break = self._dt_break()
-            timer_break += dtd_break
-        else:
-            # breakage-only: dt depends on _last_break_dW, which is only known AFTER _do_one_break()
-            dtd_break = float("inf")
+        # if pt == "mix":
+        #     dtd_break = self._dt_break()
+        #     timer_break += dtd_break
+        # else:
+        #     # breakage-only: dt depends on _last_break_dW, which is only known AFTER _do_one_break()
+        #     dtd_break = float("inf")
 
-        timer_agg += dtd_agg
+        # timer_agg += dtd_agg
 
-        if self.VERBOSE:
-            if np.isfinite(dtd_agg):
-                print(f"Initial dt_agg = {dtd_agg:.3e} s")
-            if np.isfinite(dtd_break):
-                print(f"Initial dt_break = {dtd_break:.3e} s")
+        # if self.VERBOSE:
+        #     if np.isfinite(dtd_agg):
+        #         print(f"Initial dt_agg = {dtd_agg:.3e} s")
+        #     if np.isfinite(dtd_break):
+        #         print(f"Initial dt_break = {dtd_break:.3e} s")
                 
         if self.mcpbe_debug:
             self._check_state_before_solve()
@@ -655,33 +905,62 @@ class MCPBEBase(BaseSolver):
             W_prev_active = self.W[:self.a_tot].copy()
 
             if pt == "agglomeration":
+                if self._agg_sampler is not None:
+                    sum_prop_before = float(self._agg_sampler.total())
+                else:
+                    sum_prop_before = float(np.sum(self._r_agg[:self.a_tot]))
+
                 self._do_one_agg()  # from AgglomerationMixin
+                if self._agg_sampler is not None:
+                    sum_prop_after = float(self._agg_sampler.total())
+                else:
+                    sum_prop_after = float(np.sum(self._r_agg[:self.a_tot]))
                 elapsed_time = timer_agg
-                dtd_agg = self._dt_agg()
+                dtd_agg = self._dt_agg_from_sum_prop_pair(sum_prop_before, sum_prop_after)
                 timer_agg += dtd_agg
             elif pt == "breakage":
-                # total propensity BEFORE the event (needed because Δt uses the event's ΔW)
-                sum_prop_before = float(np.sum(self._break_rate[:self.a_tot]))
+                # total propensity BEFORE the event (Δt uses event ΔW over pre-event propensity)
+                if self._break_sampler is not None:
+                    sum_prop_before = float(self._break_sampler.total())
+                else:
+                    sum_prop_before = float(np.sum(self._break_rate[:self.a_tot]))
             
                 self._do_one_break()  # sets self._last_break_dW for packeted events
-            
-                if sum_prop_before > 0.0:
-                    dtd_break = float(getattr(self, "_last_break_dW", 1.0)) / sum_prop_before
+                if self._break_sampler is not None:
+                    sum_prop_after = float(self._break_sampler.total())
                 else:
-                    dtd_break = float("inf")
+                    sum_prop_after = float(np.sum(self._break_rate[:self.a_tot]))
+                dtd_break = self._dt_break_from_sum_prop_pair(sum_prop_before, sum_prop_after)
             
                 timer_break += dtd_break
                 elapsed_time = timer_break
             else:  # mix
                 if timer_agg <= timer_break:
+                    if self._agg_sampler is not None:
+                        sum_prop_before = float(self._agg_sampler.total())
+                    else:
+                        sum_prop_before = float(np.sum(self._r_agg[:self.a_tot]))
+
                     self._do_one_agg()
+                    if self._agg_sampler is not None:
+                        sum_prop_after = float(self._agg_sampler.total())
+                    else:
+                        sum_prop_after = float(np.sum(self._r_agg[:self.a_tot]))
                     elapsed_time = timer_agg
-                    dtd_agg = self._dt_agg()
+                    dtd_agg = self._dt_agg_from_sum_prop_pair(sum_prop_before, sum_prop_after)
                     timer_agg += dtd_agg
                 else:
+                    if self._break_sampler is not None:
+                        sum_prop_before = float(self._break_sampler.total())
+                    else:
+                        sum_prop_before = float(np.sum(self._break_rate[:self.a_tot]))
                     self._do_one_break()
+                    if self._break_sampler is not None:
+                        sum_prop_after = float(self._break_sampler.total())
+                    else:
+                        sum_prop_after = float(np.sum(self._break_rate[:self.a_tot]))
                     elapsed_time = timer_break
-                    dtd_break = self._dt_break()
+                    dtd_break = self._dt_break_from_sum_prop_pair(sum_prop_before, sum_prop_after)
                     timer_break += dtd_break
 
             self.t.append(elapsed_time)
@@ -707,7 +986,10 @@ class MCPBEBase(BaseSolver):
                 self.t_right.append(elapsed_time)
             
                 next_save_idx += 1
-
+                if self.VERBOSE:    
+                    print(
+                        f"[MC-PBE] Calculate t={elapsed_time:.6g} after {self._iter_count} events"
+                    )
             # agglomeration-dominated safety (duplicate CV)
             self._maybe_double_control_volume(self.t[-1], count)
             self.maybe_reconstruct(iter_count=self._iter_count, reason=f"post_event_{pt}")
@@ -737,6 +1019,7 @@ class MCPBEBase(BaseSolver):
         psd_basis: str = "volume",                 # "volume" or "number"
         psd_x_grid: Optional[np.ndarray] = None,   # if given -> output Q(x)
         psd_Q_grid: Optional[np.ndarray] = None,   # if given -> output x(Q)
+        init_cdf_payload: Optional[dict] = None,
     ):
         """
         Run N Monte Carlo realizations (repeats).
@@ -819,7 +1102,7 @@ class MCPBEBase(BaseSolver):
                     m.Vc = Vc
                     # m.Vc = 1e-10
                     # print("Controll volume : ", m.Vc)
-                m._initialize_particles(init_Vc=init_Vc, V_flat=V_flat)
+                m._initialize_particles(init_Vc=init_Vc, V_flat=V_flat, init_cdf=init_cdf_payload)
                 m._init_lmc()
                 m._initialize_samplers()
                 m.solve(maxiter=maxiter)
@@ -916,6 +1199,7 @@ class MCPBEBase(BaseSolver):
                     "init_Vc": init_Vc,
                     "Vc": Vc,
                     "V_flat": V_flat,
+                    "init_cdf_payload": init_cdf_payload,
                     # PSD options
                     "psd_enable": psd_enable,
                     "psd_basis": psd_basis,
@@ -1127,7 +1411,6 @@ class MCPBEBase(BaseSolver):
         )
         return results, psd_info
 
-
     # ---------------------------------------------------------------------
     # Column ops (capacity style)
     # ---------------------------------------------------------------------
@@ -1138,70 +1421,51 @@ class MCPBEBase(BaseSolver):
         a = self.a_tot
         if j < 0 or j >= a:
             raise IndexError("column index out of range")
-    
-        # Ensure W exists (lazy create for backward compatibility)
-        if not hasattr(self, "W") or self.W is None:
-            self.W = np.zeros(self._cap, dtype=float)
-            self.W[:self.a_tot] = 1.0
-    
-        if a <= 1:
-            # reset to empty active set
-            self.a_tot = max(0, a - 1)
-            if a == 1:
-                self.V_flat[:, 0:1] = 0.0
-                self.X[0:1] = 0.0
-                self.W[0:1] = 0.0
-                if hasattr(self, "_r_agg"):
-                    self._r_agg[0:1] = 0.0
-                if hasattr(self, "_break_rate"):
-                    self._break_rate[0:1] = 0.0
-            self._agg_sampler = FenwickSampler(np.zeros(0)) if self._agg_sampler is not None else None
-            self._break_sampler = FenwickSampler(np.zeros(0)) if self._break_sampler is not None else None
-            return
-    
+
         last = a - 1
         if j != last:
             # swap active columns (V/X/W + propensities)
             self.V_flat[:, [j, last]] = self.V_flat[:, [last, j]]
             self.X[j], self.X[last] = self.X[last], self.X[j]
             self.W[j], self.W[last] = self.W[last], self.W[j]
-    
-            if hasattr(self, "_r_agg") and self._r_agg is not None and self._r_agg.shape[0] >= a:
+
+            if self._r_agg is not None:
                 self._r_agg[j], self._r_agg[last] = self._r_agg[last], self._r_agg[j]
-            if hasattr(self, "_break_rate") and self._break_rate is not None and self._break_rate.shape[0] >= a:
+            if self._break_rate is not None:
                 self._break_rate[j], self._break_rate[last] = self._break_rate[last], self._break_rate[j]
-    
+
         # logical shrink & zero freed slot
         self.a_tot = last
         self.V_flat[:, self.a_tot : self.a_tot + 1] = 0.0
         self.X[self.a_tot : self.a_tot + 1] = 0.0
         self.W[self.a_tot : self.a_tot + 1] = 0.0
-    
-        if hasattr(self, "_r_agg") and self._r_agg is not None and self._r_agg.shape[0] > self.a_tot:
+
+        if self._r_agg is not None:
             self._r_agg[self.a_tot : self.a_tot + 1] = 0.0
-        if hasattr(self, "_break_rate") and self._break_rate is not None and self._break_rate.shape[0] > self.a_tot:
+        if self._break_rate is not None:
             self._break_rate[self.a_tot : self.a_tot + 1] = 0.0
-    
-        # rebuild samplers from active slices (simple & correct)
+
+        # local sampler remove (swap-with-last behavior kept consistent with array swap above)
         if self._agg_sampler is not None:
-            self._agg_sampler = FenwickSampler(self._r_agg[:self.a_tot])
+            self._agg_sampler.remove(j)
         if self._break_sampler is not None:
-            self._break_sampler = FenwickSampler(self._break_rate[:self.a_tot])
+            self._break_sampler.remove(j)
+
+        # rebuild samplers from active slices (simple & correct)
+        # if self._agg_sampler is not None:
+        #     self._agg_sampler = FenwickSampler(self._r_agg[:self.a_tot])
+        # if self._break_sampler is not None:
+        #     self._break_sampler = FenwickSampler(self._break_rate[:self.a_tot])
 
 
     def _append_particle_column(self, frag_vols: np.ndarray):
-        """Append one particle from its per-component volumes; capacity aware; keeps W aligned."""
+        """Append one particle from per-component volumes; caller is responsible for sampler updates."""
         frag_vols = np.asarray(frag_vols, dtype=float)
         if frag_vols.shape != (self.dim,):
             raise ValueError("frag_vols must have shape (dim,)")
     
         # Ensure capacity for V/X (and W via _ensure_capacity_for)
         self._ensure_capacity_for(1)
-    
-        # Ensure W exists (lazy create in case old instances don't have it)
-        if not hasattr(self, "W") or self.W is None:
-            self.W = np.zeros(self._cap, dtype=float)
-            self.W[:self.a_tot] = 1.0
     
         Vnew = float(np.sum(frag_vols))
         idx = self.a_tot
@@ -1216,17 +1480,21 @@ class MCPBEBase(BaseSolver):
     
         self.a_tot += 1
     
-        # rebuild samplers from active slices (simple baseline)
+        # local sampler append
         if self._agg_sampler is not None and hasattr(self, "_r_agg"):
-            self._agg_sampler = FenwickSampler(self._r_agg[:self.a_tot])
+            self._agg_sampler.append(float(self._r_agg[idx]))
         if self._break_sampler is not None and hasattr(self, "_break_rate"):
-            self._break_sampler = FenwickSampler(self._break_rate[:self.a_tot])
+            self._break_sampler.append(float(self._break_rate[idx]))
+
+        # rebuild samplers from active slices (simple baseline)
+        # if self._agg_sampler is not None and hasattr(self, "_r_agg"):
+        #     self._agg_sampler = FenwickSampler(self._r_agg[:self.a_tot])
+        # if self._break_sampler is not None and hasattr(self, "_break_rate"):
+        #     self._break_sampler = FenwickSampler(self._break_rate[:self.a_tot])
 
 
     def _ensure_break_sampler(self):
         """(Re)build break sampler from active slice if needed."""
-        if not hasattr(self, "_break_rate"):
-            return
         if self._break_sampler is None:
             self._break_sampler = FenwickSampler(self._break_rate[:self.a_tot])
     
@@ -1467,6 +1735,7 @@ def _mcpbe_run_single_parallel(payload: dict):
     init_Vc = payload["init_Vc"]
     Vc = payload["Vc"]
     V_flat = payload["V_flat"]
+    init_cdf_payload = payload.get("init_cdf_payload", None)
 
     # PSD opts
     psd_enable = bool(payload.get("psd_enable", False))
@@ -1494,7 +1763,7 @@ def _mcpbe_run_single_parallel(payload: dict):
     obj.V_flat = None
     if not init_Vc and Vc is not None:
         obj.Vc = Vc
-    obj._initialize_particles(init_Vc=init_Vc, V_flat=V_flat)
+    obj._initialize_particles(init_Vc=init_Vc, V_flat=V_flat, init_cdf=init_cdf_payload)
     obj._init_lmc()
     obj._initialize_samplers()
 

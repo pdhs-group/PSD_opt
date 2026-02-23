@@ -54,7 +54,7 @@ class PBEValidation():
         self.P2 = 1
         # The number of times to repeat the MC-PBE
         self.N_MC = 5
-        self.mom_a0 = 2000
+        self.mom_a0 = 10000
         ## Check if the psd file is available
         if self.use_psd:
             if self.dist_path is None:
@@ -110,10 +110,18 @@ class PBEValidation():
         self.p_mc.G = self.G
         self.p_mc.process_type = process
         self.p_mc.alpha_prim = np.ones(dim**2)
-        self.p_mc.break_dW_mode = "linear"
-        self.p_mc.break_dW_alpha = 1000.0
-        self.p_mc.break_dW_min = 20.0
-        self.p_mc.break_dW_max = 50.0
+        self.p_mc.break_dW_mode = "const"
+        self.p_mc.break_dW_alpha = 10.0
+        self.p_mc.break_dW_min = 1.0
+        self.p_mc.break_dW_max = 10.0
+        self.p_mc.break_dW_ratio_min = 0.2
+        self.p_mc.break_dW_ratio_min = 1.0
+        self.p_mc.agg_dW_min = 1.0
+        self.p_mc.agg_dW_max = 1.0
+        self.p_mc.break_N = 1
+        self.p_mc.break_N_adaptive = False
+        self.p_mc.recon_enable = True
+        self.p_mc.V_eff_init = 1000
         
         N = self.p.N / self.p.V_unit
         self.p_mc.n0 = np.sum(N[..., 0])
@@ -196,7 +204,6 @@ class PBEValidation():
             solver.pl_P3 = self.P1
             solver.pl_P4 = self.P2
             
-            
         elif self.kernel == "sum":
             solver.COLEVAL = 4                          
             solver.SIZEEVAL = 1
@@ -234,7 +241,6 @@ class PBEValidation():
                 if i < 3 and j < 3: 
                     self.mu_pbm[i, j, :] = self.p_mom.moments[idx, :]
             
-    
     def calculate_as_pbe(self, t=None):
         t = self.p.t_vec if t is None else t
         
@@ -245,24 +251,99 @@ class PBEValidation():
                     self.mu_as[0,0,:] = 2*self.n0/(2+self.beta0*self.n0*t)
                     self.mu_as[1,0,:] = np.ones(t.shape)*self.c 
                 elif self.p.process_type == "breakage":
-                    print("not yet coded")
+                    for k in range(3):
+                        self.mu_as[k, 0, :] = self.mu_pbe[k, 0, 0] * np.exp(self.P1 * (2.0 / (k + 1) - 1.0) * t)
+                elif self.p.process_type == "mix":
+                    K = float(self.beta0)
+                    b0 = float(self.P1)
+                    mu00_0 = float(self.mu_pbe[0,0,0])   # number
+                    mu10_0 = float(self.mu_pbe[1,0,0])   # mass/volume (conserved)
+                    mu20_0 = float(self.mu_pbe[2,0,0])   # 2nd moment
+                    self.mu_as[1, 0, :] = mu10_0
+                
+                    # mu00: dmu00/dt = b0*mu00 - (K/2)*mu00^2  (logistic)
+                    if abs(b0) < 1e-30:
+                        # pure agglomeration limit
+                        self.mu_as[0, 0, :] = mu00_0 / (1.0 + 0.5 * K * mu00_0 * t)
+                    else:
+                        e = np.exp(b0 * t)
+                        self.mu_as[0, 0, :] = (mu00_0 * e) / (1.0 + (0.5 * K * mu00_0 / b0) * (e - 1.0))
+                
+                    # mu20: dmu20/dt = K*mu10^2 + b0*(2/(2+1)-1)*mu20 = K*mu10^2 - (b0/3)*mu20
+                    if abs(b0) < 1e-30:
+                        self.mu_as[2, 0, :] = mu20_0 + K * (mu10_0 ** 2) * t
+                    else:
+                        decay = np.exp(-(b0 / 3.0) * t)
+                        self.mu_as[2, 0, :] = mu20_0 * decay + (3.0 * K * (mu10_0 ** 2) / b0) * (1.0 - decay)
                 else:
                     print("not yet coded")
             elif self.p.dim == 2:
-                v10 = self.p.V1[1]
-                v30 = self.p.V3[1]
+                # v10 = self.p.V1[1]
+                # v30 = self.p.V3[1]
                 if self.p.process_type == "agglomeration":
-                    n0_tot = 2*self.n0
-                    self.mu_as[0,0,:] = 2*n0_tot/(2+self.beta0*n0_tot*t)
-                    self.mu_as[1,0,:] = np.ones(t.shape)*self.c         
-                    self.mu_as[0,1,:] = np.ones(t.shape)*self.c
-                    self.mu_as[1,1,:] = self.c**2*self.beta0*n0_tot*t/n0_tot
-                    self.mu_as[2,0,:] = self.c*(v10+self.c*self.beta0*n0_tot*t/n0_tot) 
-                    self.mu_as[0,2,:] = self.c*(v30+self.c*self.beta0*n0_tot*t/n0_tot) 
+                    # n0_tot = 2*self.n0
+                    # self.mu_as[0,0,:] = 2*n0_tot/(2+self.beta0*n0_tot*t)
+                    # self.mu_as[1,0,:] = np.ones(t.shape)*self.c         
+                    # self.mu_as[0,1,:] = np.ones(t.shape)*self.c
+                    # self.mu_as[1,1,:] = self.c**2*self.beta0*n0_tot*t/n0_tot
+                    # self.mu_as[2,0,:] = self.c*(v10+self.c*self.beta0*n0_tot*t/n0_tot) 
+                    # self.mu_as[0,2,:] = self.c*(v30+self.c*self.beta0*n0_tot*t/n0_tot) 
+                    K = float(self.beta0)
+                    mu00_0 = float(self.mu_pbe[0,0,0])
+                    mu10_0 = float(self.mu_pbe[1,0,0])
+                    mu01_0 = float(self.mu_pbe[0,1,0])
+                    mu11_0 = float(self.mu_pbe[1,1,0])
+                    mu20_0 = float(self.mu_pbe[2,0,0])
+                    mu02_0 = float(self.mu_pbe[0,2,0])
+                    self.mu_as[0,0,:] = mu00_0 / (1.0 + 0.5 * K * mu00_0 * t)
+                    self.mu_as[1,0,:] = mu10_0
+                    self.mu_as[0,1,:] = mu01_0
+                    self.mu_as[1,1,:] = mu11_0 + K * mu10_0 * mu01_0 * t
+                    self.mu_as[2,0,:] = mu20_0 + K * (mu10_0 ** 2) * t
+                    self.mu_as[0,2,:] = mu02_0 + K * (mu01_0 ** 2) * t
+                    
                 elif self.p.process_type == "breakage":
                     for k in range(3):
                         for l in range(3):
                             self.mu_as[k,l,:] = self.mu_pbe[k,l,0]*np.exp(self.P1*(2/((k+1)*(l+1))-1)*t)
+                elif self.p.process_type == "mix":
+                    # ---- 2D: const agglomeration (K) + const breakage (b0), up to 2nd order ----
+                    K = float(self.beta0)
+                    b0 = float(self.P1)
+                
+                    mu00_0 = float(self.mu_pbe[0, 0, 0])
+                    mu10_0 = float(self.mu_pbe[1, 0, 0])
+                    mu01_0 = float(self.mu_pbe[0, 1, 0])
+                    mu11_0 = float(self.mu_pbe[1, 1, 0])
+                    mu20_0 = float(self.mu_pbe[2, 0, 0])
+                    mu02_0 = float(self.mu_pbe[0, 2, 0])
+                
+                    # 1st moments conserved
+                    self.mu_as[1, 0, :] = mu10_0
+                    self.mu_as[0, 1, :] = mu01_0
+                
+                    # mu00: dmu00/dt = b0*mu00 - (K/2)*mu00^2
+                    if abs(b0) < 1e-30:
+                        self.mu_as[0, 0, :] = mu00_0 / (1.0 + 0.5 * K * mu00_0 * t)
+                    else:
+                        e = np.exp(b0 * t)
+                        self.mu_as[0, 0, :] = (mu00_0 * e) / (1.0 + (0.5 * K * mu00_0 / b0) * (e - 1.0))
+                
+                    # mu11: dmu11/dt = K*mu10*mu01 + b0*(2/((2)(2)) - 1)*mu11 = K*mu10*mu01 - (b0/2)*mu11
+                    if abs(b0) < 1e-30:
+                        self.mu_as[1, 1, :] = mu11_0 + K * mu10_0 * mu01_0 * t
+                    else:
+                        decay = np.exp(-(b0 / 2.0) * t)
+                        self.mu_as[1, 1, :] = mu11_0 * decay + (2.0 * K * mu10_0 * mu01_0 / b0) * (1.0 - decay)
+                
+                    # mu20, mu02: dmu20/dt = K*mu10^2 - (b0/3)*mu20 ; dmu02/dt = K*mu01^2 - (b0/3)*mu02
+                    if abs(b0) < 1e-30:
+                        self.mu_as[2, 0, :] = mu20_0 + K * (mu10_0 ** 2) * t
+                        self.mu_as[0, 2, :] = mu02_0 + K * (mu01_0 ** 2) * t
+                    else:
+                        decay = np.exp(-(b0 / 3.0) * t)
+                        self.mu_as[2, 0, :] = mu20_0 * decay + (3.0 * K * (mu10_0 ** 2) / b0) * (1.0 - decay)
+                        self.mu_as[0, 2, :] = mu02_0 * decay + (3.0 * K * (mu01_0 ** 2) / b0) * (1.0 - decay)
                 else:
                     print("Analytical solution for breakage case in 1-d not yet coded!")
                     

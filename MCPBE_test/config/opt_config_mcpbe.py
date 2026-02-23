@@ -104,7 +104,9 @@ config = {
         # - 'RMSE': Root Mean Squared Error
         # - 'MAE': Mean Absolute Error
         # - 'KL': Kullback-Leibler divergence (only compatible with q3 and Q3)
-        'data_flag': 'Q0',
+        'data_flag': 'Q3',
+        #"Q0_X_50", "Q3_X_50"
+
         'cost_flag': 'MSE',
         # Path to store Ray Tune optimization infomation.
         'tune_storage_path': os.path.join(_config_opt_path, 'Ray_Tune'), 
@@ -127,12 +129,13 @@ config = {
         'max_iter_time': 0.0,
         # Top-K re-evaluation feature
         'opt_top_K': 0,
+        'use_exp_cdf_init': True,
         }, 
     
     ## PBE parameters
     ## For a detailed explanation of the PBE parameters, please refer to the `PBE_config.py` file.
     'pop_params': {
-        "NC": 5,
+        "NC": 10,
         "MC_seed": 42,
         "mcpbe_debug": False,
         
@@ -201,6 +204,20 @@ config = {
         "pl_v": 2,
         "pl_P1": 1e10,
         "pl_P2": 1,
+        
+        "break_dW_mode": "sqrt",
+        "break_dW_alpha": 10,
+        "break_dW_min": 1.0,
+        "break_dW_max": 5.0,
+        "break_dW_ratio_min": 0.2,
+        "break_dW_ratio_max": 1.0,
+        "agg_dW_min": 1.0,
+        "agg_dW_max": 1.0,
+        "break_N": 1,
+        "recon_enable": True,
+        "V_eff_init": 1000,
+        "V_eff_mod": "Q3",
+        
         },
     
     ## Optimized parameters and their search ranges.

@@ -17,10 +17,10 @@ if __name__ == "__main__":
     # so theoretically, the initial conditions for all three methods remain the same.
     c = 1e0  # m3/m3
     x = 2e-1  # m
-    beta0 = 1e-13 # /m3
+    beta0 = 1e-4 # /m3
     P1 = 1e-1
     P2 = 1.0
-    use_psd = True
+    use_psd = False
     rel_mom = True
     
     ## generate initial PSD

@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from .fenwick import FenwickSampler
-from optframework.utils.func.jit_mcpbe import nb_rebuild_ragg, nb_pick_partner
+from .fenwick_new import FenwickSampler
+from optframework.utils.func.jit_mcpbe import nb_rebuild_ragg_weighted, nb_pick_partner_weighted
 
 # External JIT kernel for β(i,j)
 from optframework.utils.func.jit_kernel_agg import calc_beta as _kb_beta
@@ -50,7 +50,7 @@ class MCPBEAgg:
     # r_agg maintenance (full rebuild)
     # ------------------------------------------------------------------
     def _rebuild_all_propensities(self):
-        """Parallel rebuild of r_agg with numba kernel."""
+        """Rebuild weighted agglomeration propensities r_i = W_i * sum_j (W_j * beta(i,j))."""
         a = self.a_tot
         if a <= 0:
             if not hasattr(self, "_r_agg") or self._r_agg is None or self._r_agg.shape[0] < getattr(self, "_cap", a):
@@ -60,7 +60,14 @@ class MCPBEAgg:
             return
 
         R = (self.X[:a] * 0.5).astype(np.float64)
-        r = nb_rebuild_ragg(int(self.COLEVAL), float(self.CORR_BETA), float(getattr(self, "G", 1.0)), R)
+        W = self.W[:a].astype(np.float64)
+        r = nb_rebuild_ragg_weighted(
+            int(self.COLEVAL),
+            float(self.CORR_BETA),
+            float(getattr(self, "G", 1.0)),
+            R,
+            W,
+        )
 
         if not hasattr(self, "_r_agg") or self._r_agg is None or self._r_agg.shape[0] < getattr(self, "_cap", a):
             self._r_agg = np.zeros(getattr(self, "_cap", a), dtype=float)
@@ -68,19 +75,64 @@ class MCPBEAgg:
         if self._r_agg.shape[0] > a:
             self._r_agg[a:] = 0.0
 
+    def _compute_agg_dW(self, i: int, j: int, pair_prop: float, sum_prop_before: float) -> float:
+        """Compute packet size ΔW for one agglomeration event on pair (i,j)."""
+        Wi = float(self.W[i])
+        Wj = float(self.W[j])
+        if Wi <= 0.0 or Wj <= 0.0:
+            return 0.0
+
+        dW_max = float(getattr(self, "agg_dW_max", 1.0))
+        dW_min = float(getattr(self, "agg_dW_min", 1.0))
+        if dW_max <= 0.0:
+            return 0.0
+        if dW_min < 0.0:
+            dW_min = 0.0
+
+        mode = str(getattr(self, "agg_dW_mode", "const")).lower()
+        if mode == "const":
+            dW = dW_max
+        else:
+            f = 0.0 if sum_prop_before <= 0.0 else float(pair_prop) / float(sum_prop_before)
+            f = float(np.clip(f, 0.0, 1.0))
+            alpha = float(getattr(self, "agg_dW_alpha", 100.0))
+            if alpha <= 0.0:
+                alpha = 1.0
+            if mode == "sqrt":
+                dW = dW_min + alpha * (f ** 0.5) * (dW_max - dW_min)
+            else:
+                dW = dW_min + alpha * f * (dW_max - dW_min)
+
+        if dW < dW_min:
+            dW = dW_min
+        if dW > dW_max:
+            dW = dW_max
+        if dW > Wi:
+            dW = Wi
+        if dW > Wj:
+            dW = Wj
+        if not np.isfinite(dW) or dW <= 0.0:
+            return 0.0
+        return float(dW)
+
     # ------------------------------------------------------------------
     # Single agglomeration event
     # ------------------------------------------------------------------
     def _do_one_agg(self):
         a = self.a_tot
         if a < 2:
+            self._last_agg_dW = 1.0
             return
+
+        # default packet for rejected/empty attempts
+        self._last_agg_dW = 1.0
 
         # 1) pick first partner by r_i
         i = self._agg_sampler.sample(self._rng)
 
-        # 2) numba-assisted partner sampling & acceptance test
+        # 2) weighted partner sampling + acceptance (numba)
         R = (self.X[:a] * 0.5).astype(np.float64)
+        W = self.W[:a].astype(np.float64)
         if self.dim == 1:
             alpha1d = float(self.alpha_prim if np.ndim(self.alpha_prim) == 0 else np.mean(self.alpha_prim))
             alpha4 = np.zeros(4, dtype=np.float64)
@@ -100,56 +152,48 @@ class MCPBEAgg:
 
         u_sel = float(self._rng.random())
         u_acc = float(self._rng.random())
-        j = nb_pick_partner(
+        j, pick_w = nb_pick_partner_weighted(
             i,
             int(self.COLEVAL), float(self.CORR_BETA), float(getattr(self, "G", 1.0)),
-            R, V0, V1, int(self.dim),
+            R, W, V0, V1, int(self.dim),
             float(alpha1d), alpha4, SIZEEVAL, X_SEL, Y_SEL, Vmean2,
             u_sel, u_acc,
         )
-        if j < 0 or j == i:
+        if j < 0 or j == i or pick_w <= 0.0:
             return
 
-        # 3) perform merge i <- i ∪ j
+        # 3) packet size ΔW for this accepted event
+        sum_prop_before = float(self._agg_sampler.total()) if self._agg_sampler is not None else float(np.sum(self._r_agg[: self.a_tot]))
+        Wi = float(self.W[i])
+        pair_prop = Wi * pick_w  # = W_i * (W_j * beta_ij)
+        dW = self._compute_agg_dW(i, j, pair_prop, sum_prop_before)
+        if dW <= 0.0:
+            return
+        self._last_agg_dW = dW
+
+        # 4) create one new compute particle for merged products with weight dW
         Vi = self.V_flat[: self.dim, i].copy()
         Vj = self.V_flat[: self.dim, j].copy()
         Vnew = Vi + Vj
-        Xnew = float(self._vol2diam(np.sum(Vnew)))
 
-        # 4) incremental propensity updates for all m != i,j
-        #    use a single R_new for β(m,i_new)
-        R_new = R.copy()
-        R_new[i] = 0.5 * Xnew
-        for m in range(a):
-            if m == i or m == j:
+        self._append_particle_column(Vnew)
+        new_idx = self.a_tot - 1
+        self.W[new_idx] = dW
+
+        # 5) consume dW from parents (volumes unchanged for surviving represented particles)
+        for idx in sorted({int(i), int(j)}, reverse=True):
+            if idx >= self.a_tot:
                 continue
-            beta_m_i = _kb_beta(int(self.COLEVAL), float(self.CORR_BETA), float(getattr(self, "G", 1.0)), R, m, i)
-            beta_m_j = _kb_beta(int(self.COLEVAL), float(self.CORR_BETA), float(getattr(self, "G", 1.0)), R, m, j)
-            beta_m_new = _kb_beta(int(self.COLEVAL), float(self.CORR_BETA), float(getattr(self, "G", 1.0)), R_new, m, i)
-            rm_new = self._r_agg[m] - beta_m_i - beta_m_j + beta_m_new
-            self._r_agg[m] = rm_new
-            self._agg_sampler.update(m, rm_new)
+            w_now = float(self.W[idx])
+            w_rem = w_now - dW
+            if w_rem > 0.0:
+                self.W[idx] = w_rem
+            else:
+                self._remove_particle_column(idx)
 
-        # 5) commit: write new column at i; remove j (swap-pop)
-        self.V_flat[: self.dim, i] = Vnew
-        self.V_flat[-1, i] = float(np.sum(Vnew))
-        self.X[i] = Xnew
-
-        last = a - 1
-        i_after = j if (j != last and i == last) else i
-        self._remove_particle_column(j)  # updates a_tot and rebuilds samplers
-        i = i_after
-
-        # 6) recompute r_i exactly (others unchanged from step 4)
-        rk = 0.0
-        a_now = self.a_tot
-        R_now = (self.X[:a_now] * 0.5).astype(np.float64)
-        for m in range(a_now):
-            if m == i:
-                continue
-            rk += _kb_beta(int(self.COLEVAL), float(self.CORR_BETA), float(getattr(self, "G", 1.0)), R_now, i, m)
-        self._r_agg[i] = rk
-        self._agg_sampler.update(i, rk)
+        # 6) full weighted agglomeration propensity refresh (simple and consistent)
+        self._rebuild_all_propensities()
+        self._agg_sampler = FenwickSampler(self._r_agg[: self.a_tot])
 
         # 7) breakage sampler refresh (if active)
         if getattr(self, "process_break", False) or getattr(self, "process_type", "agglomeration") in ("breakage", "mix"):

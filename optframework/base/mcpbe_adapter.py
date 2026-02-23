@@ -11,7 +11,7 @@ import h5py
 import threading
 from typing import Any, Literal
 from .adapters_api_basics import WriteThroughAdapter
-from optframework.mcpbe import MCPBESolver
+from optframework.wmcpbe import MCPBESolver
 
 class MCPBEAdapter(WriteThroughAdapter):
     """
@@ -40,9 +40,11 @@ class MCPBEAdapter(WriteThroughAdapter):
         # Optional: Adapter-only field (won't write-through)
         self._skip.update({"role", "opt", "NC", "MC_seed", "init_Vc", "Vc_init", 
                            "V_flat_init", "_psd_basis", "_psd_x_grid", "_psd_Q_grid",
-                           "data_mod"})
+                           "_init_cdf_payload", "use_exp_cdf_init", "data_mod"})
         self.role = role
         self.opt = opt
+        self.use_exp_cdf_init = bool(getattr(opt, "use_exp_cdf_init", False))
+        self._init_cdf_payload = None
         
         # p.calc_status will be checked during the optimization process and must exist
         self.calc_status = True
@@ -232,6 +234,7 @@ class MCPBEAdapter(WriteThroughAdapter):
             init_Vc=self.init_Vc,
             Vc=self.opt.Vc_init,
             V_flat=self.opt.V_flat_init,
+            init_cdf_payload=self._init_cdf_payload,
             workers=1,
             psd_enable=True,
             psd_basis=self._psd_basis,
@@ -440,6 +443,20 @@ class MCPBEAdapter(WriteThroughAdapter):
         # Store V_mean_exp for later plotting
         self.V_mean_exp = V_mean_exp
         self.x_50_exp = x_50_exp
+
+        if self.use_exp_cdf_init:
+            cdf0 = np.asarray(data_exp[:, 0], dtype=float)
+            total_vol_ref = float(np.sum(V_flat_init[1, :]))
+            self._init_cdf_payload = {
+                "x_grid": np.asarray(x_uni, dtype=float),
+                "cdf": cdf0,
+                "basis": self._psd_basis,
+                "n_ref": int(V_flat_init.shape[1]),
+                "total_vol_ref": total_vol_ref,
+                "target_n": int(getattr(self.impl, "V_eff_init", 0) or 0),
+            }
+        else:
+            self._init_cdf_payload = None
 
         return x_uni, data_exp
     

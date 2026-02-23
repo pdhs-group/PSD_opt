@@ -310,10 +310,10 @@ def process_folders(
 # main：手动填写文件夹（支持多个）
 # -----------------------------
 if __name__ == "__main__":
-    data_group = "data_mcpbe_CB_S1"
+    data_group = "data_mcpbe_CB_S4"
     # ✅ 在这里手动输入一个或多个结果文件夹
     RESULT_FOLDERS = [
-        # "opt_results_N2000_Q0",
+        "opt_results_N2000_Q0",
         "opt_results_N2000_Q0_N",
         # "opt_results_N2000_Q0_S1",
         # "opt_results_N2000_Q0_cut",
@@ -322,9 +322,9 @@ if __name__ == "__main__":
         # "opt_results_N5000_Q3",
         "opt_results_N10000_Q0",
         # "opt_results_N10000_Q0_S1",
-        "opt_results_N10000_Q3",
+        # "opt_results_N10000_Q3",
         # "opt_results_N10000_Q3_S1",
-        "opt_results_N10000_Q3_cut",
+        # "opt_results_N10000_Q3_cut",
         # "opt_results_N10000_Q3_cut_S1",
         # "opt_results_N10000_Q3_func",
         "opt_results_N10000_Q3_min_max",
@@ -334,11 +334,11 @@ if __name__ == "__main__":
         # "opt_results_N10000_Q3",
         # "opt_results_N20000_Q0",
         # "opt_results_N20000_Q3",
-        "opt_results_N20000_Q3_x50",
+        # "opt_results_N20000_Q3_x50",
         # "opt_results_N20000_Q3_x50_S1",
         # "opt_results_N50000_Q0",
         # "opt_results_N50000_Q3",
-        "opt_results_N50000_Q3_cut",
+        # "opt_results_N50000_Q3_cut",
         # "opt_results_N50000_Q3_cut_S1",
         # "opt_results_N100000_Q0",
         # "opt_results_N100000_Q3",
