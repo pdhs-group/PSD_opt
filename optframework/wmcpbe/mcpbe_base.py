@@ -6,12 +6,12 @@ import math
 import os
 import time
 import warnings
+import json
 from typing import Optional, Sequence, Any, Tuple
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import copy
 
 import numpy as np
-
 from optframework.base.base_solver import BaseSolver
 # from .fenwick import FenwickSampler
 from .fenwick_new import FenwickSampler
@@ -78,6 +78,8 @@ class MCPBEBase(BaseSolver):
 
         # cache for breakage CDF tables (keyed by dim, N, BREAKFVAL, pl_v, pl_q)
         self._bf_cache = {}
+        self._open_mmaps = []
+        self._dump_runtime_paths = {}
         
         self.mcpbe_debug = False
         # Initialize state
@@ -435,7 +437,6 @@ class MCPBEBase(BaseSolver):
         # -------------------------
         # Time & saved snapshots
         # -------------------------
-        self.t = [0.0]
         if self.t_vec is None:
             steps = max(1, int(self.t_total // max(1, self.t_write)))
             self.t_vec = np.linspace(0.0, float(self.t_total), steps + 1)
@@ -526,11 +527,9 @@ class MCPBEBase(BaseSolver):
         if n_ref <= 0:
             n_ref = x_u.size
 
-        target_n = int(init_cdf.get("target_n", 0) or 0)
-        if target_n <= 0:
-            veff = int(getattr(self, "V_eff_init", 0) or 0)
-            target_n = veff if veff > 0 else n_ref
-        target_n = max(1, int(target_n))
+        target_n = int(init_cdf.get("V_eff_init", 0) or 0)
+        if target_n < 1:
+            raise ValueError("init_cdf target_n must be >= 1.")
 
         q = (np.arange(target_n, dtype=float) + 0.5) / float(target_n)
         x_rep = np.interp(q, c_u, x_u)
@@ -725,8 +724,10 @@ class MCPBEBase(BaseSolver):
         self.Vc *= 2.0
         V_active = self.V_flat[:, :self.a_tot]
         X_active = self.X[:self.a_tot]
+        W_active = self.W[:self.a_tot]
         V_dup = np.concatenate((V_active, V_active), axis=1)
         X_dup = np.concatenate((X_active, X_active))
+        W_dup = np.concatenate((W_active, W_active))
         self.a_tot = V_dup.shape[1]
 
         # Ensure capacity and write back
@@ -734,16 +735,31 @@ class MCPBEBase(BaseSolver):
             self._cap = int(self.a_tot * 1.2) + 8
             V_new = np.zeros((self.dim + 1, self._cap), dtype=float)
             X_new = np.zeros(self._cap, dtype=float)
+            W_new = np.zeros(self._cap, dtype=float)
             V_new[:, :self.a_tot] = V_dup
             X_new[:self.a_tot] = X_dup
+            W_new[:self.a_tot] = W_dup
             self.V_flat = V_new
             self.X = X_new
+            self.W = W_new
+
+            if hasattr(self, "_r_agg") and self._r_agg is not None:
+                r_new = np.zeros(self._cap, dtype=float)
+                r_new[:old_a] = self._r_agg[:old_a]
+                self._r_agg = r_new
+            if hasattr(self, "_break_rate") and self._break_rate is not None:
+                b_new = np.zeros(self._cap, dtype=float)
+                b_new[:old_a] = self._break_rate[:old_a]
+                self._break_rate = b_new
         else:
             self.V_flat[:, :self.a_tot] = V_dup
             self.X[:self.a_tot] = X_dup
+            self.W[:self.a_tot] = W_dup
 
         if hasattr(self, "V0") and isinstance(self.V0, np.ndarray):
             self.V0 = np.concatenate((self.V0, self.V0), axis=1)
+        if hasattr(self, "W0") and isinstance(self.W0, np.ndarray):
+            self.W0 = np.concatenate((self.W0, self.W0), axis=0)
 
         # Rebuild samplers from active slices
         if getattr(self, "process_type", "agglomeration") in ("agglomeration", "mix"):
@@ -830,23 +846,6 @@ class MCPBEBase(BaseSolver):
         return dW / sum_prop
 
     def _dt_break_from_sum_prop_pair(self, sum_prop_before: float, sum_prop_after: float) -> float:
-        dW_chunks = getattr(self, "_last_break_dW_chunks", None)
-        prop_nodes = getattr(self, "_last_break_prop_nodes", None)
-        if dW_chunks is not None and prop_nodes is not None:
-            if len(dW_chunks) >= 1 and len(prop_nodes) == len(dW_chunks) + 1:
-                dt = 0.0
-                for dw_i, p0, p1 in zip(dW_chunks, prop_nodes[:-1], prop_nodes[1:]):
-                    dw_i = float(dw_i)
-                    p0 = float(p0)
-                    p1 = float(p1)
-                    if dw_i <= 0.0 or (not np.isfinite(dw_i)):
-                        continue
-                    if p0 <= 0.0 or p1 <= 0.0 or (not np.isfinite(p0)) or (not np.isfinite(p1)):
-                        return float("inf")
-                    dt += 0.5 * dw_i * (1.0 / p0 + 1.0 / p1)
-                if dt > 0.0 and np.isfinite(dt):
-                    return float(dt)
-
         prop_eff = self._log_mean_positive(float(sum_prop_before), float(sum_prop_after))
         if (not np.isfinite(prop_eff)) or prop_eff <= 0.0:
             return float("inf")
@@ -862,6 +861,7 @@ class MCPBEBase(BaseSolver):
     def solve(self, maxiter: int = int(1e8)):
         t0 = time.time()
         count = 0
+        current_time = 0.0
 
         pt = getattr(self, "process_type", "agglomeration")
         timer_agg = 0.0
@@ -892,15 +892,15 @@ class MCPBEBase(BaseSolver):
         self._iter_count = 0
 
         cancel_flag = getattr(self, "cancel_flag", None)
-        while self.t[-1] <= float(self.t_vec[-1]) and count < maxiter:
+        while current_time <= float(self.t_vec[-1]) and count < maxiter:
             if cancel_flag is not None and cancel_flag.get("cancel", False):
                 break
             # keep context for logging/expansion
-            self._elapsed = self.t[-1]
+            self._elapsed = current_time
             self._iter_count = count
             
             # cache "left" state: state after previous event
-            t_prev = self.t[-1]
+            t_prev = current_time
             V_prev_active = self.V_flat[:, :self.a_tot].copy()
             W_prev_active = self.W[:self.a_tot].copy()
 
@@ -931,7 +931,9 @@ class MCPBEBase(BaseSolver):
                 else:
                     sum_prop_after = float(np.sum(self._break_rate[:self.a_tot]))
                 dtd_break = self._dt_break_from_sum_prop_pair(sum_prop_before, sum_prop_after)
-            
+                # dtd_break = self._dt_break_from_sum_prop(sum_prop_before)
+                # u = max(self._rng.random(), 1e-300)
+                # dtd_break *= -math.log(u)
                 timer_break += dtd_break
                 elapsed_time = timer_break
             else:  # mix
@@ -963,7 +965,8 @@ class MCPBEBase(BaseSolver):
                     dtd_break = self._dt_break_from_sum_prop_pair(sum_prop_before, sum_prop_after)
                     timer_break += dtd_break
 
-            self.t.append(elapsed_time)
+            current_time = float(elapsed_time)
+            self._elapsed = current_time
             
             # current "right" state after this event
             V_right_active = self.V_flat[:, :self.a_tot]
@@ -991,7 +994,7 @@ class MCPBEBase(BaseSolver):
                         f"[MC-PBE] Calculate t={elapsed_time:.6g} after {self._iter_count} events"
                     )
             # agglomeration-dominated safety (duplicate CV)
-            self._maybe_double_control_volume(self.t[-1], count)
+            self._maybe_double_control_volume(current_time, count)
             self.maybe_reconstruct(iter_count=self._iter_count, reason=f"post_event_{pt}")
 
             count += 1
@@ -1020,6 +1023,7 @@ class MCPBEBase(BaseSolver):
         psd_x_grid: Optional[np.ndarray] = None,   # if given -> output Q(x)
         psd_Q_grid: Optional[np.ndarray] = None,   # if given -> output x(Q)
         init_cdf_payload: Optional[dict] = None,
+        dump_results: bool = False,
     ):
         """
         Run N Monte Carlo realizations (repeats).
@@ -1075,6 +1079,308 @@ class MCPBEBase(BaseSolver):
 
         # ----- serial path (supports PSD) -----
         if workers == 1:
+            if dump_results:
+                if psd_enable and psd_x_grid is None and psd_Q_grid is None:
+                    raise ValueError(
+                        "dump_results=True with psd_enable=True requires psd_x_grid or psd_Q_grid "
+                        "to ensure fixed-length PSD arrays for memmap storage."
+                    )
+
+                dump_dir = getattr(self, "dump_pth", None)
+                if dump_dir is None:
+                    dump_dir = os.path.join(self.work_dir, "dump")
+                os.makedirs(dump_dir, exist_ok=True)
+
+                meta_path = os.path.join(dump_dir, "meta.json")
+                tvec_path = os.path.join(dump_dir, "t_vec.npy")
+                seeds_path = os.path.join(dump_dir, "seeds.jsonl")
+                moments_path = os.path.join(dump_dir, "moments.npy")
+                cdf_vals_path = os.path.join(dump_dir, "cdf_vals.npy")
+
+                self._open_mmaps = []
+                self._dump_runtime_paths = {
+                    "meta": meta_path,
+                    "t_vec": tvec_path,
+                    "seeds": seeds_path,
+                    "moments": moments_path,
+                    "cdf_vals": cdf_vals_path,
+                }
+
+                for pth in (moments_path, cdf_vals_path):
+                    if os.path.exists(pth):
+                        try:
+                            os.remove(pth)
+                        except OSError:
+                            pass
+
+                cancel_flag = getattr(self, "cancel_flag", None)
+                psd_mode = None
+                psd_grid = None
+                if psd_enable:
+                    if psd_x_grid is not None and psd_Q_grid is not None:
+                        warnings.warn(
+                            "Both psd_x_grid and psd_Q_grid are provided; psd_x_grid will be used and Q(x) will be stored.",
+                            RuntimeWarning,
+                        )
+                        psd_mode = "Q_of_x"
+                        psd_grid = np.asarray(psd_x_grid, dtype=float)
+                    elif psd_x_grid is not None:
+                        psd_mode = "Q_of_x"
+                        psd_grid = np.asarray(psd_x_grid, dtype=float)
+                    else:
+                        psd_mode = "x_of_Q"
+                        psd_grid = np.asarray(psd_Q_grid, dtype=float)
+
+                t_vec_ref: Optional[np.ndarray] = None
+                moments_mm = None
+                cdf_vals_mm = None
+                moment_ij_shape: Optional[tuple[int, int]] = None
+                n_done = 0
+
+                with open(seeds_path, "w", encoding="utf-8") as fseed:
+                    for k in range(N):
+                        if cancel_flag is not None and cancel_flag.get("cancel", False):
+                            break
+
+                        m = copy.deepcopy(self)
+                        if cancel_flag is not None:
+                            m.cancel_flag = cancel_flag
+                        sk = seeds[k]
+                        if isinstance(sk, np.random.SeedSequence):
+                            rng = np.random.default_rng(sk)
+                            seed_info = {"spawn_key": tuple(sk.spawn_key)}
+                        else:
+                            rng = np.random.default_rng(int(sk))
+                            seed_info = {"seed": int(sk)}
+                        m._rng = rng
+                        m.V_flat = None
+                        if not init_Vc and Vc is not None:
+                            m.Vc = Vc
+                        m._initialize_particles(init_Vc=init_Vc, V_flat=V_flat, init_cdf=init_cdf_payload)
+                        m._init_lmc()
+                        m._initialize_samplers()
+                        m.solve(maxiter=maxiter)
+
+                        mu, tv = m.calc_moments_over_time(normalize=True)
+                        mu = np.asarray(mu, dtype=float)
+                        tv = np.asarray(tv, dtype=float)
+                        if mu.ndim != 3:
+                            raise RuntimeError(f"Unexpected moments shape {mu.shape}; expected 3D array.")
+                        mi, mj, T = mu.shape
+                        P = int(mi * mj)
+                        mu_tp = mu.reshape(P, T).T
+
+                        if t_vec_ref is None:
+                            t_vec_ref = tv.copy()
+                            np.save(tvec_path, t_vec_ref)
+                            moments_mm = np.lib.format.open_memmap(
+                                moments_path, mode="w+", dtype="float64", shape=(N, T, P)
+                            )
+                            self._open_mmaps.append(moments_mm)
+                            moments_mm[:] = np.nan
+                            moment_ij_shape = (int(mi), int(mj))
+
+                            if psd_enable:
+                                M = int(psd_grid.shape[0])
+                                cdf_vals_mm = np.lib.format.open_memmap(
+                                    cdf_vals_path, mode="w+", dtype="float64", shape=(N, T, M)
+                                )
+                                self._open_mmaps.append(cdf_vals_mm)
+                                cdf_vals_mm[:] = np.nan
+                        else:
+                            if len(t_vec_ref) != len(tv) or not np.allclose(
+                                t_vec_ref, tv, rtol=1e-6, atol=1e-12
+                            ):
+                                raise RuntimeError(
+                                    "t_vec differs between repeats in dump_results mode; "
+                                    "cannot write variable-length records to fixed-shape memmap."
+                                )
+                            if moment_ij_shape is None or moment_ij_shape != (mi, mj):
+                                raise RuntimeError(
+                                    "Moment tensor shape differs between repeats in dump_results mode."
+                                )
+
+                        moments_mm[n_done, :, :] = mu_tp
+                        fseed.write(json.dumps(seed_info, ensure_ascii=False) + "\n")
+
+                        if psd_enable:
+                            cdf_list, t_vec_local = m.compute_psd_cdf_over_time(
+                                psd_basis=psd_basis,
+                                time_scheme="interp",
+                            )
+                            t_vec_local = np.asarray(t_vec_local, dtype=float)
+                            if len(t_vec_local) != len(t_vec_ref) or not np.allclose(
+                                t_vec_local, t_vec_ref, rtol=1e-6, atol=1e-12
+                            ):
+                                raise RuntimeError(
+                                    "PSD t_vec differs between repeats in dump_results mode; "
+                                    "cannot write variable-length records to fixed-shape memmap."
+                                )
+
+                            for it in range(T):
+                                cdf = cdf_list[it] if it < len(cdf_list) else None
+                                if cdf is None:
+                                    continue
+                                x_sorted, Q_sorted = cdf
+                                if psd_mode == "Q_of_x":
+                                    vals = m._eval_Q_of_x(x_sorted, Q_sorted, psd_grid)
+                                else:
+                                    vals = m._eval_x_of_Q(x_sorted, Q_sorted, psd_grid)
+                                cdf_vals_mm[n_done, it, :] = vals
+
+                        n_done += 1
+
+                if moments_mm is not None:
+                    moments_mm.flush()
+                if cdf_vals_mm is not None:
+                    cdf_vals_mm.flush()
+
+                self._close_open_mmaps()
+
+                if t_vec_ref is None or n_done == 0:
+                    meta = {
+                        "N": int(N),
+                        "n_done": int(n_done),
+                        "dim": int(self.dim),
+                        "psd_enable": bool(psd_enable),
+                        "dump_results": True,
+                        "note": "No repeats completed.",
+                    }
+                    with open(meta_path, "w", encoding="utf-8") as fmeta:
+                        json.dump(meta, fmeta, ensure_ascii=False, indent=2)
+                    return [], None
+
+                meta = {
+                    "N": int(N),
+                    "n_done": int(n_done),
+                    "dim": int(self.dim),
+                    "t_vec_len": int(len(t_vec_ref)),
+                    "t_vec_path": "t_vec.npy",
+                    "moments_shape": [int(N), int(moments_mm.shape[1]), int(moments_mm.shape[2])],
+                    "moments_tensor_ij": [int(moment_ij_shape[0]), int(moment_ij_shape[1])],
+                    "moments_path": "moments.npy",
+                    "seeds_path": "seeds.jsonl",
+                    "psd_enable": bool(psd_enable),
+                    "psd_mode": psd_mode,
+                    "dump_results": True,
+                }
+                if psd_enable:
+                    meta["cdf_vals_shape"] = [int(N), int(cdf_vals_mm.shape[1]), int(cdf_vals_mm.shape[2])]
+                    meta["cdf_vals_path"] = "cdf_vals.npy"
+                    if psd_mode == "Q_of_x":
+                        meta["psd_x_grid"] = psd_grid.tolist()
+                    else:
+                        meta["psd_Q_grid"] = psd_grid.tolist()
+
+                with open(meta_path, "w", encoding="utf-8") as fmeta:
+                    json.dump(meta, fmeta, ensure_ascii=False, indent=2)
+
+                t_vec_loaded = np.load(tvec_path)
+                moments_loaded = np.load(moments_path, mmap_mode="r")
+                with open(seeds_path, "r", encoding="utf-8") as fseed:
+                    seed_lines = [json.loads(line) for line in fseed if line.strip()]
+
+                mi, mj = int(moment_ij_shape[0]), int(moment_ij_shape[1])
+                T = int(moments_loaded.shape[1])
+                P = int(moments_loaded.shape[2])
+                if P != mi * mj:
+                    raise RuntimeError("Invalid moments memmap shape: P != mi*mj")
+
+                results: list[dict[str, Any]] = []
+                for i in range(n_done):
+                    mu_tp = np.asarray(moments_loaded[i], dtype=float)
+                    mu_rec = mu_tp.T.reshape(mi, mj, T)
+                    seed_info = seed_lines[i] if i < len(seed_lines) else {"seed_index": i}
+                    results.append({"seed_info": seed_info, "t_vec": t_vec_loaded, "moments": mu_rec})
+
+                if not psd_enable:
+                    return results, None
+
+                cdf_vals_loaded = np.load(cdf_vals_path, mmap_mode="r")
+                T = int(cdf_vals_loaded.shape[1])
+                M = int(cdf_vals_loaded.shape[2])
+
+                psd_info: dict[str, Any] = {
+                    "basis": psd_basis,
+                    "mode": psd_mode,
+                    "t_vec": np.asarray(t_vec_loaded, dtype=float),
+                    "note": (
+                        "PSD computed at all saved times (aligned with t_vec) "
+                        "and averaged over all repeats."
+                    ),
+                }
+
+                if psd_mode == "Q_of_x":
+                    Q_sum = np.zeros((T, M), dtype=float)
+                    Q_count = np.zeros(T, dtype=int)
+                    for i in range(n_done):
+                        vals_i = np.asarray(cdf_vals_loaded[i], dtype=float)
+                        for it in range(T):
+                            row = vals_i[it]
+                            if np.any(np.isfinite(row)):
+                                Q_sum[it] += np.nan_to_num(row, nan=0.0)
+                                Q_count[it] += 1
+
+                    Q_mean = np.full((T, M), np.nan, dtype=float)
+                    for it in range(T):
+                        if Q_count[it] > 0:
+                            Q_mean[it] = Q_sum[it] / float(Q_count[it])
+
+                    x_grid = np.asarray(psd_grid, dtype=float)
+                    psd_info["x_grid"] = x_grid
+                    psd_info["Q_mean"] = Q_mean.T
+
+                    x_50 = np.full(T, np.nan, dtype=float)
+                    for it in range(T):
+                        x_50[it] = self._invert_cdf_monotone(x_grid, Q_mean[it, :], q=0.5)
+                    psd_info["x_50"] = x_50
+                else:
+                    x_sum = np.zeros((T, M), dtype=float)
+                    x_count = np.zeros(T, dtype=int)
+                    for i in range(n_done):
+                        vals_i = np.asarray(cdf_vals_loaded[i], dtype=float)
+                        for it in range(T):
+                            row = vals_i[it]
+                            if np.any(np.isfinite(row)):
+                                x_sum[it] += np.nan_to_num(row, nan=0.0)
+                                x_count[it] += 1
+
+                    x_mean = np.full((T, M), np.nan, dtype=float)
+                    for it in range(T):
+                        if x_count[it] > 0:
+                            x_mean[it] = x_sum[it] / float(x_count[it])
+
+                    Q_grid = np.asarray(psd_grid, dtype=float)
+                    psd_info["Q_grid"] = Q_grid
+                    psd_info["x_mean"] = x_mean
+
+                    x_50 = np.full(T, np.nan, dtype=float)
+                    q = 0.5
+                    hit = np.where(np.isclose(Q_grid, q, rtol=0.0, atol=1e-12))[0]
+                    if hit.size > 0:
+                        j = int(hit[0])
+                        x_50 = x_mean[:, j].astype(float, copy=False)
+                    else:
+                        for it in range(T):
+                            xq = np.asarray(x_mean[it], dtype=float)
+                            mask = np.isfinite(Q_grid) & np.isfinite(xq)
+                            if not np.any(mask):
+                                x_50[it] = float("nan")
+                                continue
+                            Qm = Q_grid[mask]
+                            xm = xq[mask]
+                            order = np.argsort(Qm)
+                            Qm = Qm[order]
+                            xm = xm[order]
+                            xm = np.maximum.accumulate(xm)
+                            if Qm[0] > q or Qm[-1] < q:
+                                x_50[it] = float("nan")
+                            else:
+                                x_50[it] = float(np.interp(q, Qm, xm))
+                    psd_info["x_50"] = x_50
+
+                return results, psd_info
+
             results: list[dict[str, Any]] = []
             cancel_flag = getattr(self, "cancel_flag", None)
 
@@ -1499,6 +1805,20 @@ class MCPBEBase(BaseSolver):
             self._break_sampler = FenwickSampler(self._break_rate[:self.a_tot])
     
     def _close(self, gc_clean=True):
+        self._close_open_mmaps()
+
+        cancel_flag = getattr(self, "cancel_flag", None)
+        cancelled = isinstance(cancel_flag, dict) and bool(cancel_flag.get("cancel", False))
+        if cancelled:
+            dump_paths = getattr(self, "_dump_runtime_paths", {}) or {}
+            for key in ("moments", "cdf_vals"):
+                pth = dump_paths.get(key, None)
+                if pth and os.path.exists(pth):
+                    try:
+                        os.remove(pth)
+                    except OSError:
+                        pass
+
         big_attrs = ("V_flat", "X", "V0", "X0",
              "V0_save", "V_save", "Vc_save",
              "_r_agg", "_break_rate",
@@ -1510,6 +1830,25 @@ class MCPBEBase(BaseSolver):
         if gc_clean:
             import gc
             gc.collect()
+
+    def _close_open_mmaps(self):
+        handles = getattr(self, "_open_mmaps", None)
+        if not handles:
+            self._open_mmaps = []
+            return
+
+        for mm in list(handles):
+            try:
+                mm.flush()
+            except Exception:
+                pass
+            try:
+                mmap_obj = getattr(mm, "_mmap", None)
+                if mmap_obj is not None:
+                    mmap_obj.close()
+            except Exception:
+                pass
+        self._open_mmaps = []
             
     def _check_state_before_solve(self):
         """Light-weight sanity checks before entering the main solve loop.

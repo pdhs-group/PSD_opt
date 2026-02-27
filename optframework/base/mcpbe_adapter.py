@@ -164,6 +164,7 @@ class MCPBEAdapter(WriteThroughAdapter):
     
     #     self.calc_status = True
     #     max_time = float(getattr(self.opt, "max_iter_time", 0.0) or 0.0)
+    #     dump_results = getattr(self.impl, "dump_results", False)
     
     #     # 共享的取消标志：所有拷贝都应该指向它
     #     shared_flag = {"cancel": False}
@@ -184,6 +185,7 @@ class MCPBEAdapter(WriteThroughAdapter):
     #                 psd_basis=self._psd_basis,
     #                 psd_x_grid=self.opt._psd_x_grid,
     #                 psd_Q_grid=self._psd_Q_grid,
+    #                 dump_results=dump_results,
     #             )
     #             result_container["result"] = (r, p)
     #         except Exception as e:
@@ -201,8 +203,13 @@ class MCPBEAdapter(WriteThroughAdapter):
     #     if th.is_alive():
     #         # Timeout: request cancellation
     #         shared_flag["cancel"] = True
+
+    #         # Give worker a short grace period to observe cancel_flag and release resources
+    #         th.join(timeout=5.0)
+
     #         self.calc_status = False
     #         self.data_mod = None
+    #         self.close()
     #         return
     
     #     # --- thread finished normally ---
@@ -225,6 +232,7 @@ class MCPBEAdapter(WriteThroughAdapter):
             raise ValueError("Adapter.solve: provided t_vec differs from opt.t_vec.")
     
         self.calc_status = True
+        dump_results = getattr(self.impl, "dump_results", False)
         # 共享的取消标志：所有拷贝都应该指向它
         shared_flag = {"cancel": False}
         self.impl.cancel_flag = shared_flag
@@ -240,6 +248,7 @@ class MCPBEAdapter(WriteThroughAdapter):
             psd_basis=self._psd_basis,
             psd_x_grid=self.opt._psd_x_grid,
             psd_Q_grid=self._psd_Q_grid,
+            dump_results=dump_results,
         )
     
         if "Q_mean" not in psd_info:

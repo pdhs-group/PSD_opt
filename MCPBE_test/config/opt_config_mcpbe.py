@@ -126,10 +126,10 @@ config = {
         'max_concurrent': 2,
         
         # Maximum
-        'max_iter_time': 0.0,
+        'max_iter_time': 20.0,
         # Top-K re-evaluation feature
         'opt_top_K': 0,
-        'use_exp_cdf_init': True,
+        'use_exp_cdf_init': False,
         }, 
     
     ## PBE parameters
@@ -205,19 +205,20 @@ config = {
         "pl_P1": 1e10,
         "pl_P2": 1,
         
-        "break_dW_mode": "sqrt",
-        "break_dW_alpha": 10,
+        "break_dW_mode": "const",
         "break_dW_min": 1.0,
-        "break_dW_max": 5.0,
-        "break_dW_ratio_min": 0.2,
-        "break_dW_ratio_max": 1.0,
-        "agg_dW_min": 1.0,
-        "agg_dW_max": 1.0,
-        "break_N": 1,
-        "recon_enable": True,
-        "V_eff_init": 1000,
+        "break_dW_max": 1.0,
+        # "agg_dW_min": 1.0,
+        # "agg_dW_max": 1.0,
+        "V_eff_init": 0,
         "V_eff_mod": "Q3",
+        "recon_enable": False,
+        "recon_method": "2PM",
+        "recon_N_max": 4000,
+        "recon_bins": 100,
         
+        "dump_results": True,
+        "dump_pth": os.path.join(_config_opt_path, 'dump'), 
         },
     
     ## Optimized parameters and their search ranges.

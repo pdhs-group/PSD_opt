@@ -54,7 +54,7 @@ class PBEValidation():
         self.P2 = 1
         # The number of times to repeat the MC-PBE
         self.N_MC = 5
-        self.mom_a0 = 10000
+        self.mom_a0 = 1000
         ## Check if the psd file is available
         if self.use_psd:
             if self.dist_path is None:
@@ -111,7 +111,7 @@ class PBEValidation():
         self.p_mc.process_type = process
         self.p_mc.alpha_prim = np.ones(dim**2)
         self.p_mc.break_dW_mode = "const"
-        self.p_mc.break_dW_alpha = 10.0
+        self.p_mc.break_dW_alpha = 100.0
         self.p_mc.break_dW_min = 1.0
         self.p_mc.break_dW_max = 10.0
         self.p_mc.break_dW_ratio_min = 0.2
@@ -121,7 +121,12 @@ class PBEValidation():
         self.p_mc.break_N = 1
         self.p_mc.break_N_adaptive = False
         self.p_mc.recon_enable = True
-        self.p_mc.V_eff_init = 1000
+        self.p_mc.V_eff_init = 100
+        self.p_mc.recon_N_max = 1000
+        self.p_mc.recon_method = "2PM"
+        self.p_mc.recon_bins = 100
+        self.p_mc.recon_RS_target = 200
+        
         
         N = self.p.N / self.p.V_unit
         self.p_mc.n0 = np.sum(N[..., 0])
@@ -248,8 +253,9 @@ class PBEValidation():
             if self.p.dim == 1:
                 # self.v0 = self.p.V[1]
                 if self.p.process_type == "agglomeration":
-                    self.mu_as[0,0,:] = 2*self.n0/(2+self.beta0*self.n0*t)
+                    self.mu_as[0,0,:] = 2*self.mu_pbe[0,0,0]/(2+self.beta0*self.mu_pbe[0,0,0]*t)
                     self.mu_as[1,0,:] = np.ones(t.shape)*self.c 
+                    self.mu_as[2,0,:] = float(self.mu_pbe[2,0,0]) + self.beta0 * (self.mu_pbe[1,0,0]**2) * t
                 elif self.p.process_type == "breakage":
                     for k in range(3):
                         self.mu_as[k, 0, :] = self.mu_pbe[k, 0, 0] * np.exp(self.P1 * (2.0 / (k + 1) - 1.0) * t)

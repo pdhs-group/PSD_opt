@@ -41,16 +41,16 @@ class ReconstructionMixin:
     # Public knobs (safe defaults)
     # -----------------------------
     recon_enable: bool = False
-    recon_method: str = "2PM"      # kept for compatibility; "CAM" or "RS", "2PM", "4PM", "QMX"(Quantile MiX)
+    recon_method: str = "RS"      # kept for compatibility; "CAM" or "RS", "2PM", "4PM", "QMX"(Quantile MiX)
     recon_N_max: int = 4000        # trigger if a_tot exceeds this
     recon_every_events: int = 0    # optional periodic trigger; 0 disables
 
     # CAM/2PM grid controls
-    recon_bins: int = 50          # number of bins per dimension (1D: ~bins, 2D: ~bins^2 cells)
+    recon_bins: int = 500          # number of bins per dimension (1D: ~bins, 2D: ~bins^2 cells)
     recon_grid_log: bool = True    # build edges in log-space (recommended for PSD-like scaling)
 
     # --- RS method controls (resampling) ---
-    recon_RS_target: int = 1000         # target number of ACTIVE particles after recon (excluding protected)
+    recon_RS_target: int = 2000         # target number of ACTIVE particles after recon (excluding protected)
     recon_RS_min_per_cell: int = 1       # minimum reps per occupied cell (keeps support)
     recon_RS_max_per_cell: int = 200     # safety cap to avoid huge replication in one cell
 

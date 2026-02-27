@@ -45,71 +45,10 @@ class MCPBEBreak:
         self._break_pl_v = float(getattr(self, "pl_v", 1.0))
         self._break_pl_q = float(getattr(self, "pl_q", 1.0))
 
-        dW_mode = str(getattr(self, "break_dW_mode", "linear")).lower()
-        if dW_mode not in ("linear", "sqrt", "const", "ratio"):
-            dW_mode = "linear"
-        self._break_dW_mode = dW_mode
-
-        dW_max = float(getattr(self, "break_dW_max", 50.0))
-        if (not np.isfinite(dW_max)) or dW_max <= 0.0:
-            dW_max = 50.0
-        self._break_dW_max = dW_max
-
-        dW_min = float(getattr(self, "break_dW_min", 1.0))
-        if (not np.isfinite(dW_min)) or dW_min < 0.0:
-            dW_min = 0.0
-        self._break_dW_min = dW_min
-
-        alpha = float(getattr(self, "break_dW_alpha", 100.0))
-        if (not np.isfinite(alpha)) or alpha <= 0.0:
-            alpha = 1.0
-        self._break_dW_alpha = alpha
-
-        rho_min = float(getattr(self, "break_dW_ratio_min", 0.10))
-        rho_max = float(getattr(self, "break_dW_ratio_max", 0.50))
-        if (not np.isfinite(rho_min)) or rho_min < 0.0:
-            rho_min = 0.0
-        if (not np.isfinite(rho_max)) or rho_max <= 0.0:
-            rho_max = 0.5
-        if rho_max < rho_min:
-            rho_min, rho_max = rho_max, rho_min
-        self._break_dW_ratio_min = rho_min
-        self._break_dW_ratio_max = rho_max
-
-        gamma = float(getattr(self, "break_dW_ratio_gamma", 1.0))
-        if (not np.isfinite(gamma)) or gamma <= 0.0:
-            gamma = 1.0
-        self._break_dW_ratio_gamma = gamma
-
-        self._break_dW_ratio_use_log = bool(getattr(self, "break_dW_ratio_use_log", True))
-        V0_cfg = getattr(self, "break_dW_ratio_V0", None)
-        if V0_cfg is None:
-            self._break_dW_ratio_V0 = None
-        else:
-            V0_val = float(V0_cfg)
-            self._break_dW_ratio_V0 = V0_val if (np.isfinite(V0_val) and V0_val > 0.0) else None
-
-        self._break_N_adaptive = bool(getattr(self, "break_N_adaptive", True))
-
-        N_fixed = int(getattr(self, "break_N", 1))
-        if N_fixed < 1:
-            N_fixed = 1
-        self._break_N = N_fixed
-
-        chunk_ratio = float(getattr(self, "break_dW_chunk_max_ratio", 0.10))
-        if (not np.isfinite(chunk_ratio)) or chunk_ratio <= 0.0:
-            chunk_ratio = 0.10
-        self._break_dW_chunk_max_ratio = chunk_ratio
-
-        chunk_abs = float(getattr(self, "break_dW_chunk_max_abs", 0.0))
-        if not np.isfinite(chunk_abs):
-            chunk_abs = 0.0
-        self._break_dW_chunk_max_abs = chunk_abs
-
-        N_max = int(getattr(self, "break_N_max", 64))
-        if N_max < 1:
-            N_max = 1
-        self._break_N_max = N_max
+        dW_const = float(getattr(self, "break_dW_max", 50.0))
+        if (not np.isfinite(dW_const)) or dW_const <= 0.0:
+            dW_const = 50.0
+        self._break_dW_const = dW_const
 
     # ------------------------------------------------------------------
     # Breakage rate (full table and single-point)
@@ -349,11 +288,6 @@ class MCPBEBreak:
     # Single breakage event (multi-fragment)
     # ------------------------------------------------------------------
 
-    def _current_break_sum_prop(self) -> float:
-        if self._break_sampler is not None:
-            return float(self._break_sampler.total())
-        return float(np.sum(self._break_rate[:self.a_tot]))
-    
     # 统一后处理：应用碎片并维护 break/agg
     def _break_apply_and_maintain(self, k: int, frags: list[np.ndarray], dW: float) -> None:
         """Apply one *packet* breakage event.
@@ -551,134 +485,12 @@ class MCPBEBreak:
         # 走原来的逐步切分逻辑
         return "ok", self._build_fragments_stepwise(Vrem_k)
 
-    def _compute_dW(self, k: int, sum_prop_before: float) -> float:
-        """Compute packet size ΔW for a breakage event on particle k.
-    
-        Existing modes:
-          - "linear": ΔW ~ f
-          - "sqrt"  : ΔW ~ sqrt(f)
-          - "const" : ΔW = dW_max
-    
-        New mode:
-          - "ratio" : ΔW = rho(V) * Wk, with rho in [rho_min, rho_max]
-                     where rho decreases with particle volume (larger V -> smaller rho).
-    
-        Notes
-        -----
-        - In "ratio" mode, rho depends ONLY on particle volume (Vtot), not on propensity fraction f.
-        - Always clamps by [break_dW_min, break_dW_max] and available Wk.
-    
-        Required attributes
-        -------------------
-        break_dW_mode : str, default "linear"
-        break_dW_max  : float, default 50.0
-        break_dW_min  : float, default 1.0
-    
-        ratio-mode knobs
-        ---------------
-        break_dW_ratio_min    : float, default 0.10     # minimum fraction of Wk per event (for large V)
-        break_dW_ratio_max    : float, default 0.50     # maximum fraction of Wk per event (for small V)
-        break_dW_ratio_V0     : float, default None     # knee volume in normalized V space; if None -> median(Vtot)
-        break_dW_ratio_gamma  : float, default 1.0      # shape exponent; larger -> sharper transition
-        break_dW_ratio_use_log: bool,  default True     # use log(V) mapping to handle wide size ranges
-        """
+    def _compute_dW(self, k: int) -> float:
+        """Compute packet size ΔW for breakage using a single constant event size."""
         Wk = float(self.W[k])
         if Wk <= 0.0 or not np.isfinite(Wk):
             return 0.0
-    
-        dW_max = float(self._break_dW_max)
-        dW_min = float(self._break_dW_min)
-    
-        # If total propensity is invalid, we can still compute ratio-mode purely from volume.
-        # For other modes, we need sum_prop_before and pk.
-        mode = self._break_dW_mode
-    
-        if mode == "ratio":
-            # --- volume-only relative packet size ---
-            rho_min = float(self._break_dW_ratio_min)
-            rho_max = float(self._break_dW_ratio_max)
-    
-            gamma = float(self._break_dW_ratio_gamma)
-    
-            use_log = bool(self._break_dW_ratio_use_log)
-    
-            # Particle volume (assumed normalized Vtot)
-            a = int(self.a_tot)
-            V = float(self.V_flat[-1, k])  # Vtot[k]
-            if not np.isfinite(V) or V <= 0.0:
-                V = 0.0
-    
-            # Choose knee volume V0:
-            #   - If provided: use it
-            #   - Else: use current median of active Vtot (robust and scale-adaptive)
-            V0 = self._break_dW_ratio_V0
-            if V0 is None:
-                if a > 0:
-                    Vactive = np.asarray(self.V_flat[-1, :a], dtype=float)
-                    m = np.isfinite(Vactive) & (Vactive > 0.0)
-                    if np.any(m):
-                        V0 = float(np.median(Vactive[m]))
-                    else:
-                        V0 = 1.0
-                else:
-                    V0 = 1.0
-            V0 = float(V0)
-    
-            # Map volume to t in [0,1], where:
-            #   - small V -> t ~ 0 -> rho ~ rho_max
-            #   - large V -> t ~ 1 -> rho ~ rho_min
-            # Use smooth saturating function:
-            #   s = V/(V+V0) in (0,1)
-            #   t = s^gamma
-            #   rho = rho_max - (rho_max-rho_min)*t
-            if use_log:
-                # log-soften: use V' = log(1+V) and V0' = log(1+V0)
-                Vp = math.log1p(max(V, 0.0))
-                V0p = math.log1p(V0)
-                s = Vp / (Vp + V0p) if (Vp + V0p) > 0.0 else 0.0
-            else:
-                s = V / (V + V0) if (V + V0) > 0.0 else 0.0
-    
-            s = float(np.clip(s, 0.0, 1.0))
-            t = float(s ** gamma)
-    
-            rho = rho_max - (rho_max - rho_min) * t
-            dW = rho * Wk
-    
-        elif mode == "const":
-            dW = dW_max
-    
-        else:
-            # For linear/sqrt we need pk and sum_prop_before
-            if not np.isfinite(sum_prop_before) or sum_prop_before <= 0.0:
-                return float(min(Wk, dW_max))
-    
-            pk = float(self._break_rate[k])  # W*S
-            if not np.isfinite(pk) or pk <= 0.0:
-                return 0.0
-    
-            f = pk / float(sum_prop_before)
-            f = float(np.clip(f, 0.0, 1.0))
-    
-            alpha = float(self._break_dW_alpha)
-    
-            span = (dW_max - dW_min)
-            if span < 0.0:
-                span = 0.0
-    
-            if mode == "sqrt":
-                dW = alpha * (f ** 0.5) * span
-            else:
-                # default: linear
-                dW = alpha * f * span
-    
-        # clamp by [min, max] and available weight
-        if dW < dW_min:
-            dW = dW_min
-        if dW > dW_max:
-            dW = dW_max
-        if dW > Wk:
-            dW = Wk
+        dW = min(float(self._break_dW_const), Wk)
     
         if not np.isfinite(dW) or dW <= 0.0:
             return 0.0
@@ -688,11 +500,6 @@ class MCPBEBreak:
         # 主入口：预处理 -> 生成碎片 -> 统一维护
         if self.a_tot < 1:
             return
-
-        # Optional per-event quadrature data for dt integration in base solver.
-        # For N>1 chunked events, we fill these; otherwise keep None and use log-mean fallback.
-        self._last_break_prop_nodes = None
-        self._last_break_dW_chunks = None
     
         self._ensure_break_sampler()
     
@@ -712,115 +519,41 @@ class MCPBEBreak:
                 self._mark_unbreakable(k)
                 continue
     
-            # 本次事件总消耗的权重包
-            sum_prop_before = float(self._break_sampler.total())
-            dW_total = self._compute_dW(k, sum_prop_before)
+            dW_total = self._compute_dW(k)
             if dW_total <= 0.0:
                 self._mark_unbreakable(k)
                 continue
-    
-            # --------------------------
-            # Adaptive chunking: choose N based on dW_total
-            # --------------------------
-            # Backward-compatible switch:
-            #   break_N_adaptive=True  -> adaptive N (default)
-            #   break_N_adaptive=False -> fixed N = break_N
-            use_adaptive = bool(self._break_N_adaptive)
-    
-            if not use_adaptive:
-                N = int(self._break_N)
-            else:
-                # Maximum chunk size (controls batch-wise correlation):
-                # chunk_max = min( break_dW_chunk_max_abs,
-                #                  break_dW_chunk_max_ratio * Wk0 )
-                ratio = float(self._break_dW_chunk_max_ratio)  # 10% of Wk0 by default
-                chunk_max = ratio * float(max(Wk0, 1e-12))
-    
-                abs_cap = float(self._break_dW_chunk_max_abs)
-                if abs_cap > 0.0:
-                    chunk_max = min(chunk_max, abs_cap)
-    
-                # ensure sensible lower bound
-                if not np.isfinite(chunk_max) or chunk_max <= 0.0:
-                    chunk_max = max(1.0, 0.10 * dW_total)
-    
-                N = int(math.ceil(float(dW_total) / float(chunk_max)))
-                if N < 1:
-                    N = 1
-    
-                N_max = int(self._break_N_max)
-                if N > N_max:
-                    N = N_max
-    
-            # Keep legacy cap: don't create more chunks than total weight (helps avoid tiny chunks)
-            if N > dW_total:
-                N = int(dW_total)
-            if N < 1:
-                N = 1
-    
+
             # 记录本次事件对应的真实事件数（总消耗），用于 solve() 里的 dt 计算
             self._last_break_dW = float(dW_total)
 
-            # For chunked breakage (N>1), record propensity nodes and chunk masses
-            # to enable trapezoidal integration in dt computation.
-            use_trap = N > 1
-            if use_trap:
-                prop_nodes = [float(sum_prop_before)]
-                dW_chunks = []
-    
-            # 均分权重（允许非整数）；最后一份用“剩余量”兜底，避免累计误差
-            base_chunk = dW_total / float(N)
-            remaining = float(dW_total)
-    
-            for n in range(N):
-                # 若 parent 已被移除或索引已越界，停止（避免 swap/remove 后继续用旧 k）
-                if k >= self.a_tot:
-                    break
-    
-                Wk_now = float(self.W[k])
-                if Wk_now <= 0.0:
-                    break
-    
-                # 本份权重
-                dW = base_chunk if (n < N - 1) else remaining
-                if dW > remaining:
-                    dW = remaining
-                if dW > Wk_now:
-                    dW = Wk_now
-                if dW <= 0.0:
-                    break
-    
-                # 母颗粒体积（用于生成“单个真实颗粒”的碎片体积分配）
-                if self.dim == 1:
-                    Vrem_k = np.array([self.V_flat[0, k]], dtype=float)
-                else:
-                    Vrem_k = np.array([self.V_flat[0, k], self.V_flat[1, k]], dtype=float)
-    
-                status, frags = self._break_build_fragments(Vrem_k)
-    
-                if status == "disable":
-                    # 该粒子不可破碎：清零 propensity，整次事件作废（返回）
-                    self._mark_unbreakable(k)
-                    return
-    
-                if status == "ok":
-                    # 应用该份碎片（以 dW_chunk 的权重 append），并减少父颗粒权重
-                    self._break_apply_and_maintain(k, frags, dW)
-                    remaining -= dW
+            # 单次事件，不再分块（N 固定为 1）
+            if k >= self.a_tot:
+                return
 
-                    if use_trap:
-                        dW_chunks.append(float(dW))
-                        prop_nodes.append(self._current_break_sum_prop())
+            Wk_now = float(self.W[k])
+            if Wk_now <= 0.0:
+                return
 
-                    if remaining <= 0.0:
-                        break
-                else:
-                    # 未知状态：直接退出
-                    return
+            dW = min(float(dW_total), Wk_now)
+            if dW <= 0.0:
+                return
 
-            if use_trap and len(dW_chunks) >= 1 and len(prop_nodes) == len(dW_chunks) + 1:
-                self._last_break_dW_chunks = dW_chunks
-                self._last_break_prop_nodes = prop_nodes
+            if self.dim == 1:
+                Vrem_k = np.array([self.V_flat[0, k]], dtype=float)
+            else:
+                Vrem_k = np.array([self.V_flat[0, k], self.V_flat[1, k]], dtype=float)
+
+            status, frags = self._break_build_fragments(Vrem_k)
+
+            if status == "disable":
+                self._mark_unbreakable(k)
+                return
+
+            if status == "ok":
+                self._break_apply_and_maintain(k, frags, dW)
+            else:
+                return
     
             return  # 本次 break 事件完成（无论是否完全用尽 remaining）
 

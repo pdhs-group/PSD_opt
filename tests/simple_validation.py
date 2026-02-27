@@ -17,7 +17,7 @@ if __name__ == "__main__":
     # so theoretically, the initial conditions for all three methods remain the same.
     c = 1e0  # m3/m3
     x = 2e-1  # m
-    beta0 = 1e-4 # /m3
+    beta0 = 1e-3 # /m3
     P1 = 1e-1
     P2 = 1.0
     use_psd = False
@@ -32,7 +32,7 @@ if __name__ == "__main__":
     maxscale = 100
     dist_path = full_psd(x50, resigma, minscale=minscale, maxscale=maxscale, plot_psd=False, output_dir=output_dir)
     
-    dim = 2
+    dim = 1
     grid = "geo"
     NS1 = 15
     NS2 = 15
@@ -40,7 +40,7 @@ if __name__ == "__main__":
     S2 = 2
     kernel = "const"
     process = "breakage"
-    t = np.arange(0, 21, 2, dtype=float)
+    t = np.arange(0, 81, 8, dtype=float)
     
     v = PBEValidation(dim, grid, NS1, S1, kernel, process, t=t, c=c, x=x, 
                       beta0=beta0, use_psd=use_psd, dist_path=dist_path)
