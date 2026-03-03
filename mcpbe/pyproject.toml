@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "mcpbe"
+version = "0.6.5"
+description = "Monte Carlo Population Balance Equation solvers, including weighted MCPBE variants."
+authors = ["HR94 <haoran.ji@kit.edu>"]
+license = "GPL-3.0-only"
+readme = "README.md"
+packages = [
+    { include = "mcpbe", from = "src" },
+    { include = "wmcpbe", from = "src" },
+]
+
+[tool.poetry.dependencies]
+python = ">=3.9,<3.12"
+numpy = "^2.3.5"
+numba = "^0.63.1"
+scipy = "^1.16.3"
+matplotlib = "^3.10.8"
+torch = "^2.9.1"
+pbe-core = "^0.6"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

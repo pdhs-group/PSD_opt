@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "pbe-core"
+version = "0.6.5"
+description = "Core numerical kernels and base utilities for PBE solvers."
+authors = ["HR94 <haoran.ji@kit.edu>"]
+license = "GPL-3.0-only"
+readme = "README.md"
+packages = [
+    { include = "pbe_core", from = "src" },
+]
+
+[tool.poetry.dependencies]
+python = ">=3.9,<3.12"
+numpy = "^2.3.5"
+pandas = "^2.3.3"
+numba = "^0.63.1"
+matplotlib = "^3.10.8"
+scipy = "^1.16.3"
+scikit-learn = "^1.8.0"
+libcst = "^1.8.6"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

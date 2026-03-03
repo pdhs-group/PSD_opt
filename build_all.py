@@ -1,0 +1,140 @@
+from __future__ import annotations
+
+import argparse
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+
+def find_package_dirs(root: Path) -> list[Path]:
+    package_dirs: list[Path] = []
+    for child in root.iterdir():
+        if not child.is_dir():
+            continue
+        if child.name.startswith('.'):
+            continue
+        if child.name in {"dist-wheels", "dist", "__pycache__"}:
+            continue
+        if (child / "pyproject.toml").exists():
+            package_dirs.append(child)
+    return sorted(package_dirs, key=lambda p: p.name.lower())
+
+
+def run_poetry_build(package_dir: Path) -> None:
+    cmd = ["poetry", "build", "-f", "wheel"]
+    result = subprocess.run(cmd, cwd=package_dir, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Build failed for {package_dir.name}\n"
+            f"stdout:\n{result.stdout}\n"
+            f"stderr:\n{result.stderr}"
+        )
+
+
+def run_editable_install(package_dir: Path) -> None:
+    cmd = [sys.executable, "-m", "pip", "install", "-e", str(package_dir)]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Editable install failed for {package_dir.name}\n"
+            f"stdout:\n{result.stdout}\n"
+            f"stderr:\n{result.stderr}"
+        )
+
+
+def collect_wheels(package_dir: Path, out_dir: Path) -> list[Path]:
+    dist_dir = package_dir / "dist"
+    wheels = sorted(dist_dir.glob("*.whl"))
+    copied: list[Path] = []
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for wheel in wheels:
+        dst = out_dir / wheel.name
+        shutil.copy2(wheel, dst)
+        copied.append(dst)
+    return copied
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Build wheels for all first-level package folders with pyproject.toml"
+    )
+    parser.add_argument(
+        "--root",
+        type=Path,
+        default=Path(__file__).resolve().parent,
+        help="Repository root directory (default: script directory)",
+    )
+    parser.add_argument(
+        "--clean-output",
+        action="store_true",
+        help="Delete dist-wheels before collecting new wheels",
+    )
+    parser.add_argument(
+        "--editable",
+        action="store_true",
+        help="Install all discovered packages in editable mode into current environment",
+    )
+    args = parser.parse_args()
+
+    root = args.root.resolve()
+    out_dir = root / "dist-wheels"
+
+    if shutil.which("poetry") is None:
+        print("[ERROR] 'poetry' was not found in PATH.")
+        print("Please install Poetry or run inside an environment where Poetry is available.")
+        return 1
+
+    if args.clean_output and out_dir.exists() and not args.editable:
+        shutil.rmtree(out_dir)
+
+    package_dirs = find_package_dirs(root)
+    if not package_dirs:
+        print("[INFO] No package folders with pyproject.toml found.")
+        return 0
+
+    print(f"[INFO] Found {len(package_dirs)} package folder(s).")
+
+    all_wheels: list[Path] = []
+    editable_installed: list[str] = []
+    failed: list[tuple[str, str]] = []
+
+    for pkg in package_dirs:
+        print(f"\n[BUILD] {pkg.name}")
+        try:
+            if args.editable:
+                run_editable_install(pkg)
+                editable_installed.append(pkg.name)
+                print(f"  [OK] editable installed: {pkg.name}")
+            else:
+                run_poetry_build(pkg)
+                wheels = collect_wheels(pkg, out_dir)
+                if not wheels:
+                    print("  [WARN] Build finished but no wheel found in dist/.")
+                else:
+                    for w in wheels:
+                        print(f"  [OK] {w.name}")
+                    all_wheels.extend(wheels)
+        except Exception as exc:  # noqa: BLE001
+            print(f"  [ERROR] {exc}")
+            failed.append((pkg.name, str(exc)))
+
+    print("\n================ Summary ================")
+    if args.editable:
+        print(f"Editable installations: {len(editable_installed)}")
+    else:
+        print(f"Output directory: {out_dir}")
+        print(f"Total wheels copied: {len(all_wheels)}")
+    if failed:
+        print(f"Failed packages: {len(failed)}")
+        for name, msg in failed:
+            print(f"  - {name}: {msg.splitlines()[0]}")
+        return 2
+
+    print("All package wheels built successfully.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

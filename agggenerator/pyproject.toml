@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "agggenerator"
+version = "0.6.5"
+description = "Aggregate generation and PSD preprocessing utilities for the MCPBE workflow."
+authors = ["HR94 <haoran.ji@kit.edu>"]
+license = "GPL-3.0-only"
+readme = "README.md"
+packages = [
+    { include = "agggenerator", from = "src" },
+]
+
+[tool.poetry.dependencies]
+python = ">=3.9,<3.12"
+numpy = "^2.3.5"
+pandas = "^2.3.3"
+numba = "^0.63.1"
+matplotlib = "^3.10.8"
+h5py = "^3.15.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
