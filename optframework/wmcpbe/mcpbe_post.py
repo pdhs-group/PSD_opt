@@ -288,6 +288,68 @@ class MCPBEPost:
         if q1 <= q0 + 1e-15:
             return float(x1)
         return float(x0 + (q - q0) * (x1 - x0) / (q1 - q0))
+
+    def _filter_and_renormalize_cdf_by_xmin(
+        self,
+        x_sorted: np.ndarray,
+        Q_sorted: np.ndarray,
+        x_min: float,
+    ) -> Optional[Tuple[np.ndarray, np.ndarray]]:
+        """
+        Filter an empirical CDF (x_sorted, Q_sorted) by removing x < x_min,
+        then re-normalize so that:
+          - Q(x_min) = 0
+          - Q(max)   = 1
+
+        Returns None if nothing remains.
+        """
+        x_sorted = np.asarray(x_sorted, dtype=float).ravel()
+        Q_sorted = np.asarray(Q_sorted, dtype=float).ravel()
+        x_min = float(x_min)
+
+        if x_sorted.size == 0 or Q_sorted.size == 0 or x_sorted.size != Q_sorted.size:
+            return None
+
+        # enforce monotone & bounds (numerical safety)
+        Q_sorted = np.clip(Q_sorted, 0.0, 1.0)
+        Q_sorted = np.maximum.accumulate(Q_sorted)
+
+        # if x_min is below support -> nothing to do
+        if x_min <= float(x_sorted[0]):
+            return x_sorted, Q_sorted
+
+        # if x_min is above support -> everything removed
+        if x_min >= float(x_sorted[-1]):
+            return None
+
+        # Q at cutoff (stepwise: right-continuous convention consistent with _eval_Q_of_x)
+        # For x<x_sorted[0], Q=0. Here x_min within support.
+        j = int(np.searchsorted(x_sorted, x_min, side="right") - 1)
+        j = max(j, 0)
+        Q_cut = float(Q_sorted[j])
+
+        denom = 1.0 - Q_cut
+        if denom <= 0.0:
+            return None
+
+        # keep points with x >= x_min
+        k0 = int(np.searchsorted(x_sorted, x_min, side="left"))
+        x_tail = x_sorted[k0:]
+        Q_tail = Q_sorted[k0:]
+
+        # ensure x_min included as first point (use Q_cut at x_min)
+        x_new = np.concatenate(([x_min], x_tail))
+        Q_new_raw = np.concatenate(([Q_cut], Q_tail))
+
+        # shift & renormalize: Q' = (Q - Q_cut)/(1 - Q_cut)
+        Q_new = (Q_new_raw - Q_cut) / denom
+        Q_new = np.clip(Q_new, 0.0, 1.0)
+        Q_new = np.maximum.accumulate(Q_new)
+        Q_new[0] = 0.0
+        Q_new[-1] = 1.0
+
+        return x_new, Q_new
+
     # ------------------------------------------------------------------
     # PSD aggregation over repeats
     # ------------------------------------------------------------------
@@ -440,11 +502,27 @@ class MCPBEPost:
             Q_sum = np.zeros((T, M), dtype=float)
             Q_count = np.zeros(T, dtype=int)
 
+            use_qx_filter = bool(getattr(self, "Qx_filter", False)) and (not auto_x_grid)
+            x_min_user = None
+            if use_qx_filter:
+                x_min_user = float(np.min(x_grid))
+
             for cdf_list in cdf_repeats:
                 for it, cdf in enumerate(cdf_list):
                     if cdf is None:
                         continue
                     x_sorted, Q_sorted = cdf
+
+                    if use_qx_filter and x_min_user is not None:
+                        cdf2 = self._filter_and_renormalize_cdf_by_xmin(
+                            x_sorted,
+                            Q_sorted,
+                            x_min_user,
+                        )
+                        if cdf2 is None:
+                            continue
+                        x_sorted, Q_sorted = cdf2
+
                     Q_r = self._eval_Q_of_x(x_sorted, Q_sorted, x_grid)
                     Q_sum[it] += Q_r
                     Q_count[it] += 1

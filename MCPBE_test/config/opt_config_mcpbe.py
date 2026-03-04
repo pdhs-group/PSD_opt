@@ -104,7 +104,7 @@ config = {
         # - 'RMSE': Root Mean Squared Error
         # - 'MAE': Mean Absolute Error
         # - 'KL': Kullback-Leibler divergence (only compatible with q3 and Q3)
-        'data_flag': 'Q3',
+        'data_flag': 'Q0',
         #"Q0_X_50", "Q3_X_50"
 
         'cost_flag': 'MSE',
@@ -135,7 +135,7 @@ config = {
     ## PBE parameters
     ## For a detailed explanation of the PBE parameters, please refer to the `PBE_config.py` file.
     'pop_params': {
-        "NC": 10,
+        "NC": 5,
         "MC_seed": 42,
         "mcpbe_debug": False,
         
@@ -217,7 +217,7 @@ config = {
         "recon_N_max": 4000,
         "recon_bins": 100,
         
-        "dump_results": True,
+        "dump_results": False,
         "dump_pth": os.path.join(_config_opt_path, 'dump'), 
         },
     
