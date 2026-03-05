@@ -129,13 +129,13 @@ config = {
         'max_iter_time': 0,
         # Top-K re-evaluation feature
         'opt_top_K': 0,
-        'use_exp_cdf_init': False,
+        'use_exp_cdf_init': True,
         }, 
     
     ## PBE parameters
     ## For a detailed explanation of the PBE parameters, please refer to the `PBE_config.py` file.
     'pop_params': {
-        "NC": 10,
+        "NC": 5,
         "MC_seed": 42,
         "mcpbe_debug": False,
         
@@ -210,7 +210,7 @@ config = {
         "break_dW_max": 1.0,
         # "agg_dW_min": 1.0,
         # "agg_dW_max": 1.0,
-        "V_eff_init": 0,
+        "V_eff_init": 1000,
         "V_eff_mod": "Q3",
         "recon_enable": False,
         "recon_method": "2PM",

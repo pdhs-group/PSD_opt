@@ -672,6 +672,8 @@ class MCPBEBase(BaseSolver):
         psd_basis: str = "volume",                 # "volume" or "number"
         psd_x_grid: Optional[np.ndarray] = None,   # if given -> output Q(x)
         psd_Q_grid: Optional[np.ndarray] = None,   # if given -> output x(Q)
+        init_cdf_payload: Optional[dict] = None,
+        dump_results: bool = False,
     ):
         """
         Run N Monte Carlo realizations (repeats).

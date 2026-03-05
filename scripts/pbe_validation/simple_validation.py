@@ -6,8 +6,8 @@ Created on Fri Jan  3 11:02:26 2025
 """
 import os
 import numpy as np
-from pbe_validation.validation import PBEValidation
-from optframework_post.generate_psd import full_psd
+from validation import PBEValidation
+from pbe_core.func.generate_psd import full_psd
 
 if __name__ == "__main__":
     # To ensure that PBE remains relatively stable, 

@@ -527,7 +527,7 @@ class MCPBEBase(BaseSolver):
         if n_ref <= 0:
             n_ref = x_u.size
 
-        target_n = int(init_cdf.get("V_eff_init", 0) or 0)
+        target_n = int(init_cdf.get("target_n", 0) or 0)
         if target_n < 1:
             raise ValueError("init_cdf target_n must be >= 1.")
 
