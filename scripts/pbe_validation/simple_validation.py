@@ -40,7 +40,7 @@ if __name__ == "__main__":
     S2 = 2
     kernel = "const"
     process = "breakage"
-    t = np.arange(0, 41, 4, dtype=float)
+    t = np.arange(0, 40001, 4000, dtype=float)
     
     v = PBEValidation(dim, grid, NS1, S1, kernel, process, t=t, c=c, x=x, 
                       beta0=beta0, use_psd=use_psd, dist_path=dist_path)

@@ -104,7 +104,7 @@ config = {
         # - 'RMSE': Root Mean Squared Error
         # - 'MAE': Mean Absolute Error
         # - 'KL': Kullback-Leibler divergence (only compatible with q3 and Q3)
-        'data_flag': 'Q0',
+        'data_flag': 'Q3',
         #"Q0_X_50", "Q3_X_50"
 
         'cost_flag': 'MSE',
@@ -207,12 +207,12 @@ config = {
         
         "break_dW_mode": "const",
         "break_dW_min": 1.0,
-        "break_dW_max": 1.0,
+        "break_dW_max": 5.0,
         # "agg_dW_min": 1.0,
         # "agg_dW_max": 1.0,
         "V_eff_init": 1000,
         "V_eff_mod": "Q3",
-        "recon_enable": False,
+        "recon_enable": True,
         "recon_method": "2PM",
         "recon_N_max": 4000,
         "recon_bins": 100,
@@ -226,7 +226,7 @@ config = {
     # their actual names in the PBE.
     'opt_params': {
         'lmc_gamma': {'bounds': (0.1, 10.0), 'log_scale': False},
-        'lmc_int_bre': {'bounds': (0.0, 1.0), 'log_scale': False},
+        # 'lmc_int_bre': {'bounds': (0.0, 1.0), 'log_scale': False},
         'lmc_energy_exp': {'bounds': (1.0, 2.0), 'log_scale': False},
         'lmc_lambda_E': {'bounds': (-6, -5), 'log_scale': True},
         # 'lmc_NO_FRAG': {'int_bounds':  (2, 8)},

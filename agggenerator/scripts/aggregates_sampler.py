@@ -30,7 +30,7 @@ from agggenerator.material_mix import (
     assign_materials_with_target_mas,
 )
 # GridFactory lives lmc.core.grid; adjust the import path if needed.
-from lmc.core import GridFactory  # :contentReference[oaicite:1]{index=1}
+from lmc import GridFactory  # :contentReference[oaicite:1]{index=1}
 
 # ============================================================
 # User configuration (edit here inside Spyder)
@@ -38,7 +38,7 @@ from lmc.core import GridFactory  # :contentReference[oaicite:1]{index=1}
 
 # Shape parameters: fixed for one full simulation campaign
 TARGET_DF: float = 1.8          # target fractal dimension
-TARGET_MAS: float = 0.40        # target Mischgüte (MAS)
+TARGET_MAS: float = 0.10        # target Mischgüte (MAS)
 
 # Acceptance tolerances (absolute)
 DF_TOL: float = 0.1             # |Df_est - TARGET_DF| <= DF_TOL  (currently not enforced)
@@ -48,17 +48,18 @@ MAS_TOL: float = 0.05           # |MAS_actual - TARGET_MAS| <= MAS_TOL
 NP_LIST: List[int] = [100, 200, 400, 800, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 12000, 16000,
                       20000, 30000, 40000, 50000]   # target occupied cell count
 # NP_LIST: List[int] = [100, 200, 400, 800, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 12000]
-# FRAC_A_LIST: List[float] = [0.0, 0.3, 0.5, 0.8, 1.0]   # target fraction of material A
-FRAC_A_LIST: List[float] = [1.0]
+FRAC_A_LIST: List[float] = [0.1, 0.5, 0.9]   # target fraction of material A
+# FRAC_A_LIST: List[float] = [1.0]
 
 SAMPLES_PER_PARAM: int = 100    # accepted samples per (Np, frac_A) pair
 MAX_TRIES_FACTOR: int = 100     # max attempts = SAMPLES_PER_PARAM * MAX_TRIES_FACTOR
 
 # Output path for a single HDF5 container
-OUTPUT_H5_PATH: str = "aggregate_pool_Df1p8_MAS0p40.h5"
+OUTPUT_H5_PATH: str = "aggregate_pool_Df1p8_MAS0p10.h5"
+# OUTPUT_H5_PATH = os.path.join(os.environ.get('STORAGE_PATH'), OUTPUT_H5_PATH)
 
 # Parallelism: 1 = serial; >1 = use multiprocessing
-WORKERS: int = 6
+WORKERS: int = 20
 
 # Top-level RNG seed
 MASTER_SEED: int = 42

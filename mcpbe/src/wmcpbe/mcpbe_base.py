@@ -858,7 +858,7 @@ class MCPBEBase(BaseSolver):
     # ---------------------------------------------------------------------
     # Main solve loop
     # ---------------------------------------------------------------------
-    def solve(self, maxiter: int = int(1e8)):
+    def solve(self, maxiter: int = int(1e12)):
         t0 = time.time()
         count = 0
         current_time = 0.0

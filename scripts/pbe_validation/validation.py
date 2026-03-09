@@ -54,7 +54,7 @@ class PBEValidation():
         self.P2 = 1
         # The number of times to repeat the MC-PBE
         self.N_MC = 5
-        self.mom_a0 = 1000
+        self.mom_a0 = 200000
         ## Check if the psd file is available
         if self.use_psd:
             if self.dist_path is None:
@@ -111,18 +111,13 @@ class PBEValidation():
         self.p_mc.process_type = process
         self.p_mc.alpha_prim = np.ones(dim**2)
         self.p_mc.break_dW_mode = "const"
-        self.p_mc.break_dW_alpha = 100.0
         self.p_mc.break_dW_min = 1.0
-        self.p_mc.break_dW_max = 10.0
-        self.p_mc.break_dW_ratio_min = 0.2
-        self.p_mc.break_dW_ratio_min = 1.0
+        self.p_mc.break_dW_max = 5.0
         self.p_mc.agg_dW_min = 1.0
         self.p_mc.agg_dW_max = 1.0
-        self.p_mc.break_N = 1
-        self.p_mc.break_N_adaptive = False
         self.p_mc.recon_enable = True
-        self.p_mc.V_eff_init = 100
-        self.p_mc.recon_N_max = 1000
+        self.p_mc.V_eff_init = 1000
+        self.p_mc.recon_N_max = 4000
         self.p_mc.recon_method = "2PM"
         self.p_mc.recon_bins = 100
         self.p_mc.recon_RS_target = 200

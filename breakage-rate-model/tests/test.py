@@ -701,6 +701,7 @@ def run_experiment(
 if __name__ == "__main__":
     # 这里改这几个参数，就可以用 Spyder 重复测试不同组合
     data_path = r"C:\Users\px2030\Code\PSD_opt\breakage-rate-model\data"
+    # data_path = os.environ.get('STORAGE_PATH')
     H5_FILE = os.path.join(data_path, "energy_scan_results.h5")
     MODEL_KIND = "all"   # "powerlaw" / "parametric" / "mlp" / "ann" / "all"
     GROUP_INDEX = 0      # 想看的组号（非 all 时）

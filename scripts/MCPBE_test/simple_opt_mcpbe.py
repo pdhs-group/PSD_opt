@@ -157,7 +157,7 @@ if __name__ == '__main__':
     base_path = Path(os.getcwd()).resolve()
     config_path = os.path.join(base_path, "config", "opt_config_mcpbe.py")
     data_group = "data_mcpbe_CB_S1"
-    data_name = "CB_pur_N2000.h5"
+    data_name = "CB_pur_N200000.h5"
     
     result_dir = os.path.join(base_path, "opt_results")
     data_path = os.path.join(base_path, data_group, "data_mcpbe_CB")
@@ -205,7 +205,7 @@ if __name__ == '__main__':
     #     prev_iter = n_iter
     # ray.shutdown()
     
-    result_to_analyse = os.path.join(base_path, data_group, "opt_results_N2000_Q0", "pure_CB_result_16000.npz")
+    result_to_analyse = os.path.join(base_path, data_group, "opt_results_N10000_Q3", "pure_CB_result_16000.npz")
     with np.load(result_to_analyse, allow_pickle=True) as data:
         results = data['results'].item()
     pop_params = results['opt_params']
