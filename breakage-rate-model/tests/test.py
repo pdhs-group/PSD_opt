@@ -215,7 +215,7 @@ def fit_mlp_model(
     X_val: np.ndarray,
     y_val: np.ndarray,
     *,
-    input_dim: int = 7,
+    input_dim: int = 10,
     hidden_sizes=(64, 64),
     activation="relu",
     lr: float = 1e-3,
@@ -230,7 +230,7 @@ def fit_mlp_model(
     拟合 MLPEnergyModel（轻量级 MLP surrogate）:
 
         X, y 都是样本级别的数据：
-            X[i] = [logV, log gamma, log NO_FRAG, int_bre, Df, MAS, X1]
+            X[i] = [logV, log gamma, log NO_FRAG, int_bre, Df, MAS, X1, STR0, STR1, STR2]
             y[i] = log(E_mean)
     """
     print("Fitting MLPEnergyModel on (X_train, y_train) ...")
@@ -255,7 +255,7 @@ def fit_ann_model(
     X_val: np.ndarray,
     y_val: np.ndarray,
     *,
-    input_dim: int = 7,
+    input_dim: int = 10,
     hidden_sizes=(256, 256, 128),
     activation="silu",
     dropout=0.1,
@@ -271,7 +271,7 @@ def fit_ann_model(
     拟合 MLPEnergyModel（轻量级 MLP surrogate）:
 
         X, y 都是样本级别的数据：
-            X[i] = [logV, log gamma, log NO_FRAG, int_bre, Df, MAS, X1]
+            X[i] = [logV, log gamma, log NO_FRAG, int_bre, Df, MAS, X1, STR0, STR1, STR2]
             y[i] = log(E_mean)
     """
     print("Fitting MLPEnergyModel on (X_train, y_train) ...")
@@ -702,7 +702,7 @@ if __name__ == "__main__":
     # 这里改这几个参数，就可以用 Spyder 重复测试不同组合
     data_path = r"C:\Users\px2030\Code\PSD_opt\breakage-rate-model\data"
     # data_path = os.environ.get('STORAGE_PATH')
-    H5_FILE = os.path.join(data_path, "energy_scan_results.h5")
+    H5_FILE = os.path.join(data_path, "energy_scan_results_CB.h5")
     MODEL_KIND = "all"   # "powerlaw" / "parametric" / "mlp" / "ann" / "all"
     GROUP_INDEX = 0      # 想看的组号（非 all 时）
 

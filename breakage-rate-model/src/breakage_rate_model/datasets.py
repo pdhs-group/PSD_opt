@@ -119,18 +119,32 @@ class EnergyDataset:
 
 def _energy_features(rec: EnergyGroupRecord, V_val: float) -> np.ndarray:
     """
-    构建用于直接拟合 E 的特征：
-        [log V, log gamma, log NO_FRAG, int_bre, Df, MAS, X1]
+    ???????? E ???:
+        [log V, log gamma, log NO_FRAG, int_bre, Df, MAS, X1, STR0, STR1, STR2]
     """
     logV = np.log(V_val)
     log_gamma = np.log(rec.gamma)
     log_NOFRAG = np.log(rec.NO_FRAG)
+    str_values = np.asarray(rec.STR, dtype=float).reshape(-1)
+    if str_values.size != 3:
+        raise ValueError(
+            f"EnergyDataset expects STR to have length 3, got shape={np.asarray(rec.STR).shape}"
+        )
     return np.array(
-        [logV, log_gamma, log_NOFRAG, rec.int_bre, rec.Df, rec.MAS, rec.X1],
+        [
+            logV,
+            log_gamma,
+            log_NOFRAG,
+            rec.int_bre,
+            rec.Df,
+            rec.MAS,
+            rec.X1,
+            str_values[0],
+            str_values[1],
+            str_values[2],
+        ],
         dtype=float,
     )
-
-
 def build_energy_dataset(
     groups: Sequence[EnergyGroupRecord],
     *,
@@ -160,7 +174,7 @@ def build_energy_dataset(
     feature_fn:
         自定义特征构造函数：feature_fn(record, V) -> feature_vector
         如果为 None，则使用默认特征：
-            [log V, log gamma, log NO_FRAG, int_bre, Df, MAS, X1]
+            [log V, log gamma, log NO_FRAG, int_bre, Df, MAS, X1, STR0, STR1, STR2]
     返回
     ----
     EnergyDataset(X, y, meta_idx, groups)
@@ -233,3 +247,4 @@ def build_energy_dataset(
     meta_idx = np.array(meta_idx_list, dtype=int)
 
     return EnergyDataset(X=X, y=y, meta_idx=meta_idx, groups=list(groups))
+

@@ -2,7 +2,7 @@
 """
 更“黑盒”的 ANN 能量 surrogate：
 
-    y = log E_need(V, θ) ≈ f_ANN([log V, log γ, log NO_FRAG, int_bre, Df, MAS, X1])
+    y = log E_need(V, θ) ≈ f_ANN([log V, log γ, log NO_FRAG, int_bre, Df, MAS, X1, STR0, STR1, STR2])
 
 相比 MLPEnergyModel，这里：
 - 默认网络更深/更宽
@@ -88,7 +88,7 @@ class ANNEnergyModel(BaseEnergyModel):
     """
     更“黑盒”的 ANN 模型：
 
-        输入: X[i] = [logV, log γ, log NO_FRAG, int_bre, Df, MAS, X1]
+        输入: X[i] = [logV, log γ, log NO_FRAG, int_bre, Df, MAS, X1, STR0, STR1, STR2]
         输出: y_pred[i] = log(E_pred)
 
     特点：
@@ -100,7 +100,7 @@ class ANNEnergyModel(BaseEnergyModel):
 
     def __init__(
         self,
-        input_dim: int = 7,
+        input_dim: int = 10,
         hidden_sizes: Sequence[int] = (256, 256, 128),
         activation: str = "silu",
         dropout: float = 0.1,
@@ -117,7 +117,7 @@ class ANNEnergyModel(BaseEnergyModel):
         参数
         ----
         input_dim:
-            输入特征维度，默认 7（[logV, 6 维 θ]）
+            input feature dimension, default 10 ([logV, log_gamma, log_NO_FRAG, int_bre, Df, MAS, X1, STR0, STR1, STR2])
         hidden_sizes:
             隐藏层大小序列，例如 (256, 256, 128)
         activation:
@@ -356,7 +356,7 @@ class ANNEnergyModel(BaseEnergyModel):
         """
         输入特征矩阵 X（numpy 数组），输出预测的 logE（numpy 数组）。
 
-            X[i] = [logV, log γ, log NO_FRAG, int_bre, Df, MAS, X1]
+            X[i] = [logV, log γ, log NO_FRAG, int_bre, Df, MAS, X1, STR0, STR1, STR2]
         """
         if not self._is_fitted or self._net is None:
             raise RuntimeError("ANNEnergyModel is not fitted yet.")
@@ -389,3 +389,5 @@ class ANNEnergyModel(BaseEnergyModel):
         """
         logE = self.predict(X)
         return np.exp(logE)
+
+

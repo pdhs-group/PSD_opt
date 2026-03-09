@@ -2,7 +2,7 @@
 """
 轻量级 MLP 能量 surrogate：
 
-    y = log E_need(V, θ) ≈ f_MLP([log V, log γ, log NO_FRAG, int_bre, Df, MAS, X1])
+    y = log E_need(V, θ) ≈ f_MLP([log V, log γ, log NO_FRAG, int_bre, Df, MAS, X1, STR0, STR1, STR2])
 
 特点：
 - 直接拟合 logE（与前面 PowerLaw / Parametric 模型保持一致）
@@ -94,7 +94,7 @@ class MLPEnergyModel(BaseEnergyModel):
     """
     轻量级 MLP 模型：
 
-        输入: X[i] = [logV, log γ, log NO_FRAG, int_bre, Df, MAS, X1]
+        输入: X[i] = [logV, log γ, log NO_FRAG, int_bre, Df, MAS, X1, STR0, STR1, STR2]
         输出: y_pred[i] = log(E_pred)
 
     特点：
@@ -106,7 +106,7 @@ class MLPEnergyModel(BaseEnergyModel):
 
     def __init__(
         self,
-        input_dim: int = 7,
+        input_dim: int = 10,
         hidden_sizes: Sequence[int] = (32, 32),
         activation: str = "relu",
         lr: float = 1e-3,
@@ -122,7 +122,7 @@ class MLPEnergyModel(BaseEnergyModel):
         参数
         ----
         input_dim:
-            输入特征维度，默认 7（[logV, 6 维 θ]）
+            input feature dimension, default 10 ([logV, log_gamma, log_NO_FRAG, int_bre, Df, MAS, X1, STR0, STR1, STR2])
         hidden_sizes:
             隐藏层大小序列，例如 (32, 32)
         activation:
@@ -377,3 +377,5 @@ class MLPEnergyModel(BaseEnergyModel):
         """
         logE = self.predict(X)
         return np.exp(logE)
+
+

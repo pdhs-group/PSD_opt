@@ -159,7 +159,7 @@ class BaseEnergyModel(ABC):
         group_index: 要分析的组号（0-based）
         feature_fn:   给定 (rec, V) 返回特征向量的函数；
                       若为 None，则使用默认特征：
-                          [log V, log gamma, log NO_FRAG, int_bre, Df, MAS, X1]
+                          [log V, log gamma, log NO_FRAG, int_bre, Df, MAS, X1, STR0, STR1, STR2]
         target:
             - "log_mean": log(E_mean)
             - "mean":     E_mean
@@ -189,8 +189,24 @@ class BaseEnergyModel(ABC):
             logV = np.log(V_val)
             log_gamma = np.log(r.gamma)
             log_NOFRAG = np.log(r.NO_FRAG)
+            str_values = np.asarray(r.STR, dtype=float).reshape(-1)
+            if str_values.size != 3:
+                raise ValueError(
+                    f"Expected STR to have length 3, got shape={np.asarray(r.STR).shape}"
+                )
             return np.array(
-                [logV, log_gamma, log_NOFRAG, r.int_bre, r.Df, r.MAS, r.X1],
+                [
+                    logV,
+                    log_gamma,
+                    log_NOFRAG,
+                    r.int_bre,
+                    r.Df,
+                    r.MAS,
+                    r.X1,
+                    str_values[0],
+                    str_values[1],
+                    str_values[2],
+                ],
                 dtype=float,
             )
 
@@ -286,3 +302,4 @@ class BaseEnergyModel(ABC):
             pass
 
         return model
+

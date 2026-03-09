@@ -544,21 +544,34 @@ if __name__ == "__main__":
     pool_dir = r""
     # pool_dir = os.environ.get("STORAGE_PATH")
     Df = 1.8
-    MAS_list = [0.40]
+    MAS_list = [0.1, 0.5, 0.9]
 
     A0 = 1.0
-    X1_list = [1.0]
-    STR_list = [np.array([1.0, 0.1, 1.0], dtype=float)]
+    X1_list = [0.1, 0.5, 0.9]
+    
+    values = np.array([1.0, 1e2, 1e4])
+    a1, a2, a3 = np.meshgrid(values, values, values, indexing='ij')
+    var_STR = np.column_stack((a1.flatten(), a2.flatten(), a3.flatten()))
+    var_STR = var_STR[~np.all(var_STR == 0, axis=1)]
+    unique_STR = []
+    for comp in var_STR:
+        comp_reversed = comp[::-1]  
+        if not any(np.array_equal(comp, x) or np.array_equal(comp_reversed, x) for x in unique_STR):
+            unique_STR.append(comp)
+    STR_list = np.array(unique_STR)   
 
     N_GRIDS = 100
     N_FRACS = 200
     base_seed = 42
-    workers = 12
+    workers = 1
 
     np_list = NP_LIST
-    no_frag_list = [2, 3, 4, 5, 6, 7, 8]
-    int_bre_list = np.linspace(0.0, 1.0, 6)
-    gamma_list = np.logspace(-3, 3, 6)
+    # no_frag_list = [2, 3, 4, 5, 6, 7, 8]
+    no_frag_list = [2]
+    # int_bre_list = np.linspace(0.0, 1.0, 6)
+    int_bre_list = [0.0]
+    # gamma_list = np.logspace(-3, 3, 6)
+    gamma_list = [1.0]
 
     output_h5 = "psd_data.h5"
 
