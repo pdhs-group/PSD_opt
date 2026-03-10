@@ -59,7 +59,7 @@ OUTPUT_H5_PATH: str = "aggregate_pool_Df1p8_MAS0p10.h5"
 # OUTPUT_H5_PATH = os.path.join(os.environ.get('STORAGE_PATH'), OUTPUT_H5_PATH)
 
 # Parallelism: 1 = serial; >1 = use multiprocessing
-WORKERS: int = 20
+WORKERS: int = 1
 
 # Top-level RNG seed
 MASTER_SEED: int = 42
@@ -108,27 +108,53 @@ def _make_mptsa_params(Np: int, Df: float, seed: int) -> MPTSALatticeParams2D:
     )
 
 
-def _make_mix_params(frac_A: float, target_MAS: float, seed: int) -> MaterialMixParams:
+def _compute_mix_window_stride(grid: np.ndarray) -> Tuple[int, int]:
+    """
+    Adapt the local MAS evaluation window to the generated grid size.
+
+    Rules
+    -----
+    - window = floor(shorter_side / 5), clamped to [2, 12]
+    - stride = floor(window / 4), clamped to [1, 3]
+    """
+    if grid.ndim < 2:
+        raise ValueError(f"Expected a 2D grid, got shape={grid.shape!r}")
+
+    shorter_side = int(min(grid.shape[0], grid.shape[1]))
+    window = max(2, min(12, shorter_side // 5))
+    stride = max(1, min(3, window // 4))
+    return window, stride
+
+
+def _make_mix_params(
+    frac_A: float,
+    target_MAS: float,
+    seed: int,
+    grid: np.ndarray,
+) -> MaterialMixParams:
     """
     Construct material mixing parameters.
 
     This follows the defaults in generator.py, overriding only
     frac_A, target_MAS and seed. Here tol_MAS is kept relatively
     loose; the final acceptance is controlled by MAS_TOL at pool level.
+    The local evaluation window is adapted to the generated grid size
+    to avoid over-large windows on low-resolution aggregates.
     :contentReference[oaicite:3]{index=3}
     """
+    window, stride = _compute_mix_window_stride(grid)
+
     return MaterialMixParams(
         frac_A=float(frac_A),
         target_MAS=float(target_MAS),
         tol_MAS=0.05,       # internal convergence tolerance; global filter uses MAS_TOL
-        window=12,
-        stride=3,
+        window=window,
+        stride=stride,
         sweeps_per_eval=8,
         max_bisect=10,
         seed=int(seed),
         # lambda_min / lambda_max can be adjusted here if needed
     )
-
 
 def _compute_actual_frac_A(labels: np.ndarray) -> float:
     """
@@ -213,7 +239,12 @@ def _generate_samples_for_param(
             Df_est, slope = estimate_fractal_dimension_2d(Ns, Rgs)
 
             # ---- 2) Assign materials via MCMC + MAS target ----
-            mix_params = _make_mix_params(frac_A=frac_A, target_MAS=target_MAS, seed=seed_mix)
+            mix_params = _make_mix_params(
+                frac_A=frac_A,
+                target_MAS=target_MAS,
+                seed=seed_mix,
+                grid=grid,
+            )
             labels, stats = assign_materials_with_target_mas(grid, mix_params, phys_params)
         except Exception as e:
             # Critical: dump failing samples to help debugging

@@ -11,7 +11,7 @@ import cProfile, pstats
 
 def generate_mptsa():
     mptsa_params = MPTSALatticeParams2D(
-        Np=1000,
+        Np=100,
         Df=1.8,
         k=1.0,
         max_attempts=50000,
@@ -32,11 +32,11 @@ def generate_mptsa():
     
 def assign_materials(grid, origin):
     mix_params = MaterialMixParams(
-        frac_A=0.5,
-        target_MAS=0.3,
+        frac_A=0.1,
+        target_MAS=0.1,
         tol_MAS=0.05,
-        window=12,
-        stride=3,
+        window=2,
+        stride=1,
         sweeps_per_eval=8,
         max_bisect=10,
         seed=42,

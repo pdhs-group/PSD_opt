@@ -1,17 +1,31 @@
 # -*- coding: utf-8 -*-
 """
-统一测试脚本：
+统一测试脚本的基本逻辑如下：
 
-- 从 HDF5 读入 EnergyGroupRecord
-- 构建 EnergyDataset (target=log_mean)
-- 根据参数选择测试哪种模型：
-    * PowerLawSeparableModel
-    * ParametricEnergyModel
-    * MLPEnergyModel
-- 在整体数据上做一个简单的验证
-- 对指定 group_index 做可视化对比
+1. 脚本先从 HDF5 文件的 `/runs/<key>` 读取数据，并把每个 `<key>` 加载成一个
+   `EnergyGroupRecord`。这里的一个 group，指的是“一组固定输入参数组合”对应的一整条
+   能量曲线；在同一个 group 内，`NO_FRAG`、`int_bre`、`gamma`、`Df`、`MAS`、
+   `X1`、`STR` 等参数保持不变，变化的是这组参数下不同 `Np / V` 点对应的
+   `E_mean / E_samples`。
+2. `build_energy_dataset(...)` 会把 groups 展开成监督学习样本 `(X, y)`。当
+   `per_sample=False` 时，同一个 group 内的每个 `V` 点都会展开成一条样本，所以
+   一个 group 通常对应多条数据。
+3. 这里按 group 划分数据，而不是把所有样本点直接随机打散，主要是为了避免数据泄漏。
+   因为同一个 group 内的多个点共享同一组物理参数，只是 `V` 不同；如果把同一条曲线
+   的点同时分到训练集和验证集，验证结果会明显偏乐观。
+4. groups 的总数不是脚本里写死的，而是由 HDF5 中实际存在多少个 `/runs/<key>`
+   决定。也就是说，扫描时生成了多少组参数组合，这里就会读入多少个 groups。
+5. 数据划分使用 `split_train_val_by_group(...)`，并且是按 group 整体划分：
+   `val_ratio=0.2`，所以大约 20% 的 groups 进入验证集，约 80% 的 groups 进入训练集。
+   代码里验证集组数按 `ceil(0.2 * n_groups)` 计算，训练集使用剩余全部组。
+   同一个 group 的全部样本只会出现在训练集或验证集中的一边，不会被拆开。
+6. 严格来说，这个脚本默认做的是 train/val 划分，并没有再单独构造第三份 test 集；
+   后续输出的评估结果，主要是基于这 20% 的按组留出验证集。
+7. 在同一套数据入口下，脚本可以切换并比较四种模型：
+   `PowerLawSeparableModel`、`ParametricEnergyModel`、`MLPEnergyModel`、
+   `ANNEnergyModel`。
 
-同时提供统一的函数接口，方便在 Spyder 中复用训练结果：
+同时保留了统一的函数入口，方便在 Spyder 或其他交互环境中重复调用：
     - load_data
     - split_train_val_by_group
     - fit_powerlaw_model
@@ -703,7 +717,7 @@ if __name__ == "__main__":
     data_path = r"C:\Users\px2030\Code\PSD_opt\breakage-rate-model\data"
     # data_path = os.environ.get('STORAGE_PATH')
     H5_FILE = os.path.join(data_path, "energy_scan_results_CB.h5")
-    MODEL_KIND = "all"   # "powerlaw" / "parametric" / "mlp" / "ann" / "all"
+    MODEL_KIND = "mlp"   # "powerlaw" / "parametric" / "mlp" / "ann" / "all"
     GROUP_INDEX = 0      # 想看的组号（非 all 时）
 
     if MODEL_KIND.lower() == "all":
@@ -771,7 +785,7 @@ if __name__ == "__main__":
                 model,
                 groups,
                 X, y,
-                group_index=0,       # 想看的 group
+                group_index=5,       # 想看的 group
                 V_min=100.0,
                 V_max=50000.0,
                 n_points=100,
