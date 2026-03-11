@@ -1731,7 +1731,10 @@ class MCPBEBase(BaseSolver):
         last = a - 1
         if j != last:
             # swap active columns (V/X/W + propensities)
-            self.V_flat[:, [j, last]] = self.V_flat[:, [last, j]]
+            # self.V_flat[:, [j, last]] = self.V_flat[:, [last, j]]
+            tmp = self.V_flat[:, j].copy()
+            self.V_flat[:, j] = self.V_flat[:, last]
+            self.V_flat[:, last] = tmp
             self.X[j], self.X[last] = self.X[last], self.X[j]
             self.W[j], self.W[last] = self.W[last], self.W[j]
 
@@ -1742,14 +1745,14 @@ class MCPBEBase(BaseSolver):
 
         # logical shrink & zero freed slot
         self.a_tot = last
-        self.V_flat[:, self.a_tot : self.a_tot + 1] = 0.0
-        self.X[self.a_tot : self.a_tot + 1] = 0.0
-        self.W[self.a_tot : self.a_tot + 1] = 0.0
+        self.V_flat[:, self.a_tot] = 0.0
+        self.X[self.a_tot] = 0.0
+        self.W[self.a_tot] = 0.0
 
         if self._r_agg is not None:
-            self._r_agg[self.a_tot : self.a_tot + 1] = 0.0
+            self._r_agg[self.a_tot] = 0.0
         if self._break_rate is not None:
-            self._break_rate[self.a_tot : self.a_tot + 1] = 0.0
+            self._break_rate[self.a_tot] = 0.0
 
         # local sampler remove (swap-with-last behavior kept consistent with array swap above)
         if self._agg_sampler is not None:

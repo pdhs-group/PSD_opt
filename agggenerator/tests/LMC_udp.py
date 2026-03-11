@@ -6,10 +6,10 @@ Created on Tue Oct  7 10:56:09 2025
 """
 import numpy as np
 import matplotlib.pyplot as plt
-import generator as generator
+import generator
 # import generator_psd as generator
-from lmc.core import LMCSimulator
-from lmc.core import Plotter
+from lmc import LMCSimulator
+from lmc import Plotter
 
 def live_generator():
     labels = generator.main()
