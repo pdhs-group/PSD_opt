@@ -35,6 +35,39 @@ from ..func_jit import uf_find, uf_union
 # Geometry helpers (JIT-safe 版本)
 # ---------------------------------------------------------------------------
 
+def compute_incident_mask(Hbond: np.ndarray, Vbond: np.ndarray) -> np.ndarray:
+    """
+    Return a boolean mask over junctions indicating whether each junction has
+    at least one intact incident bond.
+
+    Shape conventions:
+      Hbond: shape (H,   W-1)
+      Vbond: shape (H-1, W)
+
+    Junction lattice shape:
+      (H+1, W+1)
+
+    This is a vectorized replacement for the old double Python loop +
+    has_unbroken_incident(...) checks.
+    """
+    H = int(Hbond.shape[0])
+    W = int(Vbond.shape[1])
+
+    mask = np.zeros((H + 1, W + 1), dtype=bool)
+
+    intact_H = (Hbond != -1)   # shape (H, W-1)
+    intact_V = (Vbond != -1)   # shape (H-1, W)
+
+    # Hbond[i,j] between junctions (i, j+1) and (i+1, j+1)
+    mask[0:H,   1:W]   |= intact_H
+    mask[1:H+1, 1:W]   |= intact_H
+
+    # Vbond[i,j] between junctions (i+1, j) and (i+1, j+1)
+    mask[1:H,   0:W]   |= intact_V
+    mask[1:H,   1:W+1] |= intact_V
+
+    return mask
+
 @njit(cache=True)
 def jid_of(r: int, c: int, W: int) -> int:
     return int(r) * (int(W) + 1) + int(c)

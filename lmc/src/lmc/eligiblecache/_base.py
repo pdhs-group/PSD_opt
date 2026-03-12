@@ -29,10 +29,10 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple, Protocol, ru
 
 import numpy as np
 
-from ._utils import (
-    jid_of,
-    rc_of,
-)
+# from ._utils import (
+#     jid_of,
+#     rc_of,
+# )
 
 
 # -------------------------
@@ -129,47 +129,140 @@ class _JunctionSetMixin:
     """
     Mix-in providing a uniform set container over junctions with:
       - boolean mask (H+1, W+1),
-      - swap-pop list `ids` of flattened junction indices,
-      - dict `pos` from flat index -> position in `ids`.
+      - dense numpy array `ids` of flattened junction indices,
+      - dense array `pos` from flat index -> position in `ids` (or -1 if absent).
 
-    Subclasses can reuse `_add_id/_remove_id` to keep these three in sync.
+    Compared with the old dict-based version:
+      - avoids Python dict overhead;
+      - supports bulk reset from a boolean mask;
+      - avoids redundant jid -> (r,c) conversion when caller already has (r,c).
     """
 
     def __init__(self, H: int, W: int) -> None:
-        self.H, self.W = int(H), int(W)
-        self.mask = np.zeros((self.H + 1, self.W + 1), dtype=bool)
-        self.ids: List[int] = []
-        self.pos: Dict[int, int] = {}
+        self.H = int(H)
+        self.W = int(W)
+        self._W1 = self.W + 1
+        self._n_junctions = (self.H + 1) * (self.W + 1)
 
-    # ---- helpers over flat indices ----
-    def _add_id(self, jid: int) -> None:
-        if jid in self.pos:
+        self.mask = np.zeros((self.H + 1, self.W + 1), dtype=bool)
+        self.ids = np.empty(0, dtype=np.int32)
+
+        # dense position table: pos[jid] = index in ids, or -1 if absent
+        self.pos = np.full(self._n_junctions, -1, dtype=np.int32)
+
+    # ---- internal dense-array helpers ----
+
+    def _append_jid(self, jid: int) -> None:
+        jid32 = np.int32(jid)
+        if self.ids.size == 0:
+            self.ids = np.array([jid32], dtype=np.int32)
+        else:
+            self.ids = np.append(self.ids, jid32)
+
+    def _swap_pop_id_at(self, p: int) -> int:
+        p = int(p)
+        last = int(self.ids[-1])
+        if p != self.ids.size - 1:
+            self.ids[p] = last
+
+        if self.ids.size == 1:
+            self.ids = np.empty(0, dtype=np.int32)
+        else:
+            self.ids = self.ids[:-1].copy()
+
+        return last
+
+    # ---- helpers over flat indices / (r,c) ----
+
+    def _add_rc(self, r: int, c: int) -> None:
+        r = int(r)
+        c = int(c)
+        if self.mask[r, c]:
             return
-        self.pos[jid] = len(self.ids)
-        self.ids.append(jid)
-        r, c = rc_of(jid, self.W)
+
+        jid = r * self._W1 + c
+        self.pos[jid] = self.ids.size
+        self._append_jid(jid)
+        self.mask[r, c] = True
+
+    def _remove_rc(self, r: int, c: int) -> None:
+        r = int(r)
+        c = int(c)
+        if not self.mask[r, c]:
+            return
+
+        jid = r * self._W1 + c
+        p = int(self.pos[jid])
+        if p < 0:
+            return
+
+        last = self._swap_pop_id_at(p)
+        if p != self.ids.size:
+            self.pos[last] = p
+
+        self.pos[jid] = -1
+        self.mask[r, c] = False
+
+    def _add_id(self, jid: int) -> None:
+        jid = int(jid)
+        if self.pos[jid] >= 0:
+            return
+
+        self.pos[jid] = self.ids.size
+        self._append_jid(jid)
+
+        r = jid // self._W1
+        c = jid % self._W1
         self.mask[r, c] = True
 
     def _remove_id(self, jid: int) -> None:
-        p = self.pos.pop(jid, None)
-        if p is None:
+        jid = int(jid)
+        p = int(self.pos[jid])
+        if p < 0:
             return
-        last = self.ids[-1]
-        if p != len(self.ids) - 1:
-            self.ids[p] = last
+
+        last = self._swap_pop_id_at(p)
+        if p != self.ids.size:
             self.pos[last] = p
-        self.ids.pop()
-        r, c = rc_of(jid, self.W)
+
+        self.pos[jid] = -1
+
+        r = jid // self._W1
+        c = jid % self._W1
         self.mask[r, c] = False
 
+    def _reset_from_mask(self, mask_new: np.ndarray) -> None:
+        """
+        Bulk rebuild the set from a boolean mask, avoiding Python per-node add calls.
+        """
+        if mask_new.shape != self.mask.shape:
+            raise ValueError(
+                f"mask shape mismatch: got {mask_new.shape}, expected {self.mask.shape}"
+            )
+
+        mask_new = np.asarray(mask_new, dtype=bool)
+
+        # overwrite mask
+        self.mask[:, :] = mask_new
+
+        # rebuild ids densely as a 1D int32 numpy array
+        ids_arr = np.flatnonzero(mask_new.ravel(order="C")).astype(np.int32, copy=False)
+        self.ids = ids_arr
+
+        # rebuild dense position table
+        self.pos.fill(-1)
+        if ids_arr.size > 0:
+            self.pos[ids_arr] = np.arange(ids_arr.size, dtype=np.int32)
+
     def __len__(self) -> int:
-        return len(self.ids)
+        return int(self.ids.size)
 
     def _sample_uniform_junction(self, rng: np.random.Generator) -> Tuple[int, int]:
-        if not self.ids:
+        if self.ids.size == 0:
             raise RuntimeError("No available start junction.")
-        k = int(rng.integers(0, len(self.ids)))
-        return rc_of(self.ids[k], self.W)
+        k = int(rng.integers(0, self.ids.size))
+        jid = int(self.ids[k])
+        return jid // self._W1, jid % self._W1
 
 
 class JunctionSamplerBase(_JunctionSetMixin):
@@ -223,30 +316,33 @@ class JunctionSamplerBase(_JunctionSetMixin):
         return self._sample_uniform_junction(rng)
 
     def recompute_at(self,
-                     Hbond: np.ndarray,
-                     Vbond: np.ndarray,
-                     rcs: Sequence[Tuple[int, int]]) -> None:
+                 Hbond: np.ndarray,
+                 Vbond: np.ndarray,
+                 rcs: Sequence[Tuple[int, int]]) -> None:
         """
         Local incremental refresh after an **accepted** crack.
         1) Build the refresh scope (subclasses may enlarge).
         2) Run pre-refresh hook (e.g., union of broken incident bonds).
         3) Recompute eligibility and update the set.
+    
+        Uses _add_rc/_remove_rc directly to avoid redundant jid<->(r,c) conversion.
         """
         if not rcs:
             return
         touch = self._build_touch_set(rcs)
         if not touch:
             return
-
+    
         self._pre_refresh_hook(Hbond, Vbond, touch)
-
+    
         for r, c in touch:
-            jid = jid_of(r, c, self.W)
-            now = bool(self._is_eligible(Hbond, Vbond, int(r), int(c)))
+            r = int(r)
+            c = int(c)
+            now = bool(self._is_eligible(Hbond, Vbond, r, c))
             if now and not self.mask[r, c]:
-                self._add_id(jid)
+                self._add_rc(r, c)
             elif (not now) and self.mask[r, c]:
-                self._remove_id(jid)
+                self._remove_rc(r, c)
 
 
 # -------------------------

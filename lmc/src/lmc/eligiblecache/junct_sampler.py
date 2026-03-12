@@ -16,11 +16,11 @@ import numpy as np
 
 from ._base import JunctionSamplerBase
 from ._utils import (
-    jid_of, 
     ExteriorUF,
     has_unbroken_incident,
     neighbors4,
     compute_eligible_mask,
+    compute_incident_mask,
 )
 
 # ----------------------------------------------------------------------------
@@ -38,14 +38,18 @@ class JunctUniSampler(JunctionSamplerBase):
     def build_initial(self, Hbond: np.ndarray, Vbond: np.ndarray) -> None:
         """
         Fill the set with all eligible junctions.
+    
+        New version:
+          - builds the eligibility mask in vectorized form;
+          - bulk rebuilds mask/ids/pos via _reset_from_mask(...);
+          - avoids Python double loop + _add_id calls.
         """
         H = int(Hbond.shape[0])
         W = int(Vbond.shape[1])
         assert H == self.H and W == self.W, "Shape mismatch."
-        for r in range(H + 1):
-            for c in range(W + 1):
-                if has_unbroken_incident(Hbond, Vbond, r, c):
-                    self._add_id(jid_of(r, c, self.W))
+    
+        eligible = compute_incident_mask(Hbond, Vbond)
+        self._reset_from_mask(eligible)
 
     # -- JunctionSamplerBase hooks --
 
@@ -91,21 +95,27 @@ class JunctUniBoundarySampler(JunctionSamplerBase):
         self.uf.union_many_from_path_info(path_info)
 
     def build_initial(self, Hbond: np.ndarray, Vbond: np.ndarray) -> None:
+        """
+        Build the boundary-connected eligible junction set.
+    
+        New version:
+          - keeps the UF update logic unchanged;
+          - computes the final eligible mask once;
+          - bulk rebuilds mask/ids/pos via _reset_from_mask(...);
+          - avoids Python double loop + _add_id calls.
+        """
         H = int(Hbond.shape[0])
         W = int(Vbond.shape[1])
         assert H == self.H and W == self.W, "Shape mismatch."
     
-        # 先把“外框灌水”，再让水沿已断裂的 bond 自然贯通
+        # first connect all broken-bond components to the exterior-connected UF
         self.uf.union_broken_from_arrays(Hbond, Vbond)
     
-        # 统一口径：eligible := 外连通 ∧ 有完整相邻键
+        # eligible := exterior-connected AND has at least one intact incident bond
         eligible = compute_eligible_mask(Hbond, Vbond, self.uf)
     
-        # 把所有 eligible junction 加入集合（mask/ids/pos 三件套在基类里维护）
-        for r in range(H + 1):
-            for c in range(W + 1):
-                if eligible[r, c]:
-                    self._add_id(jid_of(r, c, self.W))
+        # bulk rebuild
+        self._reset_from_mask(eligible)
 
     # -- JunctionSamplerBase hooks --
 

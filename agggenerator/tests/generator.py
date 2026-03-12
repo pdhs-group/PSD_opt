@@ -11,7 +11,7 @@ import cProfile, pstats
 
 def generate_mptsa():
     mptsa_params = MPTSALatticeParams2D(
-        Np=1000,
+        Np=4000,
         Df=1.8,
         k=1.0,
         max_attempts=50000,

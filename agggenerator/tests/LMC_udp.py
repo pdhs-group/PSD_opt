@@ -10,15 +10,20 @@ import generator
 # import generator_psd as generator
 from lmc import LMCSimulator
 from lmc import Plotter
+import time
 
 def live_generator():
     labels = generator.main()
     sim = LMCSimulator(STR=STR, NO_FRAG=NO_FRAG, gamma=gamma,
-                       allow_loops=False, accept_all_cracks=False,
-                       use_weighted_start=True, plotter=Plotter())
+                       allow_loops=True, accept_all_cracks=False,
+                       use_weighted_start=False, plotter=Plotter())
+    start_time = time.time()
     F = sim.mc_breakage_udp(mat=labels, N_FRACS=N_FRACS,
                             a_code=0, b_code=1, empty_code=-1,
-                            A0=A0,int_bre=int_bre,seed=seed,plot_each=True)
+                            A0=A0,int_bre=int_bre,seed=seed,plot_each=False)
+    end_time = time.time()
+    sim_time = end_time - start_time
+    print(f"simulation time = {sim_time:6f}", )
     sim.plotter.plot_F(F)
     plt.show()
     
@@ -50,11 +55,11 @@ if __name__ == "__main__":
     STR = np.array([1.0, 0.1, 1.0], dtype=float)
     NO_FRAG = 4
     aspect_ratio = 2.0
-    int_bre = 0.2
-    gamma = 1.0
+    int_bre = 0
+    gamma = 10.0
     
     N_GRIDS = 10
-    N_FRACS = 5
+    N_FRACS = 1000
     seed = 42
     
     live_generator()
