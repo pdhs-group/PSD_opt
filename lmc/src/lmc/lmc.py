@@ -1,10 +1,12 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 from dataclasses import dataclass
 from typing import Tuple, Dict, Optional, List
 
 import numpy as np
 import os
 import math
+import gc
+import tracemalloc
 import h5py
 
 from .grid import GridFactory
@@ -20,9 +22,9 @@ from .agg_pool import AggPool
 
 # numba kernels
 from .func_jit import (
-    run_one_fracture_kernel,  # fracture推进核
-    uf_label_bool,            # 二值连通域标记（junction/bond展开后）
-    compress_count,           # 标签压缩 + A/B 计数
+    run_one_fracture_kernel,  # fractureæŽ¨è¿›æ ¸
+    uf_label_bool,            # äºŒå€¼è¿žé€šåŸŸæ ‡è®°ï¼ˆjunction/bondå±•å¼€åŽï¼‰
+    compress_count,           # æ ‡ç­¾åŽ‹ç¼© + A/B è®¡æ•°
     build_big_grid_mask,
 )
 
@@ -42,7 +44,7 @@ class LMCSimulator:
                  NO_FRAG: int,
                  gamma: float = 1.0,
                  allow_loops: bool = True,
-                 accept_all_cracks: bool = False,   # <<< 新增：接受“无效”裂缝，不回滚
+                 accept_all_cracks: bool = False,   # <<< æ–°å¢žï¼šæŽ¥å—â€œæ— æ•ˆâ€è£‚ç¼ï¼Œä¸å›žæ»š
                  use_weighted_start: bool = False,
                  plotter: Plotter | None = None,
                  pool_dir: str | None = None) -> None:
@@ -70,9 +72,67 @@ class LMCSimulator:
         # for test
         self.rollback_cnt = 0
         self.inter_start_cnt = 0
+        self._pool_call_counter = 0
         
         self.agg_pool = AggPool(pool_dir) if pool_dir is not None else None
 
+    def close(self) -> None:
+        if self.agg_pool is not None:
+            self.agg_pool.close_pool_cache()
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            pass
+
+    def _runtime_memory_stats(self, *, force_gc: bool = False) -> Dict[str, float | int]:
+        if force_gc:
+            gc.collect()
+
+        stats: Dict[str, float | int] = {}
+        if self.M is not None:
+            stats["M_bytes"] = int(self.M.nbytes)
+        if self.Hbond is not None:
+            stats["Hbond_bytes"] = int(self.Hbond.nbytes)
+        if self.Vbond is not None:
+            stats["Vbond_bytes"] = int(self.Vbond.nbytes)
+
+        if self.agg_pool is not None:
+            for key, value in self.agg_pool.cache_stats().items():
+                stats[f"aggpool_{key}"] = int(value)
+
+        if tracemalloc.is_tracing():
+            current, peak = tracemalloc.get_traced_memory()
+            stats["py_current_bytes"] = int(current)
+            stats["py_peak_bytes"] = int(peak)
+
+        try:
+            import psutil  # type: ignore
+            stats["rss_bytes"] = int(psutil.Process(os.getpid()).memory_info().rss)
+        except Exception:
+            pass
+
+        return stats
+
+    def _maybe_log_pool_memory(self, tag: str) -> None:
+        enabled = os.environ.get("LMC_POOL_DEBUG_MEMORY", "").strip().lower()
+        if enabled not in ("1", "true", "yes", "on"):
+            return
+
+        self._pool_call_counter += 1
+        every = int(os.environ.get("LMC_POOL_DEBUG_EVERY", "100") or "100")
+        every = max(1, every)
+        if (self._pool_call_counter % every) != 0:
+            return
+
+        if not tracemalloc.is_tracing():
+            tracemalloc.start(10)
+
+        force_gc = os.environ.get("LMC_POOL_DEBUG_GC", "0").strip().lower() in ("1", "true", "yes", "on")
+        stats = self._runtime_memory_stats(force_gc=force_gc)
+        ordered = ", ".join(f"{k}={v}" for k, v in stats.items())
+        print(f"[LMC memory][{tag}] call={self._pool_call_counter}, {ordered}")
     # ------------------------------
     # Grid management
     # ------------------------------
@@ -215,7 +275,8 @@ class LMCSimulator:
                                  seed: Optional[int] = None,
                                  max_steps: Optional[int] = None,
                                  plot_intermediate: bool = False,
-                                 plot_final: bool = False) -> Tuple[np.ndarray, np.ndarray, np.ndarray, float, List[List[Tuple[int, int, int]]]]:
+                                 plot_final: bool = False,
+                                 track_crack_paths: bool = True) -> Tuple[np.ndarray, np.ndarray, np.ndarray, float, List[List[Tuple[int, int, int]]]]:
         """
         Keep breaking bonds (with rollback if no new fragment formed) until we reach NO_FRAG.
         Returns:
@@ -225,7 +286,6 @@ class LMCSimulator:
             raise RuntimeError("Grid is not initialized. Call generate_grid() first.")
         rng = np.random.default_rng(seed)
 
-        # cache for start junctions
         if self.accept_all_cracks:
             if not self.use_weighted_start:
                 self._cache = JunctUniSampler(self.meta.H, self.meta.W)
@@ -241,8 +301,9 @@ class LMCSimulator:
         labels, cnt1, cnt2 = self.analyze_fragments_compact()
         target = max(1, int(NO_FRAG) if NO_FRAG is not None else self.NO_FRAG)
         energy_total = 0.0
-        crack_groups: List[List[List[Tuple[int,int,int]]]] = []
-        current_group: List[List[Tuple[int,int,int]]] = []
+        need_crack_paths = bool(track_crack_paths or plot_intermediate or plot_final)
+        crack_groups: List[List[List[Tuple[int, int, int]]]] = []
+        current_group: List[List[Tuple[int, int, int]]] = []
 
         if max_steps is None:
             n_bonds = int((self.Hbond != -1).sum() + (self.Vbond != -1).sum())
@@ -251,65 +312,64 @@ class LMCSimulator:
         steps = 0
         while (cnt1.size + 0) < target and steps < max_steps:
             steps += 1
-            rc_end, complete, E, path_info = self.run_one_fracture(rng=rng, record_path=True)
+            _rc_end, _complete, E, path_info = self.run_one_fracture(rng=rng, record_path=True)
 
             labels_new, cnt1_new, cnt2_new = self.analyze_fragments_compact()
-            
+
             if self.accept_all_cracks:
-                # accept this crack
                 energy_total += E
-                current_group.append([(a, i, j) for (a, i, j, _old) in path_info])
+                if need_crack_paths:
+                    current_group.append([(a, i, j) for (a, i, j, _old) in path_info])
                 if not self.use_weighted_start:
-                    # local refresh of start-junction eligibility
                     touch: list[tuple[int, int]] = []
                     for (axis, ii, jj, _old_type) in path_info:
                         r1, c1, r2, c2 = self._bond_endpoints(self.meta.H, self.meta.W, (axis, ii, jj))
-                        touch.append((r1, c1)); touch.append((r2, c2))
+                        touch.append((r1, c1))
+                        touch.append((r2, c2))
                     self._cache.recompute_at(self.Hbond, self.Vbond, touch)
                 else:
                     self._cache.on_bonds_broken(path_info)
                 if cnt1_new.size > cnt1.size:
-                    if len(current_group) > 0:
+                    if need_crack_paths and len(current_group) > 0:
                         crack_groups.append(current_group)
                         current_group = []
-                    # on-demand intermediate plot (materials-only)
                     if plot_intermediate and self.plotter is not None:
-                        self.plotter.plot_compact(self.M, self.Hbond, self.Vbond,
-                                                  labels=None, crack_paths=crack_groups,
-                                                  title=f"Fragment #{cnt1_new.size} created",
-                                                  mode='materials')
+                        self.plotter.plot_compact(
+                            self.M,
+                            self.Hbond,
+                            self.Vbond,
+                            labels=None,
+                            crack_paths=(crack_groups if need_crack_paths else None),
+                            title=f"Fragment #{cnt1_new.size} created",
+                            mode='materials',
+                        )
             else:
                 if cnt1_new.size > cnt1.size:
-                   energy_total += E
-                   current_group.append([(a, i, j) for (a, i, j, _old) in path_info])
-                   crack_groups.append(current_group)
-                   current_group = []
-                   if not self.use_weighted_start:
-                       touch: list[tuple[int, int]] = []
-                       for (axis, ii, jj, _old_type) in path_info:
-                           r1, c1, r2, c2 = self._bond_endpoints(self.meta.H, self.meta.W, (axis, ii, jj))
-                           touch.append((r1, c1)); touch.append((r2, c2))
-                       self._cache.recompute_at(self.Hbond, self.Vbond, touch)
-                   else:
-                       self._cache.on_bonds_broken(path_info)
-                   if plot_intermediate and self.plotter is not None:
-                       self.plotter.plot_compact(self.M, self.Hbond, self.Vbond,
-                                                 labels=None, crack_paths=crack_groups,
-                                                 title=f"Fragment #{cnt1_new.size} created",
-                                                 mode='materials')
+                    energy_total += E
+                    if need_crack_paths:
+                        current_group.append([(a, i, j) for (a, i, j, _old) in path_info])
+                        crack_groups.append(current_group)
+                        current_group = []
+                    if not self.use_weighted_start:
+                        touch: list[tuple[int, int]] = []
+                        for (axis, ii, jj, _old_type) in path_info:
+                            r1, c1, r2, c2 = self._bond_endpoints(self.meta.H, self.meta.W, (axis, ii, jj))
+                            touch.append((r1, c1))
+                            touch.append((r2, c2))
+                        self._cache.recompute_at(self.Hbond, self.Vbond, touch)
+                    else:
+                        self._cache.on_bonds_broken(path_info)
+                    if plot_intermediate and self.plotter is not None:
+                        self.plotter.plot_compact(
+                            self.M,
+                            self.Hbond,
+                            self.Vbond,
+                            labels=None,
+                            crack_paths=(crack_groups if need_crack_paths else None),
+                            title=f"Fragment #{cnt1_new.size} created",
+                            mode='materials',
+                        )
                 else:
-                    # if complete == 1:
-                    # self.rollback_cnt += 1
-                    # print("[TEST] rollback detected")
-                        # if self.internal_start:
-                        #     self.inter_start_cnt += 1
-                        #     print(f"[TEST] Start point r0={self.r0}, c0={self.c0}")
-                        # if self.plotter is not None:
-                        #     self.plotter.plot_compact(self.M, self.Hbond, self.Vbond,
-                        #                               labels=None, crack_paths=crack_groups,
-                        #                               title=f"Fragment #{cnt1_new.size} not created",
-                        #                               mode='materials')
-                    # rollback the crack (no new fragment formed)
                     for (axis, ii, jj, old) in reversed(path_info):
                         if axis == 0:
                             self.Hbond[ii, jj] = int(old)
@@ -318,8 +378,7 @@ class LMCSimulator:
                     labels_new, cnt1_new, cnt2_new = labels, cnt1, cnt2
 
             labels, cnt1, cnt2 = labels_new, cnt1_new, cnt2_new
-    
-            # bail out if no bonds left
+
             if not self.use_weighted_start:
                 if ((self.Hbond != -1).sum() + (self.Vbond != -1).sum()) == 0:
                     break
@@ -328,13 +387,16 @@ class LMCSimulator:
                     break
 
         if plot_final and self.plotter is not None:
-        # if self.internal_start:
-            self.plotter.plot_compact(self.M, self.Hbond, self.Vbond,
-                                      labels=labels, crack_paths=crack_groups,
-                                      title=f"Final: {cnt1.size} fragments",
-                                      mode='fragments')
-        return labels, cnt1, cnt2, energy_total, crack_groups
-
+            self.plotter.plot_compact(
+                self.M,
+                self.Hbond,
+                self.Vbond,
+                labels=labels,
+                crack_paths=(crack_groups if need_crack_paths else None),
+                title=f"Final: {cnt1.size} fragments",
+                mode='fragments',
+            )
+        return labels, cnt1, cnt2, energy_total, (crack_groups if need_crack_paths else [])
     # ------------------------------
     # Lattice Monte Carlo (repeat)
     # ------------------------------
@@ -367,7 +429,8 @@ class LMCSimulator:
                 sim_seed = int(rng.integers(0, 2**31 - 1))
                 labels, c1, c2, E, paths = self.simulate_until_fragments(
                     NO_FRAG=self.NO_FRAG, seed=sim_seed,
-                    plot_intermediate=False, plot_final=False
+                    plot_intermediate=False, plot_final=False,
+                    track_crack_paths=bool(plot_each)
                 )
                 K = int(c1.size)
                 if K > 0:
@@ -394,6 +457,7 @@ class LMCSimulator:
                                               labels=labels, crack_paths=paths,
                                               title=f"Grid {g+1}/{N_GRIDS}, run {f+1}/{N_FRACS}",
                                               mode='fragments')
+        self._maybe_log_pool_memory(tag='after_repeat_call')
         return F
 
     # ------------------------------
@@ -455,7 +519,7 @@ class LMCSimulator:
             self.generate_grid_udp(mats[g], a_code=a_code, b_code=b_code, 
                                    empty_code=empty_code, A0=A0, int_bre=int_bre)
     
-            # 原始键矩阵的快照，供每次试验后恢复
+            # åŽŸå§‹é”®çŸ©é˜µçš„å¿«ç…§ï¼Œä¾›æ¯æ¬¡è¯•éªŒåŽæ¢å¤
             Hbond_ori = self.Hbond.copy()
             Vbond_ori = self.Vbond.copy()
     
@@ -466,11 +530,12 @@ class LMCSimulator:
                     seed=sim_seed,
                     plot_intermediate=False,
                     plot_final=False,
+                    track_crack_paths=bool(plot_each),
                 )
     
                 K = int(c1.size)
                 if K > 0:
-                    # 直接由计数换算体积（无余量分配）
+                    # ç›´æŽ¥ç”±è®¡æ•°æ¢ç®—ä½“ç§¯ï¼ˆæ— ä½™é‡åˆ†é…ï¼‰
                     VA = self.meta.A0 * c1.astype(float)
                     VB = self.meta.A0 * c2.astype(float)
                     VT = VA + VB
@@ -486,7 +551,7 @@ class LMCSimulator:
                 else:
                     row += int(self.NO_FRAG)
     
-                # 恢复键矩阵，确保同一网格的多次模拟相互独立
+                # æ¢å¤é”®çŸ©é˜µï¼Œç¡®ä¿åŒä¸€ç½‘æ ¼çš„å¤šæ¬¡æ¨¡æ‹Ÿç›¸äº’ç‹¬ç«‹
                 self.Hbond = Hbond_ori.copy()
                 self.Vbond = Vbond_ori.copy()
     
@@ -500,6 +565,7 @@ class LMCSimulator:
                         # mode='fragments'
                     )
     
+        self._maybe_log_pool_memory(tag='after_udp_call')
         return F
 
     def mc_breakage_from_pool(
@@ -520,17 +586,17 @@ class LMCSimulator:
         interp: str = "knn",     # "knn" or "bilinear"
         KNN: int = 4,
         sigma: float = 0.35,
-        # ---- 方案A + log-bilinear 新增 ----
+        # ---- æ–¹æ¡ˆA + log-bilinear æ–°å¢ž ----
         max_draws: int = 15,
         tau_A: float | None = None,   # e.g. 0.10
         tau_X: float | None = None,   # e.g. 0.05
         log_bilinear: bool = False,
     ) -> np.ndarray:
         """
-        从离线 aggregate 池中按 (A_norm, X1) 选择小池子并随机抽样，再做断裂模拟。
-        此版本加入严格质量守恒修正：
-            - 总质量守恒: sum(VT)=A
-            - 两相分别守恒: sum(VA)=A*X1, sum(VB)=A*X2
+        ä»Žç¦»çº¿ aggregate æ± ä¸­æŒ‰ (A_norm, X1) é€‰æ‹©å°æ± å­å¹¶éšæœºæŠ½æ ·ï¼Œå†åšæ–­è£‚æ¨¡æ‹Ÿã€‚
+        æ­¤ç‰ˆæœ¬åŠ å…¥ä¸¥æ ¼è´¨é‡å®ˆæ’ä¿®æ­£ï¼š
+            - æ€»è´¨é‡å®ˆæ’: sum(VT)=A
+            - ä¸¤ç›¸åˆ†åˆ«å®ˆæ’: sum(VA)=A*X1, sum(VB)=A*X2
         """
 
         if X2 is None:
@@ -541,7 +607,9 @@ class LMCSimulator:
         if self.agg_pool is None:
             self.agg_pool = AggPool(pool_dir)
         else:
-            self.agg_pool.pool_dir = pool_dir  # 允许动态切换目录
+            if self.agg_pool.pool_dir != pool_dir:
+                self.agg_pool.close_pool_cache()
+                self.agg_pool.pool_dir = pool_dir
 
         A_norm = float(A) / float(A0) if A0 > 0 else float(A)
 
@@ -549,18 +617,18 @@ class LMCSimulator:
         F = np.zeros((total_rows, 4), dtype=float)
         row = 0
 
-        # remainder 由输入 A/X1/X2 + A0 得到（不读池子）
+        # remainder ç”±è¾“å…¥ A/X1/X2 + A0 å¾—åˆ°ï¼ˆä¸è¯»æ± å­ï¼‰
         R1 = (A * X1) % A0 if A0 > 0 else 0.0
         R2 = (A * X2) % A0 if A0 > 0 else 0.0
 
-        # 两相目标总质量（面积）
+        # ä¸¤ç›¸ç›®æ ‡æ€»è´¨é‡ï¼ˆé¢ç§¯ï¼‰
         M1_tar = float(A * X1)
         M2_tar = float(A * X2)
         mass_scale = M1_tar + M2_tar
         eps = 1e-12 * mass_scale
 
         for g in range(int(N_GRIDS)):
-            # ---- 从池子中抽一个 grid（bilinear 模式下启用方案A） ----
+            # ---- ä»Žæ± å­ä¸­æŠ½ä¸€ä¸ª gridï¼ˆbilinear æ¨¡å¼ä¸‹å¯ç”¨æ–¹æ¡ˆAï¼‰ ----
             M, Hbond, Vbond = self.agg_pool.sample_grid(
                 Df, MAS, A_norm, X1, rng,
                 interp=interp, KNN=KNN, sigma=sigma,
@@ -568,7 +636,7 @@ class LMCSimulator:
                 log_bilinear=log_bilinear
             )
 
-            # ---- meta 用本次输入重建 ----
+            # ---- meta ç”¨æœ¬æ¬¡è¾“å…¥é‡å»º ----
             H, W = M.shape
             N1_pool = int((M == 1).sum())
             N2_pool = int((M == 2).sum())
@@ -580,9 +648,9 @@ class LMCSimulator:
             else:
                 int_bre_len = int(np.ceil(max(H, W) * float(int_bre)))
 
-            self.M = M.copy()
-            self.Hbond = Hbond.copy()
-            self.Vbond = Vbond.copy()
+            self.M = M
+            self.Hbond = Hbond
+            self.Vbond = Vbond
             self.meta = GridMeta(
                 H=int(H), W=int(W),
                 A0=float(A0),
@@ -606,11 +674,12 @@ class LMCSimulator:
                     seed=sim_seed,
                     plot_intermediate=False,
                     plot_final=False,
+                    track_crack_paths=bool(plot_each),
                 )
 
                 Kfrag = int(c1.size)
                 if Kfrag > 0:
-                    # --- 1) 先按原逻辑算 raw 质量（含 remainder 分配） ---
+                    # --- 1) å…ˆæŒ‰åŽŸé€»è¾‘ç®— raw è´¨é‡ï¼ˆå« remainder åˆ†é…ï¼‰ ---
                     units_area = self.meta.A0 * (c1 + c2).astype(float)
                     denom = max((A - (self.meta.R[0] + self.meta.R[1])), eps)
                     share = units_area / denom
@@ -618,15 +687,15 @@ class LMCSimulator:
                     VA_raw = self.meta.A0 * c1.astype(float) + share * self.meta.R[0]
                     VB_raw = self.meta.A0 * c2.astype(float) + share * self.meta.R[1]
 
-                    # --- 2) 计算两相缩放因子，保证分别守恒 ---
+                    # --- 2) è®¡ç®—ä¸¤ç›¸ç¼©æ”¾å› å­ï¼Œä¿è¯åˆ†åˆ«å®ˆæ’ ---
                     M1_raw = float(VA_raw.sum())
                     M2_raw = float(VB_raw.sum())
 
-                    # 单相/缺相处理：
+                    # å•ç›¸/ç¼ºç›¸å¤„ç†ï¼š
                     if M1_raw <= eps:
-                        # 目标有该相，但抽样网格里没有 -> 说明抽样太远
-                        # 这里不死循环，直接把该相质量均匀置入会破坏材料含量，
-                        # 所以采用 fallback：不缩放但给出保护（仍守恒靠 alpha2）
+                        # ç›®æ ‡æœ‰è¯¥ç›¸ï¼Œä½†æŠ½æ ·ç½‘æ ¼é‡Œæ²¡æœ‰ -> è¯´æ˜ŽæŠ½æ ·å¤ªè¿œ
+                        # è¿™é‡Œä¸æ­»å¾ªçŽ¯ï¼Œç›´æŽ¥æŠŠè¯¥ç›¸è´¨é‡å‡åŒ€ç½®å…¥ä¼šç ´åææ–™å«é‡ï¼Œ
+                        # æ‰€ä»¥é‡‡ç”¨ fallbackï¼šä¸ç¼©æ”¾ä½†ç»™å‡ºä¿æŠ¤ï¼ˆä»å®ˆæ’é  alpha2ï¼‰
                         alpha1 = 0.0
                     else:
                         alpha1 = M1_tar / M1_raw
@@ -636,10 +705,10 @@ class LMCSimulator:
                     else:
                         alpha2 = M2_tar / M2_raw
 
-                    # --- 3) 应用缩放，得到守恒后的输出质量 ---
+                    # --- 3) åº”ç”¨ç¼©æ”¾ï¼Œå¾—åˆ°å®ˆæ’åŽçš„è¾“å‡ºè´¨é‡ ---
                     VA = alpha1 * VA_raw
                     VB = alpha2 * VB_raw
-                    VT = VA + VB  # 总量也会严格等于 A
+                    VT = VA + VB  # æ€»é‡ä¹Ÿä¼šä¸¥æ ¼ç­‰äºŽ A
 
                     energy = float(E * np.sqrt(max(self.meta.A0, eps)))
                     n_write = min(Kfrag, int(self.NO_FRAG))
@@ -652,7 +721,7 @@ class LMCSimulator:
                 else:
                     row += int(self.NO_FRAG)
 
-                # 恢复键矩阵
+                # æ¢å¤é”®çŸ©é˜µ
                 self.Hbond = Hbond_ori.copy()
                 self.Vbond = Vbond_ori.copy()
 
@@ -664,4 +733,6 @@ class LMCSimulator:
                         mode='fragments'
                     )
 
+        self._maybe_log_pool_memory(tag='after_pool_call')
         return F
+

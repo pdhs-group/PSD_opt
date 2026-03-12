@@ -48,7 +48,7 @@ def from_pool():
     sim.plotter.plot_F(F)
     plt.show()
 if __name__ == "__main__":
-    A = 4000.0
+    A = 10000.0
     A0 = 1.0
     X1 = 0.6
     X2 = 1 - X1
@@ -56,10 +56,10 @@ if __name__ == "__main__":
     NO_FRAG = 4
     aspect_ratio = 2.0
     int_bre = 0
-    gamma = 10.0
+    gamma = 100.0
     
     N_GRIDS = 10
-    N_FRACS = 1000
+    N_FRACS = 100
     seed = 42
     
     live_generator()
