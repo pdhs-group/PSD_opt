@@ -4,87 +4,67 @@ import os
 import sqlite3
 from collections import OrderedDict
 from pathlib import Path
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Dict, Any, List, Tuple
 
 import numpy as np
 
 
 SQLITE_NAME = "pool_index.sqlite"
+POOL_SUFFIX = "_npz_single"
 
 
-def _format_pool_stem(Df: float, MAS: float) -> str:
+def _format_pool_dirname(Df: float, MAS: float, suffix: str = POOL_SUFFIX) -> str:
     df_str = str(Df).replace(".", "p")
     mas_str = f"{MAS:.2f}".replace(".", "p")
-    return f"aggregate_pool_Df{df_str}_MAS{mas_str}"
-
-
-def _env_flag(name: str, default: bool) -> bool:
-    raw = os.environ.get(name, "")
-    if raw == "":
-        return bool(default)
-    return raw.strip().lower() in ("1", "true", "yes", "on")
-
-
-def _env_text(name: str, default: str) -> str:
-    raw = os.environ.get(name, "")
-    if raw == "":
-        return str(default)
-    return str(raw).strip()
+    return f"aggregate_pool_Df{df_str}_MAS{mas_str}{suffix}"
 
 
 class AggPool:
-    """
-    Manage offline aggregate pools stored as NPZ files indexed by SQLite.
-
-    The public API matches `agg_pool.py` so callers only need to switch the
-    imported module.
-    """
-
     def __init__(
         self,
         pool_dir: str,
         *,
         max_open_pools: int = 2,
         sample_cache_size: int = 0,
-        keep_h5_open: Optional[bool] = None,
+        pool_suffix: str = POOL_SUFFIX,
+        sqlite_name: str = SQLITE_NAME,
     ):
         self.pool_dir = pool_dir
         self.max_open_pools = max(1, int(max_open_pools))
         self.sample_cache_size = max(0, int(sample_cache_size))
-        self.keep_h5_open = _env_flag("LMC_POOL_KEEP_H5_OPEN", False) if keep_h5_open is None else bool(keep_h5_open)
-        self.pool_layout = _env_text("LMC_POOL_NPZ_SQLITE_LAYOUT", "single").lower()
+        self.pool_suffix = str(pool_suffix)
+        self.sqlite_name = str(sqlite_name)
 
         self._pool_cache: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
         self._sample_array_cache: "OrderedDict[Tuple[str, str, str], Tuple[np.ndarray, np.ndarray, np.ndarray]]" = OrderedDict()
-        self._pool_last_key: Optional[str] = None
 
         self._read_calls = 0
         self._sample_cache_hits = 0
         self._sample_cache_misses = 0
         self._index_builds = 0
-        self._transient_file_opens = 0
+        self._npz_file_opens = 0
 
-    def _close_cache_entry(self, cache: Dict[str, Any]) -> None:
-        conn = cache.get("conn", None)
-        try:
-            if conn is not None:
-                conn.close()
-        except Exception:
-            pass
-        cache["conn"] = None
+    def close_pool_cache(self) -> None:
+        self._pool_cache.clear()
+        self._sample_array_cache.clear()
 
-    def _drop_sample_cache_for_pool(self, pool_path: str) -> None:
-        keys_to_drop = [key for key in self._sample_array_cache.keys() if key[0] == pool_path]
-        for key in keys_to_drop:
-            self._sample_array_cache.pop(key, None)
+    def debug_stats(self) -> Dict[str, int]:
+        return {
+            "indexed_pools": int(len(self._pool_cache)),
+            "cached_samples": int(len(self._sample_array_cache)),
+            "sample_cache_hits": int(self._sample_cache_hits),
+            "sample_cache_misses": int(self._sample_cache_misses),
+            "pool_read_calls": int(self._read_calls),
+            "pool_index_builds": int(self._index_builds),
+            "pool_npz_file_opens": int(self._npz_file_opens),
+        }
 
     def _enforce_pool_cache_limit(self) -> None:
         while len(self._pool_cache) > self.max_open_pools:
-            pool_path, cache = self._pool_cache.popitem(last=False)
-            self._drop_sample_cache_for_pool(pool_path)
-            self._close_cache_entry(cache)
-            if self._pool_last_key == pool_path:
-                self._pool_last_key = next(reversed(self._pool_cache), None) if self._pool_cache else None
+            pool_path, _cache = self._pool_cache.popitem(last=False)
+            keys_to_drop = [key for key in self._sample_array_cache.keys() if key[0] == pool_path]
+            for key in keys_to_drop:
+                self._sample_array_cache.pop(key, None)
 
     def _enforce_sample_cache_limit(self) -> None:
         if self.sample_cache_size <= 0:
@@ -93,102 +73,43 @@ class AggPool:
         while len(self._sample_array_cache) > self.sample_cache_size:
             self._sample_array_cache.popitem(last=False)
 
-    def close_pool_cache(self) -> None:
-        for cache in self._pool_cache.values():
-            self._close_cache_entry(cache)
-        self._pool_cache.clear()
-        self._sample_array_cache.clear()
-        self._pool_last_key = None
-
-    def _h5_object_counts(self) -> Dict[str, int]:
-        return {
-            "h5_global_obj_total": 0,
-            "h5_global_obj_files": 0,
-            "h5_global_obj_groups": 0,
-            "h5_global_obj_datasets": 0,
-            "h5_global_obj_datatypes": 0,
-            "h5_global_obj_attrs": 0,
-            "h5_open_obj_total": 0,
-            "h5_open_obj_files": 0,
-            "h5_open_obj_groups": 0,
-            "h5_open_obj_datasets": 0,
-            "h5_open_obj_datatypes": 0,
-            "h5_open_obj_attrs": 0,
-        }
-
-    def cache_stats(self) -> Dict[str, int]:
-        stats = {
-            "open_pools": int(sum(1 for c in self._pool_cache.values() if c.get("conn", None) is not None)),
-            "indexed_pools": int(len(self._pool_cache)),
-            "cached_samples": int(len(self._sample_array_cache)),
-            "sample_cache_hits": int(self._sample_cache_hits),
-            "sample_cache_misses": int(self._sample_cache_misses),
-            "pool_read_calls": int(self._read_calls),
-            "pool_index_builds": int(self._index_builds),
-            "pool_transient_file_opens": int(self._transient_file_opens),
-            "pool_keep_h5_open": int(self.keep_h5_open),
-        }
-        stats.update(self._h5_object_counts())
-        return stats
-
-    def _candidate_pool_dirs(self, Df: float, MAS: float) -> List[str]:
-        stem = _format_pool_stem(Df, MAS)
-        single = os.path.join(self.pool_dir, f"{stem}_npz_single")
-        batch = os.path.join(self.pool_dir, f"{stem}_npz_batch")
-        if self.pool_layout == "single":
-            return [single]
-        if self.pool_layout == "batch":
-            return [batch]
-        return [single, batch]
-
     def _resolve_pool_dir(self, Df: float, MAS: float) -> str:
-        candidates = self._candidate_pool_dirs(Df, MAS)
-        for candidate in candidates:
-            sqlite_path = os.path.join(candidate, SQLITE_NAME)
-            if os.path.isdir(candidate) and os.path.isfile(sqlite_path):
-                return candidate
+        dirname = _format_pool_dirname(Df, MAS, self.pool_suffix)
+        candidate = os.path.join(self.pool_dir, dirname)
+        sqlite_path = os.path.join(candidate, self.sqlite_name)
+        if os.path.isdir(candidate) and os.path.isfile(sqlite_path):
+            return candidate
+
+        direct_sqlite = os.path.join(self.pool_dir, self.sqlite_name)
+        if os.path.isdir(self.pool_dir) and os.path.isfile(direct_sqlite) and Path(self.pool_dir).name == dirname:
+            return self.pool_dir
+
         raise FileNotFoundError(
-            f"[AggPool] Pool directory not found for Df={Df}, MAS={MAS}. "
-            f"Checked: {candidates}"
+            f"[AggPool] Pool directory not found for Df={Df}, MAS={MAS}. Checked: {[candidate, self.pool_dir]}"
         )
 
-    def _open_conn(self, pool_path: str) -> sqlite3.Connection:
-        sqlite_path = os.path.join(pool_path, SQLITE_NAME)
+    def _build_index(self, pool_path: str) -> Dict[str, Any]:
+        self._index_builds += 1
+        sqlite_path = os.path.join(pool_path, self.sqlite_name)
         conn = sqlite3.connect(sqlite_path)
         conn.row_factory = sqlite3.Row
-        return conn
-
-    def _ensure_pool_handle(self, cache: Dict[str, Any]):
-        if cache.get("conn", None) is None:
-            cache["conn"] = self._open_conn(str(cache["pool_path"]))
-            self._pool_cache.move_to_end(str(cache["pool_path"]))
-            self._pool_last_key = str(cache["pool_path"])
-
-    def _build_index_from_file(self, pool_path: str) -> Dict[str, Any]:
-        self._index_builds += 1
-        conn = self._open_conn(pool_path)
         try:
-            meta_rows = conn.execute("SELECT key, value_json FROM meta").fetchall()
-            meta = {str(row["key"]): row["value_json"] for row in meta_rows}
-            pool_format = str(__import__("json").loads(meta.get("format", '"unknown"')))
-
             group_rows = conn.execute(
-                "SELECT group_name, np_target, frac_a_target, n_samples FROM groups ORDER BY group_name"
+                "SELECT group_name, np_target, frac_a_target FROM groups ORDER BY group_name"
             ).fetchall()
             sample_rows = conn.execute(
-                "SELECT group_name, sample_name, sample_index, npz_relpath, array_prefix FROM samples ORDER BY group_name, sample_index, sample_name"
+                "SELECT group_name, sample_name, sample_index, npz_relpath FROM samples ORDER BY group_name, sample_index, sample_name"
             ).fetchall()
         finally:
             conn.close()
 
-        sample_records: Dict[Tuple[str, str], Dict[str, Any]] = {}
+        sample_records: Dict[Tuple[str, str], Dict[str, str | int]] = {}
         samples_by_group: Dict[str, List[str]] = {}
         for row in sample_rows:
             gname = str(row["group_name"])
             sname = str(row["sample_name"])
             sample_records[(gname, sname)] = {
                 "npz_relpath": str(row["npz_relpath"]),
-                "array_prefix": str(row["array_prefix"]),
                 "sample_index": int(row["sample_index"]),
             }
             samples_by_group.setdefault(gname, []).append(sname)
@@ -217,71 +138,33 @@ class AggPool:
         XA_vals = np.array(sorted({g["frac_A_target"] for g in groups}), dtype=float)
         logNp = np.array([math.log(max(g["Np_target"], 1e-9)) for g in groups], dtype=float)
         fracA = np.array([g["frac_A_target"] for g in groups], dtype=float)
-        logNp_range = float(logNp.max() - logNp.min()) if logNp.size > 1 else 1.0
-        fracA_range = float(fracA.max() - fracA.min()) if fracA.size > 1 else 1.0
 
-        cache = dict(
-            conn=None,
-            groups=groups,
-            pool_path=pool_path,
-            pool_format=pool_format,
-            sample_records=sample_records,
-            Np_vals=Np_vals,
-            XA_vals=XA_vals,
-            logNp=logNp,
-            fracA=fracA,
-            logNp_range=logNp_range,
-            fracA_range=fracA_range,
-        )
-        return cache
+        return {
+            "pool_path": pool_path,
+            "groups": groups,
+            "sample_records": sample_records,
+            "Np_vals": Np_vals,
+            "XA_vals": XA_vals,
+            "logNp": logNp,
+            "fracA": fracA,
+            "logNp_range": float(logNp.max() - logNp.min()) if logNp.size > 1 else 1.0,
+            "fracA_range": float(fracA.max() - fracA.min()) if fracA.size > 1 else 1.0,
+        }
 
     def _get_cache(self, Df: float, MAS: float) -> Dict[str, Any]:
         pool_path = self._resolve_pool_dir(Df, MAS)
-
         cache = self._pool_cache.get(pool_path, None)
         if cache is not None:
-            if self.keep_h5_open:
-                self._ensure_pool_handle(cache)
             self._pool_cache.move_to_end(pool_path)
-            self._pool_last_key = pool_path
             return cache
 
-        cache = self._build_index_from_file(pool_path)
-        if self.keep_h5_open:
-            cache["conn"] = self._open_conn(pool_path)
+        cache = self._build_index(pool_path)
         self._pool_cache[pool_path] = cache
         self._pool_cache.move_to_end(pool_path)
-        self._pool_last_key = pool_path
         self._enforce_pool_cache_limit()
         return cache
 
-    def _load_triplet_from_npz(self, npz_path: str, array_prefix: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        if array_prefix:
-            key_M = f"{array_prefix}__M"
-            key_H = f"{array_prefix}__Hbond"
-            key_V = f"{array_prefix}__Vbond"
-        else:
-            key_M = "M"
-            key_H = "Hbond"
-            key_V = "Vbond"
-
-        with np.load(npz_path, allow_pickle=False) as data:
-            M = np.asarray(data[key_M])
-            Hbond = np.asarray(data[key_H])
-            Vbond = np.asarray(data[key_V])
-        return M, Hbond, Vbond
-
-    def _read_triplet_from_file(self, pool_path: str, gname: str, subname: str, record: Dict[str, Any]) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        self._transient_file_opens += 1
-        npz_path = str(Path(pool_path) / record["npz_relpath"])
-        return self._load_triplet_from_npz(npz_path, str(record["array_prefix"]))
-
-    def _read_sample_triplet(
-        self,
-        cache: Dict[str, Any],
-        gname: str,
-        subname: str,
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def _read_sample_triplet(self, cache: Dict[str, Any], gname: str, subname: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         self._read_calls += 1
         pool_path = str(cache["pool_path"])
         sample_key = (pool_path, str(gname), str(subname))
@@ -298,7 +181,12 @@ class AggPool:
         if record is None:
             raise KeyError(f"[AggPool] Sample record not found: group={gname}, sample={subname}")
 
-        M, Hbond, Vbond = self._read_triplet_from_file(pool_path, gname, subname, record)
+        self._npz_file_opens += 1
+        npz_path = str(Path(pool_path) / str(record["npz_relpath"]))
+        with np.load(npz_path, allow_pickle=False) as data:
+            M = np.asarray(data["M"])
+            Hbond = np.asarray(data["Hbond"])
+            Vbond = np.asarray(data["Vbond"])
 
         if self.sample_cache_size > 0:
             self._sample_array_cache[sample_key] = (M, Hbond, Vbond)
@@ -315,13 +203,16 @@ class AggPool:
         if x >= vals[-1]:
             return float(vals[-1]), float(vals[-1])
         idx = int(np.searchsorted(vals, x))
-        lo = float(vals[idx - 1])
-        hi = float(vals[idx])
-        return lo, hi
+        return float(vals[idx - 1]), float(vals[idx])
 
     def _pick_group_knn(
-        self, cache: Dict[str, Any], A_norm: float, X1: float,
-        rng: np.random.Generator, KNN: int, sigma: float
+        self,
+        cache: Dict[str, Any],
+        A_norm: float,
+        X1: float,
+        rng: np.random.Generator,
+        KNN: int,
+        sigma: float,
     ) -> Dict[str, Any]:
         logA = math.log(max(A_norm, 1e-9))
         d_logNp = (logA - cache["logNp"]) / cache["logNp_range"]
@@ -335,9 +226,7 @@ class AggPool:
         w = np.exp(-nn_dist2 / (2.0 * sigma * sigma))
         w_sum = float(w.sum())
         probs = (w / w_sum) if (np.isfinite(w_sum) and w_sum > 0) else np.ones(K) / K
-
-        k_pick = int(rng.choice(K, p=probs))
-        return cache["groups"][int(nn_idx[k_pick])]
+        return cache["groups"][int(nn_idx[int(rng.choice(K, p=probs))])]
 
     def _pick_group_bilinear(
         self,
@@ -356,31 +245,13 @@ class AggPool:
             logNp_lo, logNp_hi = self._find_bracketing(logNp_vals, logA)
             Np_lo = float(np.exp(logNp_lo))
             Np_hi = float(np.exp(logNp_hi))
-
-            def t_log(x_log: float, x0_log: float, x1_log: float) -> float:
-                if x1_log == x0_log:
-                    return 0.0
-                return (x_log - x0_log) / (x1_log - x0_log)
-
-            tx = t_log(logA, logNp_lo, logNp_hi)
+            tx = 0.0 if logNp_hi == logNp_lo else (logA - logNp_lo) / (logNp_hi - logNp_lo)
         else:
             Np_lo, Np_hi = self._find_bracketing(Np_vals, A_norm)
-
-            def t_lin(x: float, x0: float, x1: float) -> float:
-                if x1 == x0:
-                    return 0.0
-                return (x - x0) / (x1 - x0)
-
-            tx = t_lin(A_norm, Np_lo, Np_hi)
+            tx = 0.0 if Np_hi == Np_lo else (A_norm - Np_lo) / (Np_hi - Np_lo)
 
         XA_lo, XA_hi = self._find_bracketing(XA_vals, X1)
-
-        def t_lin(x: float, x0: float, x1: float) -> float:
-            if x1 == x0:
-                return 0.0
-            return (x - x0) / (x1 - x0)
-
-        ty = t_lin(X1, XA_lo, XA_hi)
+        ty = 0.0 if XA_hi == XA_lo else (X1 - XA_lo) / (XA_hi - XA_lo)
 
         corners = [
             (Np_lo, XA_lo, (1 - tx) * (1 - ty)),
@@ -391,33 +262,24 @@ class AggPool:
 
         cand_groups: List[Dict[str, Any]] = []
         cand_w: List[float] = []
-
         for Np_c, XA_c, w in corners:
             if w <= 0:
                 continue
-            g = next(
+            group = next(
                 (
-                    gg
-                    for gg in cache["groups"]
+                    gg for gg in cache["groups"]
                     if float(gg["Np_target"]) == float(Np_c)
                     and float(gg["frac_A_target"]) == float(XA_c)
                 ),
                 None,
             )
-            if g is not None:
-                cand_groups.append(g)
+            if group is not None:
+                cand_groups.append(group)
                 cand_w.append(float(w))
 
         if not cand_groups:
-            g_nn = self._pick_group_knn(
-                cache,
-                A_norm,
-                X1,
-                np.random.default_rng(),
-                KNN=1,
-                sigma=1.0,
-            )
-            return [g_nn], np.array([1.0], dtype=float)
+            group = self._pick_group_knn(cache, A_norm, X1, np.random.default_rng(), KNN=1, sigma=1.0)
+            return [group], np.array([1.0], dtype=float)
 
         w_arr = np.array(cand_w, dtype=float)
         w_arr /= w_arr.sum()
@@ -442,38 +304,33 @@ class AggPool:
         cache = self._get_cache(Df, MAS)
 
         if interp != "bilinear":
-            g_pick = self._pick_group_knn(cache, A_norm, X1, rng, KNN=KNN, sigma=sigma)
-            subname = g_pick["samples"][int(rng.integers(0, len(g_pick["samples"]))) ]
-            return self._read_sample_triplet(cache, g_pick["gname"], subname)
+            group = self._pick_group_knn(cache, A_norm, X1, rng, KNN=KNN, sigma=sigma)
+            sample_name = group["samples"][int(rng.integers(0, len(group["samples"]))) ]
+            return self._read_sample_triplet(cache, group["gname"], sample_name)
 
-        cand_groups, cand_probs = self._pick_group_bilinear(
-            cache, A_norm, X1, log_bilinear=log_bilinear
-        )
+        cand_groups, cand_probs = self._pick_group_bilinear(cache, A_norm, X1, log_bilinear=log_bilinear)
 
         if tau_A is None or tau_X is None:
-            g_pick = cand_groups[int(rng.choice(len(cand_groups), p=cand_probs))]
-            subname = g_pick["samples"][int(rng.integers(0, len(g_pick["samples"]))) ]
-            return self._read_sample_triplet(cache, g_pick["gname"], subname)
+            group = cand_groups[int(rng.choice(len(cand_groups), p=cand_probs))]
+            sample_name = group["samples"][int(rng.integers(0, len(group["samples"]))) ]
+            return self._read_sample_triplet(cache, group["gname"], sample_name)
 
         best_dist2 = float("inf")
         best_triplet: Tuple[np.ndarray, np.ndarray, np.ndarray] | None = None
 
         for _ in range(int(max_draws)):
-            g_pick = cand_groups[int(rng.choice(len(cand_groups), p=cand_probs))]
-            subname = g_pick["samples"][int(rng.integers(0, len(g_pick["samples"]))) ]
-            M, Hbond, Vbond = self._read_sample_triplet(cache, g_pick["gname"], subname)
+            group = cand_groups[int(rng.choice(len(cand_groups), p=cand_probs))]
+            sample_name = group["samples"][int(rng.integers(0, len(group["samples"]))) ]
+            M, Hbond, Vbond = self._read_sample_triplet(cache, group["gname"], sample_name)
 
             n1 = int((M == 1).sum())
             n2 = int((M == 2).sum())
             occ = n1 + n2
             if occ <= 0:
                 continue
-            A_norm_pool = float(occ)
-            X1_pool = float(n1) / float(occ)
 
-            dA = abs(A_norm_pool - A_norm) / max(A_norm, 1e-9)
-            dX = abs(X1_pool - X1)
-
+            dA = abs(float(occ) - A_norm) / max(A_norm, 1e-9)
+            dX = abs(float(n1) / float(occ) - X1)
             dist2 = dA * dA + dX * dX
             if dist2 < best_dist2:
                 best_dist2 = dist2
@@ -485,6 +342,8 @@ class AggPool:
         if best_triplet is not None:
             return best_triplet
 
-        g_pick = cand_groups[int(rng.choice(len(cand_groups), p=cand_probs))]
-        subname = g_pick["samples"][int(rng.integers(0, len(g_pick["samples"]))) ]
-        return self._read_sample_triplet(cache, g_pick["gname"], subname)
+        group = cand_groups[int(rng.choice(len(cand_groups), p=cand_probs))]
+        sample_name = group["samples"][int(rng.integers(0, len(group["samples"]))) ]
+        return self._read_sample_triplet(cache, group["gname"], sample_name)
+
+

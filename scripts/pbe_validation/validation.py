@@ -54,7 +54,7 @@ class PBEValidation():
         self.P2 = 1
         # The number of times to repeat the MC-PBE
         self.N_MC = 5
-        self.mom_a0 = 200000
+        self.mom_a0 = 100000
         ## Check if the psd file is available
         if self.use_psd:
             if self.dist_path is None:
@@ -104,7 +104,7 @@ class PBEValidation():
             self.v0 = (self.p.V1[1] + self.p.V3[1]) /2
     
     def init_mcpbe(self, dim, t, process):
-        self.p_mc = MCPBESolver(dim=dim, t_vec=t, verbose=True, load_attr=False, init=False)
+        self.p_mc = MCPBESolver(dim=dim, t_vec=t, verbose=False, load_attr=False, init=False)
         self.p_mc.a0 = self.mom_a0
         self.p_mc.CDF_method = "disc"
         self.p_mc.G = self.G
@@ -112,10 +112,10 @@ class PBEValidation():
         self.p_mc.alpha_prim = np.ones(dim**2)
         self.p_mc.break_dW_mode = "const"
         self.p_mc.break_dW_min = 1.0
-        self.p_mc.break_dW_max = 5.0
+        self.p_mc.break_dW_max = 50.0
         self.p_mc.agg_dW_min = 1.0
         self.p_mc.agg_dW_max = 1.0
-        self.p_mc.recon_enable = True
+        self.p_mc.recon_enable = False
         self.p_mc.V_eff_init = 1000
         self.p_mc.recon_N_max = 4000
         self.p_mc.recon_method = "2PM"

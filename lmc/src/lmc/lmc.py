@@ -1,16 +1,8 @@
-﻿from __future__ import annotations
-import csv
-from dataclasses import dataclass
-from datetime import datetime
-from pathlib import Path
+from __future__ import annotations
 from typing import Tuple, Dict, Optional, List
 
 import numpy as np
-import os
 import math
-import gc
-import tracemalloc
-import h5py
 
 from .grid import GridFactory
 from .eligiblecache import (
@@ -21,9 +13,8 @@ from .eligiblecache import (
 )
 from .meta import GridMeta
 from .visualize import Plotter
-# from .agg_pool import AggPool
-# from .agg_pool_lmdb import AggPool
 from .agg_pool_npz_sqlite import AggPool
+from .log_helper import PoolMemoryLogger
 
 # numba kernels
 from .func_jit import (
@@ -77,11 +68,8 @@ class LMCSimulator:
         # for test
         self.rollback_cnt = 0
         self.inter_start_cnt = 0
-        self._pool_call_counter = 0
-        self._pool_log_csv_path: Optional[Path] = None
-        self._pool_log_fieldnames: Optional[List[str]] = None
-        self._pool_log_announced = False
-        
+        self._pool_debug_logger = PoolMemoryLogger()
+
         self.agg_pool = AggPool(pool_dir) if pool_dir is not None else None
 
     def close(self) -> None:
@@ -94,98 +82,6 @@ class LMCSimulator:
         except Exception:
             pass
 
-    def _runtime_memory_stats(self, *, force_gc: bool = False) -> Dict[str, float | int]:
-        if force_gc:
-            gc.collect()
-
-        stats: Dict[str, float | int] = {}
-        if self.M is not None:
-            stats["M_bytes"] = int(self.M.nbytes)
-        if self.Hbond is not None:
-            stats["Hbond_bytes"] = int(self.Hbond.nbytes)
-        if self.Vbond is not None:
-            stats["Vbond_bytes"] = int(self.Vbond.nbytes)
-
-        if self.agg_pool is not None:
-            for key, value in self.agg_pool.cache_stats().items():
-                stats[f"aggpool_{key}"] = int(value)
-
-        if tracemalloc.is_tracing():
-            current, peak = tracemalloc.get_traced_memory()
-            stats["py_current_bytes"] = int(current)
-            stats["py_peak_bytes"] = int(peak)
-
-        try:
-            import psutil  # type: ignore
-            stats["rss_bytes"] = int(psutil.Process(os.getpid()).memory_info().rss)
-        except Exception:
-            pass
-
-        return stats
-
-    def _maybe_log_pool_memory(self, tag: str) -> None:
-        enabled = os.environ.get("LMC_POOL_DEBUG_MEMORY", "").strip().lower()
-        if enabled not in ("1", "true", "yes", "on"):
-            return
-
-        self._pool_call_counter += 1
-        every = int(os.environ.get("LMC_POOL_DEBUG_EVERY", "100") or "100")
-        every = max(1, every)
-        if (self._pool_call_counter % every) != 0:
-            return
-
-        if not tracemalloc.is_tracing():
-            tracemalloc.start(10)
-
-        force_gc = os.environ.get("LMC_POOL_DEBUG_GC", "0").strip().lower() in ("1", "true", "yes", "on")
-        stats = self._runtime_memory_stats(force_gc=force_gc)
-        row: Dict[str, float | int | str] = {"tag": tag, "call": int(self._pool_call_counter)}
-        row.update(stats)
-        csv_path = self._append_pool_memory_row(row)
-        if not self._pool_log_announced:
-            print(f"[LMC memory] Debug CSV: {csv_path}")
-            self._pool_log_announced = True
-
-    def _pool_log_dir(self) -> Path:
-        raw = os.environ.get("LMC_POOL_DEBUG_DIR", "").strip()
-        if raw:
-            return Path(raw)
-        return Path(r"C:\Users\px2030\Code\PSD_opt\lmc\tests")
-
-    def _ensure_pool_log_csv(self, fieldnames: List[str]) -> Path:
-        if self._pool_log_csv_path is not None:
-            return self._pool_log_csv_path
-
-        log_dir = self._pool_log_dir()
-        log_dir.mkdir(parents=True, exist_ok=True)
-
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        base_name = f"lmc_pool_memory_{timestamp}"
-        csv_path = log_dir / f"{base_name}.csv"
-        suffix = 1
-        while csv_path.exists():
-            csv_path = log_dir / f"{base_name}_{suffix:02d}.csv"
-            suffix += 1
-
-        with csv_path.open("w", newline="", encoding="utf-8") as fh:
-            writer = csv.DictWriter(fh, fieldnames=fieldnames)
-            writer.writeheader()
-
-        self._pool_log_csv_path = csv_path
-        self._pool_log_fieldnames = list(fieldnames)
-        return csv_path
-
-    def _append_pool_memory_row(self, row: Dict[str, float | int | str]) -> Path:
-        fieldnames = list(row.keys())
-        csv_path = self._ensure_pool_log_csv(fieldnames)
-        expected = self._pool_log_fieldnames or fieldnames
-        if fieldnames != expected:
-            raise RuntimeError(f"[LMC memory] CSV field mismatch. expected={expected}, got={fieldnames}")
-
-        with csv_path.open("a", newline="", encoding="utf-8") as fh:
-            writer = csv.DictWriter(fh, fieldnames=expected)
-            writer.writerow(row)
-        return csv_path
     # ------------------------------
     # Grid management
     # ------------------------------
@@ -510,7 +406,7 @@ class LMCSimulator:
                                               labels=labels, crack_paths=paths,
                                               title=f"Grid {g+1}/{N_GRIDS}, run {f+1}/{N_FRACS}",
                                               mode='fragments')
-        self._maybe_log_pool_memory(tag='after_repeat_call')
+        self._pool_debug_logger.maybe_log(self, tag='after_repeat_call')
         return F
 
     # ------------------------------
@@ -604,7 +500,7 @@ class LMCSimulator:
                 else:
                     row += int(self.NO_FRAG)
     
-                # Restore the original bonds so repeated runs on one grid remain independent
+                # Restore the sampled grid bonds before the next fracture repeat so repeated runs on one grid remain independent
                 self.Hbond = Hbond_ori.copy()
                 self.Vbond = Vbond_ori.copy()
     
@@ -618,7 +514,7 @@ class LMCSimulator:
                         # mode='fragments'
                     )
     
-        self._maybe_log_pool_memory(tag='after_udp_call')
+        self._pool_debug_logger.maybe_log(self, tag='after_udp_call')
         return F
 
     def mc_breakage_from_pool(
@@ -636,21 +532,21 @@ class LMCSimulator:
         int_bre: float = 0.0,
         seed: int | None = None,
         plot_each: bool = False,
-        interp: str = "knn",     # "knn" or "bilinear"
+        interp: str = "knn",
         KNN: int = 4,
         sigma: float = 0.35,
-        # ---- Scheme A + log-bilinear extension ----
         max_draws: int = 15,
-        tau_A: float | None = None,   # e.g. 0.10
-        tau_X: float | None = None,   # e.g. 0.05
+        tau_A: float | None = None,
+        tau_X: float | None = None,
         log_bilinear: bool = False,
     ) -> np.ndarray:
         """
-        Select a nearby sub-pool from the offline aggregate pool using (A_norm, X1),
-        sample one grid, and then run the fracture simulation.
-        This version applies strict mass-conservation corrections:
-            - total mass conservation: sum(VT) = A
-            - phase-wise conservation: sum(VA) = A*X1, sum(VB) = A*X2
+        Run Monte Carlo breakage using grids sampled from the NPZ+SQLite pool.
+
+        Each outer draw selects one source grid from the nearest pool groups in
+        `(A_norm, X1)` space, then reuses that sampled grid for `N_FRACS`
+        fracture simulations. Fragment masses are rescaled afterwards so the
+        phase totals remain consistent with the requested `(A, X1, X2)`.
         """
 
         if X2 is None:
@@ -671,18 +567,18 @@ class LMCSimulator:
         F = np.zeros((total_rows, 4), dtype=float)
         row = 0
 
-        # Remainders are determined by the input A/X1/X2 and A0, not by the pool data
+        # Phase remainders are derived from the requested input mass split, not from pool metadata
         R1 = (A * X1) % A0 if A0 > 0 else 0.0
         R2 = (A * X2) % A0 if A0 > 0 else 0.0
 
-        # Target total mass (area) of the two phases
+        # Target phase masses used for post-fracture rescaling
         M1_tar = float(A * X1)
         M2_tar = float(A * X2)
         mass_scale = M1_tar + M2_tar
         eps = 1e-12 * mass_scale
 
         for g in range(int(N_GRIDS)):
-            # ---- Sample one grid from the pool (Scheme A is used in bilinear mode) ----
+            # Sample one source grid from the pool
             M, Hbond, Vbond = self.agg_pool.sample_grid(
                 Df, MAS, A_norm, X1, rng,
                 interp=interp, KNN=KNN, sigma=sigma,
@@ -690,7 +586,7 @@ class LMCSimulator:
                 log_bilinear=log_bilinear
             )
 
-            # ---- Rebuild meta from the current input ----
+            # Rebuild grid metadata using the requested simulation inputs
             H, W = M.shape
             N1_pool = int((M == 1).sum())
             N2_pool = int((M == 2).sum())
@@ -720,7 +616,7 @@ class LMCSimulator:
             Hbond_ori = self.Hbond.copy()
             Vbond_ori = self.Vbond.copy()
 
-            # ---- fracture repeats ----
+            # Repeat fracture simulation on the sampled grid
             for f in range(int(N_FRACS)):
                 sim_seed = int(rng.integers(0, 2**31 - 1))
                 labels, c1, c2, E, paths = self.simulate_until_fragments(
@@ -733,7 +629,7 @@ class LMCSimulator:
 
                 Kfrag = int(c1.size)
                 if Kfrag > 0:
-                    # --- 1) Compute raw fragment masses, including redistributed remainders ---
+                    # Compute fragment masses before enforcing the requested phase totals
                     units_area = self.meta.A0 * (c1 + c2).astype(float)
                     denom = max((A - (self.meta.R[0] + self.meta.R[1])), eps)
                     share = units_area / denom
@@ -741,15 +637,13 @@ class LMCSimulator:
                     VA_raw = self.meta.A0 * c1.astype(float) + share * self.meta.R[0]
                     VB_raw = self.meta.A0 * c2.astype(float) + share * self.meta.R[1]
 
-                    # --- 2) Compute phase-wise scaling factors to enforce exact conservation ---
+                    # Compute per-phase scaling factors for exact mass conservation
                     M1_raw = float(VA_raw.sum())
                     M2_raw = float(VB_raw.sum())
 
-                    # Missing-phase handling:
+                    # Handle degenerate cases where one phase is absent in the sampled result
                     if M1_raw <= eps:
-                        # The target phase exists, but this sampled grid produced none of it.
-                        # Avoid an endless retry loop by setting that phase contribution to zero,
-                        # and rely on the fallback path to keep the output numerically stable.
+                        # Keep the output numerically stable when the sampled grid contains no mass of this phase.
                         alpha1 = 0.0
                     else:
                         alpha1 = M1_tar / M1_raw
@@ -759,10 +653,10 @@ class LMCSimulator:
                     else:
                         alpha2 = M2_tar / M2_raw
 
-                    # --- 3) Apply the scaling and obtain mass-conservative fragment outputs ---
+                    # Apply scaling and write mass-conservative fragment outputs
                     VA = alpha1 * VA_raw
                     VB = alpha2 * VB_raw
-                    VT = VA + VB  # The total mass is also exactly equal to A
+                    VT = VA + VB
 
                     energy = float(E * np.sqrt(max(self.meta.A0, eps)))
                     n_write = min(Kfrag, int(self.NO_FRAG))
@@ -775,7 +669,7 @@ class LMCSimulator:
                 else:
                     row += int(self.NO_FRAG)
 
-                # Restore the original bonds
+                # Restore the sampled grid bonds before the next fracture repeat
                 self.Hbond = Hbond_ori.copy()
                 self.Vbond = Vbond_ori.copy()
 
@@ -787,8 +681,12 @@ class LMCSimulator:
                         mode='fragments'
                     )
 
-        self._maybe_log_pool_memory(tag='after_pool_call')
+        self._pool_debug_logger.maybe_log(self, tag='after_pool_call')
         return F
+
+
+
+
 
 
 
