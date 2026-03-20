@@ -41,7 +41,7 @@ class ReconstructionMixin:
     # Public knobs (safe defaults)
     # -----------------------------
     recon_enable: bool = False
-    recon_method: str = "RS"      # kept for compatibility; "CAM" or "RS", "2PM", "4PM", "QMX"(Quantile MiX)
+    recon_method: str = "RS"      # kept for compatibility; "CAM" or "RS", "2PM", "4PM", "4PMC", "QMX"(Quantile MiX)
     recon_N_max: int = 4000        # trigger if a_tot exceeds this
     recon_every_events: int = 0    # optional periodic trigger; 0 disables
 
@@ -103,7 +103,7 @@ class ReconstructionMixin:
 
     def reconstruct(self, method: str = "CAM", reason: str = "", iter_count: Optional[int] = None) -> None:
         method = str(method).upper().strip()
-        if method not in ("CAM", "RS", "2PM", "QMX", "4PM"):
+        if method not in ("CAM", "RS", "2PM", "QMX", "4PM", "4PMC"):
             raise NotImplementedError(f"Reconstruction method '{method}' is not implemented in this file.")
     
         a = int(self.a_tot)
@@ -143,6 +143,8 @@ class ReconstructionMixin:
             self._reconstruct_qmx(idx_work, protected, Vcomp, Vtot, W)
         elif method == "4PM":
             self._reconstruct_4pm(idx_work, protected, Vcomp, Vtot, W)
+        elif method == "4PMC":
+            self._reconstruct_4pmc(idx_work, protected, Vcomp, Vtot, W)
         else:
             self._reconstruct_2pm(idx_work, protected, Vcomp, Vtot, W)
     
@@ -200,6 +202,8 @@ class ReconstructionMixin:
             V_cols, W_out = self._kernel_2pm(idx_work, Vcomp, Vtot, W)
         elif method == "4PM":
             V_cols, W_out = self._kernel_4pm(idx_work, Vcomp, Vtot, W)
+        elif method == "4PMC":
+            V_cols, W_out = self._kernel_4pmc(idx_work, Vcomp, Vtot, W)
         elif method == "RS":
             V_cols, W_out = self._kernel_rs(
                 idx_work, Vcomp, Vtot, W,
@@ -295,6 +299,33 @@ class ReconstructionMixin:
                 mean_v[d] = float(np.sum(Wi * Vcomp_all[d, idx]) / M0)
             out.append(_CellStats(key=key, idx=idx, M0=M0, mean_v=mean_v))
         return out
+
+    def _merge_point_weights(
+        self,
+        V_cols: List[np.ndarray],
+        W_out: List[float],
+    ) -> tuple[list[np.ndarray], list[float]]:
+        """
+        Merge representatives with identical coordinates by summing their weights.
+        """
+        dim = int(self.dim)
+        point_weight: dict[tuple[float, ...], float] = {}
+        for vcol, w in zip(V_cols, W_out):
+            wf = float(w)
+            if wf <= 0.0 or (not np.isfinite(wf)):
+                continue
+            key = tuple(float(x) for x in np.asarray(vcol, dtype=float).reshape(dim))
+            point_weight[key] = point_weight.get(key, 0.0) + wf
+
+        V_cols_merged: list[np.ndarray] = []
+        W_out_merged: list[float] = []
+        for key in sorted(point_weight.keys()):
+            wf = float(point_weight[key])
+            if wf <= 0.0 or (not np.isfinite(wf)):
+                continue
+            V_cols_merged.append(np.asarray(key, dtype=float))
+            W_out_merged.append(wf)
+        return V_cols_merged, W_out_merged
     
     def _post_reconstruct_safety(
         self,
@@ -770,7 +801,17 @@ class ReconstructionMixin:
             chosen_idx = idc[chosen_local]
             w = np.full(int(nc), float(M0c) / float(nc), dtype=float)
     
-            ok = self._correct_two(Vtot[chosen_idx].astype(float, copy=False), w, M1c_target)
+            if dim == 1:
+                target = np.array([M1c_target], dtype=float)
+                samp = Vtot[chosen_idx].astype(float, copy=False)[None, :]
+            else:
+                target = np.array(
+                    [float(np.sum(W[idc] * Vcomp[d, idc])) for d in range(dim)],
+                    dtype=float,
+                )
+                samp = Vcomp[:, chosen_idx].astype(float, copy=False)
+
+            ok = self._correct_two(samp, w, target)
             if not ok:
                 Wi = W[idc]
                 M0 = float(np.sum(Wi))
@@ -788,7 +829,36 @@ class ReconstructionMixin:
         return V_cols, W_out
     
     # two-weight correction helper
-    def _correct_two(self, vtot_samp: np.ndarray, w: np.ndarray, M1_target: float) -> bool:
+    def _correct_two(self, v_samp: np.ndarray, w: np.ndarray, M1_target: np.ndarray) -> bool:
+        """
+        Adjust sampled weights to match per-dimension first moments while keeping
+        total weight unchanged.
+
+        1D uses the original two-weight correction.
+        2D uses a three-weight correction that enforces:
+          sum(delta_w) = 0
+          sum(delta_w * v1) = err1
+          sum(delta_w * v2) = err2
+        """
+        v = np.asarray(v_samp, dtype=float)
+        tgt = np.asarray(M1_target, dtype=float).reshape(-1)
+
+        if v.ndim == 1:
+            v = v.reshape(1, -1)
+        if v.ndim != 2 or v.shape[1] != w.size:
+            return False
+
+        dim = int(v.shape[0])
+        if tgt.size != dim:
+            return False
+
+        if dim == 1:
+            return self._correct_two_1d(v[0], w, float(tgt[0]))
+        if dim == 2:
+            return self._correct_two_2d(v, w, tgt)
+        return False
+
+    def _correct_two_1d(self, vtot_samp: np.ndarray, w: np.ndarray, M1_target: float) -> bool:
         if w.size < 2:
             return False
         M1_now = float(np.sum(w * vtot_samp))
@@ -813,6 +883,73 @@ class ReconstructionMixin:
             wb = w[b] - d
             if wa >= 0.0 and wb >= 0.0 and np.isfinite(wa) and np.isfinite(wb):
                 w[a] = wa; w[b] = wb
+                return True
+        return False
+
+    def _correct_two_2d(self, vcomp_samp: np.ndarray, w: np.ndarray, M1_target: np.ndarray) -> bool:
+        if w.size < 3:
+            return False
+
+        M_now = np.sum(vcomp_samp * w[None, :], axis=1)
+        err = np.asarray(M1_target, dtype=float) - M_now
+        tol = 1e-14 * (float(np.max(np.abs(M1_target))) + 1.0)
+        if float(np.max(np.abs(err))) <= tol:
+            return True
+
+        x = np.asarray(vcomp_samp[0], dtype=float)
+        y = np.asarray(vcomp_samp[1], dtype=float)
+
+        order_x = np.argsort(x)
+        order_y = np.argsort(y)
+        candidate_triplets: list[tuple[int, int, int]] = []
+
+        def add_triplet(a: int, b: int, c: int) -> None:
+            trip = (int(a), int(b), int(c))
+            if len({trip[0], trip[1], trip[2]}) < 3:
+                return
+            if trip not in candidate_triplets:
+                candidate_triplets.append(trip)
+
+        add_triplet(order_x[-1], order_x[0], order_y[-1])
+        add_triplet(order_x[-1], order_x[0], order_y[0])
+        add_triplet(order_y[-1], order_y[0], order_x[-1])
+        add_triplet(order_y[-1], order_y[0], order_x[0])
+
+        idx_sorted = np.argsort(-(x - np.mean(x)) ** 2 - (y - np.mean(y)) ** 2)
+        max_candidates = min(w.size, 8)
+        seed = idx_sorted[:max_candidates].tolist()
+        for ia in range(len(seed)):
+            for ib in range(ia + 1, len(seed)):
+                for ic in range(ib + 1, len(seed)):
+                    add_triplet(seed[ia], seed[ib], seed[ic])
+
+        for a, b, c in candidate_triplets:
+            A = np.array([
+                [1.0, 1.0, 1.0],
+                [x[a], x[b], x[c]],
+                [y[a], y[b], y[c]],
+            ], dtype=float)
+            rhs = np.array([0.0, err[0], err[1]], dtype=float)
+            try:
+                if not np.all(np.isfinite(A)):
+                    continue
+                cnd = float(np.linalg.cond(A))
+                if (not np.isfinite(cnd)) or cnd > 1e12:
+                    continue
+                delta = np.linalg.solve(A, rhs)
+            except Exception:
+                continue
+
+            wa = w[a] + float(delta[0])
+            wb = w[b] + float(delta[1])
+            wc = w[c] + float(delta[2])
+            if (
+                wa >= 0.0 and wb >= 0.0 and wc >= 0.0
+                and np.isfinite(wa) and np.isfinite(wb) and np.isfinite(wc)
+            ):
+                w[a] = wa
+                w[b] = wb
+                w[c] = wc
                 return True
         return False
     
@@ -1052,6 +1189,8 @@ class ReconstructionMixin:
             return self._kernel_2pm(idx, Vcomp, Vtot, W)
         if method == "4PM":
             return self._kernel_4pm(idx, Vcomp, Vtot, W)
+        if method == "4PMC":
+            return self._kernel_4pmc(idx, Vcomp, Vtot, W)
         raise ValueError(f"Unknown kernel method: {method}")
         
 # %% 4PM
@@ -1064,6 +1203,16 @@ class ReconstructionMixin:
         W: np.ndarray,
     ) -> None:
         self._apply_kernel_and_replace("4PM", idx_work, protected, Vcomp, Vtot, W, mode="full")
+
+    def _reconstruct_4pmc(
+        self,
+        idx_work: np.ndarray,
+        protected: np.ndarray,
+        Vcomp: np.ndarray,
+        Vtot: np.ndarray,
+        W: np.ndarray,
+    ) -> None:
+        self._apply_kernel_and_replace("4PMC", idx_work, protected, Vcomp, Vtot, W, mode="full")
         
     def _kernel_4pm(
         self,
@@ -1196,5 +1345,125 @@ class ReconstructionMixin:
                     continue
                 V_cols.append(corners[k].copy())
                 W_out.append(wk)
-    
-        return V_cols, W_out
+
+        return self._merge_point_weights(V_cols, W_out)
+
+    def _kernel_4pmc(
+        self,
+        idx: np.ndarray,
+        Vcomp: np.ndarray,
+        Vtot: np.ndarray,
+        W: np.ndarray,
+    ) -> tuple[list[np.ndarray], list[float]]:
+        """
+        4PMC (2D): per occupied CAM-cell, build a closed-form 2x2 quadrature from
+        local mean, marginal variances, and correlation. This matches
+        M00/M10/M01/M20/M02/M11 when the symmetric nodes are admissible.
+
+        1D or dim>2: fallback to 2PM.
+        """
+        dim = int(self.dim)
+        if dim == 1 or dim != 2:
+            return self._kernel_2pm(idx, Vcomp, Vtot, W)
+
+        n_bins = self.recon_bins
+        buckets, _, _ = self._bucket_by_cam_cells(idx, Vcomp, n_bins=n_bins, return_grid=False)
+
+        eps_var = float(getattr(self, "recon_4pmc_eps_var", 1e-30))
+        V_cols: list[np.ndarray] = []
+        W_out: list[float] = []
+
+        for _, idc in buckets.items():
+            Wi = np.asarray(W[idc], dtype=float)
+            M0 = float(np.sum(Wi))
+            if (not np.isfinite(M0)) or M0 <= 0.0:
+                continue
+
+            x = np.asarray(Vcomp[0, idc], dtype=float)
+            y = np.asarray(Vcomp[1, idc], dtype=float)
+
+            M10 = float(np.sum(Wi * x))
+            M01 = float(np.sum(Wi * y))
+            M20 = float(np.sum(Wi * x * x))
+            M02 = float(np.sum(Wi * y * y))
+            M11 = float(np.sum(Wi * x * y))
+
+            mux = float(M10 / M0)
+            muy = float(M01 / M0)
+            varx = max(float(M20 / M0) - mux * mux, 0.0)
+            vary = max(float(M02 / M0) - muy * muy, 0.0)
+
+            # Degenerate cells are represented with lower-order closures.
+            if varx <= eps_var and vary <= eps_var:
+                V_cols.append(np.array([max(mux, 0.0), max(muy, 0.0)], dtype=float))
+                W_out.append(M0)
+                continue
+
+            if varx <= eps_var:
+                reps_y = self._two_point(M0, M01, M02)
+                x_fix = max(mux, 0.0)
+                for yk, wk in reps_y:
+                    if wk <= 0.0 or (not np.isfinite(wk)):
+                        continue
+                    V_cols.append(np.array([x_fix, max(float(yk), 0.0)], dtype=float))
+                    W_out.append(float(wk))
+                continue
+
+            if vary <= eps_var:
+                reps_x = self._two_point(M0, M10, M20)
+                y_fix = max(muy, 0.0)
+                for xk, wk in reps_x:
+                    if wk <= 0.0 or (not np.isfinite(wk)):
+                        continue
+                    V_cols.append(np.array([max(float(xk), 0.0), y_fix], dtype=float))
+                    W_out.append(float(wk))
+                continue
+
+            sigx = math.sqrt(varx)
+            sigy = math.sqrt(vary)
+            cov = float(M11 / M0) - mux * muy
+            rho = float(np.clip(cov / max(sigx * sigy, eps_var), -1.0, 1.0))
+
+            x1 = mux - sigx
+            x2 = mux + sigx
+            y1 = muy - sigy
+            y2 = muy + sigy
+
+            # When symmetric nodes leave the nonnegative support, revert to the
+            # more robust per-cell 2PM closure instead of clipping away moments.
+            if x1 < 0.0 or y1 < 0.0:
+                xt_cell = np.asarray(Vtot[idc], dtype=float)
+                M1 = float(np.sum(Wi * xt_cell))
+                M2 = float(np.sum(Wi * xt_cell * xt_cell))
+                M1_d = np.array([M10, M01], dtype=float)
+                if np.isfinite(M1) and M1 > 0:
+                    ratio = np.maximum(M1_d / M1, 0.0)
+                    s = float(np.sum(ratio))
+                    if s > 1.0 + 1e-12:
+                        ratio /= s
+                else:
+                    ratio = np.zeros(dim, dtype=float)
+                self._append_two_point_reps(M0, M1, M2, ratio, V_cols, W_out)
+                continue
+
+            nodes = [
+                np.array([x1, y1], dtype=float),
+                np.array([x1, y2], dtype=float),
+                np.array([x2, y1], dtype=float),
+                np.array([x2, y2], dtype=float),
+            ]
+            weights = [
+                0.25 * M0 * (1.0 + rho),
+                0.25 * M0 * (1.0 - rho),
+                0.25 * M0 * (1.0 - rho),
+                0.25 * M0 * (1.0 + rho),
+            ]
+
+            for vcol, wk in zip(nodes, weights):
+                wk = float(wk)
+                if wk <= 0.0 or (not np.isfinite(wk)):
+                    continue
+                V_cols.append(vcol)
+                W_out.append(wk)
+
+        return self._merge_point_weights(V_cols, W_out)

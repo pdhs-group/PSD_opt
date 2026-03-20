@@ -13,33 +13,34 @@ Key behavior
    - if enough samples already exist, the pair is skipped;
    - if the pair does not exist, it is generated from scratch;
    - if the pair exists but has too few samples, only the missing number is
-     generated, and the max-tries budget is scaled to that missing count.
-3. Each accepted sample is stored in its own NPZ file, while SQLite stores the
-   pool metadata, parameter-group index, and sample lookup information.
+     targeted.
+3. Each worker generates at most one accepted sample, writes its NPZ file
+   directly, and returns only lightweight metadata to the main process.
+4. SQLite is treated as the authoritative checkpoint state. If a run is
+   interrupted after an NPZ file is written but before SQLite is updated, that
+   sample may be regenerated in a later run.
 """
 
 from __future__ import annotations
 
 import json
-# import math
 import os
-# import shutil
 import sqlite3
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from dataclasses import asdict
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
-from typing import List, Tuple, Dict, Any
+from typing import Any, Dict, List, Tuple
 
 import numpy as np
 
 from agggenerator.mptsa2d import (
     MPTSALatticeParams2D,
-    generate_mptsa_lattice_2d,
     estimate_fractal_dimension_2d,
+    generate_mptsa_lattice_2d,
 )
 from agggenerator.material_mix import (
-    MaterialMixParams,
     MASPhysicalParams,
+    MaterialMixParams,
     assign_materials_with_target_mas,
 )
 from lmc import GridFactory
@@ -82,6 +83,18 @@ SAMPLES_SUBDIR: str = "samples"
 def _sanitize_group_name(Np: int, frac_A: float) -> str:
     xa_int = int(round(frac_A * 10000))
     return f"Np{Np}_XA{xa_int:04d}"
+
+
+
+def _sample_name(sample_index: int) -> str:
+    return f"sample_{int(sample_index):04d}"
+
+
+
+def _task_seed(master_seed: int, Np: int, frac_A: float, sample_index: int) -> int:
+    frac_key = int(round(float(frac_A) * 10000.0))
+    seq = np.random.SeedSequence([int(master_seed), int(Np), frac_key, int(sample_index)])
+    return int(seq.generate_state(1, dtype=np.uint32)[0])
 
 
 
@@ -241,13 +254,11 @@ def _upsert_group(
     Np: int,
     frac_A: float,
     n_samples: int,
-    base_seed: int,
 ) -> None:
     attrs_json = _dumps_json(
         {
             "Np_target": int(Np),
             "frac_A_target": float(frac_A),
-            "base_seed": int(base_seed),
             "n_samples": int(n_samples),
         }
     )
@@ -266,90 +277,52 @@ def _upsert_group(
 
 
 
-def _write_samples_to_npz_sqlite(
+def _register_sample(
     conn: sqlite3.Connection,
-    output_dir: Path,
     group_name: str,
-    samples: List[Dict[str, Any]],
-    start_index: int,
-    compressed: bool,
+    sample_name: str,
+    sample_index: int,
+    npz_relpath: str,
+    sample_attrs: Dict[str, Any],
 ) -> None:
-    save_npz = np.savez_compressed if compressed else np.savez
-    group_dir = output_dir / SAMPLES_SUBDIR / group_name
-    group_dir.mkdir(parents=True, exist_ok=True)
-
-    for local_idx, s in enumerate(samples):
-        idx = start_index + local_idx
-        sample_name = f"sample_{idx:04d}"
-        npz_path = group_dir / f"{sample_name}.npz"
-        save_npz(
-            npz_path,
-            M=np.asarray(s["M"]),
-            Hbond=np.asarray(s["Hbond"]),
-            Vbond=np.asarray(s["Vbond"]),
-            labels=np.asarray(s["labels"]),
-            origin=np.asarray(s["origin"]),
-        )
-
-        relpath = npz_path.relative_to(output_dir).as_posix()
-        sample_attrs = {
-            "Np_target": s["Np_target"],
-            "frac_A_target": s["frac_A_target"],
-            "Df_target": s["Df_target"],
-            "Df_est": s["Df_est"],
-            "MAS_target": s["MAS_target"],
-            "MAS_actual": s["MAS_actual"],
-            "frac_A_actual": s["frac_A_actual"],
-            "slope": s["slope"],
-            "seed_mptsa": s["seed_mptsa"],
-            "seed_mix": s["seed_mix"],
-            "meta": s["meta"],
-            "bond_counts": {str(key): int(val) for key, val in s["bond_counts"].items()},
-        }
-
-        conn.execute(
-            """
-            INSERT INTO samples(group_name, sample_name, sample_index, npz_relpath, array_prefix, attrs_json)
-            VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(group_name, sample_name) DO UPDATE SET
-                sample_index = excluded.sample_index,
-                npz_relpath = excluded.npz_relpath,
-                array_prefix = excluded.array_prefix,
-                attrs_json = excluded.attrs_json
-            """,
-            (
-                group_name,
-                sample_name,
-                int(idx),
-                relpath,
-                "",
-                _dumps_json(sample_attrs),
-            ),
-        )
+    conn.execute(
+        """
+        INSERT INTO samples(group_name, sample_name, sample_index, npz_relpath, array_prefix, attrs_json)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(group_name, sample_name) DO UPDATE SET
+            sample_index = excluded.sample_index,
+            npz_relpath = excluded.npz_relpath,
+            array_prefix = excluded.array_prefix,
+            attrs_json = excluded.attrs_json
+        """,
+        (
+            group_name,
+            sample_name,
+            int(sample_index),
+            npz_relpath,
+            "",
+            _dumps_json(sample_attrs),
+        ),
+    )
 
 
 
-def _generate_samples_for_param(
+def _generate_one_sample(
     Np: int,
     frac_A: float,
     target_Df: float,
     target_MAS: float,
-    df_tol: float,
     mas_tol: float,
-    n_samples: int,
     max_tries_factor: int,
     base_seed: int,
-) -> List[Dict[str, Any]]:
+) -> Dict[str, Any] | None:
     rng = np.random.default_rng(base_seed)
     grid_factory = GridFactory()
     phys_params = MASPhysicalParams()
+    max_tries = int(max(1, max_tries_factor))
 
-    accepted: List[Dict[str, Any]] = []
-
-    max_tries = int(max(1, n_samples * max_tries_factor))
     tries = 0
-
-    while len(accepted) < n_samples and tries < max_tries:
+    while tries < max_tries:
         tries += 1
         seed_mptsa = int(rng.integers(0, 2**31 - 1))
         seed_mix = int(rng.integers(0, 2**31 - 1))
@@ -357,7 +330,7 @@ def _generate_samples_for_param(
         mptsa_params = _make_mptsa_params(Np=Np, Df=target_Df, seed=seed_mptsa)
 
         try:
-            positions, Ns, Rgs, grid, origin = generate_mptsa_lattice_2d(mptsa_params)
+            _positions, Ns, Rgs, grid, origin = generate_mptsa_lattice_2d(mptsa_params)
             Df_est, slope = estimate_fractal_dimension_2d(Ns, Rgs)
 
             mix_params = _make_mix_params(
@@ -388,8 +361,6 @@ def _generate_samples_for_param(
         if 0.0 < frac_A < 1.0:
             if (not np.isfinite(MAS_actual)) or (abs(MAS_actual - target_MAS) > mas_tol):
                 continue
-        else:
-            MAS_actual = float(MAS_actual)
 
         frac_A_actual = _compute_actual_frac_A(labels)
 
@@ -402,35 +373,169 @@ def _generate_samples_for_param(
             int_bre=INT_BRE,
         )
 
-        meta_dict = asdict(meta)
+        return {
+            "Np_target": int(Np),
+            "frac_A_target": float(frac_A),
+            "Df_target": float(target_Df),
+            "Df_est": float(Df_est),
+            "MAS_target": float(target_MAS),
+            "MAS_actual": float(MAS_actual),
+            "frac_A_actual": float(frac_A_actual),
+            "slope": float(slope),
+            "labels": labels.astype(np.int8, copy=False),
+            "M": M,
+            "Hbond": Hbond,
+            "Vbond": Vbond,
+            "meta": asdict(meta),
+            "origin": np.array(origin, dtype=np.int32),
+            "bond_counts": bond_counts,
+            "seed_mptsa": int(seed_mptsa),
+            "seed_mix": int(seed_mix),
+        }
 
-        sample = dict(
-            Np_target=int(Np),
-            frac_A_target=float(frac_A),
-            Df_target=float(target_Df),
-            Df_est=float(Df_est),
-            MAS_target=float(target_MAS),
-            MAS_actual=float(MAS_actual),
-            frac_A_actual=float(frac_A_actual),
-            slope=float(slope),
-            labels=labels.astype(np.int8, copy=False),
-            M=M,
-            Hbond=Hbond,
-            Vbond=Vbond,
-            meta=meta_dict,
-            origin=np.array(origin, dtype=np.int32),
-            bond_counts=bond_counts,
-            seed_mptsa=int(seed_mptsa),
-            seed_mix=int(seed_mix),
+    return None
+
+
+
+def _write_npz_atomic(npz_path: Path, sample: Dict[str, Any], compressed: bool) -> None:
+    npz_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = npz_path.with_name(f"{npz_path.stem}.tmp_{os.getpid()}.npz")
+    save_npz = np.savez_compressed if compressed else np.savez
+    try:
+        save_npz(
+            tmp_path,
+            M=np.asarray(sample["M"]),
+            Hbond=np.asarray(sample["Hbond"]),
+            Vbond=np.asarray(sample["Vbond"]),
+            labels=np.asarray(sample["labels"]),
+            origin=np.asarray(sample["origin"]),
         )
-        accepted.append(sample)
+        os.replace(str(tmp_path), str(npz_path))
+    finally:
+        if tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except Exception:
+                pass
 
-    return accepted
 
 
-# ============================================================
-# Top-level driver
-# ============================================================
+def _generate_and_store_one_sample(
+    output_dir: str,
+    group_name: str,
+    sample_index: int,
+    Np: int,
+    frac_A: float,
+    target_Df: float,
+    target_MAS: float,
+    mas_tol: float,
+    max_tries_factor: int,
+    task_seed: int,
+    compressed: bool,
+) -> Dict[str, Any]:
+    sample_name = _sample_name(sample_index)
+    sample = _generate_one_sample(
+        Np=Np,
+        frac_A=frac_A,
+        target_Df=target_Df,
+        target_MAS=target_MAS,
+        mas_tol=mas_tol,
+        max_tries_factor=max_tries_factor,
+        base_seed=task_seed,
+    )
+    if sample is None:
+        return {
+            "success": False,
+            "group_name": group_name,
+            "sample_name": sample_name,
+            "sample_index": int(sample_index),
+        }
+
+    output_root = Path(output_dir)
+    npz_path = output_root / SAMPLES_SUBDIR / group_name / f"{sample_name}.npz"
+    _write_npz_atomic(npz_path, sample, compressed=compressed)
+
+    sample_attrs = {
+        "Np_target": sample["Np_target"],
+        "frac_A_target": sample["frac_A_target"],
+        "Df_target": sample["Df_target"],
+        "Df_est": sample["Df_est"],
+        "MAS_target": sample["MAS_target"],
+        "MAS_actual": sample["MAS_actual"],
+        "frac_A_actual": sample["frac_A_actual"],
+        "slope": sample["slope"],
+        "seed_mptsa": sample["seed_mptsa"],
+        "seed_mix": sample["seed_mix"],
+        "meta": sample["meta"],
+        "bond_counts": {str(key): int(val) for key, val in sample["bond_counts"].items()},
+    }
+
+    return {
+        "success": True,
+        "group_name": group_name,
+        "sample_name": sample_name,
+        "sample_index": int(sample_index),
+        "npz_relpath": npz_path.relative_to(output_root).as_posix(),
+        "sample_attrs": sample_attrs,
+    }
+
+
+
+def _make_group_states(conn: sqlite3.Connection, param_pairs: List[Tuple[int, float]]) -> Dict[Tuple[int, float], Dict[str, Any]]:
+    states: Dict[Tuple[int, float], Dict[str, Any]] = {}
+    for Np, frac_A in param_pairs:
+        group_name = _sanitize_group_name(Np, frac_A)
+        existing_count, max_index = _get_group_state(conn, group_name)
+        states[(Np, frac_A)] = {
+            "Np": int(Np),
+            "frac_A": float(frac_A),
+            "group_name": group_name,
+            "done": int(existing_count),
+            "target_total": int(SAMPLES_PER_PARAM),
+            "missing": max(0, int(SAMPLES_PER_PARAM) - int(existing_count)),
+            "launched": 0,
+            "inflight": 0,
+            "next_index": int(max_index) + 1,
+        }
+    return states
+
+
+
+def _can_submit_group(state: Dict[str, Any]) -> bool:
+    return bool(
+        state["launched"] < state["missing"]
+        and (state["done"] + state["inflight"]) < state["target_total"]
+    )
+
+
+
+def _submit_one_task(
+    ex: ProcessPoolExecutor,
+    output_dir: Path,
+    state: Dict[str, Any],
+) -> Any:
+    sample_index = int(state["next_index"])
+    task_seed = _task_seed(MASTER_SEED, int(state["Np"]), float(state["frac_A"]), sample_index)
+    future = ex.submit(
+        _generate_and_store_one_sample,
+        str(output_dir),
+        str(state["group_name"]),
+        sample_index,
+        int(state["Np"]),
+        float(state["frac_A"]),
+        TARGET_DF,
+        TARGET_MAS,
+        MAS_TOL,
+        MAX_TRIES_FACTOR,
+        task_seed,
+        SAVE_COMPRESSED,
+    )
+    state["launched"] += 1
+    state["inflight"] += 1
+    state["next_index"] += 1
+    return future
+
+
 
 def build_pool() -> None:
     output_dir = Path(OUTPUT_POOL_DIR).resolve()
@@ -453,17 +558,11 @@ def build_pool() -> None:
     print(f"[POOL] NPZ+SQLite output: {output_dir}")
     print(f"[POOL] workers={WORKERS}")
 
-    rng_master = np.random.default_rng(MASTER_SEED)
-    param_seeds = {
-        (Np, frac_A): int(rng_master.integers(0, 2**31 - 1))
-        for (Np, frac_A) in param_pairs
-    }
-
     conn = sqlite3.connect(str(sqlite_path))
     try:
         _init_db(conn)
         _set_meta_if_missing(conn, "format", "npz_sqlite_single")
-        _set_meta_if_missing(conn, "source_builder", "aggregates_sampler_npz_sqlite_single")
+        _set_meta_if_missing(conn, "source_builder", "aggregates_sampler_npz_sqlite")
         _set_meta_if_missing(conn, "datasets", ["M", "Hbond", "Vbond", "labels", "origin"])
         _set_meta_if_missing(conn, "TARGET_DF", TARGET_DF)
         _set_meta_if_missing(conn, "TARGET_MAS", TARGET_MAS)
@@ -474,123 +573,137 @@ def build_pool() -> None:
         _set_meta_if_missing(conn, "MASTER_SEED", MASTER_SEED)
         conn.commit()
 
-        existing_counts: Dict[Tuple[int, float], int] = {}
-        existing_max_index: Dict[Tuple[int, float], int] = {}
-        for (Np, frac_A) in param_pairs:
-            gname = _sanitize_group_name(Np, frac_A)
-            n_existing, max_index = _get_group_state(conn, gname)
-            existing_counts[(Np, frac_A)] = n_existing
-            existing_max_index[(Np, frac_A)] = max_index
+        states = _make_group_states(conn, param_pairs)
+        todo_states = [state for state in states.values() if state["missing"] > 0]
 
-        todo_pairs: List[Tuple[int, float, int]] = []
-        for (Np, frac_A) in param_pairs:
-            already = existing_counts[(Np, frac_A)]
-            need = max(0, SAMPLES_PER_PARAM - already)
-            if need > 0:
-                todo_pairs.append((Np, frac_A, need))
-
-        if not todo_pairs:
+        if not todo_states:
             print("[POOL] All (Np, frac_A) pairs already have enough samples. Nothing to do.")
             return
 
         print(
-            f"[POOL] {len(todo_pairs)} parameter pairs need more samples "
+            f"[POOL] {len(todo_states)} parameter pairs need more samples "
             f"(SAMPLES_PER_PARAM={SAMPLES_PER_PARAM})."
         )
 
         if WORKERS <= 1:
-            for (Np, frac_A, need) in todo_pairs:
-                already = existing_counts[(Np, frac_A)]
+            for state in todo_states:
                 print(
-                    f"[POOL] (serial) Np={Np}, frac_A={frac_A:.4f}: "
-                    f"{already} existing, generating {need} more..."
+                    f"[POOL] (serial) Np={state['Np']}, frac_A={state['frac_A']:.4f}: "
+                    f"{state['done']} existing, targeting {state['missing']} more..."
                 )
-                samples = _generate_samples_for_param(
-                    Np=Np,
-                    frac_A=frac_A,
-                    target_Df=TARGET_DF,
-                    target_MAS=TARGET_MAS,
-                    df_tol=DF_TOL,
-                    mas_tol=MAS_TOL,
-                    n_samples=need,
-                    max_tries_factor=MAX_TRIES_FACTOR,
-                    base_seed=param_seeds[(Np, frac_A)],
-                )
-                print(
-                    f"[POOL] (Np={Np}, frac_A={frac_A:.4f}) "
-                    f"newly accepted samples: {len(samples)}"
-                )
-
-                gname = _sanitize_group_name(Np, frac_A)
-                start_idx = existing_max_index[(Np, frac_A)] + 1
-                _write_samples_to_npz_sqlite(
-                    conn,
-                    output_dir,
-                    gname,
-                    samples,
-                    start_index=start_idx,
-                    compressed=SAVE_COMPRESSED,
-                )
-
-                total_count = already + len(samples)
-                _upsert_group(conn, gname, Np, frac_A, total_count, param_seeds[(Np, frac_A)])
-                conn.commit()
-
-                existing_counts[(Np, frac_A)] = total_count
-                existing_max_index[(Np, frac_A)] = start_idx + len(samples) - 1 if samples else existing_max_index[(Np, frac_A)]
-
-        else:
-            with ProcessPoolExecutor(max_workers=WORKERS) as ex:
-                future_to_param: Dict[Any, Tuple[int, float, int]] = {}
-                for (Np, frac_A, need) in todo_pairs:
-                    seed = param_seeds[(Np, frac_A)]
-                    fut = ex.submit(
-                        _generate_samples_for_param,
-                        Np,
-                        frac_A,
+                while _can_submit_group(state):
+                    sample_index = int(state["next_index"])
+                    task_seed = _task_seed(MASTER_SEED, int(state["Np"]), float(state["frac_A"]), sample_index)
+                    state["launched"] += 1
+                    state["next_index"] += 1
+                    result = _generate_and_store_one_sample(
+                        str(output_dir),
+                        str(state["group_name"]),
+                        sample_index,
+                        int(state["Np"]),
+                        float(state["frac_A"]),
                         TARGET_DF,
                         TARGET_MAS,
-                        DF_TOL,
                         MAS_TOL,
-                        need,
                         MAX_TRIES_FACTOR,
-                        seed,
+                        task_seed,
+                        SAVE_COMPRESSED,
                     )
-                    future_to_param[fut] = (Np, frac_A, need)
-
-                for fut in as_completed(future_to_param):
-                    Np, frac_A, need = future_to_param[fut]
-                    already = existing_counts[(Np, frac_A)]
-                    try:
-                        samples = fut.result()
-                    except Exception as e:
-                        print(
-                            f"[POOL][ERROR] Np={Np}, frac_A={frac_A:.4f} generation failed: {e}"
+                    if bool(result["success"]):
+                        _register_sample(
+                            conn,
+                            str(result["group_name"]),
+                            str(result["sample_name"]),
+                            int(result["sample_index"]),
+                            str(result["npz_relpath"]),
+                            dict(result["sample_attrs"]),
                         )
-                        samples = []
+                        state["done"] += 1
+                        _upsert_group(conn, str(state["group_name"]), int(state["Np"]), float(state["frac_A"]), int(state["done"]))
+                        conn.commit()
+                        print(
+                            f"[POOL] Np={state['Np']}, frac_A={state['frac_A']:.4f}: "
+                            f"accepted sample {result['sample_name']} ({state['done']}/{state['target_total']})"
+                        )
+                    else:
+                        print(
+                            f"[POOL][WARN] Np={state['Np']}, frac_A={state['frac_A']:.4f}: "
+                            f"task for {result['sample_name']} found no accepted sample within budget."
+                        )
 
-                    print(
-                        f"[POOL] (Np={Np}, frac_A={frac_A:.4f}) "
-                        f"existing={already}, newly accepted={len(samples)}"
-                    )
+        else:
+            state_by_key = {(int(state["Np"]), float(state["frac_A"])): state for state in todo_states}
+            pending: Dict[Any, Tuple[int, float]] = {}
+            round_robin = list(state_by_key.keys())
+            rr_index = 0
 
-                    gname = _sanitize_group_name(Np, frac_A)
-                    start_idx = existing_max_index[(Np, frac_A)] + 1
-                    _write_samples_to_npz_sqlite(
-                        conn,
-                        output_dir,
-                        gname,
-                        samples,
-                        start_index=start_idx,
-                        compressed=SAVE_COMPRESSED,
-                    )
+            def refill(executor: ProcessPoolExecutor) -> None:
+                nonlocal rr_index
+                if not round_robin:
+                    return
+                while len(pending) < int(WORKERS):
+                    submitted = False
+                    for _ in range(len(round_robin)):
+                        key = round_robin[rr_index % len(round_robin)]
+                        rr_index += 1
+                        state = state_by_key[key]
+                        if _can_submit_group(state):
+                            future = _submit_one_task(executor, output_dir, state)
+                            pending[future] = key
+                            submitted = True
+                            break
+                    if not submitted:
+                        break
 
-                    total_count = already + len(samples)
-                    _upsert_group(conn, gname, Np, frac_A, total_count, param_seeds[(Np, frac_A)])
-                    conn.commit()
+            with ProcessPoolExecutor(max_workers=WORKERS) as ex:
+                refill(ex)
+                while pending:
+                    done_set, _ = wait(set(pending.keys()), return_when=FIRST_COMPLETED)
+                    for fut in done_set:
+                        key = pending.pop(fut)
+                        state = state_by_key[key]
+                        state["inflight"] -= 1
+                        try:
+                            result = fut.result()
+                        except Exception as e:
+                            print(
+                                f"[POOL][ERROR] Np={state['Np']}, frac_A={state['frac_A']:.4f}: worker failed: {e}"
+                            )
+                            result = None
 
-                    existing_counts[(Np, frac_A)] = total_count
-                    existing_max_index[(Np, frac_A)] = start_idx + len(samples) - 1 if samples else existing_max_index[(Np, frac_A)]
+                        if result is not None and bool(result["success"]):
+                            _register_sample(
+                                conn,
+                                str(result["group_name"]),
+                                str(result["sample_name"]),
+                                int(result["sample_index"]),
+                                str(result["npz_relpath"]),
+                                dict(result["sample_attrs"]),
+                            )
+                            state["done"] += 1
+                            _upsert_group(conn, str(state["group_name"]), int(state['Np']), float(state['frac_A']), int(state['done']))
+                            conn.commit()
+                            print(
+                                f"[POOL] Np={state['Np']}, frac_A={state['frac_A']:.4f}: "
+                                f"accepted sample {result['sample_name']} ({state['done']}/{state['target_total']})"
+                            )
+                        else:
+                            sample_label = "unknown"
+                            if result is not None:
+                                sample_label = str(result.get("sample_name", sample_label))
+                            print(
+                                f"[POOL][WARN] Np={state['Np']}, frac_A={state['frac_A']:.4f}: "
+                                f"task for {sample_label} found no accepted sample within budget."
+                            )
+
+                    refill(ex)
+
+        for state in todo_states:
+            if state["done"] < state["target_total"]:
+                print(
+                    f"[POOL][WARN] Np={state['Np']}, frac_A={state['frac_A']:.4f}: "
+                    f"finished with {state['done']}/{state['target_total']} accepted samples."
+                )
 
     finally:
         conn.close()
@@ -600,3 +713,4 @@ def build_pool() -> None:
 
 if __name__ == "__main__":
     build_pool()
+

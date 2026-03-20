@@ -54,7 +54,7 @@ class PBEValidation():
         self.P2 = 1
         # The number of times to repeat the MC-PBE
         self.N_MC = 5
-        self.mom_a0 = 100000
+        self.mom_a0 = 1000
         ## Check if the psd file is available
         if self.use_psd:
             if self.dist_path is None:
@@ -104,7 +104,7 @@ class PBEValidation():
             self.v0 = (self.p.V1[1] + self.p.V3[1]) /2
     
     def init_mcpbe(self, dim, t, process):
-        self.p_mc = MCPBESolver(dim=dim, t_vec=t, verbose=False, load_attr=False, init=False)
+        self.p_mc = MCPBESolver(dim=dim, t_vec=t, verbose=True, load_attr=False, init=False)
         self.p_mc.a0 = self.mom_a0
         self.p_mc.CDF_method = "disc"
         self.p_mc.G = self.G
@@ -115,12 +115,12 @@ class PBEValidation():
         self.p_mc.break_dW_max = 50.0
         self.p_mc.agg_dW_min = 1.0
         self.p_mc.agg_dW_max = 1.0
-        self.p_mc.recon_enable = False
+        self.p_mc.recon_enable = True
         self.p_mc.V_eff_init = 1000
         self.p_mc.recon_N_max = 4000
-        self.p_mc.recon_method = "2PM"
-        self.p_mc.recon_bins = 100
-        self.p_mc.recon_RS_target = 200
+        self.p_mc.recon_method = "4PMC"
+        self.p_mc.recon_bins = 30
+        self.p_mc.recon_RS_target = 1000
         
         
         N = self.p.N / self.p.V_unit
@@ -452,6 +452,7 @@ class PBEValidation():
         if self.p.dim == 2:
             self.ax3, self.fig3 = self.plot_moment_t(self.mu_as[:,:,1:], self.mu_pbe[:,:,1:], self.mu_mc[:,:,1:], std_mu_mc = self.std_mu_mc[:,:,1:], 
                                       i=1, j=1, t_mod=self.p.t_vec[1:], label=None,labelpos='se', rel=REL, alpha = ALPHA)
+            self.ax5, self.fig5 = self.plot_total_volume_t(rel=REL, alpha=ALPHA)
             
     def add_new_moments(self, NS=None, S=None, ALPHA=0.7, REL=True):
         # if self.p.process_type == "breakage":
@@ -472,6 +473,108 @@ class PBEValidation():
         self.ax4, self.fig4 = self.add_moment_t(fig=self.fig4, ax=self.ax4, i=2, j=0, rel=REL, alpha = ALPHA)
         if self.p.dim == 2:
             self.ax3, self.fig3 = self.add_moment_t(self.mu_pbe[:,:,1:], self.fig3, self.ax3, i=1, j=1, t_mod=self.p.t_vec[1:], rel=REL, alpha = ALPHA)
+            self.ax5, self.fig5 = self.add_total_volume_t(mu=self.mu_pbe, fig=self.fig5, ax=self.ax5, rel=REL, alpha=ALPHA)
+
+    def plot_total_volume_t(self, mu_as=None, mu_pbe=None, mu_mc=None, std_mu_mc=None, mu_pbm=None,
+                            t_mod=None, fig=None, ax=None, label=None, labelpos='sw', rel=False, alpha=1):
+        if self.p.dim != 2:
+            return ax, fig
+
+        if fig is None or ax is None:
+            fig = plt.figure()
+            ax = fig.add_subplot(1, 1, 1)
+
+        mu_as = self.mu_as if mu_as is None else mu_as
+        mu_pbe = self.mu_pbe if mu_pbe is None else mu_pbe
+        mu_mc = self.mu_mc if mu_mc is None else mu_mc
+        std_mu_mc = self.std_mu_mc if std_mu_mc is None else std_mu_mc
+        mu_pbm = self.mu_pbm if mu_pbm is None else mu_pbm
+        tp = self.p.t_vec if t_mod is None else t_mod
+
+        if rel:
+            ylbl = 'Relative Total Particle Volume / $-$'
+        else:
+            ylbl = 'Total Particle Volume $(\mu_{10} + \mu_{01})$ / $m^3$'
+
+        if mu_as is not None:
+            vol_as = mu_as[1, 0, :] + mu_as[0, 1, :]
+            if rel:
+                vol_as = vol_as / (vol_as[0] + MIN)
+            ax, fig = pt.plot_data(tp, vol_as, fig=fig, ax=ax,
+                                   xlbl='time  $t$ / $s$',
+                                   ylbl=ylbl, alpha=alpha,
+                                   lbl='Analytical Solution', clr='k', mrk='o')
+
+        if mu_pbe is not None:
+            vol_pbe = mu_pbe[1, 0, :] + mu_pbe[0, 1, :]
+            if rel:
+                vol_pbe = vol_pbe / (vol_pbe[0] + MIN)
+            ax, fig = pt.plot_data(tp, vol_pbe, fig=fig, ax=ax,
+                                   xlbl='time  $t$ / $s$',
+                                   ylbl=ylbl, lbl='dPBE',
+                                   clr=c_KIT_green, mrk='^', alpha=alpha, mrkedgecolor='k')
+
+        if mu_mc is not None:
+            vol_mc = mu_mc[1, 0, :] + mu_mc[0, 1, :]
+            vol_mc_err = None
+            if std_mu_mc is not None:
+                vol_mc_err = np.sqrt(std_mu_mc[1, 0, :] ** 2 + std_mu_mc[0, 1, :] ** 2)
+            if rel:
+                if vol_mc_err is not None:
+                    vol_mc_err = vol_mc_err / (vol_mc[0] + MIN)
+                vol_mc = vol_mc / (vol_mc[0] + MIN)
+
+            ax, fig = pt.plot_data(tp, vol_mc, err=vol_mc_err, fig=fig, ax=ax,
+                                   xlbl='time  $t$ / $s$',
+                                   ylbl=ylbl, lbl='MC',
+                                   clr=c_KIT_red, mrk='s', alpha=alpha, mrkedgecolor='k')
+
+        if mu_pbm is not None:
+            vol_pbm = mu_pbm[1, 0, :] + mu_pbm[0, 1, :]
+            if rel:
+                vol_pbm = vol_pbm / (vol_pbm[0] + MIN)
+            ax, fig = pt.plot_data(tp, vol_pbm, fig=fig, ax=ax,
+                                   xlbl='time  $t$ / $s$',
+                                   ylbl=ylbl, lbl='QMOM',
+                                   clr=c_KIT_blue, mrk='D', alpha=alpha, mrkedgecolor='k')
+
+        if mu_pbe is not None:
+            vol_pbe = mu_pbe[1, 0, :] + mu_pbe[0, 1, :]
+            if rel:
+                vol_pbe = vol_pbe / (vol_pbe[0] + MIN)
+            ax.set_ylim([np.min([vol_pbe]) * 0.9, np.max([vol_pbe]) * 1.1])
+
+        if label is not None:
+            if labelpos == 'se':
+                ax.text(0.98, 0.02, label, transform=ax.transAxes, horizontalalignment='right',
+                        verticalalignment='bottom', bbox=dict(alpha=0.8, facecolor='w', edgecolor='none', pad=1.2))
+            else:
+                ax.text(0.02, 0.02, label, transform=ax.transAxes, horizontalalignment='left',
+                        verticalalignment='bottom', bbox=dict(alpha=0.8, facecolor='w', edgecolor='none', pad=1.2))
+
+        ax.yaxis.set_major_formatter(ScalarFormatter())
+        ax.grid('minor')
+        plt.tight_layout()
+        return ax, fig
+
+    def add_total_volume_t(self, mu=None, fig=None, ax=None, lbl=None, t_mod=None, rel=False, alpha=1):
+        if self.p.dim != 2:
+            return ax, fig
+        if fig is None or ax is None:
+            raise ValueError("Both 'fig' and 'ax' must be provided. Please supply them using 'plot_all_moments' or 'plot_total_volume_t'.")
+
+        mu = self.mu_pbe if mu is None else mu
+        tp = self.p.t_vec if t_mod is None else t_mod
+        vol = mu[1, 0, :] + mu[0, 1, :]
+
+        if lbl is None:
+            lbl = 'dPBE_mod'
+
+        if rel:
+            vol = vol / (vol[0] + MIN)
+        ax, fig = pt.plot_data(tp, vol, fig=fig, ax=ax, alpha=alpha,
+                               lbl=lbl, clr=c_KIT_green, mrk='v', mrkedgecolor='k')
+        return ax, fig
           
     def plot_moment_t(self, mu_as=None, mu_pbe=None, mu_mc=None, std_mu_mc=None, t_mod=None, i=0, j=0, fig=None, ax=None, label=None,
                       labelpos='sw', rel=False, alpha=1):

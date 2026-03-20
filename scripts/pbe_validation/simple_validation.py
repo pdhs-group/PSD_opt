@@ -18,7 +18,7 @@ if __name__ == "__main__":
     c = 1e0  # m3/m3
     x = 2e-1  # m
     beta0 = 1e-3 # /m3
-    P1 = 1e-2
+    P1 = 1e-1
     P2 = 1.0
     use_psd = False
     rel_mom = True
@@ -32,7 +32,7 @@ if __name__ == "__main__":
     maxscale = 100
     dist_path = full_psd(x50, resigma, minscale=minscale, maxscale=maxscale, plot_psd=False, output_dir=output_dir)
     
-    dim = 1
+    dim = 2
     grid = "geo"
     NS1 = 15
     NS2 = 15
