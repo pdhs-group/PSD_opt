@@ -104,7 +104,7 @@ config = {
         # - 'RMSE': Root Mean Squared Error
         # - 'MAE': Mean Absolute Error
         # - 'KL': Kullback-Leibler divergence (only compatible with q3 and Q3)
-        'data_flag': 'Q3',
+        'data_flag': 'Q0',
         #"Q0_X_50", "Q3_X_50"
 
         'cost_flag': 'MSE',

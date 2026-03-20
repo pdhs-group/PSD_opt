@@ -42,3 +42,4 @@ poetry.lock
 *.gif
 *.lock
 *.whl
+*.mdb

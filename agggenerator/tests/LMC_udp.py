@@ -56,10 +56,10 @@ if __name__ == "__main__":
     NO_FRAG = 4
     aspect_ratio = 2.0
     int_bre = 0
-    gamma = 100.0
+    gamma = 10.0
     
     N_GRIDS = 10
-    N_FRACS = 100
+    N_FRACS = 1000
     seed = 42
     
     live_generator()

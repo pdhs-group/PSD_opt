@@ -1,5 +1,8 @@
 ﻿from __future__ import annotations
+import csv
 from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
 from typing import Tuple, Dict, Optional, List
 
 import numpy as np
@@ -18,13 +21,15 @@ from .eligiblecache import (
 )
 from .meta import GridMeta
 from .visualize import Plotter
-from .agg_pool import AggPool
+# from .agg_pool import AggPool
+# from .agg_pool_lmdb import AggPool
+from .agg_pool_npz_sqlite import AggPool
 
 # numba kernels
 from .func_jit import (
-    run_one_fracture_kernel,  # fractureæŽ¨è¿›æ ¸
-    uf_label_bool,            # äºŒå€¼è¿žé€šåŸŸæ ‡è®°ï¼ˆjunction/bondå±•å¼€åŽï¼‰
-    compress_count,           # æ ‡ç­¾åŽ‹ç¼© + A/B è®¡æ•°
+    run_one_fracture_kernel,  # single-fracture propagation kernel
+    uf_label_bool,            # connected-component labeling on the opened junction/bond mask
+    compress_count,           # compress labels and count A/B cells per fragment
     build_big_grid_mask,
 )
 
@@ -44,7 +49,7 @@ class LMCSimulator:
                  NO_FRAG: int,
                  gamma: float = 1.0,
                  allow_loops: bool = True,
-                 accept_all_cracks: bool = False,   # <<< æ–°å¢žï¼šæŽ¥å—â€œæ— æ•ˆâ€è£‚ç¼ï¼Œä¸å›žæ»š
+                 accept_all_cracks: bool = False,   # incremental mode: accept ineffective cracks without rollback
                  use_weighted_start: bool = False,
                  plotter: Plotter | None = None,
                  pool_dir: str | None = None) -> None:
@@ -73,6 +78,9 @@ class LMCSimulator:
         self.rollback_cnt = 0
         self.inter_start_cnt = 0
         self._pool_call_counter = 0
+        self._pool_log_csv_path: Optional[Path] = None
+        self._pool_log_fieldnames: Optional[List[str]] = None
+        self._pool_log_announced = False
         
         self.agg_pool = AggPool(pool_dir) if pool_dir is not None else None
 
@@ -131,8 +139,53 @@ class LMCSimulator:
 
         force_gc = os.environ.get("LMC_POOL_DEBUG_GC", "0").strip().lower() in ("1", "true", "yes", "on")
         stats = self._runtime_memory_stats(force_gc=force_gc)
-        ordered = ", ".join(f"{k}={v}" for k, v in stats.items())
-        print(f"[LMC memory][{tag}] call={self._pool_call_counter}, {ordered}")
+        row: Dict[str, float | int | str] = {"tag": tag, "call": int(self._pool_call_counter)}
+        row.update(stats)
+        csv_path = self._append_pool_memory_row(row)
+        if not self._pool_log_announced:
+            print(f"[LMC memory] Debug CSV: {csv_path}")
+            self._pool_log_announced = True
+
+    def _pool_log_dir(self) -> Path:
+        raw = os.environ.get("LMC_POOL_DEBUG_DIR", "").strip()
+        if raw:
+            return Path(raw)
+        return Path(r"C:\Users\px2030\Code\PSD_opt\lmc\tests")
+
+    def _ensure_pool_log_csv(self, fieldnames: List[str]) -> Path:
+        if self._pool_log_csv_path is not None:
+            return self._pool_log_csv_path
+
+        log_dir = self._pool_log_dir()
+        log_dir.mkdir(parents=True, exist_ok=True)
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base_name = f"lmc_pool_memory_{timestamp}"
+        csv_path = log_dir / f"{base_name}.csv"
+        suffix = 1
+        while csv_path.exists():
+            csv_path = log_dir / f"{base_name}_{suffix:02d}.csv"
+            suffix += 1
+
+        with csv_path.open("w", newline="", encoding="utf-8") as fh:
+            writer = csv.DictWriter(fh, fieldnames=fieldnames)
+            writer.writeheader()
+
+        self._pool_log_csv_path = csv_path
+        self._pool_log_fieldnames = list(fieldnames)
+        return csv_path
+
+    def _append_pool_memory_row(self, row: Dict[str, float | int | str]) -> Path:
+        fieldnames = list(row.keys())
+        csv_path = self._ensure_pool_log_csv(fieldnames)
+        expected = self._pool_log_fieldnames or fieldnames
+        if fieldnames != expected:
+            raise RuntimeError(f"[LMC memory] CSV field mismatch. expected={expected}, got={fieldnames}")
+
+        with csv_path.open("a", newline="", encoding="utf-8") as fh:
+            writer = csv.DictWriter(fh, fieldnames=expected)
+            writer.writerow(row)
+        return csv_path
     # ------------------------------
     # Grid management
     # ------------------------------
@@ -519,7 +572,7 @@ class LMCSimulator:
             self.generate_grid_udp(mats[g], a_code=a_code, b_code=b_code, 
                                    empty_code=empty_code, A0=A0, int_bre=int_bre)
     
-            # åŽŸå§‹é”®çŸ©é˜µçš„å¿«ç…§ï¼Œä¾›æ¯æ¬¡è¯•éªŒåŽæ¢å¤
+            # Keep a copy of the original bonds so each trial can be restored afterwards
             Hbond_ori = self.Hbond.copy()
             Vbond_ori = self.Vbond.copy()
     
@@ -535,7 +588,7 @@ class LMCSimulator:
     
                 K = int(c1.size)
                 if K > 0:
-                    # ç›´æŽ¥ç”±è®¡æ•°æ¢ç®—ä½“ç§¯ï¼ˆæ— ä½™é‡åˆ†é…ï¼‰
+                    # Convert fragment cell counts directly to volumes (no remainder redistribution)
                     VA = self.meta.A0 * c1.astype(float)
                     VB = self.meta.A0 * c2.astype(float)
                     VT = VA + VB
@@ -551,7 +604,7 @@ class LMCSimulator:
                 else:
                     row += int(self.NO_FRAG)
     
-                # æ¢å¤é”®çŸ©é˜µï¼Œç¡®ä¿åŒä¸€ç½‘æ ¼çš„å¤šæ¬¡æ¨¡æ‹Ÿç›¸äº’ç‹¬ç«‹
+                # Restore the original bonds so repeated runs on one grid remain independent
                 self.Hbond = Hbond_ori.copy()
                 self.Vbond = Vbond_ori.copy()
     
@@ -586,17 +639,18 @@ class LMCSimulator:
         interp: str = "knn",     # "knn" or "bilinear"
         KNN: int = 4,
         sigma: float = 0.35,
-        # ---- æ–¹æ¡ˆA + log-bilinear æ–°å¢ž ----
+        # ---- Scheme A + log-bilinear extension ----
         max_draws: int = 15,
         tau_A: float | None = None,   # e.g. 0.10
         tau_X: float | None = None,   # e.g. 0.05
         log_bilinear: bool = False,
     ) -> np.ndarray:
         """
-        ä»Žç¦»çº¿ aggregate æ± ä¸­æŒ‰ (A_norm, X1) é€‰æ‹©å°æ± å­å¹¶éšæœºæŠ½æ ·ï¼Œå†åšæ–­è£‚æ¨¡æ‹Ÿã€‚
-        æ­¤ç‰ˆæœ¬åŠ å…¥ä¸¥æ ¼è´¨é‡å®ˆæ’ä¿®æ­£ï¼š
-            - æ€»è´¨é‡å®ˆæ’: sum(VT)=A
-            - ä¸¤ç›¸åˆ†åˆ«å®ˆæ’: sum(VA)=A*X1, sum(VB)=A*X2
+        Select a nearby sub-pool from the offline aggregate pool using (A_norm, X1),
+        sample one grid, and then run the fracture simulation.
+        This version applies strict mass-conservation corrections:
+            - total mass conservation: sum(VT) = A
+            - phase-wise conservation: sum(VA) = A*X1, sum(VB) = A*X2
         """
 
         if X2 is None:
@@ -617,18 +671,18 @@ class LMCSimulator:
         F = np.zeros((total_rows, 4), dtype=float)
         row = 0
 
-        # remainder ç”±è¾“å…¥ A/X1/X2 + A0 å¾—åˆ°ï¼ˆä¸è¯»æ± å­ï¼‰
+        # Remainders are determined by the input A/X1/X2 and A0, not by the pool data
         R1 = (A * X1) % A0 if A0 > 0 else 0.0
         R2 = (A * X2) % A0 if A0 > 0 else 0.0
 
-        # ä¸¤ç›¸ç›®æ ‡æ€»è´¨é‡ï¼ˆé¢ç§¯ï¼‰
+        # Target total mass (area) of the two phases
         M1_tar = float(A * X1)
         M2_tar = float(A * X2)
         mass_scale = M1_tar + M2_tar
         eps = 1e-12 * mass_scale
 
         for g in range(int(N_GRIDS)):
-            # ---- ä»Žæ± å­ä¸­æŠ½ä¸€ä¸ª gridï¼ˆbilinear æ¨¡å¼ä¸‹å¯ç”¨æ–¹æ¡ˆAï¼‰ ----
+            # ---- Sample one grid from the pool (Scheme A is used in bilinear mode) ----
             M, Hbond, Vbond = self.agg_pool.sample_grid(
                 Df, MAS, A_norm, X1, rng,
                 interp=interp, KNN=KNN, sigma=sigma,
@@ -636,7 +690,7 @@ class LMCSimulator:
                 log_bilinear=log_bilinear
             )
 
-            # ---- meta ç”¨æœ¬æ¬¡è¾“å…¥é‡å»º ----
+            # ---- Rebuild meta from the current input ----
             H, W = M.shape
             N1_pool = int((M == 1).sum())
             N2_pool = int((M == 2).sum())
@@ -679,7 +733,7 @@ class LMCSimulator:
 
                 Kfrag = int(c1.size)
                 if Kfrag > 0:
-                    # --- 1) å…ˆæŒ‰åŽŸé€»è¾‘ç®— raw è´¨é‡ï¼ˆå« remainder åˆ†é…ï¼‰ ---
+                    # --- 1) Compute raw fragment masses, including redistributed remainders ---
                     units_area = self.meta.A0 * (c1 + c2).astype(float)
                     denom = max((A - (self.meta.R[0] + self.meta.R[1])), eps)
                     share = units_area / denom
@@ -687,15 +741,15 @@ class LMCSimulator:
                     VA_raw = self.meta.A0 * c1.astype(float) + share * self.meta.R[0]
                     VB_raw = self.meta.A0 * c2.astype(float) + share * self.meta.R[1]
 
-                    # --- 2) è®¡ç®—ä¸¤ç›¸ç¼©æ”¾å› å­ï¼Œä¿è¯åˆ†åˆ«å®ˆæ’ ---
+                    # --- 2) Compute phase-wise scaling factors to enforce exact conservation ---
                     M1_raw = float(VA_raw.sum())
                     M2_raw = float(VB_raw.sum())
 
-                    # å•ç›¸/ç¼ºç›¸å¤„ç†ï¼š
+                    # Missing-phase handling:
                     if M1_raw <= eps:
-                        # ç›®æ ‡æœ‰è¯¥ç›¸ï¼Œä½†æŠ½æ ·ç½‘æ ¼é‡Œæ²¡æœ‰ -> è¯´æ˜ŽæŠ½æ ·å¤ªè¿œ
-                        # è¿™é‡Œä¸æ­»å¾ªçŽ¯ï¼Œç›´æŽ¥æŠŠè¯¥ç›¸è´¨é‡å‡åŒ€ç½®å…¥ä¼šç ´åææ–™å«é‡ï¼Œ
-                        # æ‰€ä»¥é‡‡ç”¨ fallbackï¼šä¸ç¼©æ”¾ä½†ç»™å‡ºä¿æŠ¤ï¼ˆä»å®ˆæ’é  alpha2ï¼‰
+                        # The target phase exists, but this sampled grid produced none of it.
+                        # Avoid an endless retry loop by setting that phase contribution to zero,
+                        # and rely on the fallback path to keep the output numerically stable.
                         alpha1 = 0.0
                     else:
                         alpha1 = M1_tar / M1_raw
@@ -705,10 +759,10 @@ class LMCSimulator:
                     else:
                         alpha2 = M2_tar / M2_raw
 
-                    # --- 3) åº”ç”¨ç¼©æ”¾ï¼Œå¾—åˆ°å®ˆæ’åŽçš„è¾“å‡ºè´¨é‡ ---
+                    # --- 3) Apply the scaling and obtain mass-conservative fragment outputs ---
                     VA = alpha1 * VA_raw
                     VB = alpha2 * VB_raw
-                    VT = VA + VB  # æ€»é‡ä¹Ÿä¼šä¸¥æ ¼ç­‰äºŽ A
+                    VT = VA + VB  # The total mass is also exactly equal to A
 
                     energy = float(E * np.sqrt(max(self.meta.A0, eps)))
                     n_write = min(Kfrag, int(self.NO_FRAG))
@@ -721,7 +775,7 @@ class LMCSimulator:
                 else:
                     row += int(self.NO_FRAG)
 
-                # æ¢å¤é”®çŸ©é˜µ
+                # Restore the original bonds
                 self.Hbond = Hbond_ori.copy()
                 self.Vbond = Vbond_ori.copy()
 
@@ -735,4 +789,9 @@ class LMCSimulator:
 
         self._maybe_log_pool_memory(tag='after_pool_call')
         return F
+
+
+
+
+
 

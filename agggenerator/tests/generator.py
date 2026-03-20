@@ -33,7 +33,7 @@ def generate_mptsa():
 def assign_materials(grid, origin):
     mix_params = MaterialMixParams(
         frac_A=0.3,
-        target_MAS=0.3,
+        target_MAS=0.5,
         tol_MAS=0.05,
         window=8,
         stride=2,

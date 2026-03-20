@@ -1,4 +1,4 @@
-﻿# Core simulation framework: initialization, capacity buffers, main loop,
+# Core simulation framework: initialization, capacity buffers, main loop,
 # time stepping, doubling control volume, basic column ops.
 from __future__ import annotations
 
@@ -125,7 +125,7 @@ class MCPBEBase(BaseSolver):
 
                 # -------------- LMC geometry / breakage parameters --------------
         self.lmc_STR = np.asarray(
-            getattr(self, "lmc_STR", np.array([1.0, 1.0, 1.0], dtype=float)),
+            getattr(self, "lmc_STR", np.array([1.0, 0.1, 1.0], dtype=float)),
             dtype=float,
         )
         self.lmc_NO_FRAG = int(getattr(self, "lmc_NO_FRAG", 4))

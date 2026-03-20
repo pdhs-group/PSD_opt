@@ -15,6 +15,7 @@ numpy = "^2.3.5"
 numba = "^0.63.1"
 matplotlib = "^3.10.8"
 h5py = "^3.15.1"
+lmdb = "^1.8.1"
 
 [build-system]
 requires = ["poetry-core"]
