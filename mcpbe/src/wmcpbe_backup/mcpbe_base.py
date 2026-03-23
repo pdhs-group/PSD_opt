@@ -576,7 +576,6 @@ class MCPBEBase(BaseSolver):
             self._break_sampler = FenwickSampler(self._break_rate[:self.a_tot])
         else:
             self._break_rate = np.zeros(self._cap, dtype=float)
-            self._break_delta = np.zeros(self._cap, dtype=float)
             self._break_sampler = None
 
     def _compress_init_by_quantile(
@@ -691,10 +690,6 @@ class MCPBEBase(BaseSolver):
             b_new = np.zeros(new_cap, dtype=float)
             b_new[:self.a_tot] = self._break_rate[:self.a_tot]
             self._break_rate = b_new
-        if hasattr(self, "_break_delta") and self._break_delta is not None:
-            d_new = np.zeros(new_cap, dtype=float)
-            d_new[:self.a_tot] = self._break_delta[:self.a_tot]
-            self._break_delta = d_new
     
         # Print expansion info
         if self.VERBOSE:
@@ -756,16 +751,10 @@ class MCPBEBase(BaseSolver):
                 b_new = np.zeros(self._cap, dtype=float)
                 b_new[:old_a] = self._break_rate[:old_a]
                 self._break_rate = b_new
-            if hasattr(self, "_break_delta") and self._break_delta is not None:
-                d_new = np.zeros(self._cap, dtype=float)
-                d_new[:old_a] = self._break_delta[:old_a]
-                self._break_delta = d_new
         else:
             self.V_flat[:, :self.a_tot] = V_dup
             self.X[:self.a_tot] = X_dup
             self.W[:self.a_tot] = W_dup
-            if hasattr(self, "_break_delta") and self._break_delta is not None:
-                self._break_delta[:self.a_tot] = np.concatenate((self._break_delta[:old_a], self._break_delta[:old_a]))
 
         if hasattr(self, "V0") and isinstance(self.V0, np.ndarray):
             self.V0 = np.concatenate((self.V0, self.V0), axis=1)
@@ -850,13 +839,21 @@ class MCPBEBase(BaseSolver):
     def _dt_break_from_sum_prop(self, sum_prop: float) -> float:
         if sum_prop <= 0.0:
             return float("inf")
-        return 1.0 / sum_prop
+
+        dW = float(getattr(self, "_last_break_dW", 1.0))
+        if dW <= 0.0:
+            dW = 1.0
+        return dW / sum_prop
 
     def _dt_break_from_sum_prop_pair(self, sum_prop_before: float, sum_prop_after: float) -> float:
         prop_eff = self._log_mean_positive(float(sum_prop_before), float(sum_prop_after))
         if (not np.isfinite(prop_eff)) or prop_eff <= 0.0:
             return float("inf")
-        return 1.0 / prop_eff
+
+        dW = float(getattr(self, "_last_break_dW", 1.0))
+        if dW <= 0.0:
+            dW = 1.0
+        return dW / prop_eff
 
     # ---------------------------------------------------------------------
     # Main solve loop
@@ -1745,8 +1742,6 @@ class MCPBEBase(BaseSolver):
                 self._r_agg[j], self._r_agg[last] = self._r_agg[last], self._r_agg[j]
             if self._break_rate is not None:
                 self._break_rate[j], self._break_rate[last] = self._break_rate[last], self._break_rate[j]
-            if hasattr(self, "_break_delta") and self._break_delta is not None:
-                self._break_delta[j], self._break_delta[last] = self._break_delta[last], self._break_delta[j]
 
         # logical shrink & zero freed slot
         self.a_tot = last
@@ -1758,8 +1753,6 @@ class MCPBEBase(BaseSolver):
             self._r_agg[self.a_tot] = 0.0
         if self._break_rate is not None:
             self._break_rate[self.a_tot] = 0.0
-        if hasattr(self, "_break_delta") and self._break_delta is not None:
-            self._break_delta[self.a_tot] = 0.0
 
         # local sampler remove (swap-with-last behavior kept consistent with array swap above)
         if self._agg_sampler is not None:
@@ -1793,8 +1786,6 @@ class MCPBEBase(BaseSolver):
         # Default weight for new particle (DSMC baseline).
         # Note: breakage/agglomeration code may overwrite this immediately.
         self.W[idx] = 1.0
-        if hasattr(self, "_break_delta") and self._break_delta is not None:
-            self._break_delta[idx] = 0.0
     
         self.a_tot += 1
     
@@ -1833,7 +1824,7 @@ class MCPBEBase(BaseSolver):
 
         big_attrs = ("V_flat", "X", "V0", "X0",
              "V0_save", "V_save", "Vc_save",
-             "_r_agg", "_break_rate", "_break_delta",
+             "_r_agg", "_break_rate",
              "_agg_sampler", "_break_sampler")
         for name in big_attrs:
             setattr(self, name, None)

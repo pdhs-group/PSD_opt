@@ -71,7 +71,7 @@ MASTER_SEED: int = 42
 A0_CELL_AREA: float = 1.0
 INT_BRE: float = 0.0
 
-SAVE_COMPRESSED: bool = True
+SAVE_COMPRESSED: bool = False
 SQLITE_NAME: str = "pool_index.sqlite"
 SAMPLES_SUBDIR: str = "samples"
 

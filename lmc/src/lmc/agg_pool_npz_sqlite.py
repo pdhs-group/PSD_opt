@@ -138,6 +138,8 @@ class AggPool:
         XA_vals = np.array(sorted({g["frac_A_target"] for g in groups}), dtype=float)
         logNp = np.array([math.log(max(g["Np_target"], 1e-9)) for g in groups], dtype=float)
         fracA = np.array([g["frac_A_target"] for g in groups], dtype=float)
+        logNp_range = float(logNp.max() - logNp.min()) if logNp.size > 0 else 0.0
+        fracA_range = float(fracA.max() - fracA.min()) if fracA.size > 0 else 0.0
 
         return {
             "pool_path": pool_path,
@@ -147,8 +149,8 @@ class AggPool:
             "XA_vals": XA_vals,
             "logNp": logNp,
             "fracA": fracA,
-            "logNp_range": float(logNp.max() - logNp.min()) if logNp.size > 1 else 1.0,
-            "fracA_range": float(fracA.max() - fracA.min()) if fracA.size > 1 else 1.0,
+            "logNp_range": logNp_range if logNp_range > 0.0 else 1.0,
+            "fracA_range": fracA_range if fracA_range > 0.0 else 1.0,
         }
 
     def _get_cache(self, Df: float, MAS: float) -> Dict[str, Any]:
@@ -345,5 +347,6 @@ class AggPool:
         group = cand_groups[int(rng.choice(len(cand_groups), p=cand_probs))]
         sample_name = group["samples"][int(rng.integers(0, len(group["samples"]))) ]
         return self._read_sample_triplet(cache, group["gname"], sample_name)
+
 
 

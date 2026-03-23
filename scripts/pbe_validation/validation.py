@@ -112,7 +112,7 @@ class PBEValidation():
         self.p_mc.alpha_prim = np.ones(dim**2)
         self.p_mc.break_dW_mode = "const"
         self.p_mc.break_dW_min = 1.0
-        self.p_mc.break_dW_max = 50.0
+        self.p_mc.break_dW_max = 20.0
         self.p_mc.agg_dW_min = 1.0
         self.p_mc.agg_dW_max = 1.0
         self.p_mc.recon_enable = True
