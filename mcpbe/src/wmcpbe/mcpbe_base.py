@@ -15,9 +15,10 @@ import numpy as np
 from pbe_core.base.base_solver import BaseSolver
 # from .fenwick import FenwickSampler
 from .fenwick_new import FenwickSampler
+from .mcpbe_time_helper import MCPBETimeHelper
 
 
-class MCPBEBase(BaseSolver):
+class MCPBEBase(MCPBETimeHelper, BaseSolver):
     """Base layer for MC-PBE:
     - validates & initializes particle state with capacity buffers
     - maintains control volume & time book-keeping
@@ -558,6 +559,7 @@ class MCPBEBase(BaseSolver):
 
         # Agglomeration
         if pt in ("agglomeration", "mix"):
+            self._prepare_agg_delta_config()
             self._rebuild_all_propensities()  # from AgglomerationMixin
             if not hasattr(self, "_r_agg") or self._r_agg is None or self._r_agg.shape[0] < self._cap:
                 buf = np.zeros(self._cap, dtype=float)
@@ -567,6 +569,7 @@ class MCPBEBase(BaseSolver):
             self._agg_sampler = FenwickSampler(self._r_agg[:self.a_tot])
         else:
             self._r_agg = np.zeros(self._cap, dtype=float)
+            self._delta_agg = np.zeros(self._cap, dtype=float)
             self._agg_sampler = None
 
         # Breakage
@@ -576,7 +579,7 @@ class MCPBEBase(BaseSolver):
             self._break_sampler = FenwickSampler(self._break_rate[:self.a_tot])
         else:
             self._break_rate = np.zeros(self._cap, dtype=float)
-            self._break_delta = np.zeros(self._cap, dtype=float)
+            self._delta_break = np.zeros(self._cap, dtype=float)
             self._break_sampler = None
 
     def _compress_init_by_quantile(
@@ -691,10 +694,14 @@ class MCPBEBase(BaseSolver):
             b_new = np.zeros(new_cap, dtype=float)
             b_new[:self.a_tot] = self._break_rate[:self.a_tot]
             self._break_rate = b_new
-        if hasattr(self, "_break_delta") and self._break_delta is not None:
+        if hasattr(self, "_delta_agg") and self._delta_agg is not None:
             d_new = np.zeros(new_cap, dtype=float)
-            d_new[:self.a_tot] = self._break_delta[:self.a_tot]
-            self._break_delta = d_new
+            d_new[:self.a_tot] = self._delta_agg[:self.a_tot]
+            self._delta_agg = d_new
+        if hasattr(self, "_delta_break") and self._delta_break is not None:
+            d_new = np.zeros(new_cap, dtype=float)
+            d_new[:self.a_tot] = self._delta_break[:self.a_tot]
+            self._delta_break = d_new
     
         # Print expansion info
         if self.VERBOSE:
@@ -756,16 +763,22 @@ class MCPBEBase(BaseSolver):
                 b_new = np.zeros(self._cap, dtype=float)
                 b_new[:old_a] = self._break_rate[:old_a]
                 self._break_rate = b_new
-            if hasattr(self, "_break_delta") and self._break_delta is not None:
+            if hasattr(self, "_delta_agg") and self._delta_agg is not None:
                 d_new = np.zeros(self._cap, dtype=float)
-                d_new[:old_a] = self._break_delta[:old_a]
-                self._break_delta = d_new
+                d_new[:old_a] = self._delta_agg[:old_a]
+                self._delta_agg = d_new
+            if hasattr(self, "_delta_break") and self._delta_break is not None:
+                d_new = np.zeros(self._cap, dtype=float)
+                d_new[:old_a] = self._delta_break[:old_a]
+                self._delta_break = d_new
         else:
             self.V_flat[:, :self.a_tot] = V_dup
             self.X[:self.a_tot] = X_dup
             self.W[:self.a_tot] = W_dup
-            if hasattr(self, "_break_delta") and self._break_delta is not None:
-                self._break_delta[:self.a_tot] = np.concatenate((self._break_delta[:old_a], self._break_delta[:old_a]))
+            if hasattr(self, "_delta_agg") and self._delta_agg is not None:
+                self._delta_agg[:self.a_tot] = np.concatenate((self._delta_agg[:old_a], self._delta_agg[:old_a]))
+            if hasattr(self, "_delta_break") and self._delta_break is not None:
+                self._delta_break[:self.a_tot] = np.concatenate((self._delta_break[:old_a], self._delta_break[:old_a]))
 
         if hasattr(self, "V0") and isinstance(self.V0, np.ndarray):
             self.V0 = np.concatenate((self.V0, self.V0), axis=1)
@@ -791,72 +804,6 @@ class MCPBEBase(BaseSolver):
     def _vol2diam(self, V: np.ndarray) -> np.ndarray:
         return (6.0 * V / math.pi) ** (1.0 / 3.0)
 
-    def _dt_agg(self) -> float:
-        """Agglomeration Î”t for weighted packet events using current weighted propensities."""
-        a = self.a_tot
-        if a < 2:
-            return float("inf")
-        return self._dt_agg_from_sum_prop(float(np.sum(self._r_agg[:a])))
-
-    def _dt_agg_from_sum_prop(self, sum_prop: float) -> float:
-        a = self.a_tot
-        if a < 2 or sum_prop <= 0.0:
-            return float("inf")
-
-        dW = float(getattr(self, "_last_agg_dW", 1.0))
-        if dW <= 0.0:
-            dW = 1.0
-        return dW * 2.0 * float(self.Vc) * (a - 1) / (a * sum_prop)
-
-    @staticmethod
-    def _log_mean_positive(x: float, y: float) -> float:
-        """Logarithmic mean for positive numbers, with stable limit near x==y."""
-        if (not np.isfinite(x)) or (not np.isfinite(y)) or x <= 0.0 or y <= 0.0:
-            return float("nan")
-        if np.isclose(x, y, rtol=1e-12, atol=0.0):
-            return 0.5 * (x + y)
-        return (y - x) / math.log(y / x)
-
-    def _dt_agg_from_sum_prop_pair(self, sum_prop_before: float, sum_prop_after: float) -> float:
-        a = self.a_tot
-        if a < 2:
-            return float("inf")
-        prop_eff = self._log_mean_positive(float(sum_prop_before), float(sum_prop_after))
-        if (not np.isfinite(prop_eff)) or prop_eff <= 0.0:
-            return float("inf")
-
-        dW = float(getattr(self, "_last_agg_dW", 1.0))
-        if dW <= 0.0:
-            dW = 1.0
-        return dW * 2.0 * float(self.Vc) * (a - 1) / (a * prop_eff)
-
-    def _dt_break(self) -> float:
-        """Breakage Î”t for weighted packet events.
-    
-        If break propensities are defined as:
-            propensity_i = W[i] * S_i
-        then total propensity is sum_i propensity_i (events per unit time for real particles).
-    
-        In packeted breakage (one MC event represents Î”W real break events),
-        we advance time by:
-            Î”t = Î”W / sum(propensity)
-        where Î”W is stored in self._last_break_dW by _do_one_break().
-        """
-        if self.a_tot <= 0:
-            return float("inf")
-
-        return self._dt_break_from_sum_prop(float(np.sum(self._break_rate[:self.a_tot])))
-
-    def _dt_break_from_sum_prop(self, sum_prop: float) -> float:
-        if sum_prop <= 0.0:
-            return float("inf")
-        return 1.0 / sum_prop
-
-    def _dt_break_from_sum_prop_pair(self, sum_prop_before: float, sum_prop_after: float) -> float:
-        prop_eff = self._log_mean_positive(float(sum_prop_before), float(sum_prop_after))
-        if (not np.isfinite(prop_eff)) or prop_eff <= 0.0:
-            return float("inf")
-        return 1.0 / prop_eff
 
     # ---------------------------------------------------------------------
     # Main solve loop
@@ -1745,8 +1692,10 @@ class MCPBEBase(BaseSolver):
                 self._r_agg[j], self._r_agg[last] = self._r_agg[last], self._r_agg[j]
             if self._break_rate is not None:
                 self._break_rate[j], self._break_rate[last] = self._break_rate[last], self._break_rate[j]
-            if hasattr(self, "_break_delta") and self._break_delta is not None:
-                self._break_delta[j], self._break_delta[last] = self._break_delta[last], self._break_delta[j]
+            if hasattr(self, "_delta_agg") and self._delta_agg is not None:
+                self._delta_agg[j], self._delta_agg[last] = self._delta_agg[last], self._delta_agg[j]
+            if hasattr(self, "_delta_break") and self._delta_break is not None:
+                self._delta_break[j], self._delta_break[last] = self._delta_break[last], self._delta_break[j]
 
         # logical shrink & zero freed slot
         self.a_tot = last
@@ -1758,8 +1707,10 @@ class MCPBEBase(BaseSolver):
             self._r_agg[self.a_tot] = 0.0
         if self._break_rate is not None:
             self._break_rate[self.a_tot] = 0.0
-        if hasattr(self, "_break_delta") and self._break_delta is not None:
-            self._break_delta[self.a_tot] = 0.0
+        if hasattr(self, "_delta_agg") and self._delta_agg is not None:
+            self._delta_agg[self.a_tot] = 0.0
+        if hasattr(self, "_delta_break") and self._delta_break is not None:
+            self._delta_break[self.a_tot] = 0.0
 
         # local sampler remove (swap-with-last behavior kept consistent with array swap above)
         if self._agg_sampler is not None:
@@ -1793,8 +1744,10 @@ class MCPBEBase(BaseSolver):
         # Default weight for new particle (DSMC baseline).
         # Note: breakage/agglomeration code may overwrite this immediately.
         self.W[idx] = 1.0
-        if hasattr(self, "_break_delta") and self._break_delta is not None:
-            self._break_delta[idx] = 0.0
+        if hasattr(self, "_delta_agg") and self._delta_agg is not None:
+            self._delta_agg[idx] = 0.0
+        if hasattr(self, "_delta_break") and self._delta_break is not None:
+            self._delta_break[idx] = 0.0
     
         self.a_tot += 1
     
@@ -1833,7 +1786,7 @@ class MCPBEBase(BaseSolver):
 
         big_attrs = ("V_flat", "X", "V0", "X0",
              "V0_save", "V_save", "Vc_save",
-             "_r_agg", "_break_rate", "_break_delta",
+             "_r_agg", "_break_rate", "_delta_agg", "_delta_break",
              "_agg_sampler", "_break_sampler")
         for name in big_attrs:
             setattr(self, name, None)

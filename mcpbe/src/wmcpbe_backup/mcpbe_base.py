@@ -82,6 +82,12 @@ class MCPBEBase(BaseSolver):
         self._dump_runtime_paths = {}
         
         self.mcpbe_debug = False
+        self.bias_enable = False
+        self.bias_monitor_warn = True
+        self.bias_monitor_supported = False
+        self._bias_last_local = {"M0": 0.0, "M1": 0.0, "M2": 0.0, "r2": float("nan")}
+        self._bias_cum = {"M0": 0.0, "M1": 0.0, "M2": 0.0}
+        self._bias_err_pred_M2 = 0.0
         # Initialize state
         if init:
             self._initialize_particles()
@@ -578,6 +584,150 @@ class MCPBEBase(BaseSolver):
             self._break_rate = np.zeros(self._cap, dtype=float)
             self._break_sampler = None
 
+        if hasattr(self, "bias_time"):
+            self._bias_refresh_monitor_state()
+        else:
+            self._bias_reset_monitor()
+
+    def _bias_case_supported(self) -> bool:
+        return (
+            bool(getattr(self, "bias_enable", False))
+            and int(getattr(self, "dim", 0)) == 1
+            and str(getattr(self, "process_type", "")).lower() == "breakage"
+            and int(getattr(self, "BREAKRVAL", -1)) == 1
+            and int(getattr(self, "BREAKFVAL", -1)) == 2
+        )
+
+    def _bias_compute_local_from_state(
+        self,
+        V_active: np.ndarray,
+        W_active: np.ndarray,
+    ) -> dict[str, float]:
+        out = {"M0": 0.0, "M1": 0.0, "M2": 0.0, "r2": float("nan")}
+        if not self._bias_case_supported():
+            return out
+
+        V_active = np.asarray(V_active, dtype=float)
+        W_active = np.asarray(W_active, dtype=float)
+        if V_active.ndim != 2 or V_active.shape[1] == 0 or W_active.size == 0:
+            return out
+
+        W = W_active.reshape(-1)
+        V = np.asarray(V_active[0, :], dtype=float).reshape(-1)
+        m = np.isfinite(W) & (W > 0.0) & np.isfinite(V) & (V >= 0.0)
+        if not np.any(m):
+            return out
+
+        W = W[m]
+        V = V[m]
+        N0 = float(np.sum(W))
+        if N0 <= 0.0 or (not np.isfinite(N0)):
+            return out
+
+        lam = float(getattr(self, "pl_P1", 0.0))
+        delta_const = float(getattr(self, "_break_dW_const", getattr(self, "break_dW_max", 0.0)))
+        if lam <= 0.0 or (not np.isfinite(lam)) or delta_const <= 0.0:
+            return out
+
+        delta = np.minimum(W, delta_const)
+        mean_delta = float(np.sum(W * delta) / N0)
+        if mean_delta <= 0.0 or (not np.isfinite(mean_delta)):
+            return out
+
+        x2 = V * V
+        mean_x2 = float(np.sum(W * x2) / N0)
+        mean_delta_x2 = float(np.sum(W * delta * x2) / N0)
+        cov_delta_x2 = mean_delta_x2 - mean_delta * mean_x2
+
+        out["M2"] = float(-(lam * N0 / 3.0) * cov_delta_x2 / mean_delta)
+        if mean_x2 > 0.0 and np.isfinite(mean_x2):
+            out["r2"] = float(cov_delta_x2 / (mean_delta * mean_x2))
+        return out
+
+    def _bias_reset_monitor(self) -> None:
+        self.bias_monitor_supported = self._bias_case_supported()
+        if bool(getattr(self, "bias_enable", False)) and (not self.bias_monitor_supported):
+            if bool(getattr(self, "bias_monitor_warn", True)):
+                warnings.warn(
+                    "Bias monitor currently supports only dim=1, process_type='breakage', "
+                    "BREAKRVAL=1, BREAKFVAL=2.",
+                    RuntimeWarning,
+                )
+            self.bias_monitor_warn = False
+
+        local0 = self._bias_compute_local_from_state(self.V_flat[:, :self.a_tot], self.W[:self.a_tot])
+        self._bias_last_local = local0.copy()
+        self._bias_cum = {"M0": 0.0, "M1": 0.0, "M2": 0.0}
+        self._bias_err_pred_M2 = 0.0
+        self.bias_time = [0.0]
+        self.bias_local_M0 = [float(local0["M0"])]
+        self.bias_local_M1 = [float(local0["M1"])]
+        self.bias_local_M2 = [float(local0["M2"])]
+        self.bias_ratio_M2 = [float(local0["r2"])]
+        self.bias_cum_M0 = [0.0]
+        self.bias_cum_M1 = [0.0]
+        self.bias_cum_M2 = [0.0]
+        self.bias_err_pred_M2 = [0.0]
+
+    def _bias_refresh_monitor_state(self) -> None:
+        self.bias_monitor_supported = self._bias_case_supported()
+        if bool(getattr(self, "bias_enable", False)) and (not self.bias_monitor_supported):
+            if bool(getattr(self, "bias_monitor_warn", True)):
+                warnings.warn(
+                    "Bias monitor currently supports only dim=1, process_type='breakage', "
+                    "BREAKRVAL=1, BREAKFVAL=2.",
+                    RuntimeWarning,
+                )
+            self.bias_monitor_warn = False
+
+        local = self._bias_compute_local_from_state(self.V_flat[:, :self.a_tot], self.W[:self.a_tot])
+        self._bias_last_local = local.copy()
+
+        if not hasattr(self, "_bias_cum"):
+            self._bias_cum = {"M0": 0.0, "M1": 0.0, "M2": 0.0}
+        if not hasattr(self, "_bias_err_pred_M2"):
+            self._bias_err_pred_M2 = 0.0
+
+    def _bias_update_after_break_event(
+        self,
+        V_prev_active: np.ndarray,
+        W_prev_active: np.ndarray,
+        dt_event: float,
+    ) -> None:
+        if not self.bias_monitor_supported:
+            return
+        local = self._bias_compute_local_from_state(V_prev_active, W_prev_active)
+        self._bias_last_local = local.copy()
+        dt = float(dt_event)
+        if np.isfinite(dt) and dt > 0.0:
+            self._bias_cum["M0"] += float(local["M0"]) * dt
+            self._bias_cum["M1"] += float(local["M1"]) * dt
+            self._bias_cum["M2"] += float(local["M2"]) * dt
+            lam = float(getattr(self, "pl_P1", 0.0))
+            alpha = lam / 3.0
+            if np.isfinite(alpha) and alpha > 0.0:
+                decay = float(np.exp(-alpha * dt))
+                kernel_int = float((1.0 - decay) / alpha)
+            else:
+                decay = 1.0
+                kernel_int = dt
+            self._bias_err_pred_M2 = (
+                decay * float(self._bias_err_pred_M2) + kernel_int * float(local["M2"])
+            )
+
+    def _bias_append_snapshot(self, time_value: float) -> None:
+        if not hasattr(self, "bias_time"):
+            return
+        self.bias_time.append(float(time_value))
+        self.bias_local_M0.append(float(self._bias_last_local["M0"]))
+        self.bias_local_M1.append(float(self._bias_last_local["M1"]))
+        self.bias_local_M2.append(float(self._bias_last_local["M2"]))
+        self.bias_ratio_M2.append(float(self._bias_last_local["r2"]))
+        self.bias_cum_M0.append(float(self._bias_cum["M0"]))
+        self.bias_cum_M1.append(float(self._bias_cum["M1"]))
+        self.bias_cum_M2.append(float(self._bias_cum["M2"]))
+        self.bias_err_pred_M2.append(float(self._bias_err_pred_M2))
+
     def _compress_init_by_quantile(
         self,
         V_init: np.ndarray,
@@ -934,6 +1084,7 @@ class MCPBEBase(BaseSolver):
                 # dtd_break = self._dt_break_from_sum_prop(sum_prop_before)
                 # u = max(self._rng.random(), 1e-300)
                 # dtd_break *= -math.log(u)
+                self._bias_update_after_break_event(V_prev_active, W_prev_active, dtd_break)
                 timer_break += dtd_break
                 elapsed_time = timer_break
             else:  # mix
@@ -963,6 +1114,7 @@ class MCPBEBase(BaseSolver):
                         sum_prop_after = float(np.sum(self._break_rate[:self.a_tot]))
                     elapsed_time = timer_break
                     dtd_break = self._dt_break_from_sum_prop_pair(sum_prop_before, sum_prop_after)
+                    self._bias_update_after_break_event(V_prev_active, W_prev_active, dtd_break)
                     timer_break += dtd_break
 
             current_time = float(elapsed_time)
@@ -987,6 +1139,7 @@ class MCPBEBase(BaseSolver):
             
                 self.t_left.append(t_prev)
                 self.t_right.append(elapsed_time)
+                self._bias_append_snapshot(elapsed_time)
             
                 next_save_idx += 1
                 if self.VERBOSE:    

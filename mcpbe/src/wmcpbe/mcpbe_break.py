@@ -46,25 +46,8 @@ class MCPBEBreak:
         self._break_pl_v = float(getattr(self, "pl_v", 1.0))
         self._break_pl_q = float(getattr(self, "pl_q", 1.0))
 
-        dW_const = float(getattr(self, "break_dW_max", 50.0))
-        if (not np.isfinite(dW_const)) or dW_const <= 0.0:
-            dW_const = 50.0
-        self._break_dW_const = dW_const
-
-    def _break_delta_from_weights(self, W: np.ndarray) -> np.ndarray:
-        delta = np.minimum(np.asarray(W, dtype=float), float(self._break_dW_const))
-        delta = np.where(np.isfinite(delta) & (delta > 0.0), delta, 0.0)
-        return delta
-
-    def _update_break_delta_single(self, i: int) -> float:
-        if not hasattr(self, "_break_delta") or self._break_delta is None:
-            self._break_delta = np.zeros(self._cap, dtype=float)
-        if i < 0 or i >= self.a_tot:
-            return 0.0
-        Wi = float(self.W[i])
-        delta = min(float(self._break_dW_const), Wi) if (np.isfinite(Wi) and Wi > 0.0) else 0.0
-        self._break_delta[i] = delta
-        return float(delta)
+        self._prepare_break_delta_config()
+        self._break_dW_const = float(getattr(self, "_break_dW_const", 50.0))
 
     # ------------------------------------------------------------------
     # Breakage rate (full table and single-point)
@@ -85,13 +68,13 @@ class MCPBEBreak:
                 or self._break_rate is None
                 or self._break_rate.shape[0] < cap):
             self._break_rate = np.zeros(max(8, cap), dtype=float)
-        if (not hasattr(self, "_break_delta")
-                or self._break_delta is None
-                or self._break_delta.shape[0] < cap):
-            self._break_delta = np.zeros(max(8, cap), dtype=float)
+        if (not hasattr(self, "_delta_break")
+                or self._delta_break is None
+                or self._delta_break.shape[0] < cap):
+            self._delta_break = np.zeros(max(8, cap), dtype=float)
         W = self.W[:a]
-        delta = self._break_delta_from_weights(W)
-        self._break_delta[:a] = delta
+        delta = self._delta_from_weights(W, dW_const=float(self._break_dW_const))
+        self._delta_break[:a] = delta
     
         # --------- Branch 1: MLP model ---------
         use_mlp = bool(self.lmc_use_breakage_model) and (self.lmc_breakage_adapter is not None)
@@ -109,7 +92,7 @@ class MCPBEBreak:
             self._break_rate[:a] = prop
             if self._break_rate.shape[0] > a:
                 self._break_rate[a:] = 0.0
-                self._break_delta[a:] = 0.0
+                self._delta_break[a:] = 0.0
             return
     
         # --------- Branch 2: original JIT kernels (single-particle rates) ---------
@@ -134,7 +117,7 @@ class MCPBEBreak:
         self._break_rate[:a] = prop
         if self._break_rate.shape[0] > a:
             self._break_rate[a:] = 0.0
-            self._break_delta[a:] = 0.0
+            self._delta_break[a:] = 0.0
 
     def _break_rate_single(self, i: int) -> float:
         """Single-particle BREAKAGE PROPENSITY.
@@ -150,10 +133,10 @@ class MCPBEBreak:
 
         Wi = float(self.W[i])
         if Wi <= 0.0:
-            if hasattr(self, "_break_delta") and self._break_delta is not None:
-                self._break_delta[i] = 0.0
+            if hasattr(self, "_delta_break") and self._delta_break is not None:
+                self._delta_break[i] = 0.0
             return 0.0
-        delta_i = self._update_break_delta_single(i)
+        delta_i = self._update_delta_single(i, attr_name="_delta_break", dW_const=float(self._break_dW_const))
         if delta_i <= 0.0:
             return 0.0
     
@@ -369,7 +352,7 @@ class MCPBEBreak:
             new_indices.append(new_idx)
     
             self.W[new_idx] = dW
-            self._update_break_delta_single(new_idx)
+            self._update_delta_single(new_idx, attr_name="_delta_break", dW_const=float(self._break_dW_const))
     
             br_new = self._break_rate_single(new_idx)  # already returns W*Si
             self._break_rate[new_idx] = br_new
@@ -379,9 +362,8 @@ class MCPBEBreak:
         # 2) Reduce parent weight but keep its volume unchanged
         w_rem = w_parent_old - dW
         self.W[k] = w_rem
-    
         if w_rem > 0.0:
-            self._update_break_delta_single(k)
+            self._update_delta_single(k, attr_name="_delta_break", dW_const=float(self._break_dW_const))
             br_k = self._break_rate_single(k)  # uses new W[k]
             self._break_rate[k] = br_k
             if self._break_sampler is not None:
@@ -389,7 +371,7 @@ class MCPBEBreak:
         else:
             # Parent population fully consumed -> remove compute particle k
             self._remove_particle_column(k)
-    
+
         # 3) Agglomeration maintenance (mix mode): full weighted rebuild for consistency
         pt = self.process_type
         if pt in ("agglomeration", "mix") and self._agg_sampler is not None:
@@ -399,8 +381,8 @@ class MCPBEBreak:
     # Mark particle as unbreakable: zero out breakage rate and update sampler.
     def _mark_unbreakable(self, k: int) -> None:
         self._break_rate[k] = 0.0
-        if hasattr(self, "_break_delta") and self._break_delta is not None:
-            self._break_delta[k] = 0.0
+        if hasattr(self, "_delta_break") and self._delta_break is not None:
+            self._delta_break[k] = 0.0
         if self._break_sampler is not None:
             self._break_sampler.update(k, 0.0)
     
@@ -559,10 +541,10 @@ class MCPBEBreak:
         """Compute packet size delta_i for breakage."""
         if k < 0 or k >= self.a_tot:
             return 0.0
-        if hasattr(self, "_break_delta") and self._break_delta is not None:
-            dW = float(self._break_delta[k])
+        if hasattr(self, "_delta_break") and self._delta_break is not None:
+            dW = float(self._delta_break[k])
         else:
-            dW = self._update_break_delta_single(k)
+            dW = self._update_delta_single(k, attr_name="_delta_break", dW_const=float(self._break_dW_const))
         if not np.isfinite(dW) or dW <= 0.0:
             return 0.0
         return float(dW)

@@ -18,7 +18,7 @@ if __name__ == "__main__":
     c = 1e0  # m3/m3
     x = 2e-1  # m
     beta0 = 1e-3 # /m3
-    P1 = 1e-1
+    P1 = 3e-2
     P2 = 1.0
     use_psd = False
     rel_mom = True
@@ -39,8 +39,8 @@ if __name__ == "__main__":
     S1 = 2
     S2 = 2
     kernel = "const"
-    process = "breakage"
-    t = np.arange(0, 41, 4, dtype=float)
+    process = "agglomeration"
+    t = np.arange(0, 25, 2, dtype=float)
     
     v = PBEValidation(dim, grid, NS1, S1, kernel, process, t=t, c=c, x=x, 
                       beta0=beta0, use_psd=use_psd, dist_path=dist_path)

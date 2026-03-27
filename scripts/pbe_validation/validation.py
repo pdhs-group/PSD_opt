@@ -53,8 +53,8 @@ class PBEValidation():
         self.P1 = 1e-2
         self.P2 = 1
         # The number of times to repeat the MC-PBE
-        self.N_MC = 5
-        self.mom_a0 = 1000
+        self.N_MC = 40
+        self.mom_a0 = 100000
         ## Check if the psd file is available
         if self.use_psd:
             if self.dist_path is None:
@@ -112,16 +112,15 @@ class PBEValidation():
         self.p_mc.alpha_prim = np.ones(dim**2)
         self.p_mc.break_dW_mode = "const"
         self.p_mc.break_dW_min = 1.0
-        self.p_mc.break_dW_max = 20.0
+        self.p_mc.break_dW_max = 50.0
         self.p_mc.agg_dW_min = 1.0
-        self.p_mc.agg_dW_max = 1.0
+        self.p_mc.agg_dW_max = 20.0
         self.p_mc.recon_enable = True
         self.p_mc.V_eff_init = 1000
         self.p_mc.recon_N_max = 4000
         self.p_mc.recon_method = "4PMC"
         self.p_mc.recon_bins = 30
         self.p_mc.recon_RS_target = 1000
-        
         
         N = self.p.N / self.p.V_unit
         self.p_mc.n0 = np.sum(N[..., 0])
