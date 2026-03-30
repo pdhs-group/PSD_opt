@@ -191,7 +191,7 @@ config = {
         "lmc_int_bre": 0.0,
         "lmc_lambda_E": 1e-6,
         "lmc_energy_exp": 2.0,
-        # "lmc_STR": np.array([1.0, 0.1, 1.0]), 
+        "lmc_STR": np.array([1.0, 1.0, 1.0]), 
         
         "SIZEEVAL": 1,
         "COLEVAL": 1,
