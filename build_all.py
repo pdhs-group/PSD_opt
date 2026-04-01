@@ -46,14 +46,14 @@ def run_editable_install(package_dir: Path) -> None:
 def collect_wheels(package_dir: Path, out_dir: Path) -> list[Path]:
     dist_dir = package_dir / "dist"
     wheels = sorted(dist_dir.glob("*.whl"))
-    copied: list[Path] = []
+    moved: list[Path] = []
 
     out_dir.mkdir(parents=True, exist_ok=True)
     for wheel in wheels:
         dst = out_dir / wheel.name
-        shutil.copy2(wheel, dst)
-        copied.append(dst)
-    return copied
+        shutil.move(str(wheel), str(dst))
+        moved.append(dst)
+    return moved
 
 
 def main() -> int:
@@ -125,7 +125,7 @@ def main() -> int:
         print(f"Editable installations: {len(editable_installed)}")
     else:
         print(f"Output directory: {out_dir}")
-        print(f"Total wheels copied: {len(all_wheels)}")
+        print(f"Total wheels moved: {len(all_wheels)}")
     if failed:
         print(f"Failed packages: {len(failed)}")
         for name, msg in failed:

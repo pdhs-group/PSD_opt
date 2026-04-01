@@ -157,7 +157,7 @@ if __name__ == '__main__':
     base_path = Path(os.getcwd()).resolve()
     config_path = os.path.join(base_path, "config", "opt_config_mcpbe.py")
     data_group = "data_mcpbe_CB_S1"
-    data_name = "CB_pur_N2000.h5"
+    data_name = "CB_pur_N100000.h5"
     
     result_dir = os.path.join(base_path, "opt_results")
     data_path = os.path.join(base_path, data_group, "data_mcpbe_CB")

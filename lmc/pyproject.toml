@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "lmc"
-version = "0.6.5"
+version = "0.7.0"
 description = "Lattice Monte Carlo (LMC) simulator for agglomerate fracture and fragment analysis."
 authors = ["HR94 <haoran.ji@kit.edu>"]
 license = "GPL-3.0-only"

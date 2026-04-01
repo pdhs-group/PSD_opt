@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "agggenerator"
-version = "0.6.5"
+version = "0.7.0"
 description = "Aggregate generation and PSD preprocessing utilities for the MCPBE workflow."
 authors = ["HR94 <haoran.ji@kit.edu>"]
 license = "GPL-3.0-only"

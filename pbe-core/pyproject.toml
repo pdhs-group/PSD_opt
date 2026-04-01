@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pbe-core"
-version = "0.6.5"
+version = "0.7.0"
 description = "Core numerical kernels and base utilities for PBE solvers."
 authors = ["HR94 <haoran.ji@kit.edu>"]
 license = "GPL-3.0-only"

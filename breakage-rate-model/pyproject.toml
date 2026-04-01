@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "breakage-rate-model"
-version = "0.6.5"
+version = "0.7.0"
 description = "Models and utilities for fitting breakage energy-rate relationships."
 authors = ["HR94 <haoran.ji@kit.edu>"]
 license = "GPL-3.0-only"

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pbe-optimizer"
-version = "0.6.5"
+version = "0.7.0"
 description = "Optimization framework for PBE solvers with adapter-based backend integration."
 authors = ["HR94 <haoran.ji@kit.edu>"]
 license = "GPL-3.0-only"
@@ -23,9 +23,9 @@ optuna = "^4.6.0"
 cmaes = "^0.12.0"
 ray = {extras = ["default,train,tune"], version = "^2.52.1"}
 filelock = "^3.19.1"
-pbe-core = "^0.6"
-dpbe = "^0.6"
-mcpbe = "^0.6"
+pbe-core = "^0.7"
+dpbe = "^0.7"
+mcpbe = "^0.7"
 
 [build-system]
 requires = ["poetry-core"]

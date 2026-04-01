@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "qmom"
-version = "0.6.5"
+version = "0.7.0"
 description = "Population Balance Moments (PBM/QMOM) solver package."
 authors = ["HR94 <haoran.ji@kit.edu>"]
 license = "GPL-3.0-only"
@@ -14,7 +14,7 @@ python = ">=3.9,<3.12"
 numpy = "^2.3.5"
 scipy = "^1.16.3"
 matplotlib = "^3.10.8"
-pbe-core = "^0.6"
+pbe-core = "^0.7"
 
 [build-system]
 requires = ["poetry-core"]

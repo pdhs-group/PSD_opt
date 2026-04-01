@@ -129,7 +129,7 @@ config = {
         'max_iter_time': 0,
         # Top-K re-evaluation feature
         'opt_top_K': 0,
-        'use_exp_cdf_init': False,
+        'use_exp_cdf_init': True,
         }, 
     
     ## PBE parameters
@@ -208,15 +208,15 @@ config = {
         
         "break_dW_mode": "const",
         "break_dW_min": 1.0,
-        "break_dW_max": 1.0,
+        "break_dW_max": 100.0,
         # "agg_dW_min": 1.0,
         # "agg_dW_max": 1.0,
-        "V_eff_init": 0,
+        "V_eff_init": 1000,
         "V_eff_mod": "Q3",
-        "recon_enable": False,
+        "recon_enable": True,
         "recon_method": "2PM",
         "recon_N_max": 4000,
-        "recon_bins": 100,
+        "recon_bins": 500,
         
         "dump_results": False,
         "dump_pth": os.path.join(_config_opt_path, 'dump'), 
