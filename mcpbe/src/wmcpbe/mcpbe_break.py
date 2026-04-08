@@ -551,6 +551,7 @@ class MCPBEBreak:
 
     def _do_one_break(self): 
         # Main entry: preprocess -> generate fragments -> unified maintenance.
+        self._last_break_dW = 0.0
         if self.a_tot < 1:
             return
     

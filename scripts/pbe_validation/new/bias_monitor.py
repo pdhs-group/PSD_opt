@@ -549,54 +549,42 @@ class BiasMonitor1D:
 
 
 if __name__ == "__main__":
+    a0 = 100000
+    V_eff_init = 1000
     case = CaseConfig(
         dim=1,
         kernel="const",
         process="breakage",
-        t_vec=np.linspace(0.0, 40.0, 21),
+        t_vec=np.linspace(0.0, 100.0, 101),
         c=1.0,
         p1=0.1,
         p2=1.0,
-        x=1.0,
+        x=1e-3,
     )
 
     init_dist = BetaInitialCondition1D(
-        alpha=2.5,
-        beta=4.0,
-        x_min=1.0,
-        x_max=40.0,
-        n_init=100,
-        total_number=1.5e5,
+        alpha=1.5,
+        beta=3.0,
+        x_min=2e-3,
+        x_max=2e-3*2**20,
+        n_init=V_eff_init,
+        total_number=a0,
         volume_concentration=None,
     )
 
     variants = [
         WMCPBEVariantConfig(
-            name="WMCPBE backup (coarse)",
-            repeats=5,
+            name="WMCPBE (bias)",
+            repeats=100,
             attrs={
-                "a0": 100000,
-                "V_eff_init": 1000,
+                "a0": a0,
+                "V_eff_init": V_eff_init,
                 "break_dW_max": 100.0,
                 "recon_enable": True,
                 "recon_N_max": 2000,
                 "recon_method": "2PM",
-                "recon_bins": 100,
-                "recon_RS_target": 1000,
-            },
-        ),
-        WMCPBEVariantConfig(
-            name="WMCPBE backup (fine)",
-            repeats=5,
-            attrs={
-                "a0": 100000,
-                "V_eff_init": 1000,
-                "break_dW_max": 50.0,
-                "recon_enable": True,
-                "recon_N_max": 3000,
-                "recon_method": "2PM",
-                "recon_bins": 120,
-                "recon_RS_target": 1200,
+                "recon_bins": 400,
+                "recon_RS_target": 5000,
             },
         ),
     ]

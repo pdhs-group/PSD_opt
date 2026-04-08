@@ -138,11 +138,11 @@ class MCPBEAgg:
     def _do_one_agg(self):
         a = self.a_tot
         if a < 2:
-            self._last_agg_dW = 1.0
+            self._last_agg_dW = 0.0
             return
 
         # default packet for rejected/empty attempts
-        self._last_agg_dW = 1.0
+        self._last_agg_dW = 0.0
 
         # 1) pick first partner by r_i
         i = self._agg_sampler.sample(self._rng)

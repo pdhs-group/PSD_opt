@@ -194,13 +194,13 @@ class PBEValidationAdvanced:
         self.export_dir.mkdir(parents=True, exist_ok=True)
         self._export_counts: Dict[str, int] = {}
 
-    def _next_export_path(self, method_name: str, suffix: str = "") -> Path:
+    def _next_export_stem(self, method_name: str, suffix: str = "") -> Path:
         base = self._slugify(method_name)
         if suffix:
             base = f"{base}_{self._slugify(suffix)}"
         index = self._export_counts.get(base, 0) + 1
         self._export_counts[base] = index
-        return self.export_dir / f"{base}_{index:02d}.xlsx"
+        return self.export_dir / f"{base}_{index:02d}"
 
     def _slugify(self, text: str) -> str:
         cleaned = "".join(ch.lower() if ch.isalnum() else "_" for ch in text)
@@ -219,8 +219,10 @@ class PBEValidationAdvanced:
         metadata: Dict[str, object],
         sheets: Dict[str, pd.DataFrame],
         suffix: str = "",
+        export_stem: Optional[Path] = None,
     ) -> Path:
-        path = self._next_export_path(method_name, suffix=suffix)
+        stem = export_stem if export_stem is not None else self._next_export_stem(method_name, suffix=suffix)
+        path = stem.with_suffix(".xlsx")
         with pd.ExcelWriter(path) as writer:
             meta_df = pd.DataFrame(
                 [{"key": key, "value": value if np.isscalar(value) or value is None else str(value)} for key, value in metadata.items()]
@@ -229,6 +231,15 @@ class PBEValidationAdvanced:
             for name, frame in sheets.items():
                 frame.to_excel(writer, sheet_name=self._sheet_name(name), index=False)
         print(f"Saved Excel export: {path}")
+        return path
+
+    def _save_figure(self, fig: plt.Figure, export_stem: Path, suffix: str = "") -> Path:
+        filename = export_stem.stem
+        if suffix:
+            filename = f"{filename}_{self._slugify(suffix)}"
+        path = export_stem.parent / f"{filename}.png"
+        fig.savefig(path, bbox_inches="tight")
+        print(f"Saved figure export: {path}")
         return path
 
     def _curve_sheet(
@@ -345,9 +356,21 @@ class PBEValidationAdvanced:
 
     def print_moment_error_summary(self, result: AdvancedValidationResult) -> None:
         summary_rows: List[Dict[str, object]] = []
+        export_stem = self._next_export_stem("print_moment_error_summary")
         for method_name, summary in result.moment_error_summary.items():
             if method_name == "Analytical Solution":
                 continue
+            method_meta = result.base_result.methods[method_name].meta
+            cpu_time_total = float(result.cpu_times[method_name])
+            cpu_time_mean = float(method_meta.get("elapsed_mean_s", cpu_time_total))
+            real_agg_events = float(method_meta.get("real_agg_events_mean", np.nan))
+            real_break_events = float(method_meta.get("real_break_events_mean", np.nan))
+            real_total_events = float(method_meta.get("real_total_events_mean", np.nan))
+            mean_events_cpu_time = (
+                cpu_time_mean / real_total_events
+                if np.isfinite(real_total_events) and real_total_events > 0.0
+                else np.nan
+            )
             for key in self.MOMENT_KEYS:
                 entry = summary[key]
                 summary_rows.append(
@@ -357,7 +380,12 @@ class PBEValidationAdvanced:
                         "max_rel_err": entry["max_rel_err"],
                         "final_rel_err": entry["final_rel_err"],
                         "aggregated_error": result.aggregated_errors[method_name],
-                        "cpu_time_s": result.cpu_times[method_name],
+                        "cpu_time_total_s": cpu_time_total,
+                        "cpu_time_mean_s": cpu_time_mean,
+                        "real_agg_events_mean": real_agg_events,
+                        "real_break_events_mean": real_break_events,
+                        "real_total_events_mean": real_total_events,
+                        "mean_events_cpu_time_s": mean_events_cpu_time,
                     }
                 )
         self._write_excel_book(
@@ -370,12 +398,24 @@ class PBEValidationAdvanced:
                 "content": "Moment relative error summary",
             },
             sheets={"summary": pd.DataFrame(summary_rows)},
+            export_stem=export_stem,
         )
         print("\nAdvanced moment error summary")
         print("-" * 72)
         for method_name, summary in result.moment_error_summary.items():
             if method_name == "Analytical Solution":
                 continue
+            method_meta = result.base_result.methods[method_name].meta
+            cpu_time_total = float(result.cpu_times[method_name])
+            cpu_time_mean = float(method_meta.get("elapsed_mean_s", cpu_time_total))
+            real_agg_events = float(method_meta.get("real_agg_events_mean", np.nan))
+            real_break_events = float(method_meta.get("real_break_events_mean", np.nan))
+            real_total_events = float(method_meta.get("real_total_events_mean", np.nan))
+            mean_events_cpu_time = (
+                cpu_time_mean / real_total_events
+                if np.isfinite(real_total_events) and real_total_events > 0.0
+                else np.nan
+            )
             print(f"{method_name}")
             for key in self.MOMENT_KEYS:
                 entry = summary[key]
@@ -384,7 +424,11 @@ class PBEValidationAdvanced:
                     f"final rel err = {entry['final_rel_err']:.6e}"
                 )
             print(f"  Aggregated error = {result.aggregated_errors[method_name]:.6e}")
-            print(f"  CPU time         = {result.cpu_times[method_name]:.3f} s")
+            print(f"  CPU time (total) = {cpu_time_total:.3f} s")
+            print(f"  CPU time (mean)  = {cpu_time_mean:.3f} s")
+            print(f"  Mean real agg    = {real_agg_events:.6e}")
+            print(f"  Mean real break  = {real_break_events:.6e}")
+            print(f"  Mean event CPU   = {mean_events_cpu_time:.6e} s/event")
             print("")
 
     def plot_psd_snapshot(
@@ -399,6 +443,10 @@ class PBEValidationAdvanced:
         q3: bool = False,
     ) -> Dict[str, plt.Figure]:
         figures: Dict[str, plt.Figure] = {}
+        export_stem = self._next_export_stem(
+            "plot_psd_snapshot",
+            suffix=f"t{t_index}_2d{int(two_d)}_m{int(marginal)}_tot{int(total)}_q0{int(q0)}_q3{int(q3)}",
+        )
 
         if t_index < 0:
             t_index = len(result.base_result.time) + t_index
@@ -473,6 +521,7 @@ class PBEValidationAdvanced:
             if handles:
                 ax.legend(handles, labels, loc="upper right")
             self.plotter.tighten(fig)
+            self._save_figure(fig, export_stem, suffix="2d")
             figures["2D"] = fig
 
         if marginal:
@@ -545,6 +594,7 @@ class PBEValidationAdvanced:
                 legend=True,
             )
             self.plotter.tighten(fig)
+            self._save_figure(fig, export_stem, suffix="marginal")
             figures["marginal"] = fig
 
         if total:
@@ -601,6 +651,7 @@ class PBEValidationAdvanced:
                 legend=True,
             )
             self.plotter.tighten(fig)
+            self._save_figure(fig, export_stem, suffix="total")
             figures["total"] = fig
 
         if q0 or q3:
@@ -668,13 +719,14 @@ class PBEValidationAdvanced:
                     legend=True,
                 )
                 self.plotter.tighten(fig)
+                self._save_figure(fig, export_stem, suffix=q_label)
                 figures[q_label] = fig
 
         self._write_excel_book(
             method_name="plot_psd_snapshot",
             metadata=export_metadata,
             sheets=export_sheets if export_sheets else {"empty": pd.DataFrame([{"note": "No PSD sheets were generated."}])},
-            suffix=f"t{t_index}_2d{int(two_d)}_m{int(marginal)}_tot{int(total)}_q0{int(q0)}_q3{int(q3)}",
+            export_stem=export_stem,
         )
         return figures
 
@@ -697,6 +749,10 @@ class PBEValidationAdvanced:
     ) -> Dict[str, plt.Figure]:
         figures: Dict[str, plt.Figure] = {}
         export_sheets: Dict[str, pd.DataFrame] = {}
+        export_stem = self._next_export_stem(
+            "plot_selected_moments",
+            suffix="relative" if relative else "absolute",
+        )
         for key, (i, j) in self.MOMENT_KEYS.items():
             fig, ax = self.plotter.figure()
             sheet_data: Dict[str, object] = {"time_s": np.asarray(result.base_result.time, dtype=float)}
@@ -735,6 +791,7 @@ class PBEValidationAdvanced:
                 legend=True,
             )
             self.plotter.tighten(fig)
+            self._save_figure(fig, export_stem, suffix=key)
             figures[key] = fig
             export_sheets[key] = pd.DataFrame(sheet_data)
         self._write_excel_book(
@@ -746,12 +803,13 @@ class PBEValidationAdvanced:
                 "moments": ",".join(self.MOMENT_KEYS.keys()),
             },
             sheets=export_sheets,
-            suffix="relative" if relative else "absolute",
+            export_stem=export_stem,
         )
         return figures
 
     def plot_error_time_pareto(self, result: AdvancedValidationResult) -> plt.Figure:
         fig, ax = self.plotter.figure()
+        export_stem = self._next_export_stem("plot_error_time_pareto")
         rows: List[Dict[str, object]] = []
         for name, score in result.aggregated_errors.items():
             if name == "Analytical Solution":
@@ -775,6 +833,7 @@ class PBEValidationAdvanced:
             title="Error-time Pareto view",
         )
         self.plotter.tighten(fig)
+        self._save_figure(fig, export_stem, suffix="pareto")
         self._write_excel_book(
             method_name="plot_error_time_pareto",
             metadata={
@@ -783,12 +842,14 @@ class PBEValidationAdvanced:
                 "reference": "Analytical Solution",
             },
             sheets={"pareto": pd.DataFrame(rows)},
+            export_stem=export_stem,
         )
         return fig
 
     def plot_moment_variances(self, result: AdvancedValidationResult) -> Dict[str, plt.Figure]:
         figures: Dict[str, plt.Figure] = {}
         export_sheets: Dict[str, pd.DataFrame] = {}
+        export_stem = self._next_export_stem("plot_moment_variances")
         for key, (i, j) in self.MOMENT_KEYS.items():
             fig, ax = self.plotter.figure()
             plotted = False
@@ -820,6 +881,7 @@ class PBEValidationAdvanced:
                 legend=plotted,
             )
             self.plotter.tighten(fig)
+            self._save_figure(fig, export_stem, suffix=key)
             figures[key] = fig
             export_sheets[key] = pd.DataFrame(sheet_data)
         self._write_excel_book(
@@ -830,6 +892,7 @@ class PBEValidationAdvanced:
                 "moments": ",".join(self.MOMENT_KEYS.keys()),
             },
             sheets=export_sheets,
+            export_stem=export_stem,
         )
         return figures
 
@@ -902,6 +965,8 @@ class PBEValidationAdvanced:
         seeds = seed_sequence.spawn(variant.repeats)
         repeat_moments: List[np.ndarray] = []
         repeat_psd: List[np.ndarray] = []
+        repeat_real_agg_events: List[float] = []
+        repeat_real_break_events: List[float] = []
 
         time_start = time.time()
         for seed in seeds:
@@ -917,7 +982,10 @@ class PBEValidationAdvanced:
             moments, _ = solver.calc_moments_over_time(normalize=True)
             repeat_moments.append(np.asarray(moments, dtype=float))
             repeat_psd.append(self._build_wmcpbe_psd_stack(solver, x_edges=x_edges, y_edges=y_edges))
+            repeat_real_agg_events.append(float(getattr(solver, "real_agg_events", np.nan)))
+            repeat_real_break_events.append(float(getattr(solver, "real_break_events", np.nan)))
         elapsed = time.time() - time_start
+        elapsed_mean = elapsed / max(variant.repeats, 1)
 
         moments_mean = np.mean(repeat_moments, axis=0)
         if variant.repeats > 1:
@@ -929,6 +997,14 @@ class PBEValidationAdvanced:
             moments_var = np.zeros_like(moments_mean)
             psd_mean = repeat_psd[0]
 
+        real_agg_mean = float(np.nanmean(repeat_real_agg_events)) if repeat_real_agg_events else np.nan
+        real_break_mean = float(np.nanmean(repeat_real_break_events)) if repeat_real_break_events else np.nan
+        real_total_mean = (
+            real_agg_mean + real_break_mean
+            if np.isfinite(real_agg_mean) and np.isfinite(real_break_mean)
+            else np.nan
+        )
+
         result = MethodResult(
             name=variant.name,
             family="wmcpbe",
@@ -936,8 +1012,12 @@ class PBEValidationAdvanced:
             std=moments_std,
             meta={
                 "elapsed_s": elapsed,
+                "elapsed_mean_s": elapsed_mean,
                 "repeats": variant.repeats,
                 "base_seed": variant.base_seed,
+                "real_agg_events_mean": real_agg_mean,
+                "real_break_events_mean": real_break_mean,
+                "real_total_events_mean": real_total_mean,
                 **copy.deepcopy(variant.attrs),
             },
         )
@@ -1094,71 +1174,3 @@ class PBEValidationAdvanced:
                 terms.append(float(np.max(rel ** 2)))
             aggregated[name] = float(np.sqrt(np.sum(terms)))
         return aggregated
-
-
-if __name__ == "__main__":
-    case = CaseConfig(
-        dim=2,
-        kernel="const",
-        process="agglomeration",
-        t_vec=np.arange(0.0, 10.0 + 1e-12, 1.0),
-        x=2e-1,
-        beta0=1e-3,
-        p1=3e-2,
-        p2=1.0,
-        use_psd=False,
-    )
-
-    config = ValidationConfig(
-        case=case,
-        dpbe_variants=[
-            DPBEVariantConfig(name="dPBE", grid="geo", ns=20, s=2),
-        ],
-        wmcpbe_variants=[
-            WMCPBEVariantConfig(
-                name="WMCPBE (coarse)",
-                repeats=8,
-                attrs={
-                    "a0": 50000,
-                    "V_eff_init": 800,
-                    "recon_N_max": 2500,
-                    "recon_bins": 20,
-                    "recon_method": "4PMC",
-                },
-            ),
-            WMCPBEVariantConfig(
-                name="WMCPBE (fine)",
-                repeats=8,
-                attrs={
-                    "a0": 100000,
-                    "V_eff_init": 1200,
-                    "recon_N_max": 4000,
-                    "recon_bins": 30,
-                    "recon_method": "4PMC",
-                },
-            ),
-        ],
-        qmom_variants=[],
-        reference_dpbe_name="dPBE",
-    )
-
-    init_dist = DirichletInitialCondition(
-        alpha_x=2.5,
-        alpha_y=3.0,
-        alpha_rest=4.0,
-        x_min_scale=2.0,
-        x_max_scale=0.5,
-        y_min_scale=2.0,
-        y_max_scale=0.5,
-        total_number=5e5,
-        volume_concentration=None,
-    )
-
-    advanced = PBEValidationAdvanced(config=config, init_dist=init_dist)
-    result = advanced.run()
-    advanced.print_moment_error_summary(result)
-    advanced.plot_selected_moments(result, relative=True)
-    advanced.plot_psd_snapshot(result, t_index=-1)
-    advanced.plot_error_time_pareto(result)
-    advanced.plot_moment_variances(result)
-    advanced.show()

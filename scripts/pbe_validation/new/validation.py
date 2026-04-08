@@ -238,7 +238,7 @@ class ValidationRunner:
         solver = MCPBESolver(
             dim=self.config.case.dim,
             t_vec=self.config.case.t_vec,
-            verbose=False,
+            verbose=True,
             load_attr=False,
             init=False,
         )

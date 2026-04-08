@@ -39,11 +39,11 @@ if __name__ == "__main__":
     case = CaseConfig(
         dim=2,
         kernel="const",
-        process="mix",
-        t_vec=np.arange(0.0, 20.0 + 1e-12, 2.0),
+        process="agglomeration",
+        t_vec=np.arange(0.0, 30.0 + 1e-12, 1.0),
         x=2e-3,
         beta0=1e-5,
-        p1=1e-1,
+        p1=2e-1,
         p2=1.0,
         use_psd=False,
     )
@@ -54,23 +54,9 @@ if __name__ == "__main__":
             DPBEVariantConfig(name="dPBE", grid="geo", ns=20, s=2),
         ],
         wmcpbe_variants=[
-            # WMCPBEVariantConfig(
-            #     name="WMCPBE (fine)",
-            #     repeats=2,
-            #     attrs={
-            #         "a0": 1000,
-            #         "V_eff_init": 0,
-            #         "recon_enable": True,
-            #         "recon_N_max": 4000,
-            #         "recon_bins": 30,
-            #         "recon_method": "4PMC",
-            #         "break_dW_max": 10,
-            #         "agg_dW_max": 5,
-            #     },
-            # ),
             WMCPBEVariantConfig(
-                name="WMCPBE (ref)",
-                repeats=2,
+                name="WMCPBE dW=5",
+                repeats=10,
                 attrs={
                     "a0": 100000,
                     "V_eff_init": 1000,
@@ -78,10 +64,39 @@ if __name__ == "__main__":
                     "recon_N_max": 4000,
                     "recon_bins": 30,
                     "recon_method": "4PMC",
-                    "break_dW_max": 100,
+                    "break_dW_max": 50,
                     "agg_dW_max": 5,
                 },
             ),
+            WMCPBEVariantConfig(
+                name="WMCPBE dW=2",
+                repeats=10,
+                attrs={
+                    "a0": 100000,
+                    "V_eff_init": 1000,
+                    "recon_enable": True,
+                    "recon_N_max": 4000,
+                    "recon_bins": 30,
+                    "recon_method": "4PMC",
+                    "break_dW_max": 10,
+                    "agg_dW_max": 2,
+                },
+            ),
+            WMCPBEVariantConfig(
+                name="WMCPBE dW=20",
+                repeats=10,
+                attrs={
+                    "a0": 100000,
+                    "V_eff_init": 1000,
+                    "recon_enable": True,
+                    "recon_N_max": 4000,
+                    "recon_bins": 30,
+                    "recon_method": "4PMC",
+                    "break_dW_max": 200,
+                    "agg_dW_max": 20,
+                },
+            ),
+            
         ],
         qmom_variants=[],
         reference_dpbe_name="dPBE",
@@ -95,16 +110,16 @@ if __name__ == "__main__":
         x_max_scale=1e-2,
         y_min_scale=2.0,
         y_max_scale=1e-2,
-        total_number=1e5,
+        total_number=1e4,
         volume_concentration=None,
     )
 
     advanced = PBEValidationAdvanced(config=config, init_dist=init_dist)
     result = advanced.run()
 
-    # advanced.print_moment_error_summary(result)
+    advanced.print_moment_error_summary(result)
     advanced.plot_selected_moments(result, relative=True)
-    advanced.plot_psd_snapshot(result, t_index=0, two_d=True, marginal=True, total=True, q0=False, q3=False)
-    # advanced.plot_error_time_pareto(result)
-    # advanced.plot_moment_variances(result)
+    advanced.plot_psd_snapshot(result, t_index=-1, two_d=True, marginal=True, total=True, q0=True, q3=True)
+    advanced.plot_error_time_pareto(result)
+    advanced.plot_moment_variances(result)
     advanced.show()

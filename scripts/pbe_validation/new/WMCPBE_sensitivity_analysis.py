@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import math
 import sys
 import time
 from dataclasses import dataclass, field
@@ -103,6 +104,7 @@ class WMCPBESensitivityAnalyzer:
             raise ValueError(f"Unknown metric '{metric_name}'.")
         if self.base_config.case.dim == 2 and self.init_dist is None:
             raise ValueError("For dim=2 sensitivity analysis, init_dist must be provided as DirichletInitialCondition.")
+        self._validate_parameterization()
 
     def run(self) -> SensitivityAnalysisResult:
         problem = self._build_problem()
@@ -189,6 +191,36 @@ class WMCPBESensitivityAnalyzer:
             "bounds": [list(item.bounds) for item in self.parameters],
         }
 
+    def _validate_parameterization(self) -> None:
+        names = {item.name for item in self.parameters}
+        if "recon_capacity_factor" in names:
+            if "recon_bins" not in names:
+                raise ValueError(
+                    "Using recon_capacity_factor requires recon_bins to also be sampled."
+                )
+            if "recon_N_max" in names:
+                raise ValueError(
+                    "Do not sample recon_N_max directly when using recon_capacity_factor. "
+                    "Use recon_capacity_factor to derive recon_N_max from recon_bins."
+                )
+
+    def _apply_derived_attrs(
+        self,
+        attrs: Dict[str, object],
+        cast_values: Dict[str, object],
+    ) -> tuple[Dict[str, object], Dict[str, object]]:
+        attrs_out = copy.deepcopy(attrs)
+        values_out = copy.deepcopy(cast_values)
+
+        if "recon_bins" in values_out and "recon_capacity_factor" in values_out:
+            recon_bins = int(values_out["recon_bins"])
+            capacity_factor = float(values_out["recon_capacity_factor"])
+            derived_recon_n_max = int(math.ceil(2.0 * recon_bins ** 2 * capacity_factor))
+            attrs_out["recon_N_max"] = derived_recon_n_max
+            values_out["recon_N_max_derived"] = derived_recon_n_max
+
+        return attrs_out, values_out
+
     def _attrs_from_sample(self, sample: np.ndarray) -> tuple[Dict[str, object], Dict[str, object]]:
         attrs = copy.deepcopy(self.template_variant.attrs)
         cast_values: Dict[str, object] = {}
@@ -200,7 +232,7 @@ class WMCPBESensitivityAnalyzer:
             for target in param.targets:
                 attrs[target] = cast_value
             cast_values[param.name] = cast_value
-        return attrs, cast_values
+        return self._apply_derived_attrs(attrs, cast_values)
 
     def _build_config_for_attrs(self, attrs: Dict[str, object], sample_index: int) -> ValidationConfig:
         cfg = copy.deepcopy(self.base_config)
@@ -272,11 +304,11 @@ if __name__ == "__main__":
     case = CaseConfig(
         dim=2,
         kernel="const",
-        process="breakage",
-        t_vec=np.arange(0.0, 8.0 + 1e-12, 1.0),
-        x=2e-1,
-        beta0=1e-3,
-        p1=3e-2,
+        process="mix",
+        t_vec=np.arange(0.0, 30.0 + 1e-12, 1.0),
+        x=2e-3,
+        beta0=1e-6,
+        p1=1e-1,
         p2=1.0,
         use_psd=False,
     )
@@ -284,14 +316,14 @@ if __name__ == "__main__":
     config = ValidationConfig(
         case=case,
         dpbe_variants=[
-            DPBEVariantConfig(name="dPBE", grid="geo", ns=15, s=2),
+            DPBEVariantConfig(name="dPBE", grid="geo", ns=20, s=2),
         ],
         wmcpbe_variants=[
             WMCPBEVariantConfig(
                 name="WMCPBE template",
-                repeats=4,
+                repeats=10,
                 attrs={
-                    "a0": 60000,
+                    "a0": 100000,
                     "V_eff_init": 1000,
                     "recon_enable": True,
                     "recon_method": "4PMC",
@@ -314,37 +346,36 @@ if __name__ == "__main__":
         alpha_y=3.0,
         alpha_rest=3.0,
         x_min_scale=2.0,
-        x_max_scale=0.1,
+        x_max_scale=1e-2,
         y_min_scale=2.0,
-        y_max_scale=0.1,
-        total_number=1e5,
+        y_max_scale=1e-2,
+        total_number=1e4,
         volume_concentration=None,
     )
 
     parameters = [
         SensitivityParameter(
-            name="delta_w",
-            bounds=(2.0, 30.0),
+            name="break_dW_max",
+            bounds=(5.0, 500.0),
             kind="float",
-            targets=("break_dW_min", "break_dW_max", "agg_dW_min", "agg_dW_max"),
+            targets=("break_dW_max",),
+        ),
+        SensitivityParameter(
+            name="agg_dW_max",
+            bounds=(2.0, 100.0),
+            kind="float",
+            targets=("agg_dW_max",),
         ),
         SensitivityParameter(
             name="recon_bins",
-            bounds=(10.0, 40.0),
+            bounds=(20.0, 50.0),
             kind="int",
             targets=("recon_bins",),
         ),
         SensitivityParameter(
-            name="recon_N_max",
-            bounds=(1500.0, 6000.0),
-            kind="int",
-            targets=("recon_N_max",),
-        ),
-        SensitivityParameter(
-            name="a0",
-            bounds=(20000.0, 120000.0),
-            kind="int",
-            targets=("a0",),
+            name="recon_capacity_factor",
+            bounds=(1.1, 4.0),
+            kind="float",
         ),
     ]
 
@@ -353,7 +384,8 @@ if __name__ == "__main__":
         parameters=parameters,
         init_dist=init_dist,
         metric_name="aggregated_moment_error",
-        sample_size=16,
-        calc_second_order=False,
+        sample_size=64,
+        # N_sample - N(2D+2) or N(D+2)
+        calc_second_order=True,
     )
     analyzer.run()
