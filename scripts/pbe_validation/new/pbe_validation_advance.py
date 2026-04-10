@@ -295,10 +295,12 @@ class PBEValidationAdvanced:
         )
 
         ref_solver = self.runner._build_reference_dpbe_initialized()
-        x_centers = np.asarray(ref_solver.V[1:, 0], dtype=float)
-        y_centers = np.asarray(ref_solver.V[0, 1:], dtype=float)
-        x_edges = np.asarray(ref_solver.V_e1[1:], dtype=float)
-        y_edges = np.asarray(ref_solver.V_e3[1:], dtype=float)
+        x_centers = np.asarray(ref_solver.V[:, 0], dtype=float)
+        y_centers = np.asarray(ref_solver.V[0, :], dtype=float)
+        x_edges = np.asarray(ref_solver.V_e1, dtype=float).copy()
+        y_edges = np.asarray(ref_solver.V_e3, dtype=float).copy()
+        x_edges[0] = min(float(x_edges[0]), 0.0)
+        y_edges[0] = min(float(y_edges[0]), 0.0)
 
         analytic_moments = self.runner.compute_analytical_moments(canonical.reference_initial_moments)
         base_result.add_method(
@@ -471,9 +473,11 @@ class PBEValidationAdvanced:
         }
         if two_d:
             fig, ax = self.plotter.figure(projection="3d", width_scale=1.15, height_scale=1.25)
+            x_plot = self._axis_for_plot(result.reference_x_centers, log_scale=True)
+            y_plot = self._axis_for_plot(result.reference_y_centers, log_scale=True)
             x_mesh, y_mesh = np.meshgrid(
-                np.log10(np.maximum(result.reference_x_centers, MIN)),
-                np.log10(np.maximum(result.reference_y_centers, MIN)),
+                np.log10(x_plot),
+                np.log10(y_plot),
                 indexing="ij",
             )
             for name in ordered:
@@ -528,6 +532,8 @@ class PBEValidationAdvanced:
             fig, axes = self.plotter.subplots(1, 2, width_scale=1.65, height_scale=1.0)
             x_axis = result.reference_x_centers
             y_axis = result.reference_y_centers
+            x_axis_plot = self._axis_for_plot(x_axis, log_scale=True)
+            y_axis_plot = self._axis_for_plot(y_axis, log_scale=True)
             ref_mx = None if ref_2d is None else np.sum(ref_2d, axis=1)
             ref_my = None if ref_2d is None else np.sum(ref_2d, axis=0)
             for name in ordered:
@@ -551,11 +557,11 @@ class PBEValidationAdvanced:
                     mx_std = np.std(mx_rep, axis=0, ddof=1) if samples.shape[0] > 1 else np.zeros_like(mx)
                     my_std = np.std(my_rep, axis=0, ddof=1) if samples.shape[0] > 1 else np.zeros_like(my)
                 self.plotter.plot_line(
-                    axes[0], x_axis, mx, key=name, family=family, label=label_x,
+                    axes[0], x_axis_plot, mx, key=name, family=family, label=label_x,
                     error=mx_std, markevery=max(1, len(x_axis) // 8)
                 )
                 self.plotter.plot_line(
-                    axes[1], y_axis, my, key=name, family=family, label=label_y,
+                    axes[1], y_axis_plot, my, key=name, family=family, label=label_y,
                     error=my_std, markevery=max(1, len(y_axis) // 8)
                 )
                 export_sheets[f"marginal_x_{name}"] = self._curve_sheet(
@@ -600,6 +606,7 @@ class PBEValidationAdvanced:
         if total:
             fig, ax = self.plotter.figure()
             total_axis, _ = self._build_total_support(result.reference_x_centers, result.reference_y_centers)
+            total_axis_plot = self._axis_for_plot(total_axis, log_scale=True)
             ref_total = None if ref_2d is None else self._collapse_total_distribution(
                 ref_2d,
                 result.reference_x_centers,
@@ -629,7 +636,7 @@ class PBEValidationAdvanced:
                     )
                     total_std = np.std(total_rep, axis=0, ddof=1) if samples.shape[0] > 1 else np.zeros_like(total_mean)
                 self.plotter.plot_line(
-                    ax, total_axis, total_mean, key=name, family=family, label=label,
+                    ax, total_axis_plot, total_mean, key=name, family=family, label=label,
                     error=total_std, markevery=max(1, len(total_axis) // 8)
                 )
                 export_sheets[f"total_{name}"] = self._curve_sheet(
@@ -757,13 +764,16 @@ class PBEValidationAdvanced:
             fig, ax = self.plotter.figure()
             sheet_data: Dict[str, object] = {"time_s": np.asarray(result.base_result.time, dtype=float)}
             for name, method in result.base_result.methods.items():
-                values = np.asarray(method.moments[i, j, :], dtype=float).copy()
+                raw_values = np.asarray(method.moments[i, j, :], dtype=float).copy()
+                values = raw_values.copy()
                 errors = None
                 if method.std is not None:
                     errors = np.asarray(method.std[i, j, :], dtype=float).copy()
+                raw_errors = None if errors is None else errors.copy()
+                scale = 1.0
 
                 if relative:
-                    scale = values[0] + MIN
+                    scale = raw_values[0] + MIN
                     values = values / scale
                     if errors is not None:
                         errors = errors / scale
@@ -781,8 +791,12 @@ class PBEValidationAdvanced:
                 value_col = self._slugify(f"{name}_value")
                 sheet_data[value_col] = values
                 sheet_data[self._slugify(f"{name}_family")] = [method.family] * len(values)
+                if relative:
+                    sheet_data[self._slugify(f"{name}_raw_value")] = raw_values
                 if errors is not None:
                     sheet_data[self._slugify(f"{name}_std")] = errors
+                    if relative and raw_errors is not None:
+                        sheet_data[self._slugify(f"{name}_raw_std")] = raw_errors
             self.plotter.finalize_axes(
                 ax,
                 xlabel="Time $t$ / s",
@@ -912,7 +926,7 @@ class PBEValidationAdvanced:
         elapsed = time.time() - time_start
 
         moments = solver.post.calc_mom_t()
-        psd_stack = np.asarray([solver.N[1:, 1:, tidx] for tidx in range(solver.t_num)], dtype=float)
+        psd_stack = self._build_dpbe_psd_stack(solver)
         result = MethodResult(
             name=variant.name,
             family="dpbe",
@@ -920,6 +934,18 @@ class PBEValidationAdvanced:
             meta={"elapsed_s": elapsed, "grid": variant.grid, "NS": variant.ns, "S": variant.s},
         )
         return result, psd_stack
+
+    def _build_dpbe_psd_stack(self, solver) -> np.ndarray:
+        """Extract the physical 2D PSD from dPBE.
+
+        In 2D dPBE, N[0, 0] is the virtual zero cell, while the remaining first
+        row/column represent pure-material states on the coordinate axes. Those
+        axis states are physical and must be retained in PSD-based post-process.
+        """
+        stack = np.asarray([solver.N[:, :, tidx] for tidx in range(solver.t_num)], dtype=float)
+        if stack.size > 0:
+            stack[:, 0, 0] = 0.0
+        return np.maximum(stack, 0.0)
 
     def _run_wmcpbe_variant(
         self,
@@ -1037,6 +1063,17 @@ class PBEValidationAdvanced:
             )
             stack.append(hist)
         return np.asarray(stack, dtype=float)
+
+    def _axis_for_plot(self, values: np.ndarray, *, log_scale: bool = False) -> np.ndarray:
+        axis = np.asarray(values, dtype=float).copy()
+        if not log_scale:
+            return axis
+        positive = axis[np.isfinite(axis) & (axis > 0.0)]
+        if positive.size == 0:
+            return np.ones_like(axis)
+        anchor = float(np.min(positive)) * 0.5
+        axis[~np.isfinite(axis) | (axis <= 0.0)] = max(anchor, MIN)
+        return axis
 
     def _build_total_support(
         self,

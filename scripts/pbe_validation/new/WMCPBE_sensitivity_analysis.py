@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import copy
 import math
+import os
 import sys
 import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
@@ -70,6 +72,58 @@ class SensitivityAnalysisResult:
     metadata: Dict[str, object]
 
 
+def _build_validation_runner_for_sensitivity(
+    config: ValidationConfig,
+    init_dist: Optional[DirichletInitialCondition],
+) -> ValidationRunner:
+    if config.case.dim == 2 and init_dist is not None:
+        return Dirichlet2DValidationRunner(config, copy.deepcopy(init_dist))
+    return ValidationRunner(config)
+
+
+def _metric_aggregated_moment_error(result: ValidationResult, wm_name: str) -> float:
+    reference = result.methods["Analytical Solution"].moments
+    target = result.methods[wm_name].moments
+    if result.dim == 1:
+        indices = [(0, 0), (1, 0), (2, 0)]
+    else:
+        indices = [(0, 0), (0, 1), (1, 1), (0, 2)]
+    terms = []
+    for i, j in indices:
+        rel = (target[i, j, :] - reference[i, j, :]) / (reference[i, j, :] + MIN)
+        terms.append(float(np.max(rel ** 2)))
+    return float(np.sqrt(np.sum(terms)))
+
+
+def _evaluate_sensitivity_task(task: Dict[str, object]) -> Dict[str, object]:
+    _bootstrap_project_paths()
+    cfg = copy.deepcopy(task["config"])
+    init_dist = copy.deepcopy(task.get("init_dist"))
+    metric_name = str(task["metric_name"])
+    sample_index = int(task["sample_index"])
+    cast_sample = copy.deepcopy(task["cast_sample"])
+
+    runner = _build_validation_runner_for_sensitivity(cfg, init_dist)
+    time_start = time.time()
+    result = runner.run()
+    elapsed = time.time() - time_start
+
+    wm_name = cfg.wmcpbe_variants[0].name
+    if metric_name == "aggregated_moment_error":
+        metric_value = _metric_aggregated_moment_error(result, wm_name)
+    else:
+        raise ValueError(f"Unknown metric '{metric_name}'.")
+
+    row: Dict[str, object] = {
+        "sample_index": sample_index,
+        "metric_name": metric_name,
+        "metric_value": metric_value,
+        "cpu_time_s": elapsed,
+    }
+    row.update(cast_sample)
+    return row
+
+
 class WMCPBESensitivityAnalyzer:
     """Sobol/Saltelli sensitivity analysis on one WMCPBE template configuration."""
 
@@ -81,6 +135,7 @@ class WMCPBESensitivityAnalyzer:
         metric_name: str = "aggregated_moment_error",
         sample_size: int = 32,
         calc_second_order: bool = False,
+        workers: Optional[int] = None,
         export_dir: Optional[Path] = None,
     ) -> None:
         enabled_wm = [variant for variant in config.wmcpbe_variants if variant.enabled]
@@ -95,6 +150,7 @@ class WMCPBESensitivityAnalyzer:
         self.metric_name = metric_name
         self.sample_size = int(sample_size)
         self.calc_second_order = bool(calc_second_order)
+        self.workers = max(1, int(workers)) if workers is not None else max(1, os.cpu_count() or 1)
         self.export_dir = Path(export_dir) if export_dir is not None else Path(__file__).resolve().parent / "exports_wmcpbe_sensitivity"
         self.export_dir.mkdir(parents=True, exist_ok=True)
         self.metric_registry: Dict[str, Callable[[ValidationResult, str], float]] = {
@@ -110,26 +166,22 @@ class WMCPBESensitivityAnalyzer:
         problem = self._build_problem()
         samples = sobol_sample.sample(problem, self.sample_size, calc_second_order=self.calc_second_order)
 
-        records: List[Dict[str, object]] = []
-        responses = np.zeros(samples.shape[0], dtype=float)
+        tasks: List[Dict[str, object]] = []
         for idx, sample in enumerate(samples):
             attrs, cast_sample = self._attrs_from_sample(sample)
             cfg = self._build_config_for_attrs(attrs, sample_index=idx)
-            runner = self._build_runner(cfg)
-            time_start = time.time()
-            result = runner.run()
-            elapsed = time.time() - time_start
-            metric_value = self.metric_registry[self.metric_name](result, cfg.wmcpbe_variants[0].name)
-            responses[idx] = metric_value
+            tasks.append(
+                {
+                    "sample_index": idx,
+                    "metric_name": self.metric_name,
+                    "config": cfg,
+                    "init_dist": copy.deepcopy(self.init_dist),
+                    "cast_sample": cast_sample,
+                }
+            )
 
-            row: Dict[str, object] = {
-                "sample_index": idx,
-                "metric_name": self.metric_name,
-                "metric_value": metric_value,
-                "cpu_time_s": elapsed,
-            }
-            row.update(cast_sample)
-            records.append(row)
+        records = self._evaluate_tasks(tasks)
+        responses = np.asarray([float(row["metric_value"]) for row in records], dtype=float)
 
         sobol_result = sobol.analyze(problem, responses, calc_second_order=self.calc_second_order, print_to_console=False)
         first_df = pd.DataFrame(
@@ -173,6 +225,7 @@ class WMCPBESensitivityAnalyzer:
                 "metric_name": self.metric_name,
                 "sample_size": self.sample_size,
                 "calc_second_order": self.calc_second_order,
+                "workers": self.workers,
                 "num_parameters": len(self.parameters),
                 "num_model_evaluations": int(samples.shape[0]),
                 "template_variant": self.template_variant.name,
@@ -252,22 +305,25 @@ class WMCPBESensitivityAnalyzer:
         return cfg
 
     def _build_runner(self, config: ValidationConfig) -> ValidationRunner:
-        if config.case.dim == 2 and self.init_dist is not None:
-            return Dirichlet2DValidationRunner(config, copy.deepcopy(self.init_dist))
-        return ValidationRunner(config)
+        return _build_validation_runner_for_sensitivity(config, self.init_dist)
 
     def _metric_aggregated_moment_error(self, result: ValidationResult, wm_name: str) -> float:
-        reference = result.methods["Analytical Solution"].moments
-        target = result.methods[wm_name].moments
-        if result.dim == 1:
-            indices = [(0, 0), (1, 0), (2, 0)]
+        return _metric_aggregated_moment_error(result, wm_name)
+
+    def _evaluate_tasks(self, tasks: Sequence[Dict[str, object]]) -> List[Dict[str, object]]:
+        if self.workers <= 1:
+            records = [_evaluate_sensitivity_task(task) for task in tasks]
         else:
-            indices = [(0, 0), (0, 1), (1, 1), (0, 2)]
-        terms = []
-        for i, j in indices:
-            rel = (target[i, j, :] - reference[i, j, :]) / (reference[i, j, :] + MIN)
-            terms.append(float(np.max(rel ** 2)))
-        return float(np.sqrt(np.sum(terms)))
+            records = [None] * len(tasks)
+            with ProcessPoolExecutor(max_workers=self.workers) as executor:
+                future_to_index = {
+                    executor.submit(_evaluate_sensitivity_task, task): int(task["sample_index"])
+                    for task in tasks
+                }
+                for future in as_completed(future_to_index):
+                    sample_index = future_to_index[future]
+                    records[sample_index] = future.result()
+        return [record for record in records if record is not None]
 
     def _write_excel(self, result: SensitivityAnalysisResult) -> Path:
         path = self.export_dir / f"wmcpbe_sensitivity_{self.metric_name}.xlsx"
@@ -387,5 +443,6 @@ if __name__ == "__main__":
         sample_size=64,
         # N_sample - N(2D+2) or N(D+2)
         calc_second_order=True,
+        workers=20,
     )
     analyzer.run()
