@@ -102,8 +102,14 @@ class ReconstructionMonitor:
         for variant in self.config.wmcpbe_variants:
             if not variant.enabled:
                 continue
-            vc, v_flat = self.runner._build_mc_initial_particles(ref_solver, canonical.n0, int(variant.attrs.get("a0", 100000)))
-            methods[variant.name] = self._run_variant(variant, vc, v_flat)
+            weighted_init = int(variant.attrs.get("V_eff_init", 0) or 0) > 0
+            vc, v_flat, w_init = self.runner._build_mc_initial_particles(
+                ref_solver,
+                canonical.n0,
+                int(variant.attrs.get("a0", 100000)),
+                weighted_init=weighted_init,
+            )
+            methods[variant.name] = self._run_variant(variant, vc, v_flat, w_init)
         return ReconstructionMonitorResult(methods=methods)
 
     def print_summary(self, result: ReconstructionMonitorResult) -> None:
@@ -259,6 +265,7 @@ class ReconstructionMonitor:
         variant: WMCPBEVariantConfig,
         vc: float,
         v_flat: np.ndarray,
+        w_init: Optional[np.ndarray],
     ) -> ReconstructionMethodResult:
         solver_template = MCPBESolver(
             dim=self.config.case.dim,
@@ -298,7 +305,12 @@ class ReconstructionMonitor:
             solver._rng = np.random.default_rng(seed)
             solver.V_flat = None
             solver.Vc = vc
-            solver._initialize_particles(init_Vc=False, V_flat=v_flat.copy(), init_cdf=None)
+            solver._initialize_particles(
+                init_Vc=False,
+                V_flat=v_flat.copy(),
+                W_init=None if w_init is None else w_init.copy(),
+                init_cdf=None,
+            )
             solver._init_lmc()
             solver._initialize_samplers()
             solver.solve(maxiter=variant.maxiter)

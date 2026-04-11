@@ -58,6 +58,7 @@ class DirichletInitialCondition:
     y_max_scale: float = 0.5
     total_number: Optional[float] = None
     volume_concentration: Optional[float] = None
+    inverse: bool = False
 
 
 @dataclass
@@ -126,6 +127,8 @@ class Dirichlet2DValidationRunner(ValidationRunner):
             * w[mask] ** (self.init_dist.alpha_rest - 1.0)
             / (x_range * y_range)
         )
+        if bool(self.init_dist.inverse):
+            pdf = np.flip(pdf, axis=(0, 1))
 
         dx = np.diff(x_edges)
         dy = np.diff(y_edges)
@@ -981,10 +984,12 @@ class PBEValidationAdvanced:
         self.runner._apply_attrs(solver_template, variant.attrs)
 
         ref_solver = self.runner._build_reference_dpbe_initialized()
-        vc, v_flat = self.runner._build_mc_initial_particles(
+        weighted_init = int(getattr(solver_template, "V_eff_init", 0) or 0) > 0
+        vc, v_flat, w_init = self.runner._build_mc_initial_particles(
             ref_solver,
             canonical.n0,
             int(solver_template.a0),
+            weighted_init=weighted_init,
         )
 
         seed_sequence = np.random.SeedSequence(variant.base_seed)
@@ -1000,7 +1005,7 @@ class PBEValidationAdvanced:
             solver._rng = np.random.default_rng(seed)
             solver.V_flat = None
             solver.Vc = vc
-            solver._initialize_particles(init_Vc=False, V_flat=v_flat.copy(), init_cdf=None)
+            solver._initialize_particles(init_Vc=False, V_flat=v_flat.copy(), W_init=None if w_init is None else w_init.copy(), init_cdf=None)
             solver._init_lmc()
             solver._initialize_samplers()
             solver.solve(maxiter=variant.maxiter)

@@ -261,10 +261,12 @@ class ValidationRunner:
         self._apply_case_params(solver)
         self._apply_attrs(solver, variant.attrs)
         ref_solver = self._build_reference_dpbe_initialized()
-        mc_vc, mc_v_flat = self._build_mc_initial_particles(
+        weighted_init = int(getattr(solver, "V_eff_init", 0) or 0) > 0
+        mc_vc, mc_v_flat, mc_w_init = self._build_mc_initial_particles(
             ref_solver,
             canonical.n0,
             int(solver.a0),
+            weighted_init=weighted_init,
         )
 
         time_start = time.time()
@@ -275,6 +277,7 @@ class ValidationRunner:
             init_Vc=False,
             Vc=mc_vc,
             V_flat=mc_v_flat,
+            W_init=mc_w_init,
         )
         elapsed = time.time() - time_start
 
@@ -502,12 +505,51 @@ class ValidationRunner:
         radius = self.config.case.x / 2.0
         return float((4.0 / 3.0) * math.pi * radius ** 3)
 
-    def _build_mc_initial_particles(self, solver: Any, n0: float, a0: int) -> tuple[float, np.ndarray]:
+    def _build_mc_initial_particles(
+        self,
+        solver: Any,
+        n0: float,
+        a0: int,
+        *,
+        weighted_init: bool = False,
+    ) -> tuple[float, np.ndarray, Optional[np.ndarray]]:
         case = self.config.case
         vc = a0 / max(n0, MIN)
         n_disc = solver.N / max(case.v_unit, MIN)
-        a_array = np.round(n_disc[..., 0] * vc).astype(int)
-        v_flat = np.zeros((case.dim + 1, int(np.sum(a_array))))
+        disc_counts = np.asarray(n_disc[..., 0], dtype=float) * vc
+
+        if weighted_init:
+            cols: List[np.ndarray] = []
+            weights: List[float] = []
+            if case.dim == 1:
+                for i in range(1, len(solver.V)):
+                    w_i = float(disc_counts[i])
+                    if not np.isfinite(w_i) or w_i <= 0.0:
+                        continue
+                    cols.append(np.array([float(solver.V[i])], dtype=float))
+                    weights.append(w_i)
+            else:
+                for i in range(solver.V.shape[0]):
+                    for j in range(solver.V.shape[1]):
+                        if i == 0 and j == 0:
+                            continue
+                        w_ij = float(disc_counts[i, j])
+                        if not np.isfinite(w_ij) or w_ij <= 0.0:
+                            continue
+                        cols.append(np.array([float(solver.V[i, 0]), float(solver.V[0, j])], dtype=float))
+                        weights.append(w_ij)
+
+            if len(cols) == 0:
+                raise ValueError("Weighted WMCPBE initialization produced no positive cells.")
+
+            v_comp = np.column_stack(cols)
+            v_flat = np.zeros((case.dim + 1, v_comp.shape[1]), dtype=float)
+            v_flat[:case.dim, :] = v_comp
+            v_flat[-1, :] = np.sum(v_flat[:case.dim, :], axis=0)
+            return vc, v_flat, np.asarray(weights, dtype=float)
+
+        a_array = np.round(disc_counts).astype(int)
+        v_flat = np.zeros((case.dim + 1, int(np.sum(a_array))), dtype=float)
 
         cnt = 0
         if case.dim == 1:
@@ -525,7 +567,7 @@ class ValidationRunner:
                     v_flat[1, cnt:cnt + a_array[i, j]] = solver.V[0, j]
                     cnt += a_array[i, j]
         v_flat[-1, :] = np.sum(v_flat[:case.dim, :], axis=0)
-        return vc, v_flat
+        return vc, v_flat, None
 
     def _build_qmom_initial_moments(self, solver: Any, n_order: int, n_add: int) -> np.ndarray:
         case = self.config.case

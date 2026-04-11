@@ -339,6 +339,7 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         self,
         init_Vc: bool = True,
         V_flat: Optional[np.ndarray] = None,
+        W_init: Optional[np.ndarray] = None,
         init_cdf: Optional[dict] = None,
     ):
         """
@@ -396,6 +397,16 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         else:
             V_init = np.asarray(V_flat, dtype=float)
     
+        if W_init is not None:
+            W_init = np.asarray(W_init, dtype=float).ravel()
+            if W_init.size != V_init.shape[1]:
+                raise ValueError(
+                    "W_init must have the same number of entries as V_flat columns."
+                )
+            keep_w = np.isfinite(W_init) & (W_init > 0.0)
+            V_init = V_init[:, keep_w]
+            W_init = W_init[keep_w]
+
         a0_eff = V_init.shape[1]
         if a0_eff <= 0:
             raise ValueError("No particles initialized after filtering non-positive volumes.")
@@ -406,6 +417,9 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         if used_cdf_init:
             a0_eff_new = int(a0_eff)
             W_new = np.asarray(W_cdf, dtype=float)
+        elif W_init is not None:
+            a0_eff_new = int(a0_eff)
+            W_new = np.asarray(W_init, dtype=float)
         else:
             V_eff_init = int(getattr(self, "V_eff_init", 0) or 0)
             V_eff_mod = str(getattr(self, "V_eff_mod", "Q0") or "Q0")
@@ -960,6 +974,7 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         init_Vc: bool = True,
         Vc: float = None,
         V_flat: Optional[np.ndarray] = None,
+        W_init: Optional[np.ndarray] = None,
         workers: int = 1,
         psd_enable: bool = False,
         psd_basis: str = "volume",                 # "volume" or "number"
@@ -1099,7 +1114,7 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
                         m.V_flat = None
                         if not init_Vc and Vc is not None:
                             m.Vc = Vc
-                        m._initialize_particles(init_Vc=init_Vc, V_flat=V_flat, init_cdf=init_cdf_payload)
+                        m._initialize_particles(init_Vc=init_Vc, V_flat=V_flat, W_init=W_init, init_cdf=init_cdf_payload)
                         m._init_lmc()
                         m._initialize_samplers()
                         m.solve(maxiter=maxiter)
@@ -1351,7 +1366,7 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
                     m.Vc = Vc
                     # m.Vc = 1e-10
                     # print("Controll volume : ", m.Vc)
-                m._initialize_particles(init_Vc=init_Vc, V_flat=V_flat, init_cdf=init_cdf_payload)
+                m._initialize_particles(init_Vc=init_Vc, V_flat=V_flat, W_init=W_init, init_cdf=init_cdf_payload)
                 m._init_lmc()
                 m._initialize_samplers()
                 m.solve(maxiter=maxiter)
@@ -1448,6 +1463,7 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
                     "init_Vc": init_Vc,
                     "Vc": Vc,
                     "V_flat": V_flat,
+                    "W_init": W_init,
                     "init_cdf_payload": init_cdf_payload,
                     # PSD options
                     "psd_enable": psd_enable,
@@ -2032,6 +2048,7 @@ def _mcpbe_run_single_parallel(payload: dict):
     init_Vc = payload["init_Vc"]
     Vc = payload["Vc"]
     V_flat = payload["V_flat"]
+    W_init = payload.get("W_init", None)
     init_cdf_payload = payload.get("init_cdf_payload", None)
 
     # PSD opts
@@ -2060,7 +2077,7 @@ def _mcpbe_run_single_parallel(payload: dict):
     obj.V_flat = None
     if not init_Vc and Vc is not None:
         obj.Vc = Vc
-    obj._initialize_particles(init_Vc=init_Vc, V_flat=V_flat, init_cdf=init_cdf_payload)
+    obj._initialize_particles(init_Vc=init_Vc, V_flat=V_flat, W_init=W_init, init_cdf=init_cdf_payload)
     obj._init_lmc()
     obj._initialize_samplers()
 
