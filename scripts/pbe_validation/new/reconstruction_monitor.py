@@ -53,7 +53,8 @@ class ReconstructionRunData:
 @dataclass
 class ReconstructionMethodResult:
     name: str
-    time_grid: np.ndarray
+    event_index: np.ndarray
+    reference_time: np.ndarray
     mean_metrics: Dict[str, np.ndarray]
     std_metrics: Dict[str, Optional[np.ndarray]]
     raw_runs: List[ReconstructionRunData]
@@ -159,7 +160,7 @@ class ReconstructionMonitor:
                 "workflow": "reconstruction_monitor",
                 "kernel": self.config.case.kernel,
                 "process": self.config.case.process,
-                "x_label": "Reconstruction time / s",
+                "x_label": "Reconstruction event index / -",
             },
             sheets={
                 "summary": pd.DataFrame(rows),
@@ -173,9 +174,9 @@ class ReconstructionMonitor:
         metrics = ["M00_rel_err", "M01_rel_err", "M11_rel_err", "M02_rel_err"]
         export_sheets: Dict[str, pd.DataFrame] = {}
         for ax, metric in zip(axes.ravel(), metrics):
-            sheet_data: Dict[str, object] = {}
+            sheet_frames: List[pd.DataFrame] = []
             for name, method in result.methods.items():
-                x = method.time_grid
+                x = method.event_index
                 y = method.mean_metrics[metric]
                 std = method.std_metrics[metric]
                 self.plotter.plot_line(
@@ -189,26 +190,38 @@ class ReconstructionMonitor:
                     markevery=max(1, len(x) // 8) if len(x) > 0 else None,
                 )
                 if x.size > 0:
-                    if "time_s" not in sheet_data:
-                        sheet_data["time_s"] = x
-                    sheet_data[self._slugify(f"{name}_{metric}")] = y
-                    if std is not None:
-                        sheet_data[self._slugify(f"{name}_{metric}_std")] = std
+                    extra = {"reference_time_s": method.reference_time}
+                    sheet_frames.append(
+                        self._curve_sheet(
+                            x,
+                            y,
+                            label=name,
+                            x_label="recon_index",
+                            y_label=metric,
+                            std=std,
+                            extra=extra,
+                        )
+                    )
             self.plotter.finalize_axes(
                 ax,
-                xlabel="Reconstruction time / s",
+                xlabel="Reconstruction event index / -",
                 ylabel=self.METRIC_LABELS[metric],
                 title=metric,
                 legend=True,
             )
-            export_sheets[metric] = pd.DataFrame(sheet_data) if sheet_data else pd.DataFrame([{"note": "No data."}])
+            export_sheets[metric] = (
+                pd.concat(sheet_frames, ignore_index=True)
+                if sheet_frames
+                else pd.DataFrame([{"note": "No data."}])
+            )
         self.plotter.tighten(fig)
         self._write_excel_book(
             method_name="plot_moment_errors",
             metadata={
                 "layout": "2x2",
                 "metrics": ",".join(metrics),
-                "x_label": "Reconstruction time / s",
+                "x_label": "Reconstruction event index / -",
+                "reference_time_note": "reference_time_s is taken from the first run for the same reconstruction index",
             },
             sheets=export_sheets,
         )
@@ -218,7 +231,7 @@ class ReconstructionMonitor:
         fig, ax = self.plotter.figure()
         sheets: Dict[str, pd.DataFrame] = {}
         for name, method in result.methods.items():
-            x = method.time_grid
+            x = method.event_index
             y = method.mean_metrics["L1_err"]
             std = method.std_metrics["L1_err"]
             self.plotter.plot_line(
@@ -231,17 +244,19 @@ class ReconstructionMonitor:
                 error=std,
                 markevery=max(1, len(x) // 8) if len(x) > 0 else None,
             )
+            extra = {"reference_time_s": method.reference_time}
             sheets[self._sheet_name(name)] = self._curve_sheet(
                 x,
                 y,
                 label=name,
-                x_label="time_s",
+                x_label="recon_index",
                 y_label="L1_err",
                 std=std,
+                extra=extra,
             )
         self.plotter.finalize_axes(
             ax,
-            xlabel="Reconstruction time / s",
+            xlabel="Reconstruction event index / -",
             ylabel=self.METRIC_LABELS["L1_err"],
             title="L1 error of reconstructed N(x, y)",
             legend=True,
@@ -250,8 +265,9 @@ class ReconstructionMonitor:
         self._write_excel_book(
             method_name="plot_psd_l1_error",
             metadata={
-                "x_label": "Reconstruction time / s",
+                "x_label": "Reconstruction event index / -",
                 "y_label": self.METRIC_LABELS["L1_err"],
+                "reference_time_note": "reference_time_s is taken from the first run for the same reconstruction index",
             },
             sheets=sheets,
         )
@@ -330,15 +346,20 @@ class ReconstructionMonitor:
             )
         elapsed = time.time() - time_start
 
-        time_grid = self._build_common_time_grid(raw_runs)
+        event_index, reference_time = self._build_event_grid(raw_runs)
         mean_metrics: Dict[str, np.ndarray] = {}
         std_metrics: Dict[str, Optional[np.ndarray]] = {}
         for metric in ("M00_rel_err", "M01_rel_err", "M11_rel_err", "M02_rel_err", "L1_err"):
-            mean_metrics[metric], std_metrics[metric] = self._aggregate_metric(raw_runs, metric, time_grid)
+            mean_metrics[metric], std_metrics[metric] = self._aggregate_metric_by_event(
+                raw_runs,
+                metric,
+                event_index.size,
+            )
 
         return ReconstructionMethodResult(
             name=variant.name,
-            time_grid=time_grid,
+            event_index=event_index,
+            reference_time=reference_time,
             mean_metrics=mean_metrics,
             std_metrics=std_metrics,
             raw_runs=raw_runs,
@@ -346,35 +367,36 @@ class ReconstructionMonitor:
             attrs=copy.deepcopy(variant.attrs),
         )
 
-    def _build_common_time_grid(self, raw_runs: List[ReconstructionRunData]) -> np.ndarray:
-        time_arrays = [np.round(run.time, decimals=12) for run in raw_runs if run.time.size > 0]
-        if not time_arrays:
-            return np.asarray([], dtype=float)
-        return np.unique(np.concatenate(time_arrays)).astype(float)
+    def _build_event_grid(self, raw_runs: List[ReconstructionRunData]) -> tuple[np.ndarray, np.ndarray]:
+        if not raw_runs:
+            return np.asarray([], dtype=int), np.asarray([], dtype=float)
+        ref_time = np.asarray(raw_runs[0].time, dtype=float)
+        target_len = int(ref_time.size)
+        if target_len <= 0:
+            return np.asarray([], dtype=int), np.asarray([], dtype=float)
+        event_index = np.arange(1, target_len + 1, dtype=int)
+        return event_index, ref_time[:target_len].copy()
 
-    def _aggregate_metric(
+    def _aggregate_metric_by_event(
         self,
         raw_runs: List[ReconstructionRunData],
         metric: str,
-        time_grid: np.ndarray,
+        target_len: int,
     ) -> tuple[np.ndarray, Optional[np.ndarray]]:
-        if time_grid.size == 0:
+        if target_len <= 0:
             return np.asarray([], dtype=float), None
-        stacked = np.full((len(raw_runs), time_grid.size), np.nan, dtype=float)
+        stacked = np.full((len(raw_runs), target_len), np.nan, dtype=float)
         for idx, run in enumerate(raw_runs):
-            t = np.asarray(run.time, dtype=float)
             y = np.asarray(getattr(run, metric), dtype=float)
-            if t.size == 0:
+            if y.size == 0:
                 continue
-            if t.size == 1:
-                mask = np.isclose(time_grid, t[0], rtol=0.0, atol=1e-12)
-                stacked[idx, mask] = y[0]
-                continue
-            valid = (time_grid >= t[0]) & (time_grid <= t[-1])
-            stacked[idx, valid] = np.interp(time_grid[valid], t, y)
+            n_use = min(target_len, y.size)
+            stacked[idx, :n_use] = y[:n_use]
         mean = np.nanmean(stacked, axis=0)
         if len(raw_runs) > 1:
+            counts = np.sum(np.isfinite(stacked), axis=0)
             std = np.nanstd(stacked, axis=0, ddof=1)
+            std[counts < 2] = np.nan
         else:
             std = None
         return mean, std
@@ -406,6 +428,7 @@ class ReconstructionMonitor:
         x_label: str,
         y_label: str,
         std: Optional[np.ndarray] = None,
+        extra: Optional[Dict[str, np.ndarray]] = None,
     ) -> pd.DataFrame:
         data: Dict[str, object] = {
             x_label: np.asarray(x, dtype=float),
@@ -414,6 +437,9 @@ class ReconstructionMonitor:
         }
         if std is not None:
             data[f"{y_label}_std"] = np.asarray(std, dtype=float)
+        if extra is not None:
+            for key, values in extra.items():
+                data[key] = np.asarray(values)
         return pd.DataFrame(data)
 
     def _write_excel_book(
@@ -441,10 +467,10 @@ if __name__ == "__main__":
     case = CaseConfig(
         dim=2,
         kernel="const",
-        process="breakage",
-        t_vec=np.arange(0.0, 40.0 + 1e-12, 4.0),
-        x=2e-1,
-        beta0=1e-3,
+        process="mix",
+        t_vec=np.arange(0.0, 30.0 + 1e-12, 2.0),
+        x=2e-3,
+        beta0=1e-6,
         p1=1e-1,
         p2=1.0,
         use_psd=False,
@@ -453,33 +479,46 @@ if __name__ == "__main__":
     config = ValidationConfig(
         case=case,
         dpbe_variants=[
-            DPBEVariantConfig(name="dPBE", grid="geo", ns=15, s=2),
+            DPBEVariantConfig(name="dPBE", grid="geo", ns=50, s=1.5),
         ],
         wmcpbe_variants=[
             WMCPBEVariantConfig(
-                name="WMCPBE recon debug",
-                repeats=2,
+                name="4PM",
+                repeats=20,
                 attrs={
-                    "a0": 50000,
+                    "a0": 1e5,
                     "V_eff_init": 1000,
-                    "recon_N_max": 2500,
+                    "recon_N_max": 4000,
                     "recon_bins": 30,
                     "recon_method": "4PMC",
                     "recon_monitor_psd_bins": 100,
                 },
             ),
-            # WMCPBEVariantConfig(
-            #     name="WMCPBE recon debug (fine)",
-            #     repeats=2,
-            #     attrs={
-            #         "a0": 100000,
-            #         "V_eff_init": 1200,
-            #         "recon_N_max": 4000,
-            #         "recon_bins": 30,
-            #         "recon_method": "4PMC",
-            #         "recon_monitor_psd_bins": 100,
-            #     },
-            # ),
+            WMCPBEVariantConfig(
+                name="RS",
+                repeats=20,
+                attrs={
+                    "a0": 1e5,
+                    "V_eff_init": 1000,
+                    "recon_N_max": 4000,
+                    "recon_bins": 30,
+                    "recon_method": "RS",
+                    "recon_RS_target": 1500,
+                    "recon_monitor_psd_bins": 100,
+                },
+            ),
+            WMCPBEVariantConfig(
+                name="CAM",
+                repeats=20,
+                attrs={
+                    "a0": 1e5,
+                    "V_eff_init": 1000,
+                    "recon_N_max": 4000,
+                    "recon_bins": 30,
+                    "recon_method": "CAM",
+                    "recon_monitor_psd_bins": 100,
+                },
+            ),
         ],
         qmom_variants=[],
         reference_dpbe_name="dPBE",

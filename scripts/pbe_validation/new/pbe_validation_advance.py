@@ -183,12 +183,6 @@ class PBEValidationAdvanced:
     ):
         if config.case.dim != 2:
             raise ValueError("PBEValidationAdvanced only supports 2D cases.")
-        enabled_dpbe = [variant for variant in config.dpbe_variants if variant.enabled]
-        if len(enabled_dpbe) != 1:
-            raise ValueError(
-                "Advanced validation expects exactly one enabled dPBE variant so that one "
-                "reference PSD grid is used consistently."
-            )
         self.config = config
         self.init_dist = init_dist
         self.runner = Dirichlet2DValidationRunner(config, init_dist)
@@ -320,11 +314,13 @@ class PBEValidationAdvanced:
         variances: Dict[str, np.ndarray] = {}
         cpu_times: Dict[str, float] = {"Analytical Solution": 0.0}
 
-        dpbe_variant = [variant for variant in self.config.dpbe_variants if variant.enabled][0]
-        dpbe_result, dpbe_psd = self._run_dpbe_variant(dpbe_variant)
-        base_result.add_method(dpbe_result)
-        psd_counts[dpbe_result.name] = dpbe_psd
-        cpu_times[dpbe_result.name] = float(dpbe_result.meta.get("elapsed_s", 0.0))
+        for variant in self.config.dpbe_variants:
+            if not variant.enabled:
+                continue
+            dpbe_result, dpbe_psd = self._run_dpbe_variant(variant)
+            base_result.add_method(dpbe_result)
+            psd_counts[dpbe_result.name] = dpbe_psd
+            cpu_times[dpbe_result.name] = float(dpbe_result.meta.get("elapsed_s", 0.0))
 
         for variant in self.config.wmcpbe_variants:
             if not variant.enabled:

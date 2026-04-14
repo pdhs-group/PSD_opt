@@ -90,6 +90,49 @@ def dt_break_from_sum_prop_pair(sum_prop_before: float, sum_prop_after: float) -
 
 
 class MCPBETimeHelper:
+    def _draw_time_multiplier(self) -> float:
+        if not bool(getattr(self, "exp_time_step", False)):
+            return 1.0
+        rng = getattr(self, "_rng", None)
+        if rng is None:
+            return 1.0
+        u = max(float(rng.random()), 1e-300)
+        return -math.log(u)
+
+    def _build_agg_dt_strategy(self):
+        use_pair = bool(getattr(self, "sum_prop_pair", True))
+
+        def initial_dt(sum_prop: float) -> float:
+            return self._dt_agg_from_sum_prop(float(sum_prop)) * self._draw_time_multiplier()
+
+        if use_pair:
+            def event_dt(sum_prop_before: float, sum_prop_after: float) -> float:
+                return self._dt_agg_from_sum_prop_pair(
+                    float(sum_prop_before), float(sum_prop_after)
+                ) * self._draw_time_multiplier()
+        else:
+            def event_dt(sum_prop_before: float, _sum_prop_after: float) -> float:
+                return self._dt_agg_from_sum_prop(float(sum_prop_before)) * self._draw_time_multiplier()
+
+        return initial_dt, event_dt
+
+    def _build_break_dt_strategy(self):
+        use_pair = bool(getattr(self, "sum_prop_pair", True))
+
+        def initial_dt(sum_prop: float) -> float:
+            return self._dt_break_from_sum_prop(float(sum_prop)) * self._draw_time_multiplier()
+
+        if use_pair:
+            def event_dt(sum_prop_before: float, sum_prop_after: float) -> float:
+                return self._dt_break_from_sum_prop_pair(
+                    float(sum_prop_before), float(sum_prop_after)
+                ) * self._draw_time_multiplier()
+        else:
+            def event_dt(sum_prop_before: float, _sum_prop_after: float) -> float:
+                return self._dt_break_from_sum_prop(float(sum_prop_before)) * self._draw_time_multiplier()
+
+        return initial_dt, event_dt
+
     def _prepare_agg_delta_config(self) -> float:
         ensure_delta_array(self, "_delta_agg")
         return prepare_process_delta_config(

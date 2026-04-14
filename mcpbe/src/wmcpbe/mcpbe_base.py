@@ -55,6 +55,7 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         self.VERBOSE = verbose
         self.exp_time_step = False
         self.sum_prop_pair = True
+        self.maybe_double_control_volume=False
 
         # Initial distributions flags
         self.PGV = np.full(dim, "mono")
@@ -947,7 +948,8 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
                         f"(real agg={self.real_agg_events:.6g}, real break={self.real_break_events:.6g})"
                     )
             # agglomeration-dominated safety (duplicate CV)
-            self._maybe_double_control_volume(current_time, count)
+            if self.maybe_double_control_volume:
+                self._maybe_double_control_volume(current_time, count)
             self.maybe_reconstruct(iter_count=self._iter_count, reason=f"post_event_{pt}")
 
             count += 1

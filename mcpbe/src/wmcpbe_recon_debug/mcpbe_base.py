@@ -53,6 +53,9 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         self.a0 = 1e3
         self.CDF_method = "disc"
         self.VERBOSE = verbose
+        self.exp_time_step = False
+        self.sum_prop_pair = True
+        self.maybe_double_control_volume = False
 
         # Initial distributions flags
         self.PGV = np.full(dim, "mono")
@@ -337,6 +340,7 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         self,
         init_Vc: bool = True,
         V_flat: Optional[np.ndarray] = None,
+        W_init: Optional[np.ndarray] = None,
         init_cdf: Optional[dict] = None,
     ):
         """
@@ -394,6 +398,16 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         else:
             V_init = np.asarray(V_flat, dtype=float)
     
+        if W_init is not None:
+            W_init = np.asarray(W_init, dtype=float).ravel()
+            if W_init.size != V_init.shape[1]:
+                raise ValueError(
+                    "W_init must have the same number of entries as V_flat columns."
+                )
+            keep_w = np.isfinite(W_init) & (W_init > 0.0)
+            V_init = V_init[:, keep_w]
+            W_init = W_init[keep_w]
+
         a0_eff = V_init.shape[1]
         if a0_eff <= 0:
             raise ValueError("No particles initialized after filtering non-positive volumes.")
@@ -404,6 +418,9 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         if used_cdf_init:
             a0_eff_new = int(a0_eff)
             W_new = np.asarray(W_cdf, dtype=float)
+        elif W_init is not None:
+            a0_eff_new = int(a0_eff)
+            W_new = np.asarray(W_init, dtype=float)
         else:
             V_eff_init = int(getattr(self, "V_eff_init", 0) or 0)
             V_eff_mod = str(getattr(self, "V_eff_mod", "Q0") or "Q0")
@@ -780,10 +797,10 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
             if hasattr(self, "_delta_break") and self._delta_break is not None:
                 self._delta_break[:self.a_tot] = np.concatenate((self._delta_break[:old_a], self._delta_break[:old_a]))
 
-        if hasattr(self, "V0") and isinstance(self.V0, np.ndarray):
-            self.V0 = np.concatenate((self.V0, self.V0), axis=1)
         if hasattr(self, "W0") and isinstance(self.W0, np.ndarray):
-            self.W0 = np.concatenate((self.W0, self.W0), axis=0)
+            # Keep the original initial support fixed; control-volume doubling
+            # only changes the represented multiplicity of that support.
+            self.W0 *= 2.0
 
         # Rebuild samplers from active slices
         if getattr(self, "process_type", "agglomeration") in ("agglomeration", "mix"):
@@ -812,26 +829,33 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         t0 = time.time()
         count = 0
         current_time = 0.0
+        self.real_agg_events = 0.0
+        self.real_break_events = 0.0
+        self.real_agg_events_save = [0.0]
+        self.real_break_events_save = [0.0]
 
         pt = getattr(self, "process_type", "agglomeration")
-        timer_agg = 0.0
-        timer_break = 0.0
-        # dtd_agg = self._dt_agg() if pt in ("agglomeration", "mix") else float("inf")
-        
-        # if pt == "mix":
-        #     dtd_break = self._dt_break()
-        #     timer_break += dtd_break
-        # else:
-        #     # breakage-only: dt depends on _last_break_dW, which is only known AFTER _do_one_break()
-        #     dtd_break = float("inf")
+        agg_total_propensity = (
+            (lambda: float(self._agg_sampler.total()))
+            if self._agg_sampler is not None
+            else (lambda: float(np.sum(self._r_agg[:self.a_tot])))
+        )
+        break_total_propensity = (
+            (lambda: float(self._break_sampler.total()))
+            if self._break_sampler is not None
+            else (lambda: float(np.sum(self._break_rate[:self.a_tot])))
+        )
+        agg_initial_dt, agg_event_dt = self._build_agg_dt_strategy()
+        break_initial_dt, break_event_dt = self._build_break_dt_strategy()
 
-        # timer_agg += dtd_agg
+        timer_agg = agg_initial_dt(agg_total_propensity()) if pt in ("agglomeration", "mix") else float("inf")
+        timer_break = break_initial_dt(break_total_propensity()) if pt in ("breakage", "mix") else float("inf")
 
-        # if self.VERBOSE:
-        #     if np.isfinite(dtd_agg):
-        #         print(f"Initial dt_agg = {dtd_agg:.3e} s")
-        #     if np.isfinite(dtd_break):
-        #         print(f"Initial dt_break = {dtd_break:.3e} s")
+        if self.VERBOSE:
+            if np.isfinite(timer_agg):
+                print(f"Initial dt_agg = {timer_agg:.3e} s")
+            if np.isfinite(timer_break):
+                print(f"Initial dt_break = {timer_break:.3e} s")
                 
         if self.mcpbe_debug:
             self._check_state_before_solve()
@@ -855,64 +879,41 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
             W_prev_active = self.W[:self.a_tot].copy()
 
             if pt == "agglomeration":
-                if self._agg_sampler is not None:
-                    sum_prop_before = float(self._agg_sampler.total())
-                else:
-                    sum_prop_before = float(np.sum(self._r_agg[:self.a_tot]))
+                sum_prop_before = agg_total_propensity()
 
                 self._do_one_agg()  # from AgglomerationMixin
-                if self._agg_sampler is not None:
-                    sum_prop_after = float(self._agg_sampler.total())
-                else:
-                    sum_prop_after = float(np.sum(self._r_agg[:self.a_tot]))
+                self.real_agg_events += float(max(0.0, float(getattr(self, "_last_agg_dW", 0.0))))
+                sum_prop_after = agg_total_propensity()
                 elapsed_time = timer_agg
-                dtd_agg = self._dt_agg_from_sum_prop_pair(sum_prop_before, sum_prop_after)
+                dtd_agg = agg_event_dt(sum_prop_before, sum_prop_after)
                 timer_agg += dtd_agg
             elif pt == "breakage":
                 # total propensity BEFORE the event (Î”t uses event Î”W over pre-event propensity)
-                if self._break_sampler is not None:
-                    sum_prop_before = float(self._break_sampler.total())
-                else:
-                    sum_prop_before = float(np.sum(self._break_rate[:self.a_tot]))
+                sum_prop_before = break_total_propensity()
             
                 self._do_one_break()  # sets self._last_break_dW for packeted events
-                if self._break_sampler is not None:
-                    sum_prop_after = float(self._break_sampler.total())
-                else:
-                    sum_prop_after = float(np.sum(self._break_rate[:self.a_tot]))
-                dtd_break = self._dt_break_from_sum_prop_pair(sum_prop_before, sum_prop_after)
-                # dtd_break = self._dt_break_from_sum_prop(sum_prop_before)
-                # u = max(self._rng.random(), 1e-300)
-                # dtd_break *= -math.log(u)
-                timer_break += dtd_break
+                self.real_break_events += float(max(0.0, float(getattr(self, "_last_break_dW", 0.0))))
+                sum_prop_after = break_total_propensity()
                 elapsed_time = timer_break
+                dtd_break = break_event_dt(sum_prop_before, sum_prop_after)
+                timer_break += dtd_break
             else:  # mix
                 if timer_agg <= timer_break:
-                    if self._agg_sampler is not None:
-                        sum_prop_before = float(self._agg_sampler.total())
-                    else:
-                        sum_prop_before = float(np.sum(self._r_agg[:self.a_tot]))
+                    sum_prop_before = agg_total_propensity()
 
                     self._do_one_agg()
-                    if self._agg_sampler is not None:
-                        sum_prop_after = float(self._agg_sampler.total())
-                    else:
-                        sum_prop_after = float(np.sum(self._r_agg[:self.a_tot]))
+                    self.real_agg_events += float(max(0.0, float(getattr(self, "_last_agg_dW", 0.0))))
+                    sum_prop_after = agg_total_propensity()
                     elapsed_time = timer_agg
-                    dtd_agg = self._dt_agg_from_sum_prop_pair(sum_prop_before, sum_prop_after)
+                    dtd_agg = agg_event_dt(sum_prop_before, sum_prop_after)
                     timer_agg += dtd_agg
                 else:
-                    if self._break_sampler is not None:
-                        sum_prop_before = float(self._break_sampler.total())
-                    else:
-                        sum_prop_before = float(np.sum(self._break_rate[:self.a_tot]))
+                    sum_prop_before = break_total_propensity()
                     self._do_one_break()
-                    if self._break_sampler is not None:
-                        sum_prop_after = float(self._break_sampler.total())
-                    else:
-                        sum_prop_after = float(np.sum(self._break_rate[:self.a_tot]))
+                    self.real_break_events += float(max(0.0, float(getattr(self, "_last_break_dW", 0.0))))
+                    sum_prop_after = break_total_propensity()
                     elapsed_time = timer_break
-                    dtd_break = self._dt_break_from_sum_prop_pair(sum_prop_before, sum_prop_after)
+                    dtd_break = break_event_dt(sum_prop_before, sum_prop_after)
                     timer_break += dtd_break
 
             current_time = float(elapsed_time)
@@ -937,14 +938,18 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
             
                 self.t_left.append(t_prev)
                 self.t_right.append(elapsed_time)
+                self.real_agg_events_save.append(float(self.real_agg_events))
+                self.real_break_events_save.append(float(self.real_break_events))
             
                 next_save_idx += 1
                 if self.VERBOSE:    
                     print(
-                        f"[MC-PBE] Calculate t={elapsed_time:.6g} after {self._iter_count} events"
+                        f"[MC-PBE] Calculate t={elapsed_time:.6g} after {self._iter_count} events "
+                        f"(real agg={self.real_agg_events:.6g}, real break={self.real_break_events:.6g})"
                     )
             # agglomeration-dominated safety (duplicate CV)
-            self._maybe_double_control_volume(current_time, count)
+            if self.maybe_double_control_volume:
+                self._maybe_double_control_volume(current_time, count)
             self.maybe_reconstruct(iter_count=self._iter_count, reason=f"post_event_{pt}")
 
             count += 1
@@ -955,7 +960,11 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
             self.lmc_live._sim.agg_pool.close_pool_cache()
         self.MACHINE_TIME = time.time() - t0
         if self.VERBOSE:
-            print(f"[MC-PBE] The calculation took {getattr(self,'MACHINE_TIME',0.0):.4g}s after {count} events")
+            print(
+                f"[MC-PBE] The calculation took {getattr(self,'MACHINE_TIME',0.0):.4g}s "
+                f"after {count} events "
+                f"(real agg={self.real_agg_events:.6g}, real break={self.real_break_events:.6g})"
+            )
         return self
     
     def solve_repeats(
@@ -967,6 +976,7 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         init_Vc: bool = True,
         Vc: float = None,
         V_flat: Optional[np.ndarray] = None,
+        W_init: Optional[np.ndarray] = None,
         workers: int = 1,
         psd_enable: bool = False,
         psd_basis: str = "volume",                 # "volume" or "number"
@@ -1106,7 +1116,7 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
                         m.V_flat = None
                         if not init_Vc and Vc is not None:
                             m.Vc = Vc
-                        m._initialize_particles(init_Vc=init_Vc, V_flat=V_flat, init_cdf=init_cdf_payload)
+                        m._initialize_particles(init_Vc=init_Vc, V_flat=V_flat, W_init=W_init, init_cdf=init_cdf_payload)
                         m._init_lmc()
                         m._initialize_samplers()
                         m.solve(maxiter=maxiter)
@@ -1358,7 +1368,7 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
                     m.Vc = Vc
                     # m.Vc = 1e-10
                     # print("Controll volume : ", m.Vc)
-                m._initialize_particles(init_Vc=init_Vc, V_flat=V_flat, init_cdf=init_cdf_payload)
+                m._initialize_particles(init_Vc=init_Vc, V_flat=V_flat, W_init=W_init, init_cdf=init_cdf_payload)
                 m._init_lmc()
                 m._initialize_samplers()
                 m.solve(maxiter=maxiter)
@@ -1455,6 +1465,7 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
                     "init_Vc": init_Vc,
                     "Vc": Vc,
                     "V_flat": V_flat,
+                    "W_init": W_init,
                     "init_cdf_payload": init_cdf_payload,
                     # PSD options
                     "psd_enable": psd_enable,
@@ -2039,6 +2050,7 @@ def _mcpbe_run_single_parallel(payload: dict):
     init_Vc = payload["init_Vc"]
     Vc = payload["Vc"]
     V_flat = payload["V_flat"]
+    W_init = payload.get("W_init", None)
     init_cdf_payload = payload.get("init_cdf_payload", None)
 
     # PSD opts
@@ -2067,7 +2079,7 @@ def _mcpbe_run_single_parallel(payload: dict):
     obj.V_flat = None
     if not init_Vc and Vc is not None:
         obj.Vc = Vc
-    obj._initialize_particles(init_Vc=init_Vc, V_flat=V_flat, init_cdf=init_cdf_payload)
+    obj._initialize_particles(init_Vc=init_Vc, V_flat=V_flat, W_init=W_init, init_cdf=init_cdf_payload)
     obj._init_lmc()
     obj._initialize_samplers()
 

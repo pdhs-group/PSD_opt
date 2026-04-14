@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+import json
 import math
 import os
 import sys
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, is_dataclass
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
@@ -100,6 +102,7 @@ def _evaluate_sensitivity_task(task: Dict[str, object]) -> Dict[str, object]:
     cfg = copy.deepcopy(task["config"])
     init_dist = copy.deepcopy(task.get("init_dist"))
     metric_name = str(task["metric_name"])
+    task_id = str(task["task_id"])
     sample_index = int(task["sample_index"])
     cast_sample = copy.deepcopy(task["cast_sample"])
 
@@ -115,6 +118,7 @@ def _evaluate_sensitivity_task(task: Dict[str, object]) -> Dict[str, object]:
         raise ValueError(f"Unknown metric '{metric_name}'.")
 
     row: Dict[str, object] = {
+        "task_id": task_id,
         "sample_index": sample_index,
         "metric_name": metric_name,
         "metric_value": metric_value,
@@ -153,6 +157,7 @@ class WMCPBESensitivityAnalyzer:
         self.workers = max(1, int(workers)) if workers is not None else max(1, os.cpu_count() or 1)
         self.export_dir = Path(export_dir) if export_dir is not None else Path(__file__).resolve().parent / "exports_wmcpbe_sensitivity"
         self.export_dir.mkdir(parents=True, exist_ok=True)
+        self.run_dir = self.export_dir / f"SA_{self.sample_size}"
         self.metric_registry: Dict[str, Callable[[ValidationResult, str], float]] = {
             "aggregated_moment_error": self._metric_aggregated_moment_error,
         }
@@ -165,13 +170,16 @@ class WMCPBESensitivityAnalyzer:
     def run(self) -> SensitivityAnalysisResult:
         problem = self._build_problem()
         samples = sobol_sample.sample(problem, self.sample_size, calc_second_order=self.calc_second_order)
+        self._prepare_run_directory(problem, samples)
 
         tasks: List[Dict[str, object]] = []
         for idx, sample in enumerate(samples):
             attrs, cast_sample = self._attrs_from_sample(sample)
             cfg = self._build_config_for_attrs(attrs, sample_index=idx)
+            task_id = self._task_id_for_sample(idx, cast_sample)
             tasks.append(
                 {
+                    "task_id": task_id,
                     "sample_index": idx,
                     "metric_name": self.metric_name,
                     "config": cfg,
@@ -180,7 +188,24 @@ class WMCPBESensitivityAnalyzer:
                 }
             )
 
-        records = self._evaluate_tasks(tasks)
+        self._write_samples_manifest(tasks)
+        completed_map = self._load_completed_task_results()
+        pending_tasks = [task for task in tasks if str(task["task_id"]) not in completed_map]
+        if pending_tasks:
+            print(
+                f"Resumable SA: {len(completed_map)}/{len(tasks)} samples already finished, "
+                f"running remaining {len(pending_tasks)}."
+            )
+        else:
+            print(f"Resumable SA: all {len(tasks)} samples already finished, reusing saved results.")
+
+        new_records = self._evaluate_tasks(pending_tasks)
+        for row in new_records:
+            self._write_task_result(row)
+            completed_map[str(row["task_id"])] = row
+            self._write_results_snapshot(completed_map)
+
+        records = self._records_from_completed_map(completed_map)
         responses = np.asarray([float(row["metric_value"]) for row in records], dtype=float)
 
         sobol_result = sobol.analyze(problem, responses, calc_second_order=self.calc_second_order, print_to_console=False)
@@ -231,6 +256,7 @@ class WMCPBESensitivityAnalyzer:
                 "template_variant": self.template_variant.name,
                 "process": self.base_config.case.process,
                 "kernel": self.base_config.case.kernel,
+                "run_directory": str(self.run_dir),
             },
         )
         self._write_excel(result_obj)
@@ -311,10 +337,12 @@ class WMCPBESensitivityAnalyzer:
         return _metric_aggregated_moment_error(result, wm_name)
 
     def _evaluate_tasks(self, tasks: Sequence[Dict[str, object]]) -> List[Dict[str, object]]:
+        if len(tasks) == 0:
+            return []
         if self.workers <= 1:
             records = [_evaluate_sensitivity_task(task) for task in tasks]
         else:
-            records = [None] * len(tasks)
+            record_map: Dict[int, Dict[str, object]] = {}
             with ProcessPoolExecutor(max_workers=self.workers) as executor:
                 future_to_index = {
                     executor.submit(_evaluate_sensitivity_task, task): int(task["sample_index"])
@@ -322,11 +350,116 @@ class WMCPBESensitivityAnalyzer:
                 }
                 for future in as_completed(future_to_index):
                     sample_index = future_to_index[future]
-                    records[sample_index] = future.result()
+                    record_map[sample_index] = future.result()
+            records = [record_map[idx] for idx in sorted(record_map.keys())]
         return [record for record in records if record is not None]
 
+    def _normalize_for_json(self, obj: object) -> object:
+        if is_dataclass(obj):
+            return self._normalize_for_json(asdict(obj))
+        if isinstance(obj, dict):
+            return {str(key): self._normalize_for_json(value) for key, value in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            return [self._normalize_for_json(value) for value in obj]
+        if isinstance(obj, Path):
+            return str(obj)
+        if isinstance(obj, np.ndarray):
+            return [self._normalize_for_json(value) for value in obj.tolist()]
+        if isinstance(obj, np.generic):
+            return obj.item()
+        return obj
+
+    def _run_metadata_payload(self, problem: Dict[str, object], samples: np.ndarray) -> Dict[str, object]:
+        payload = {
+            "metric_name": self.metric_name,
+            "sample_size": self.sample_size,
+            "calc_second_order": self.calc_second_order,
+            "workers": self.workers,
+            "problem": problem,
+            "num_model_evaluations": int(samples.shape[0]),
+            "parameters": [self._normalize_for_json(item) for item in self.parameters],
+            "base_config": self._normalize_for_json(self.base_config),
+            "template_variant": self._normalize_for_json(self.template_variant),
+            "init_dist": self._normalize_for_json(self.init_dist),
+        }
+        sig_src = json.dumps(payload, sort_keys=True, ensure_ascii=True)
+        payload["run_signature"] = hashlib.sha256(sig_src.encode("utf-8")).hexdigest()
+        return payload
+
+    def _prepare_run_directory(self, problem: Dict[str, object], samples: np.ndarray) -> None:
+        self.run_dir.mkdir(parents=True, exist_ok=True)
+        (self.run_dir / "completed").mkdir(parents=True, exist_ok=True)
+        metadata_path = self.run_dir / "metadata.json"
+        payload = self._run_metadata_payload(problem, samples)
+        if metadata_path.exists():
+            existing = json.loads(metadata_path.read_text(encoding="utf-8"))
+            if existing.get("run_signature") != payload["run_signature"]:
+                raise ValueError(
+                    f"Existing resume directory has different configuration: {self.run_dir}. "
+                    "Please clear it or use a different export_dir/sample_size."
+                )
+        else:
+            metadata_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    def _task_id_for_sample(self, sample_index: int, cast_sample: Dict[str, object]) -> str:
+        src = json.dumps(self._normalize_for_json(cast_sample), sort_keys=True, ensure_ascii=True)
+        digest = hashlib.sha256(src.encode("utf-8")).hexdigest()[:12]
+        return f"sample_{sample_index:06d}_{digest}"
+
+    def _write_samples_manifest(self, tasks: Sequence[Dict[str, object]]) -> None:
+        rows: List[Dict[str, object]] = []
+        for task in tasks:
+            row = {
+                "task_id": str(task["task_id"]),
+                "sample_index": int(task["sample_index"]),
+            }
+            row.update(copy.deepcopy(task["cast_sample"]))
+            rows.append(row)
+        pd.DataFrame(rows).sort_values("sample_index").to_csv(
+            self.run_dir / "samples.csv",
+            index=False,
+        )
+
+    def _task_result_path(self, task_id: str) -> Path:
+        return self.run_dir / "completed" / f"{task_id}.json"
+
+    def _load_completed_task_results(self) -> Dict[str, Dict[str, object]]:
+        completed_dir = self.run_dir / "completed"
+        completed_map: Dict[str, Dict[str, object]] = {}
+        if not completed_dir.exists():
+            return completed_map
+        for path in sorted(completed_dir.glob("*.json")):
+            try:
+                row = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            task_id = str(row.get("task_id", path.stem))
+            completed_map[task_id] = row
+        return completed_map
+
+    def _write_task_result(self, row: Dict[str, object]) -> None:
+        task_id = str(row["task_id"])
+        path = self._task_result_path(task_id)
+        tmp_path = path.with_suffix(".tmp")
+        tmp_path.write_text(
+            json.dumps(self._normalize_for_json(row), indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        tmp_path.replace(path)
+
+    def _records_from_completed_map(self, completed_map: Dict[str, Dict[str, object]]) -> List[Dict[str, object]]:
+        records = list(completed_map.values())
+        records.sort(key=lambda row: int(row["sample_index"]))
+        return records
+
+    def _write_results_snapshot(self, completed_map: Dict[str, Dict[str, object]]) -> None:
+        records = self._records_from_completed_map(completed_map)
+        if not records:
+            return
+        pd.DataFrame(records).to_csv(self.run_dir / "results_snapshot.csv", index=False)
+
     def _write_excel(self, result: SensitivityAnalysisResult) -> Path:
-        path = self.export_dir / f"wmcpbe_sensitivity_{self.metric_name}.xlsx"
+        path = self.run_dir / f"wmcpbe_sensitivity_{self.metric_name}.xlsx"
         with pd.ExcelWriter(path) as writer:
             meta_df = pd.DataFrame(
                 [{"key": key, "value": value if np.isscalar(value) or value is None else str(value)} for key, value in result.metadata.items()]
@@ -444,5 +577,6 @@ if __name__ == "__main__":
         # N_sample - N(2D+2) or N(D+2)
         calc_second_order=True,
         workers=20,
+        # export_dir=os.environ.get('STORAGE_PATH'),
     )
     analyzer.run()

@@ -319,8 +319,27 @@ class MCPBEBreak:
     # Single breakage event (multi-fragment)
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _frag_total_volume(frag: np.ndarray) -> float:
+        return float(np.sum(np.asarray(frag, dtype=float)))
+
+    def _fragments_have_zero_volume(self, frags: list[np.ndarray]) -> bool:
+        if not frags:
+            return False
+        for frag in frags:
+            if self._frag_total_volume(frag) <= 0.0:
+                return True
+        return False
+
+    def _filter_positive_volume_fragments(self, frags: list[np.ndarray]) -> list[np.ndarray]:
+        out: list[np.ndarray] = []
+        for frag in frags:
+            if self._frag_total_volume(frag) > 0.0:
+                out.append(np.asarray(frag, dtype=float))
+        return out
+
     # Unified post-processing: apply fragments and maintain break/agg states.
-    def _break_apply_and_maintain(self, k: int, frags: list[np.ndarray], dW: float) -> None:
+    def _break_apply_and_maintain(self, k: int, frags: list[np.ndarray], dW: float, Vrem_k: np.ndarray) -> None:
         """Apply one *packet* breakage event.
     
         Interpretation:
@@ -341,6 +360,22 @@ class MCPBEBreak:
         dW = float(min(dW, w_parent_old))
         if dW <= 0.0:
             self._mark_unbreakable(k)
+            return
+
+        Vrem_ref = np.asarray(Vrem_k, dtype=float).copy()
+        resample_attempts = 0
+        max_resample = 1000
+        while self._fragments_have_zero_volume(frags) and resample_attempts < max_resample:
+            status_retry, frags_retry = self._break_build_fragments(Vrem_ref.copy())
+            if status_retry == "disable":
+                self._mark_unbreakable(k)
+                return
+            if status_retry == "ok" and frags_retry:
+                frags = frags_retry
+            resample_attempts += 1
+
+        frags = self._filter_positive_volume_fragments(frags)
+        if not frags:
             return
     
         new_indices: list[int] = []
@@ -605,7 +640,7 @@ class MCPBEBreak:
                 return
 
             if status == "ok":
-                self._break_apply_and_maintain(k, frags, dW)
+                self._break_apply_and_maintain(k, frags, dW, Vrem_k)
             else:
                 return
     

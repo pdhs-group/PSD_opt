@@ -124,6 +124,13 @@ class ReconstructionMixin:
         valid = np.isfinite(W) & (W > 0.0) & np.isfinite(Vtot) & (Vtot > 0.0)
         for d in range(dim):
             valid &= np.isfinite(Vcomp[d]) & (Vcomp[d] >= 0.0)
+        self._debug_recon_valid_filter(
+            method=method,
+            Vcomp=Vcomp,
+            Vtot=Vtot,
+            W=W,
+            valid=valid,
+        )
     
         if not np.any(valid):
             return
@@ -144,6 +151,8 @@ class ReconstructionMixin:
             method=method,
             reason=reason,
             iter_count=iter_count,
+            idx_work=idx_work,
+            protected=protected,
         )
     
         if method == "CAM":
@@ -414,6 +423,14 @@ class ReconstructionMixin:
         self.recon_monitor_M11_rel_err = []
         self.recon_monitor_M02_rel_err = []
         self.recon_monitor_L1_err = []
+        self.recon_monitor_work_count_before = []
+        self.recon_monitor_work_count_after = []
+        self.recon_monitor_protected_count = []
+        for prefix in ("work", "protected"):
+            for key in ("M00", "M01", "M11", "M02"):
+                self.__dict__[f"recon_monitor_{prefix}_{key}_ref"] = []
+                self.__dict__[f"recon_monitor_{prefix}_{key}_post"] = []
+                self.__dict__[f"recon_monitor_{prefix}_{key}_rel_err"] = []
 
     def _recon_monitor_capture_before(
         self,
@@ -421,21 +438,29 @@ class ReconstructionMixin:
         method: str,
         reason: str,
         iter_count: Optional[int],
+        idx_work: Optional[np.ndarray] = None,
+        protected: Optional[np.ndarray] = None,
     ) -> Optional[Dict[str, object]]:
         if (not bool(getattr(self, "recon_monitor_enable", True))) or int(getattr(self, "dim", 0)) != 2:
             return None
         Vcomp_pre, W_pre = self._recon_monitor_get_active_state()
         if Vcomp_pre is None or W_pre is None or W_pre.size == 0:
             return None
+        Vcomp_work_pre, W_work_pre = self._recon_monitor_get_subset_state(idx_work)
+        Vcomp_prot_pre, W_prot_pre = self._recon_monitor_get_subset_state(protected)
         return {
             "method": str(method),
             "reason": str(reason),
             "iter_count": int(iter_count) if iter_count is not None else int(getattr(self, "_iter_count", -1)),
             "time_value": float(getattr(self, "_elapsed", np.nan)),
             "count_before": int(W_pre.size),
+            "count_work_before": int(0 if W_work_pre is None else W_work_pre.size),
+            "count_protected": int(0 if W_prot_pre is None else W_prot_pre.size),
             "Vcomp_pre": Vcomp_pre,
             "W_pre": W_pre,
             "moments_pre": self._recon_monitor_compute_moments(Vcomp_pre, W_pre),
+            "moments_work_pre": self._recon_monitor_compute_moments(Vcomp_work_pre, W_work_pre),
+            "moments_protected_pre": self._recon_monitor_compute_moments(Vcomp_prot_pre, W_prot_pre),
         }
 
     def _recon_monitor_capture_after(self, payload: Optional[Dict[str, object]]) -> None:
@@ -444,8 +469,25 @@ class ReconstructionMixin:
         Vcomp_post, W_post = self._recon_monitor_get_active_state()
         if Vcomp_post is None or W_post is None or W_post.size == 0:
             return
+        n_protected = int(payload.get("count_protected", 0))
+        n_protected = max(0, min(n_protected, int(W_post.size)))
+        if n_protected > 0:
+            split = int(W_post.size) - n_protected
+            Vcomp_work_post = Vcomp_post[:, :split].copy()
+            W_work_post = W_post[:split].copy()
+            Vcomp_prot_post = Vcomp_post[:, split:].copy()
+            W_prot_post = W_post[split:].copy()
+        else:
+            Vcomp_work_post = Vcomp_post.copy()
+            W_work_post = W_post.copy()
+            Vcomp_prot_post = None
+            W_prot_post = None
         moments_pre = payload["moments_pre"]
         moments_post = self._recon_monitor_compute_moments(Vcomp_post, W_post)
+        moments_work_pre = payload["moments_work_pre"]
+        moments_work_post = self._recon_monitor_compute_moments(Vcomp_work_post, W_work_post)
+        moments_protected_pre = payload["moments_protected_pre"]
+        moments_protected_post = self._recon_monitor_compute_moments(Vcomp_prot_post, W_prot_post)
         l1_err = self._recon_monitor_compute_l1(
             payload["Vcomp_pre"],
             payload["W_pre"],
@@ -459,27 +501,66 @@ class ReconstructionMixin:
         self.recon_monitor_reason.append(str(payload["reason"]))
         self.recon_monitor_count_before.append(int(payload["count_before"]))
         self.recon_monitor_count_after.append(int(W_post.size))
+        self.recon_monitor_work_count_before.append(int(payload["count_work_before"]))
+        self.recon_monitor_work_count_after.append(int(W_work_post.size))
+        self.recon_monitor_protected_count.append(int(n_protected))
         for key in ("M00", "M01", "M11", "M02"):
             self.__dict__[f"recon_monitor_{key}_ref"].append(float(moments_pre[key]))
             self.__dict__[f"recon_monitor_{key}_post"].append(float(moments_post[key]))
             rel = abs(float(moments_post[key]) - float(moments_pre[key])) / (abs(float(moments_pre[key])) + 1e-40)
             self.__dict__[f"recon_monitor_{key}_rel_err"].append(float(rel))
+            for prefix, pre_map, post_map in (
+                ("work", moments_work_pre, moments_work_post),
+                ("protected", moments_protected_pre, moments_protected_post),
+            ):
+                self.__dict__[f"recon_monitor_{prefix}_{key}_ref"].append(float(pre_map[key]))
+                self.__dict__[f"recon_monitor_{prefix}_{key}_post"].append(float(post_map[key]))
+                rel_sub = abs(float(post_map[key]) - float(pre_map[key])) / (abs(float(pre_map[key])) + 1e-40)
+                self.__dict__[f"recon_monitor_{prefix}_{key}_rel_err"].append(float(rel_sub))
         self.recon_monitor_L1_err.append(float(l1_err))
+        self._recon_monitor_debug_print_split(payload, moments_post, moments_work_post, moments_protected_post)
 
     def _recon_monitor_get_active_state(self) -> tuple[Optional[np.ndarray], Optional[np.ndarray]]:
         a = int(getattr(self, "a_tot", 0))
         if a <= 0:
             return None, None
-        Vcomp = np.asarray(self.V_flat[:2, :a], dtype=float)
+        dim = int(self.dim)
+        Vcomp = np.asarray(self.V_flat[:dim, :a], dtype=float)
+        Vtot = np.asarray(self.V_flat[-1, :a], dtype=float)
         W = np.asarray(self.W[:a], dtype=float)
         valid = np.isfinite(W) & (W > 0.0)
-        valid &= np.isfinite(Vcomp[0]) & np.isfinite(Vcomp[1])
-        valid &= (Vcomp[0] >= 0.0) & (Vcomp[1] >= 0.0)
+        valid &= np.isfinite(Vtot) & (Vtot > 0.0)
+        for d in range(dim):
+            valid &= np.isfinite(Vcomp[d]) & (Vcomp[d] >= 0.0)
+        if not np.any(valid):
+            return None, None
+        return Vcomp[:, valid].copy(), W[valid].copy()
+
+    def _recon_monitor_get_subset_state(self, idx_subset: Optional[np.ndarray]) -> tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+        if idx_subset is None:
+            return None, None
+        idx = np.asarray(idx_subset, dtype=int)
+        if idx.size == 0:
+            return None, None
+        a = int(getattr(self, "a_tot", 0))
+        idx = idx[(idx >= 0) & (idx < a)]
+        if idx.size == 0:
+            return None, None
+        dim = int(self.dim)
+        Vcomp = np.asarray(self.V_flat[:dim, idx], dtype=float)
+        Vtot = np.asarray(self.V_flat[-1, idx], dtype=float)
+        W = np.asarray(self.W[idx], dtype=float)
+        valid = np.isfinite(W) & (W > 0.0)
+        valid &= np.isfinite(Vtot) & (Vtot > 0.0)
+        for d in range(dim):
+            valid &= np.isfinite(Vcomp[d]) & (Vcomp[d] >= 0.0)
         if not np.any(valid):
             return None, None
         return Vcomp[:, valid].copy(), W[valid].copy()
 
     def _recon_monitor_compute_moments(self, Vcomp: np.ndarray, W: np.ndarray) -> Dict[str, float]:
+        if Vcomp is None or W is None or np.asarray(W).size == 0:
+            return {"M00": 0.0, "M01": 0.0, "M11": 0.0, "M02": 0.0}
         V1 = np.asarray(Vcomp[0], dtype=float)
         V2 = np.asarray(Vcomp[1], dtype=float)
         W = np.asarray(W, dtype=float)
@@ -489,6 +570,44 @@ class ReconstructionMixin:
             "M11": float(np.sum(W * V1 * V2)),
             "M02": float(np.sum(W * V2 * V2)),
         }
+
+    def _recon_monitor_debug_print_split(
+        self,
+        payload: Dict[str, object],
+        moments_total_post: Dict[str, float],
+        moments_work_post: Dict[str, float],
+        moments_protected_post: Dict[str, float],
+    ) -> None:
+        tol = float(getattr(self, "recon_monitor_split_print_tol", 1e-10))
+        pieces = [
+            ("total", payload["moments_pre"], moments_total_post),
+            ("work", payload["moments_work_pre"], moments_work_post),
+            ("protected", payload["moments_protected_pre"], moments_protected_post),
+        ]
+        has_issue = False
+        for _, pre_map, post_map in pieces:
+            for key in ("M00", "M01", "M11", "M02"):
+                rel = abs(float(post_map[key]) - float(pre_map[key])) / (abs(float(pre_map[key])) + 1e-40)
+                if rel > tol:
+                    has_issue = True
+                    break
+            if has_issue:
+                break
+        if not has_issue:
+            return
+        print(
+            f"[ReconSplitDebug] method={payload['method']} iter={payload['iter_count']} "
+            f"time={float(payload['time_value']):.6g} "
+            f"count_before={payload['count_before']} "
+            f"count_work_before={payload['count_work_before']} "
+            f"count_protected={payload['count_protected']}"
+        )
+        for prefix, pre_map, post_map in pieces:
+            fields = []
+            for key in ("M00", "M01", "M11", "M02"):
+                rel = abs(float(post_map[key]) - float(pre_map[key])) / (abs(float(pre_map[key])) + 1e-40)
+                fields.append(f"{prefix}_{key}_rel={rel:.6e}")
+            print("[ReconSplitDebug] " + " ".join(fields))
 
     def _recon_monitor_build_grid(
         self,
@@ -1376,6 +1495,130 @@ class ReconstructionMixin:
         W: np.ndarray,
     ) -> None:
         self._apply_kernel_and_replace("4PMC", idx_work, protected, Vcomp, Vtot, W, mode="full")
+
+    def _debug_recon_bucket_mass(
+        self,
+        *,
+        method: str,
+        branch: str,
+        M0: float,
+        bucket_points: list[np.ndarray],
+        bucket_weights: list[float],
+    ) -> None:
+        wsum = float(np.sum(bucket_weights)) if len(bucket_weights) > 0 else 0.0
+        diff = float(wsum - M0)
+        if abs(diff) <= 1e-6:
+            return
+        print(
+            f"[ReconBucketDebug] method={method} branch={branch} "
+            f"M0={M0:.16e} sum_w={wsum:.16e} diff={diff:.16e} n={len(bucket_weights)}"
+        )
+        for k, (wk, vcol) in enumerate(zip(bucket_weights, bucket_points)):
+            print(
+                f"[ReconBucketDebug]   item={k} wk={float(wk):.16e} "
+                f"vcol={np.asarray(vcol, dtype=float).tolist()}"
+            )
+
+    def _debug_recon_bucket_index_coverage(
+        self,
+        *,
+        method: str,
+        idx_input: np.ndarray,
+        buckets: dict[tuple, np.ndarray],
+        W: np.ndarray,
+    ) -> None:
+        idx_arr = np.asarray(idx_input, dtype=int)
+        if idx_arr.size == 0:
+            return
+        if len(buckets) == 0:
+            print(
+                f"[ReconBucketIndexDebug] method={method} empty_buckets "
+                f"input_count={idx_arr.size}"
+            )
+            print(
+                f"[ReconBucketIndexDebug] missing_all={idx_arr.tolist()}"
+            )
+            return
+
+        bucket_arrays = [np.asarray(v, dtype=int) for v in buckets.values() if np.asarray(v).size > 0]
+        if len(bucket_arrays) == 0:
+            print(
+                f"[ReconBucketIndexDebug] method={method} empty_bucket_arrays "
+                f"input_count={idx_arr.size}"
+            )
+            print(
+                f"[ReconBucketIndexDebug] missing_all={idx_arr.tolist()}"
+            )
+            return
+
+        bucket_union = np.concatenate(bucket_arrays)
+        missing = np.setdiff1d(idx_arr, bucket_union)
+        extra = np.setdiff1d(bucket_union, idx_arr)
+        uniq_union, counts = np.unique(bucket_union, return_counts=True)
+        dup_idx = uniq_union[counts > 1]
+        if missing.size == 0 and extra.size == 0 and dup_idx.size == 0:
+            return
+
+        M0_input = float(np.sum(np.asarray(W[idx_arr], dtype=float)))
+        if bucket_union.size > 0:
+            M0_bucket = float(np.sum(np.asarray(W[bucket_union], dtype=float)))
+        else:
+            M0_bucket = 0.0
+        print(
+            f"[ReconBucketIndexDebug] method={method} "
+            f"input_count={idx_arr.size} bucket_count={bucket_union.size} "
+            f"unique_bucket_count={uniq_union.size} "
+            f"M0_input={M0_input:.16e} M0_bucket={M0_bucket:.16e} "
+            f"diff={M0_bucket - M0_input:.16e}"
+        )
+        if missing.size > 0:
+            print(f"[ReconBucketIndexDebug] missing={missing.tolist()}")
+        if extra.size > 0:
+            print(f"[ReconBucketIndexDebug] extra={extra.tolist()}")
+        if dup_idx.size > 0:
+            dup_info = {int(i): int(c) for i, c in zip(uniq_union[counts > 1], counts[counts > 1])}
+            print(f"[ReconBucketIndexDebug] duplicates={dup_info}")
+
+    def _debug_recon_valid_filter(
+        self,
+        *,
+        method: str,
+        Vcomp: np.ndarray,
+        Vtot: np.ndarray,
+        W: np.ndarray,
+        valid: np.ndarray,
+    ) -> None:
+        dim = int(self.dim)
+        active_like = np.isfinite(W) & (W > 0.0)
+        for d in range(dim):
+            active_like &= np.isfinite(Vcomp[d]) & (Vcomp[d] >= 0.0)
+        excluded = np.nonzero(active_like & (~valid))[0]
+        if excluded.size == 0:
+            return
+        print(
+            f"[ReconValidDebug] method={method} active_like_count={int(np.count_nonzero(active_like))} "
+            f"valid_count={int(np.count_nonzero(valid))} excluded_count={int(excluded.size)}"
+        )
+        for i in excluded.tolist():
+            reasons: list[str] = []
+            if not np.isfinite(W[i]):
+                reasons.append("W_not_finite")
+            elif W[i] <= 0.0:
+                reasons.append("W_nonpositive")
+            if not np.isfinite(Vtot[i]):
+                reasons.append("Vtot_not_finite")
+            elif Vtot[i] <= 0.0:
+                reasons.append("Vtot_nonpositive")
+            for d in range(dim):
+                if not np.isfinite(Vcomp[d, i]):
+                    reasons.append(f"V{d}_not_finite")
+                elif Vcomp[d, i] < 0.0:
+                    reasons.append(f"V{d}_negative")
+            print(
+                f"[ReconValidDebug] idx={int(i)} W={float(W[i]):.16e} "
+                f"Vcomp={np.asarray(Vcomp[:, i], dtype=float).tolist()} "
+                f"Vtot={float(Vtot[i]):.16e} reasons={reasons}"
+            )
         
     def _kernel_4pm(
         self,
@@ -1531,16 +1774,26 @@ class ReconstructionMixin:
 
         n_bins = self.recon_bins
         buckets, _, _ = self._bucket_by_cam_cells(idx, Vcomp, n_bins=n_bins, return_grid=False)
+        self._debug_recon_bucket_index_coverage(
+            method="4PMC",
+            idx_input=idx,
+            buckets=buckets,
+            W=W,
+        )
 
         eps_var = float(getattr(self, "recon_4pmc_eps_var", 1e-30))
         V_cols: list[np.ndarray] = []
         W_out: list[float] = []
-
+        temp = 0.0
         for _, idc in buckets.items():
             Wi = np.asarray(W[idc], dtype=float)
             M0 = float(np.sum(Wi))
+            temp += M0
             if (not np.isfinite(M0)) or M0 <= 0.0:
                 continue
+
+            bucket_points: list[np.ndarray] = []
+            bucket_weights: list[float] = []
 
             x = np.asarray(Vcomp[0, idc], dtype=float)
             y = np.asarray(Vcomp[1, idc], dtype=float)
@@ -1558,8 +1811,17 @@ class ReconstructionMixin:
 
             # Degenerate cells are represented with lower-order closures.
             if varx <= eps_var and vary <= eps_var:
-                V_cols.append(np.array([max(mux, 0.0), max(muy, 0.0)], dtype=float))
-                W_out.append(M0)
+                bucket_points.append(np.array([max(mux, 0.0), max(muy, 0.0)], dtype=float))
+                bucket_weights.append(M0)
+                self._debug_recon_bucket_mass(
+                    method="4PMC",
+                    branch="point",
+                    M0=M0,
+                    bucket_points=bucket_points,
+                    bucket_weights=bucket_weights,
+                )
+                V_cols.extend(bucket_points)
+                W_out.extend(bucket_weights)
                 continue
 
             if varx <= eps_var:
@@ -1568,8 +1830,17 @@ class ReconstructionMixin:
                 for yk, wk in reps_y:
                     if wk <= 0.0 or (not np.isfinite(wk)):
                         continue
-                    V_cols.append(np.array([x_fix, max(float(yk), 0.0)], dtype=float))
-                    W_out.append(float(wk))
+                    bucket_points.append(np.array([x_fix, max(float(yk), 0.0)], dtype=float))
+                    bucket_weights.append(float(wk))
+                self._debug_recon_bucket_mass(
+                    method="4PMC",
+                    branch="vary_only",
+                    M0=M0,
+                    bucket_points=bucket_points,
+                    bucket_weights=bucket_weights,
+                )
+                V_cols.extend(bucket_points)
+                W_out.extend(bucket_weights)
                 continue
 
             if vary <= eps_var:
@@ -1578,8 +1849,17 @@ class ReconstructionMixin:
                 for xk, wk in reps_x:
                     if wk <= 0.0 or (not np.isfinite(wk)):
                         continue
-                    V_cols.append(np.array([max(float(xk), 0.0), y_fix], dtype=float))
-                    W_out.append(float(wk))
+                    bucket_points.append(np.array([max(float(xk), 0.0), y_fix], dtype=float))
+                    bucket_weights.append(float(wk))
+                self._debug_recon_bucket_mass(
+                    method="4PMC",
+                    branch="varx_only",
+                    M0=M0,
+                    bucket_points=bucket_points,
+                    bucket_weights=bucket_weights,
+                )
+                V_cols.extend(bucket_points)
+                W_out.extend(bucket_weights)
                 continue
 
             sigx = math.sqrt(varx)
@@ -1606,7 +1886,16 @@ class ReconstructionMixin:
                         ratio /= s
                 else:
                     ratio = np.zeros(dim, dtype=float)
-                self._append_two_point_reps(M0, M1, M2, ratio, V_cols, W_out)
+                self._append_two_point_reps(M0, M1, M2, ratio, bucket_points, bucket_weights)
+                self._debug_recon_bucket_mass(
+                    method="4PMC",
+                    branch="fallback_2pm",
+                    M0=M0,
+                    bucket_points=bucket_points,
+                    bucket_weights=bucket_weights,
+                )
+                V_cols.extend(bucket_points)
+                W_out.extend(bucket_weights)
                 continue
 
             nodes = [
@@ -1626,7 +1915,17 @@ class ReconstructionMixin:
                 wk = float(wk)
                 if wk <= 0.0 or (not np.isfinite(wk)):
                     continue
-                V_cols.append(vcol)
-                W_out.append(wk)
+                bucket_points.append(vcol)
+                bucket_weights.append(wk)
+
+            self._debug_recon_bucket_mass(
+                method="4PMC",
+                branch="closed_form",
+                M0=M0,
+                bucket_points=bucket_points,
+                bucket_weights=bucket_weights,
+            )
+            V_cols.extend(bucket_points)
+            W_out.extend(bucket_weights)
 
         return self._merge_point_weights(V_cols, W_out)

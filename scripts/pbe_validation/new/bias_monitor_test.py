@@ -1,4 +1,10 @@
-"""Bias-monitor validation workflow for the legacy WMCPBE backup solver."""
+"""Reference 1D breakage monitor using the standard WMCPBE solver.
+
+This script mirrors the initialization and setup logic of ``bias_monitor.py``
+but runs the regular ``wmcpbe.MCPBESolver`` instead of the legacy bias-enabled
+backup solver. It only exports and plots the M2 evolution against the
+analytical solution.
+"""
 
 from __future__ import annotations
 
@@ -33,7 +39,7 @@ _bootstrap_project_paths()
 
 from validation import MIN, CaseConfig, WMCPBEVariantConfig  # noqa: E402
 from pbe_core.plotter.plotter_new import PaperPlotter  # noqa: E402
-from wmcpbe_backup import MCPBESolver  # noqa: E402
+from wmcpbe import MCPBESolver  # noqa: E402
 
 
 @dataclass
@@ -48,31 +54,25 @@ class BetaInitialCondition1D:
 
 
 @dataclass
-class BiasMethodResult:
+class StandardMethodResult:
     name: str
     moments_mean: np.ndarray
     moments_std: Optional[np.ndarray]
-    bias_cum_m2_mean: np.ndarray
-    bias_cum_m2_std: Optional[np.ndarray]
-    bias_err_pred_m2_mean: np.ndarray
-    bias_err_pred_m2_std: Optional[np.ndarray]
-    bias_ratio_m2_mean: np.ndarray
-    bias_ratio_m2_std: Optional[np.ndarray]
     cpu_time_s: float
     attrs: Dict[str, object] = field(default_factory=dict)
 
 
 @dataclass
-class BiasMonitorResult:
+class StandardMonitorResult:
     time: np.ndarray
     volumes: np.ndarray
     weights: np.ndarray
     exact_moments: np.ndarray
-    methods: Dict[str, BiasMethodResult]
+    methods: Dict[str, StandardMethodResult]
 
 
-class BiasMonitor1D:
-    """Unified bias-monitor workflow for the legacy 1D breakage solver."""
+class BiasMonitorTest1D:
+    """Compare standard WMCPBE M2 evolution against the analytical solution."""
 
     def __init__(
         self,
@@ -83,26 +83,26 @@ class BiasMonitor1D:
         export_dir: Optional[Path] = None,
     ) -> None:
         if case.dim != 1:
-            raise ValueError("BiasMonitor1D only supports dim=1.")
+            raise ValueError("BiasMonitorTest1D only supports dim=1.")
         if str(case.process).lower() != "breakage":
-            raise ValueError("BiasMonitor1D currently supports process='breakage' only.")
+            raise ValueError("BiasMonitorTest1D currently supports process='breakage' only.")
         self.case = case
         self.init_dist = init_dist
         self.wmcpbe_variants = [variant for variant in wmcpbe_variants if variant.enabled]
         if not self.wmcpbe_variants:
             raise ValueError("At least one enabled WMCPBE variant is required.")
         self.plotter = plotter or PaperPlotter()
-        self.export_dir = Path(export_dir) if export_dir is not None else Path(__file__).resolve().parent / "exports_bias_monitor"
+        self.export_dir = Path(export_dir) if export_dir is not None else Path(__file__).resolve().parent / "exports_bias_monitor_test"
         self.export_dir.mkdir(parents=True, exist_ok=True)
         self._export_counts: Dict[str, int] = {}
 
-    def run(self) -> BiasMonitorResult:
+    def run(self) -> StandardMonitorResult:
         volumes, weights = self._build_beta_initial_condition()
         exact = self._exact_moments_1d_uniform_breakage(self.case.t_vec, volumes, weights, self.case.p1)
-        methods: Dict[str, BiasMethodResult] = {}
+        methods: Dict[str, StandardMethodResult] = {}
         for variant in self.wmcpbe_variants:
             methods[variant.name] = self._run_variant(variant, volumes, weights)
-        return BiasMonitorResult(
+        return StandardMonitorResult(
             time=np.asarray(self.case.t_vec, dtype=float),
             volumes=volumes,
             weights=weights,
@@ -110,51 +110,7 @@ class BiasMonitor1D:
             methods=methods,
         )
 
-    def print_summary(self, result: BiasMonitorResult) -> None:
-        rows: List[Dict[str, object]] = []
-        print("\nBias monitor summary (backup WMCPBE)")
-        print("-" * 80)
-        for name, method in result.methods.items():
-            err_m0 = method.moments_mean[0, 0, :] - result.exact_moments[0, 0, :]
-            err_m1 = method.moments_mean[1, 0, :] - result.exact_moments[1, 0, :]
-            err_m2 = method.moments_mean[2, 0, :] - result.exact_moments[2, 0, :]
-            max_rel_m2 = float(np.max(np.abs(err_m2) / (np.abs(result.exact_moments[2, 0, :]) + MIN)))
-            print(name)
-            print(f"  CPU time            = {method.cpu_time_s:.3f} s")
-            print(f"  max |error M0|      = {np.max(np.abs(err_m0)):.6e}")
-            print(f"  max |error M1|      = {np.max(np.abs(err_m1)):.6e}")
-            print(f"  max |error M2|      = {np.max(np.abs(err_m2)):.6e}")
-            print(f"  max rel error M2    = {max_rel_m2:.6e}")
-            print(f"  max |raw bias M2|   = {np.max(np.abs(method.bias_cum_m2_mean)):.6e}")
-            print(f"  max |pred bias M2|  = {np.max(np.abs(method.bias_err_pred_m2_mean)):.6e}")
-            print(f"  max |r2|            = {np.nanmax(np.abs(method.bias_ratio_m2_mean)):.6e}")
-            print("")
-            rows.append(
-                {
-                    "method": name,
-                    "cpu_time_s": method.cpu_time_s,
-                    "max_abs_error_M0": float(np.max(np.abs(err_m0))),
-                    "max_abs_error_M1": float(np.max(np.abs(err_m1))),
-                    "max_abs_error_M2": float(np.max(np.abs(err_m2))),
-                    "max_rel_error_M2": max_rel_m2,
-                    "max_abs_raw_bias_M2": float(np.max(np.abs(method.bias_cum_m2_mean))),
-                    "max_abs_pred_bias_M2": float(np.max(np.abs(method.bias_err_pred_m2_mean))),
-                    "max_abs_r2": float(np.nanmax(np.abs(method.bias_ratio_m2_mean))),
-                }
-            )
-        self._write_excel_book(
-            method_name="print_summary",
-            metadata={
-                "workflow": "bias_monitor_1d_breakage",
-                "kernel": self.case.kernel,
-                "process": self.case.process,
-                "lambda": self.case.p1,
-                "time_points": len(result.time),
-            },
-            sheets={"summary": pd.DataFrame(rows)},
-        )
-
-    def plot_m2_evolution(self, result: BiasMonitorResult) -> object:
+    def plot_m2_evolution(self, result: StandardMonitorResult) -> object:
         fig, ax = self.plotter.figure()
         self.plotter.plot_line(
             ax,
@@ -180,7 +136,7 @@ class BiasMonitor1D:
                 result.time,
                 method.moments_mean[2, 0, :],
                 key=name,
-                family="wmcpbe_backup",
+                family="wmcpbe",
                 label=name,
                 error=None if method.moments_std is None else method.moments_std[2, 0, :],
                 markevery=max(1, len(result.time) // 8),
@@ -192,7 +148,7 @@ class BiasMonitor1D:
                 x_label="time_s",
                 y_label="M2",
                 std=None if method.moments_std is None else method.moments_std[2, 0, :],
-                extra={"family": "wmcpbe_backup"},
+                extra={"family": "wmcpbe"},
             )
         self.plotter.finalize_axes(
             ax,
@@ -202,135 +158,23 @@ class BiasMonitor1D:
             legend=True,
         )
         self.plotter.tighten(fig)
-        self._write_excel_book(
+
+        xlsx_path = self._write_excel_book(
             method_name="plot_m2_evolution",
             metadata={
+                "workflow": "bias_monitor_test_1d_breakage",
                 "x_label": "Time t / s",
                 "y_label": "M2",
                 "reference": "Analytical Solution",
+                "kernel": self.case.kernel,
+                "process": self.case.process,
+                "lambda": self.case.p1,
             },
             sheets=sheets,
         )
-        return fig
-
-    def plot_m2_error_prediction(self, result: BiasMonitorResult) -> object:
-        fig, ax = self.plotter.figure(width_scale=1.15)
-        sheets: Dict[str, pd.DataFrame] = {}
-        for name, method in result.methods.items():
-            actual_error = method.moments_mean[2, 0, :] - result.exact_moments[2, 0, :]
-            actual_std = None if method.moments_std is None else method.moments_std[2, 0, :]
-            self.plotter.plot_line(
-                ax,
-                result.time,
-                actual_error,
-                key=f"{name} actual",
-                family="wmcpbe_backup",
-                label=f"{name} actual error",
-                error=actual_std,
-                markevery=max(1, len(result.time) // 8),
-            )
-            self.plotter.plot_line(
-                ax,
-                result.time,
-                method.bias_err_pred_m2_mean,
-                key=f"{name} pred",
-                family="wmcpbe_backup",
-                label=f"{name} propagated prediction",
-                error=method.bias_err_pred_m2_std,
-                markevery=max(1, len(result.time) // 8),
-            )
-            self.plotter.plot_line(
-                ax,
-                result.time,
-                method.bias_cum_m2_mean,
-                key=f"{name} raw",
-                family="wmcpbe_backup",
-                label=f"{name} raw cumulative bias",
-                error=method.bias_cum_m2_std,
-                markevery=max(1, len(result.time) // 8),
-            )
-            sheets[self._sheet_name(f"actual_error_{name}")] = self._curve_sheet(
-                result.time,
-                actual_error,
-                label=f"{name} actual error",
-                x_label="time_s",
-                y_label="actual_error_M2",
-                std=actual_std,
-            )
-            sheets[self._sheet_name(f"pred_bias_{name}")] = self._curve_sheet(
-                result.time,
-                method.bias_err_pred_m2_mean,
-                label=f"{name} propagated prediction",
-                x_label="time_s",
-                y_label="predicted_bias_M2",
-                std=method.bias_err_pred_m2_std,
-            )
-            sheets[self._sheet_name(f"raw_bias_{name}")] = self._curve_sheet(
-                result.time,
-                method.bias_cum_m2_mean,
-                label=f"{name} raw cumulative bias",
-                x_label="time_s",
-                y_label="raw_cumulative_bias_M2",
-                std=method.bias_cum_m2_std,
-            )
-        self.plotter.finalize_axes(
-            ax,
-            xlabel="Time $t$ / s",
-            ylabel="M2 error / prediction",
-            title="Actual M2 error and bias-based predictions",
-            legend=True,
-        )
-        self.plotter.tighten(fig)
-        self._write_excel_book(
-            method_name="plot_m2_error_prediction",
-            metadata={
-                "x_label": "Time t / s",
-                "y_label": "M2 error / prediction",
-                "reference": "Analytical Solution",
-            },
-            sheets=sheets,
-        )
-        return fig
-
-    def plot_bias_ratio(self, result: BiasMonitorResult) -> object:
-        fig, ax = self.plotter.figure()
-        sheets: Dict[str, pd.DataFrame] = {}
-        for name, method in result.methods.items():
-            self.plotter.plot_line(
-                ax,
-                result.time,
-                method.bias_ratio_m2_mean,
-                key=name,
-                family="wmcpbe_backup",
-                label=name,
-                error=method.bias_ratio_m2_std,
-                markevery=max(1, len(result.time) // 8),
-            )
-            sheets[self._sheet_name(f"r2_{name}")] = self._curve_sheet(
-                result.time,
-                method.bias_ratio_m2_mean,
-                label=name,
-                x_label="time_s",
-                y_label="r2",
-                std=method.bias_ratio_m2_std,
-            )
-        ax.axhline(0.0, color="black", linewidth=0.8)
-        self.plotter.finalize_axes(
-            ax,
-            xlabel="Time $t$ / s",
-            ylabel="$r_2$",
-            title="Relative bias ratio over time",
-            legend=True,
-        )
-        self.plotter.tighten(fig)
-        self._write_excel_book(
-            method_name="plot_bias_ratio",
-            metadata={
-                "x_label": "Time t / s",
-                "y_label": "r2",
-            },
-            sheets=sheets,
-        )
+        fig_path = xlsx_path.with_suffix(".png")
+        fig.savefig(fig_path, bbox_inches="tight")
+        print(f"Saved figure export: {fig_path}")
         return fig
 
     def show(self) -> None:
@@ -388,14 +232,11 @@ class BiasMonitor1D:
         mu[2, 0, :] = m2_0 * np.exp(-(lam / 3.0) * t_vec)
         return mu
 
-    def _run_variant(self, variant: WMCPBEVariantConfig, volumes: np.ndarray, weights: np.ndarray) -> BiasMethodResult:
+    def _run_variant(self, variant: WMCPBEVariantConfig, volumes: np.ndarray, weights: np.ndarray) -> StandardMethodResult:
         template = self._build_solver_template(variant)
         seed_sequence = np.random.SeedSequence(variant.base_seed)
         seeds = seed_sequence.spawn(variant.repeats)
         repeat_moments: List[np.ndarray] = []
-        repeat_bias_cum: List[np.ndarray] = []
-        repeat_bias_pred: List[np.ndarray] = []
-        repeat_bias_ratio: List[np.ndarray] = []
 
         time_start = time.time()
         for seed in seeds:
@@ -403,30 +244,15 @@ class BiasMonitor1D:
             solver.solve(maxiter=variant.maxiter)
             moments, _ = solver.calc_moments_over_time(max_i=2, max_j=0, normalize=True)
             repeat_moments.append(np.asarray(moments, dtype=float))
-            repeat_bias_cum.append(np.asarray(solver.bias_cum_M2[: moments.shape[2]], dtype=float))
-            repeat_bias_pred.append(np.asarray(solver.bias_err_pred_M2[: moments.shape[2]], dtype=float))
-            repeat_bias_ratio.append(np.asarray(solver.bias_ratio_M2[: moments.shape[2]], dtype=float))
         elapsed = time.time() - time_start
 
         moments_mean = np.mean(repeat_moments, axis=0)
         moments_std = np.std(repeat_moments, axis=0, ddof=1) if variant.repeats > 1 else None
-        bias_cum_mean = np.mean(repeat_bias_cum, axis=0)
-        bias_cum_std = np.std(repeat_bias_cum, axis=0, ddof=1) if variant.repeats > 1 else None
-        bias_pred_mean = np.mean(repeat_bias_pred, axis=0)
-        bias_pred_std = np.std(repeat_bias_pred, axis=0, ddof=1) if variant.repeats > 1 else None
-        bias_ratio_mean = np.nanmean(repeat_bias_ratio, axis=0)
-        bias_ratio_std = np.nanstd(repeat_bias_ratio, axis=0, ddof=1) if variant.repeats > 1 else None
 
-        return BiasMethodResult(
+        return StandardMethodResult(
             name=variant.name,
             moments_mean=moments_mean,
             moments_std=moments_std,
-            bias_cum_m2_mean=bias_cum_mean,
-            bias_cum_m2_std=bias_cum_std,
-            bias_err_pred_m2_mean=bias_pred_mean,
-            bias_err_pred_m2_std=bias_pred_std,
-            bias_ratio_m2_mean=bias_ratio_mean,
-            bias_ratio_m2_std=bias_ratio_std,
             cpu_time_s=elapsed,
             attrs=copy.deepcopy(variant.attrs),
         )
@@ -447,7 +273,6 @@ class BiasMonitor1D:
         solver.pl_P2 = 1
         solver.pl_v = 1.0
         solver.pl_q = 1.0
-        solver.bias_enable = True
         solver.Vc = 1.0
         solver.a0 = int(variant.attrs.get("a0", 5000))
         solver.recon_enable = bool(variant.attrs.get("recon_enable", True))
@@ -566,7 +391,7 @@ if __name__ == "__main__":
         alpha=1.5,
         beta=3.0,
         x_min=2e-3,
-        x_max=2e-3*2**20,
+        x_max=2e-3 * 2**20,
         n_init=V_eff_init,
         total_number=a0,
         volume_concentration=None,
@@ -574,7 +399,7 @@ if __name__ == "__main__":
 
     variants = [
         WMCPBEVariantConfig(
-            name="WMCPBE (bias)",
+            name="WMCPBE (standard)",
             repeats=100,
             attrs={
                 "a0": a0,
@@ -588,10 +413,7 @@ if __name__ == "__main__":
         ),
     ]
 
-    monitor = BiasMonitor1D(case=case, init_dist=init_dist, wmcpbe_variants=variants)
+    monitor = BiasMonitorTest1D(case=case, init_dist=init_dist, wmcpbe_variants=variants)
     result = monitor.run()
-    monitor.print_summary(result)
     monitor.plot_m2_evolution(result)
-    monitor.plot_m2_error_prediction(result)
-    monitor.plot_bias_ratio(result)
     monitor.show()

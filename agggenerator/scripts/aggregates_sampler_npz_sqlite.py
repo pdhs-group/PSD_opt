@@ -19,6 +19,9 @@ Key behavior
 4. SQLite is treated as the authoritative checkpoint state. If a run is
    interrupted after an NPZ file is written but before SQLite is updated, that
    sample may be regenerated in a later run.
+5. Each parameter group stores a persistent `next_attempt_index` in SQLite.
+   The attempt cursor is advanced when a task is submitted, so restarted runs do
+   not repeatedly replay the same rejected random attempts.
 """
 
 from __future__ import annotations
@@ -91,9 +94,9 @@ def _sample_name(sample_index: int) -> str:
 
 
 
-def _task_seed(master_seed: int, Np: int, frac_A: float, sample_index: int) -> int:
+def _task_seed(master_seed: int, Np: int, frac_A: float, attempt_index: int) -> int:
     frac_key = int(round(float(frac_A) * 10000.0))
-    seq = np.random.SeedSequence([int(master_seed), int(Np), frac_key, int(sample_index)])
+    seq = np.random.SeedSequence([int(master_seed), int(Np), frac_key, int(attempt_index)])
     return int(seq.generate_state(1, dtype=np.uint32)[0])
 
 
@@ -172,6 +175,13 @@ def _dumps_json(obj: Any) -> str:
 
 
 
+def _ensure_groups_schema(conn: sqlite3.Connection) -> None:
+    columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(groups)").fetchall()}
+    if "next_attempt_index" not in columns:
+        conn.execute("ALTER TABLE groups ADD COLUMN next_attempt_index INTEGER NOT NULL DEFAULT 0")
+
+
+
 def _init_db(conn: sqlite3.Connection) -> None:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
@@ -187,7 +197,8 @@ def _init_db(conn: sqlite3.Connection) -> None:
             np_target REAL,
             frac_a_target REAL,
             n_samples INTEGER NOT NULL,
-            attrs_json TEXT NOT NULL
+            attrs_json TEXT NOT NULL,
+            next_attempt_index INTEGER NOT NULL DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS samples (
@@ -206,6 +217,7 @@ def _init_db(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_samples_group_index ON samples(group_name, sample_index);
         """
     )
+    _ensure_groups_schema(conn)
 
 
 
@@ -232,19 +244,22 @@ def _set_meta_if_missing(conn: sqlite3.Connection, key: str, value: Any) -> None
 
 
 
-def _get_group_state(conn: sqlite3.Connection, group_name: str) -> Tuple[int, int]:
-    row = conn.execute(
-        "SELECT n_samples FROM groups WHERE group_name = ?",
+def _get_group_state(conn: sqlite3.Connection, group_name: str) -> Tuple[int, int, int]:
+    row_group = conn.execute(
+        "SELECT next_attempt_index FROM groups WHERE group_name = ?",
         (group_name,),
     ).fetchone()
-    n_existing = int(row[0]) if row is not None else 0
+    next_attempt_index = int(row_group[0]) if row_group is not None else 0
 
-    row_max = conn.execute(
-        "SELECT MAX(sample_index) FROM samples WHERE group_name = ?",
+    row_samples = conn.execute(
+        "SELECT COUNT(*), MAX(sample_index) FROM samples WHERE group_name = ?",
         (group_name,),
     ).fetchone()
-    max_index = int(row_max[0]) if row_max is not None and row_max[0] is not None else -1
-    return n_existing, max_index
+    n_existing = int(row_samples[0]) if row_samples is not None else 0
+    max_index = int(row_samples[1]) if row_samples is not None and row_samples[1] is not None else -1
+
+    next_attempt_index = max(next_attempt_index, max_index + 1)
+    return n_existing, max_index, next_attempt_index
 
 
 
@@ -254,25 +269,35 @@ def _upsert_group(
     Np: int,
     frac_A: float,
     n_samples: int,
+    next_attempt_index: int,
 ) -> None:
     attrs_json = _dumps_json(
         {
             "Np_target": int(Np),
             "frac_A_target": float(frac_A),
             "n_samples": int(n_samples),
+            "next_attempt_index": int(next_attempt_index),
         }
     )
     conn.execute(
         """
-        INSERT INTO groups(group_name, np_target, frac_a_target, n_samples, attrs_json)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO groups(group_name, np_target, frac_a_target, n_samples, attrs_json, next_attempt_index)
+        VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(group_name) DO UPDATE SET
             np_target = excluded.np_target,
             frac_a_target = excluded.frac_a_target,
             n_samples = excluded.n_samples,
-            attrs_json = excluded.attrs_json
+            attrs_json = excluded.attrs_json,
+            next_attempt_index = excluded.next_attempt_index
         """,
-        (group_name, float(Np), float(frac_A), int(n_samples), attrs_json),
+        (
+            group_name,
+            float(Np),
+            float(frac_A),
+            int(n_samples),
+            attrs_json,
+            int(next_attempt_index),
+        ),
     )
 
 
@@ -485,7 +510,7 @@ def _make_group_states(conn: sqlite3.Connection, param_pairs: List[Tuple[int, fl
     states: Dict[Tuple[int, float], Dict[str, Any]] = {}
     for Np, frac_A in param_pairs:
         group_name = _sanitize_group_name(Np, frac_A)
-        existing_count, max_index = _get_group_state(conn, group_name)
+        existing_count, max_index, next_attempt_index = _get_group_state(conn, group_name)
         states[(Np, frac_A)] = {
             "Np": int(Np),
             "frac_A": float(frac_A),
@@ -495,7 +520,8 @@ def _make_group_states(conn: sqlite3.Connection, param_pairs: List[Tuple[int, fl
             "missing": max(0, int(SAMPLES_PER_PARAM) - int(existing_count)),
             "launched": 0,
             "inflight": 0,
-            "next_index": int(max_index) + 1,
+            "next_sample_index": int(max_index) + 1,
+            "next_attempt_index": int(next_attempt_index),
         }
     return states
 
@@ -509,31 +535,55 @@ def _can_submit_group(state: Dict[str, Any]) -> bool:
 
 
 
+def _reserve_one_task(conn: sqlite3.Connection, state: Dict[str, Any]) -> Dict[str, Any]:
+    sample_index = int(state["next_sample_index"])
+    attempt_index = int(state["next_attempt_index"])
+    task_seed = _task_seed(MASTER_SEED, int(state["Np"]), float(state["frac_A"]), attempt_index)
+
+    state["launched"] += 1
+    state["inflight"] += 1
+    state["next_sample_index"] += 1
+    state["next_attempt_index"] += 1
+
+    _upsert_group(
+        conn,
+        str(state["group_name"]),
+        int(state["Np"]),
+        float(state["frac_A"]),
+        int(state["done"]),
+        int(state["next_attempt_index"]),
+    )
+    conn.commit()
+
+    return {
+        "group_name": str(state["group_name"]),
+        "sample_index": sample_index,
+        "Np": int(state["Np"]),
+        "frac_A": float(state["frac_A"]),
+        "task_seed": task_seed,
+    }
+
+
+
 def _submit_one_task(
     ex: ProcessPoolExecutor,
     output_dir: Path,
-    state: Dict[str, Any],
+    payload: Dict[str, Any],
 ) -> Any:
-    sample_index = int(state["next_index"])
-    task_seed = _task_seed(MASTER_SEED, int(state["Np"]), float(state["frac_A"]), sample_index)
-    future = ex.submit(
+    return ex.submit(
         _generate_and_store_one_sample,
         str(output_dir),
-        str(state["group_name"]),
-        sample_index,
-        int(state["Np"]),
-        float(state["frac_A"]),
+        str(payload["group_name"]),
+        int(payload["sample_index"]),
+        int(payload["Np"]),
+        float(payload["frac_A"]),
         TARGET_DF,
         TARGET_MAS,
         MAS_TOL,
         MAX_TRIES_FACTOR,
-        task_seed,
+        int(payload["task_seed"]),
         SAVE_COMPRESSED,
     )
-    state["launched"] += 1
-    state["inflight"] += 1
-    state["next_index"] += 1
-    return future
 
 
 
@@ -592,23 +642,21 @@ def build_pool() -> None:
                     f"{state['done']} existing, targeting {state['missing']} more..."
                 )
                 while _can_submit_group(state):
-                    sample_index = int(state["next_index"])
-                    task_seed = _task_seed(MASTER_SEED, int(state["Np"]), float(state["frac_A"]), sample_index)
-                    state["launched"] += 1
-                    state["next_index"] += 1
+                    payload = _reserve_one_task(conn, state)
                     result = _generate_and_store_one_sample(
                         str(output_dir),
-                        str(state["group_name"]),
-                        sample_index,
-                        int(state["Np"]),
-                        float(state["frac_A"]),
+                        str(payload["group_name"]),
+                        int(payload["sample_index"]),
+                        int(payload["Np"]),
+                        float(payload["frac_A"]),
                         TARGET_DF,
                         TARGET_MAS,
                         MAS_TOL,
                         MAX_TRIES_FACTOR,
-                        task_seed,
+                        int(payload["task_seed"]),
                         SAVE_COMPRESSED,
                     )
+                    state["inflight"] -= 1
                     if bool(result["success"]):
                         _register_sample(
                             conn,
@@ -619,7 +667,14 @@ def build_pool() -> None:
                             dict(result["sample_attrs"]),
                         )
                         state["done"] += 1
-                        _upsert_group(conn, str(state["group_name"]), int(state["Np"]), float(state["frac_A"]), int(state["done"]))
+                        _upsert_group(
+                            conn,
+                            str(state["group_name"]),
+                            int(state["Np"]),
+                            float(state["frac_A"]),
+                            int(state["done"]),
+                            int(state["next_attempt_index"]),
+                        )
                         conn.commit()
                         print(
                             f"[POOL] Np={state['Np']}, frac_A={state['frac_A']:.4f}: "
@@ -648,7 +703,8 @@ def build_pool() -> None:
                         rr_index += 1
                         state = state_by_key[key]
                         if _can_submit_group(state):
-                            future = _submit_one_task(executor, output_dir, state)
+                            payload = _reserve_one_task(conn, state)
+                            future = _submit_one_task(executor, output_dir, payload)
                             pending[future] = key
                             submitted = True
                             break
@@ -681,7 +737,14 @@ def build_pool() -> None:
                                 dict(result["sample_attrs"]),
                             )
                             state["done"] += 1
-                            _upsert_group(conn, str(state["group_name"]), int(state['Np']), float(state['frac_A']), int(state['done']))
+                            _upsert_group(
+                                conn,
+                                str(state["group_name"]),
+                                int(state["Np"]),
+                                float(state["frac_A"]),
+                                int(state["done"]),
+                                int(state["next_attempt_index"]),
+                            )
                             conn.commit()
                             print(
                                 f"[POOL] Np={state['Np']}, frac_A={state['frac_A']:.4f}: "
@@ -713,4 +776,3 @@ def build_pool() -> None:
 
 if __name__ == "__main__":
     build_pool()
-
