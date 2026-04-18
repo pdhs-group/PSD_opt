@@ -108,6 +108,7 @@ def _evaluate_sensitivity_task(task: Dict[str, object]) -> Dict[str, object]:
 
     runner = _build_validation_runner_for_sensitivity(cfg, init_dist)
     time_start = time.time()
+    print("task start")
     result = runner.run()
     elapsed = time.time() - time_start
 
@@ -194,18 +195,25 @@ class WMCPBESensitivityAnalyzer:
         if pending_tasks:
             print(
                 f"Resumable SA: {len(completed_map)}/{len(tasks)} samples already finished, "
-                f"running remaining {len(pending_tasks)}."
+                f"running remaining {len(pending_tasks)}.",
+                flush=True,
+            )
+            self._evaluate_tasks(
+                pending_tasks,
+                on_result=lambda row: self._handle_completed_sample(row, completed_map),
             )
         else:
-            print(f"Resumable SA: all {len(tasks)} samples already finished, reusing saved results.")
-
-        new_records = self._evaluate_tasks(pending_tasks)
-        for row in new_records:
-            self._write_task_result(row)
-            completed_map[str(row["task_id"])] = row
-            self._write_results_snapshot(completed_map)
+            print(
+                f"Resumable SA: all {len(tasks)} samples already finished, reusing saved results.",
+                flush=True,
+            )
 
         records = self._records_from_completed_map(completed_map)
+        if len(records) != int(samples.shape[0]):
+            raise RuntimeError(
+                f"Sensitivity analysis results are incomplete: expected {int(samples.shape[0])} "
+                f"samples but found {len(records)} completed results in {self.run_dir}."
+            )
         responses = np.asarray([float(row["metric_value"]) for row in records], dtype=float)
 
         sobol_result = sobol.analyze(problem, responses, calc_second_order=self.calc_second_order, print_to_console=False)
@@ -336,11 +344,30 @@ class WMCPBESensitivityAnalyzer:
     def _metric_aggregated_moment_error(self, result: ValidationResult, wm_name: str) -> float:
         return _metric_aggregated_moment_error(result, wm_name)
 
-    def _evaluate_tasks(self, tasks: Sequence[Dict[str, object]]) -> List[Dict[str, object]]:
+    def _handle_completed_sample(
+        self,
+        row: Dict[str, object],
+        completed_map: Dict[str, Dict[str, object]],
+    ) -> None:
+        self._write_task_result(row)
+        completed_map[str(row["task_id"])] = row
+        self._write_results_snapshot(completed_map)
+        print("Completed one sample.", flush=True)
+
+    def _evaluate_tasks(
+        self,
+        tasks: Sequence[Dict[str, object]],
+        on_result: Optional[Callable[[Dict[str, object]], None]] = None,
+    ) -> List[Dict[str, object]]:
         if len(tasks) == 0:
             return []
         if self.workers <= 1:
-            records = [_evaluate_sensitivity_task(task) for task in tasks]
+            records = []
+            for task in tasks:
+                row = _evaluate_sensitivity_task(task)
+                records.append(row)
+                if on_result is not None:
+                    on_result(row)
         else:
             record_map: Dict[int, Dict[str, object]] = {}
             with ProcessPoolExecutor(max_workers=self.workers) as executor:
@@ -350,7 +377,10 @@ class WMCPBESensitivityAnalyzer:
                 }
                 for future in as_completed(future_to_index):
                     sample_index = future_to_index[future]
-                    record_map[sample_index] = future.result()
+                    row = future.result()
+                    record_map[sample_index] = row
+                    if on_result is not None:
+                        on_result(row)
             records = [record_map[idx] for idx in sorted(record_map.keys())]
         return [record for record in records if record is not None]
 
@@ -494,7 +524,7 @@ if __name__ == "__main__":
         dim=2,
         kernel="const",
         process="mix",
-        t_vec=np.arange(0.0, 30.0 + 1e-12, 1.0),
+        t_vec=np.arange(0.0, 30.0 + 1e-12, 3.0),
         x=2e-3,
         beta0=1e-6,
         p1=1e-1,
@@ -505,14 +535,14 @@ if __name__ == "__main__":
     config = ValidationConfig(
         case=case,
         dpbe_variants=[
-            DPBEVariantConfig(name="dPBE", grid="geo", ns=20, s=2),
+            DPBEVariantConfig(name="dPBE", grid="geo", ns=50, s=1.5, enabled=False),
         ],
         wmcpbe_variants=[
             WMCPBEVariantConfig(
                 name="WMCPBE template",
-                repeats=10,
+                repeats=1,
                 attrs={
-                    "a0": 100000,
+                    "a0": 1e4,
                     "V_eff_init": 1000,
                     "recon_enable": True,
                     "recon_method": "4PMC",
@@ -545,13 +575,13 @@ if __name__ == "__main__":
     parameters = [
         SensitivityParameter(
             name="break_dW_max",
-            bounds=(5.0, 500.0),
+            bounds=(1.0, 100.0),
             kind="float",
             targets=("break_dW_max",),
         ),
         SensitivityParameter(
             name="agg_dW_max",
-            bounds=(2.0, 100.0),
+            bounds=(1.0, 20.0),
             kind="float",
             targets=("agg_dW_max",),
         ),
@@ -563,7 +593,7 @@ if __name__ == "__main__":
         ),
         SensitivityParameter(
             name="recon_capacity_factor",
-            bounds=(1.1, 4.0),
+            bounds=(1.1, 5.0),
             kind="float",
         ),
     ]
@@ -573,10 +603,10 @@ if __name__ == "__main__":
         parameters=parameters,
         init_dist=init_dist,
         metric_name="aggregated_moment_error",
-        sample_size=64,
+        sample_size=32,
         # N_sample - N(2D+2) or N(D+2)
         calc_second_order=True,
-        workers=20,
+        workers=10,
         # export_dir=os.environ.get('STORAGE_PATH'),
     )
     analyzer.run()

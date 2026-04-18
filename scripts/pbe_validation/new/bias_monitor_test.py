@@ -413,7 +413,9 @@ if __name__ == "__main__":
         ),
     ]
 
-    monitor = BiasMonitorTest1D(case=case, init_dist=init_dist, wmcpbe_variants=variants)
+    monitor = BiasMonitorTest1D(case=case, init_dist=init_dist, wmcpbe_variants=variants,
+                                # export_dir=os.environ.get('STORAGE_PATH'),
+                                )
     result = monitor.run()
     monitor.plot_m2_evolution(result)
     monitor.show()
