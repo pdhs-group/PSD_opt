@@ -7,6 +7,7 @@ import hashlib
 import json
 import math
 import os
+import sqlite3
 import sys
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -105,10 +106,10 @@ def _evaluate_sensitivity_task(task: Dict[str, object]) -> Dict[str, object]:
     task_id = str(task["task_id"])
     sample_index = int(task["sample_index"])
     cast_sample = copy.deepcopy(task["cast_sample"])
+    npz_path = Path(task["npz_path"])
 
     runner = _build_validation_runner_for_sensitivity(cfg, init_dist)
     time_start = time.time()
-    print("task start")
     result = runner.run()
     elapsed = time.time() - time_start
 
@@ -124,8 +125,22 @@ def _evaluate_sensitivity_task(task: Dict[str, object]) -> Dict[str, object]:
         "metric_name": metric_name,
         "metric_value": metric_value,
         "cpu_time_s": elapsed,
+        "npz_relpath": str(npz_path.name),
     }
     row.update(cast_sample)
+    npz_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = npz_path.with_suffix(".tmp.npz")
+    npz_payload: Dict[str, object] = {
+        "task_id": np.asarray(task_id),
+        "sample_index": np.asarray(sample_index, dtype=np.int64),
+        "metric_name": np.asarray(metric_name),
+        "metric_value": np.asarray(metric_value, dtype=np.float64),
+        "cpu_time_s": np.asarray(elapsed, dtype=np.float64),
+    }
+    for key, value in cast_sample.items():
+        npz_payload[f"param_{key}"] = np.asarray(value)
+    np.savez_compressed(tmp_path, **npz_payload)
+    tmp_path.replace(npz_path)
     return row
 
 
@@ -159,6 +174,8 @@ class WMCPBESensitivityAnalyzer:
         self.export_dir = Path(export_dir) if export_dir is not None else Path(__file__).resolve().parent / "exports_wmcpbe_sensitivity"
         self.export_dir.mkdir(parents=True, exist_ok=True)
         self.run_dir = self.export_dir / f"SA_{self.sample_size}"
+        self.npz_dir = self.run_dir / "samples_npz"
+        self.sqlite_path = self.run_dir / "results_index.sqlite"
         self.metric_registry: Dict[str, Callable[[ValidationResult, str], float]] = {
             "aggregated_moment_error": self._metric_aggregated_moment_error,
         }
@@ -186,11 +203,15 @@ class WMCPBESensitivityAnalyzer:
                     "config": cfg,
                     "init_dist": copy.deepcopy(self.init_dist),
                     "cast_sample": cast_sample,
+                    "npz_path": str(self._task_npz_path(task_id)),
                 }
             )
 
         self._write_samples_manifest(tasks)
         completed_map = self._load_completed_task_results()
+        recovered_count = self._recover_completed_from_npz(tasks, completed_map)
+        if recovered_count > 0:
+            print(f"Recovered {recovered_count} completed samples from NPZ files.", flush=True)
         pending_tasks = [task for task in tasks if str(task["task_id"]) not in completed_map]
         if pending_tasks:
             print(
@@ -349,7 +370,7 @@ class WMCPBESensitivityAnalyzer:
         row: Dict[str, object],
         completed_map: Dict[str, Dict[str, object]],
     ) -> None:
-        self._write_task_result(row)
+        self._upsert_result_sqlite(row)
         completed_map[str(row["task_id"])] = row
         self._write_results_snapshot(completed_map)
         print("Completed one sample.", flush=True)
@@ -418,7 +439,7 @@ class WMCPBESensitivityAnalyzer:
 
     def _prepare_run_directory(self, problem: Dict[str, object], samples: np.ndarray) -> None:
         self.run_dir.mkdir(parents=True, exist_ok=True)
-        (self.run_dir / "completed").mkdir(parents=True, exist_ok=True)
+        self.npz_dir.mkdir(parents=True, exist_ok=True)
         metadata_path = self.run_dir / "metadata.json"
         payload = self._run_metadata_payload(problem, samples)
         if metadata_path.exists():
@@ -430,6 +451,16 @@ class WMCPBESensitivityAnalyzer:
                 )
         else:
             metadata_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        conn = self._open_db()
+        try:
+            self._init_db(conn)
+            self._set_db_meta(conn, "run_signature", payload["run_signature"])
+            self._set_db_meta(conn, "metric_name", payload["metric_name"])
+            self._set_db_meta(conn, "sample_size", payload["sample_size"])
+            self._set_db_meta(conn, "calc_second_order", payload["calc_second_order"])
+            self._set_db_meta(conn, "num_model_evaluations", payload["num_model_evaluations"])
+        finally:
+            conn.close()
 
     def _task_id_for_sample(self, sample_index: int, cast_sample: Dict[str, object]) -> str:
         src = json.dumps(self._normalize_for_json(cast_sample), sort_keys=True, ensure_ascii=True)
@@ -442,6 +473,7 @@ class WMCPBESensitivityAnalyzer:
             row = {
                 "task_id": str(task["task_id"]),
                 "sample_index": int(task["sample_index"]),
+                "npz_relpath": str(Path(str(task["npz_path"])).name),
             }
             row.update(copy.deepcopy(task["cast_sample"]))
             rows.append(row)
@@ -450,32 +482,174 @@ class WMCPBESensitivityAnalyzer:
             index=False,
         )
 
-    def _task_result_path(self, task_id: str) -> Path:
-        return self.run_dir / "completed" / f"{task_id}.json"
+    def _task_npz_path(self, task_id: str) -> Path:
+        return self.npz_dir / f"{task_id}.npz"
+
+    def _recover_completed_from_npz(
+        self,
+        tasks: Sequence[Dict[str, object]],
+        completed_map: Dict[str, Dict[str, object]],
+    ) -> int:
+        recovered = 0
+        for task in tasks:
+            task_id = str(task["task_id"])
+            if task_id in completed_map:
+                continue
+            npz_path = Path(str(task["npz_path"]))
+            if not npz_path.exists():
+                continue
+            row = self._load_row_from_npz(npz_path)
+            if row is None:
+                continue
+            if str(row.get("task_id", "")) != task_id:
+                continue
+            self._upsert_result_sqlite(row)
+            completed_map[task_id] = row
+            recovered += 1
+        if recovered > 0:
+            self._write_results_snapshot(completed_map)
+        return recovered
+
+    def _load_row_from_npz(self, npz_path: Path) -> Optional[Dict[str, object]]:
+        try:
+            with np.load(npz_path, allow_pickle=False) as data:
+                required = {"task_id", "sample_index", "metric_name", "metric_value", "cpu_time_s"}
+                if not required.issubset(set(data.files)):
+                    return None
+                row: Dict[str, object] = {
+                    "task_id": str(np.asarray(data["task_id"]).item()),
+                    "sample_index": int(np.asarray(data["sample_index"]).item()),
+                    "metric_name": str(np.asarray(data["metric_name"]).item()),
+                    "metric_value": float(np.asarray(data["metric_value"]).item()),
+                    "cpu_time_s": float(np.asarray(data["cpu_time_s"]).item()),
+                    "npz_relpath": str(npz_path.name),
+                }
+                for key in data.files:
+                    if not key.startswith("param_"):
+                        continue
+                    value = np.asarray(data[key])
+                    if value.ndim == 0:
+                        row[key[6:]] = value.item()
+                    else:
+                        row[key[6:]] = value.tolist()
+                return row
+        except Exception:
+            return None
 
     def _load_completed_task_results(self) -> Dict[str, Dict[str, object]]:
-        completed_dir = self.run_dir / "completed"
         completed_map: Dict[str, Dict[str, object]] = {}
-        if not completed_dir.exists():
+        if not self.sqlite_path.exists():
             return completed_map
-        for path in sorted(completed_dir.glob("*.json")):
-            try:
-                row = json.loads(path.read_text(encoding="utf-8"))
-            except Exception:
-                continue
-            task_id = str(row.get("task_id", path.stem))
-            completed_map[task_id] = row
+        conn = self._open_db()
+        try:
+            self._init_db(conn)
+            query = """
+                SELECT task_id, sample_index, metric_name, metric_value, cpu_time_s, npz_relpath, attrs_json
+                FROM sample_results
+                WHERE status = 'done'
+                ORDER BY sample_index
+            """
+            for task_id, sample_index, metric_name, metric_value, cpu_time_s, npz_relpath, attrs_json in conn.execute(query):
+                row = {
+                    "task_id": str(task_id),
+                    "sample_index": int(sample_index),
+                    "metric_name": str(metric_name),
+                    "metric_value": float(metric_value),
+                    "cpu_time_s": float(cpu_time_s),
+                    "npz_relpath": str(npz_relpath),
+                }
+                row.update(json.loads(str(attrs_json)))
+                completed_map[str(task_id)] = row
+        finally:
+            conn.close()
         return completed_map
 
-    def _write_task_result(self, row: Dict[str, object]) -> None:
-        task_id = str(row["task_id"])
-        path = self._task_result_path(task_id)
-        tmp_path = path.with_suffix(".tmp")
-        tmp_path.write_text(
-            json.dumps(self._normalize_for_json(row), indent=2, ensure_ascii=False),
-            encoding="utf-8",
+    def _open_db(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(self.sqlite_path, timeout=60.0)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        return conn
+
+    def _init_db(self, conn: sqlite3.Connection) -> None:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS meta (
+                key TEXT PRIMARY KEY,
+                value_json TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS sample_results (
+                task_id TEXT PRIMARY KEY,
+                sample_index INTEGER NOT NULL UNIQUE,
+                status TEXT NOT NULL,
+                metric_name TEXT NOT NULL,
+                metric_value REAL NOT NULL,
+                cpu_time_s REAL NOT NULL,
+                npz_relpath TEXT NOT NULL,
+                attrs_json TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_sample_results_index ON sample_results(sample_index);
+            CREATE INDEX IF NOT EXISTS idx_sample_results_status ON sample_results(status);
+            """
         )
-        tmp_path.replace(path)
+        conn.commit()
+
+    def _set_db_meta(self, conn: sqlite3.Connection, key: str, value: object) -> None:
+        conn.execute(
+            """
+            INSERT INTO meta(key, value_json) VALUES (?, ?)
+            ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json
+            """,
+            (str(key), json.dumps(self._normalize_for_json(value), ensure_ascii=False, sort_keys=True)),
+        )
+        conn.commit()
+
+    def _upsert_result_sqlite(self, row: Dict[str, object]) -> None:
+        conn = self._open_db()
+        try:
+            self._init_db(conn)
+            attrs = {
+                key: value
+                for key, value in row.items()
+                if key
+                not in {
+                    "task_id",
+                    "sample_index",
+                    "metric_name",
+                    "metric_value",
+                    "cpu_time_s",
+                    "npz_relpath",
+                }
+            }
+            conn.execute(
+                """
+                INSERT INTO sample_results(
+                    task_id, sample_index, status, metric_name, metric_value, cpu_time_s, npz_relpath, attrs_json
+                )
+                VALUES (?, ?, 'done', ?, ?, ?, ?, ?)
+                ON CONFLICT(task_id) DO UPDATE SET
+                    sample_index = excluded.sample_index,
+                    status = excluded.status,
+                    metric_name = excluded.metric_name,
+                    metric_value = excluded.metric_value,
+                    cpu_time_s = excluded.cpu_time_s,
+                    npz_relpath = excluded.npz_relpath,
+                    attrs_json = excluded.attrs_json
+                """,
+                (
+                    str(row["task_id"]),
+                    int(row["sample_index"]),
+                    str(row["metric_name"]),
+                    float(row["metric_value"]),
+                    float(row["cpu_time_s"]),
+                    str(row["npz_relpath"]),
+                    json.dumps(self._normalize_for_json(attrs), ensure_ascii=False, sort_keys=True),
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
 
     def _records_from_completed_map(self, completed_map: Dict[str, Dict[str, object]]) -> List[Dict[str, object]]:
         records = list(completed_map.values())
