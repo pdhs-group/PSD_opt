@@ -10,21 +10,25 @@ This version supports parameter-grid scans over:
 - X1
 - STR
 
-Each run is stored in HDF5 with a unique key and full parameter metadata,
-so the saved data can be used directly as training data later.
+Each run is stored in HDF5 with a unique key and full parameter metadata.
+The scan also maintains a SQLite checkpoint database so subtask results can be
+written incrementally and resumed after interruptions.
 """
 
+from __future__ import annotations
+
 import os
-from dataclasses import dataclass
+import sqlite3
+import zlib
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
+from pathlib import Path
 from typing import Any, Dict, List, Sequence, Tuple
 
 import h5py
-import matplotlib.pyplot as plt
 import numpy as np
-from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from lmc import LMCSimulator
-from aggregates_sampler import NP_LIST
+from aggregates_sampler_npz_sqlite import NP_LIST
 
 
 def _ensure_sequence(value: Any) -> List[Any]:
@@ -54,12 +58,26 @@ def _format_str_for_key(str_values: np.ndarray) -> str:
     return "x".join(_format_float_for_key(v) for v in _coerce_str_array(str_values))
 
 
+def _status_db_path(h5_path: str) -> str:
+    path = Path(h5_path)
+    if path.suffix:
+        return str(path.with_name(f"{path.stem}_status.sqlite"))
+    return str(path.with_name(f"{path.name}_status.sqlite"))
+
+
+def _grid_seed_for_task(base_seed: int, run_key: str, idx_np: int, grid_idx: int) -> int:
+    run_crc = zlib.crc32(run_key.encode("utf-8")) & 0xFFFFFFFF
+    seq = np.random.SeedSequence([int(base_seed), int(run_crc), int(idx_np), int(grid_idx)])
+    return int(seq.generate_state(1, dtype=np.uint32)[0])
+
+
 # =============================
 # Worker: one grid + N_FRACS repeats
 # =============================
-def _energy_scan_worker_one_grid(args: Tuple[Any, ...]) -> Tuple[int, int, np.ndarray]:
+def _energy_scan_worker_one_grid(args: Tuple[Any, ...]) -> Tuple[int, int, int, np.ndarray]:
     (
         idx_np,
+        grid_idx,
         Np,
         A,
         seed_grid,
@@ -117,249 +135,389 @@ def _energy_scan_worker_one_grid(args: Tuple[Any, ...]) -> Tuple[int, int, np.nd
     if sim.agg_pool is not None:
         sim.agg_pool.close_pool_cache()
 
-    return idx_np, Np, energies
+    return idx_np, grid_idx, Np, energies
 
+def _fit_sigma_from_arrays(V: np.ndarray, E: np.ndarray) -> Tuple[float, float]:
+    mask = (V > 0.0) & np.isfinite(V) & (E > 0.0) & np.isfinite(E)
+    V_fit = V[mask]
+    E_fit = E[mask]
+    if V_fit.size < 2:
+        return float("nan"), float("nan")
 
-@dataclass
-class EnergyScanResult:
-    V: np.ndarray
-    Np: np.ndarray
-    E_mean: np.ndarray
-    E_std: np.ndarray
-    E_all: Dict[int, np.ndarray]
-    params: Dict[str, Any]
-
-
-def build_simulator_for_pool(
-    STR: np.ndarray,
-    NO_FRAG: int,
-    gamma: float = 1.0,
-    allow_loops: bool = False,
-    accept_all_cracks: bool = False,
-    use_weighted_start: bool = True,
-    pool_dir: str | None = None,
-) -> LMCSimulator:
-    return LMCSimulator(
-        STR=STR,
-        NO_FRAG=NO_FRAG,
-        gamma=gamma,
-        allow_loops=allow_loops,
-        accept_all_cracks=accept_all_cracks,
-        use_weighted_start=use_weighted_start,
-        plotter=None,
-        pool_dir=pool_dir,
-    )
-
-
-def run_energy_scan_from_pool(
-    pool_dir: str,
-    Df: float,
-    MAS: float,
-    *,
-    np_list: Sequence[int] | None = None,
-    X1: float = 1.0,
-    A0: float = 1.0,
-    int_bre: float = 0.0,
-    STR: np.ndarray | None = None,
-    NO_FRAG: int = 4,
-    gamma: float = 1.0,
-    N_GRIDS: int = 10,
-    N_FRACS: int = 5,
-    base_seed: int = 42,
-    workers: int = 1,
-) -> EnergyScanResult:
-    if STR is None:
-        STR = np.array([1.0, 0.1, 1.0], dtype=float)
-    else:
-        STR = _coerce_str_array(STR)
-
-    if np_list is None:
-        np_list = NP_LIST
-    np_list = list(np_list)
-
-    rng_master = np.random.default_rng(base_seed)
-
-    E_all: Dict[int, np.ndarray] = {}
-    V_list: List[float] = []
-    Np_list_used: List[int] = []
-
-    n_runs_per_np = N_GRIDS * N_FRACS
-
-    if workers is None or workers <= 1:
-        sim = build_simulator_for_pool(
-            STR=STR,
-            NO_FRAG=NO_FRAG,
-            gamma=gamma,
-            allow_loops=False,
-            accept_all_cracks=False,
-            use_weighted_start=True,
-            pool_dir=pool_dir,
-        )
-
-        for Np in np_list:
-            A = float(Np) * float(A0)
-            seed_np = int(rng_master.integers(0, 2**31 - 1))
-
-            F = sim.mc_breakage_from_pool(
-                pool_dir=pool_dir,
-                Df=Df,
-                MAS=MAS,
-                A=A,
-                X1=X1,
-                N_GRIDS=N_GRIDS,
-                N_FRACS=N_FRACS,
-                A0=A0,
-                int_bre=int_bre,
-                seed=seed_np,
-                plot_each=False,
-                interp="knn",
-                KNN=1,
-                sigma=0.35,
-            )
-
-            try:
-                F_run = F.reshape(n_runs_per_np, sim.NO_FRAG, 4)
-            except ValueError as exc:
-                raise RuntimeError(
-                    f"Unexpected F shape for Np={Np}: F.shape={F.shape}, "
-                    f"expected {n_runs_per_np * sim.NO_FRAG} rows"
-                ) from exc
-
-            energies = F_run[:, 0, 3].copy()
-            E_all[Np] = energies
-            V_list.append(A)
-            Np_list_used.append(Np)
-
-            print(
-                f"[SCAN-SEQ] Np={Np:6d}, V={A:8.1f}, "
-                f"E_mean={energies.mean():.4f}, E_std={energies.std(ddof=1):.4f}"
-            )
-
-        if sim.agg_pool is not None:
-            sim.agg_pool.close_pool_cache()
-    else:
-        jobs: List[Tuple[Any, ...]] = []
-        for idx_np, Np in enumerate(np_list):
-            A = float(Np) * float(A0)
-            rng_np = np.random.default_rng(int(rng_master.integers(0, 2**31 - 1)))
-
-            for _ in range(N_GRIDS):
-                seed_grid = int(rng_np.integers(0, 2**31 - 1))
-                jobs.append(
-                    (
-                        idx_np,
-                        Np,
-                        A,
-                        seed_grid,
-                        pool_dir,
-                        Df,
-                        MAS,
-                        X1,
-                        A0,
-                        int_bre,
-                        STR,
-                        NO_FRAG,
-                        gamma,
-                        N_FRACS,
-                    )
-                )
-
-        tmp_collect: Dict[int, List[np.ndarray]] = {}
-
-        with ProcessPoolExecutor(max_workers=workers) as ex:
-            future_to_job = {
-                ex.submit(_energy_scan_worker_one_grid, job): job for job in jobs
-            }
-            for fut in as_completed(future_to_job):
-                idx_np, Np, energies = fut.result()
-                tmp_collect.setdefault(idx_np, []).append(energies)
-
-        for idx_np, Np in enumerate(np_list):
-            if idx_np not in tmp_collect:
-                raise RuntimeError(f"No energies collected for idx_np={idx_np}, Np={Np}")
-
-            energies = np.concatenate(tmp_collect[idx_np], axis=0)
-            if energies.size != n_runs_per_np:
-                print(
-                    f"[WARN] Np={Np}: collected {energies.size} energies, "
-                    f"expected {n_runs_per_np}"
-                )
-
-            E_all[Np] = energies
-            A = float(Np) * float(A0)
-            V_list.append(A)
-            Np_list_used.append(Np)
-
-            print(
-                f"[SCAN-PAR] Np={Np:6d}, V={A:8.1f}, "
-                f"E_mean={energies.mean():.4f}, E_std={energies.std(ddof=1):.4f}"
-            )
-
-    V_arr = np.array(V_list, dtype=float)
-    Np_arr = np.array(Np_list_used, dtype=int)
-    E_mean = np.array([E_all[int(Np)].mean() for Np in Np_arr], dtype=float)
-    E_std = np.array([E_all[int(Np)].std(ddof=1) for Np in Np_arr], dtype=float)
-
-    params = dict(
-        pool_dir=os.path.abspath(pool_dir),
-        Df=float(Df),
-        MAS=float(MAS),
-        X1=float(X1),
-        A0=float(A0),
-        int_bre=float(int_bre),
-        STR=_coerce_str_array(STR),
-        NO_FRAG=int(NO_FRAG),
-        gamma=float(gamma),
-        N_GRIDS=int(N_GRIDS),
-        N_FRACS=int(N_FRACS),
-        base_seed=int(base_seed),
-        workers=int(workers),
-    )
-
-    return EnergyScanResult(
-        V=V_arr,
-        Np=Np_arr,
-        E_mean=E_mean,
-        E_std=E_std,
-        E_all=E_all,
-        params=params,
-    )
-
-
-def plot_loglog_and_fit_sigma(result: EnergyScanResult, show: bool = True):
-    V = result.V
-    E = result.E_mean
-
-    mask = (V > 0.0) & (E > 0.0)
-    V = V[mask]
-    E = E[mask]
-
-    logV = np.log(V)
-    logE = np.log(E)
-
+    logV = np.log(V_fit)
+    logE = np.log(E_fit)
     r = np.corrcoef(logV, logE)[0, 1]
 
     A_mat = np.vstack([np.ones_like(logV), logV]).T
     coef, *_ = np.linalg.lstsq(A_mat, logE, rcond=None)
-    a, sigma = coef
+    _a, sigma = coef
+    return float(sigma), float(r)
 
-    if show:
-        plt.figure()
-        plt.scatter(logV, logE, label=f"data (r={r:.3f})")
-        plt.plot(logV, a + sigma * logV, label=f"fit: sigma={sigma:.3f}")
-        plt.xlabel("log(V)")
-        plt.ylabel("log(E_mean)")
-        plt.legend()
-        plt.grid(True)
-        plt.title("E_need vs V (log-log)")
-        plt.show()
+# =============================
+# HDF5 / SQLite checkpoint helpers
+# =============================
+def _init_status_db(conn: sqlite3.Connection) -> None:
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS task_status (
+            run_key TEXT NOT NULL,
+            idx_np INTEGER NOT NULL,
+            grid_idx INTEGER NOT NULL,
+            np_value INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (run_key, idx_np, grid_idx)
+        );
 
-    print(f"[FIT] log(E) ~= {a:.3f} + {sigma:.3f} * log(V), Pearson r={r:.4f}")
+        CREATE INDEX IF NOT EXISTS idx_task_status_run_status
+        ON task_status(run_key, status);
+        """
+    )
+
+
+def _ensure_task_rows(
+    conn: sqlite3.Connection,
+    run_key: str,
+    np_arr: np.ndarray,
+    n_grids: int,
+) -> None:
+    rows = []
+    for idx_np, np_value in enumerate(np_arr.astype(int)):
+        for grid_idx in range(int(n_grids)):
+            rows.append((run_key, int(idx_np), int(grid_idx), int(np_value)))
+    conn.executemany(
+        """
+        INSERT OR IGNORE INTO task_status(run_key, idx_np, grid_idx, np_value)
+        VALUES (?, ?, ?, ?)
+        """,
+        rows,
+    )
+    conn.commit()
+
+
+def _mark_task_done(conn: sqlite3.Connection, run_key: str, idx_np: int, grid_idx: int) -> None:
+    conn.execute(
+        """
+        UPDATE task_status
+        SET status = 'done',
+            updated_at = CURRENT_TIMESTAMP
+        WHERE run_key = ? AND idx_np = ? AND grid_idx = ?
+        """,
+        (run_key, int(idx_np), int(grid_idx)),
+    )
+    conn.commit()
+
+
+def _pending_tasks(conn: sqlite3.Connection, run_key: str) -> List[Tuple[int, int]]:
+    rows = conn.execute(
+        """
+        SELECT idx_np, grid_idx
+        FROM task_status
+        WHERE run_key = ? AND status != 'done'
+        ORDER BY idx_np, grid_idx
+        """,
+        (run_key,),
+    ).fetchall()
+    return [(int(row[0]), int(row[1])) for row in rows]
+
+
+def _done_task_count(conn: sqlite3.Connection, run_key: str) -> int:
+    row = conn.execute(
+        "SELECT COUNT(*) FROM task_status WHERE run_key = ? AND status = 'done'",
+        (run_key,),
+    ).fetchone()
+    return int(row[0]) if row is not None else 0
+
+
+def _is_legacy_complete_group(grp: h5py.Group, n_np: int, n_runs_per_np: int) -> bool:
+    if "completed_mask" in grp:
+        return False
+    if "E_samples" not in grp:
+        return False
+    e_samples = grp["E_samples"]
+    return tuple(e_samples.shape) == (int(n_np), int(n_runs_per_np))
+
+
+def _ensure_checkpoint_group(
+    f: h5py.File,
+    grp_path: str,
+    *,
+    np_arr: np.ndarray,
+    v_arr: np.ndarray,
+    params: Dict[str, Any],
+) -> h5py.Group:
+    n_np = int(np_arr.size)
+    n_grids = int(params["N_GRIDS"])
+    n_fracs = int(params["N_FRACS"])
+
+    if grp_path in f:
+        grp = f[grp_path]
+    else:
+        grp = f.create_group(grp_path)
+
+    grp.attrs["NO_FRAG"] = int(params["NO_FRAG"])
+    grp.attrs["int_bre"] = float(params["int_bre"])
+    grp.attrs["gamma"] = float(params["gamma"])
+    grp.attrs["Df"] = float(params["Df"])
+    grp.attrs["MAS"] = float(params["MAS"])
+    grp.attrs["X1"] = float(params["X1"])
+    grp.attrs["A0"] = float(params["A0"])
+    grp.attrs["N_GRIDS"] = int(params["N_GRIDS"])
+    grp.attrs["N_FRACS"] = int(params["N_FRACS"])
+    grp.attrs["base_seed"] = int(params["base_seed"])
+    grp.attrs["workers"] = int(params["workers"])
+    grp.attrs["STR"] = _coerce_str_array(params["STR"])
+    grp.attrs["checkpoint_version"] = 1
+
+    if "Np" not in grp:
+        grp.create_dataset("Np", data=np_arr.astype(int), compression="gzip")
+    if "V" not in grp:
+        grp.create_dataset("V", data=v_arr.astype(float), compression="gzip")
+    if "E_samples" not in grp:
+        grp.create_dataset(
+            "E_samples",
+            shape=(n_np, n_grids, n_fracs),
+            dtype=float,
+            compression="gzip",
+            fillvalue=np.nan,
+        )
+    if "completed_mask" not in grp:
+        grp.create_dataset(
+            "completed_mask",
+            shape=(n_np, n_grids),
+            dtype=np.bool_,
+            compression="gzip",
+            fillvalue=False,
+        )
+    if "E_mean" not in grp:
+        grp.create_dataset("E_mean", shape=(n_np,), dtype=float, compression="gzip", fillvalue=np.nan)
+    if "E_std" not in grp:
+        grp.create_dataset("E_std", shape=(n_np,), dtype=float, compression="gzip", fillvalue=np.nan)
+
+    return grp
+
+
+def _sync_task_status_from_h5(
+    conn: sqlite3.Connection,
+    run_key: str,
+    grp: h5py.Group,
+) -> None:
+    if "completed_mask" not in grp:
+        return
+
+    completed_mask = np.asarray(grp["completed_mask"][...], dtype=bool)
+    rows = [(run_key, int(idx_np), int(grid_idx)) for idx_np, grid_idx in np.argwhere(completed_mask)]
+    if not rows:
+        return
+
+    conn.executemany(
+        """
+        UPDATE task_status
+        SET status = 'done',
+            updated_at = CURRENT_TIMESTAMP
+        WHERE run_key = ? AND idx_np = ? AND grid_idx = ?
+        """,
+        rows,
+    )
+    conn.commit()
+
+
+def _update_np_summary(grp: h5py.Group, idx_np: int) -> None:
+    completed_row = np.asarray(grp["completed_mask"][idx_np, :], dtype=bool)
+    if not np.any(completed_row):
+        grp["E_mean"][idx_np] = np.nan
+        grp["E_std"][idx_np] = np.nan
+        return
+
+    row_samples = np.asarray(grp["E_samples"][idx_np, :, :], dtype=float)
+    done_samples = row_samples[completed_row, :].reshape(-1)
+    if done_samples.size == 0:
+        grp["E_mean"][idx_np] = np.nan
+        grp["E_std"][idx_np] = np.nan
+        return
+
+    grp["E_mean"][idx_np] = float(done_samples.mean())
+    grp["E_std"][idx_np] = float(done_samples.std(ddof=1)) if done_samples.size > 1 else np.nan
+
+
+def _update_all_summaries(grp: h5py.Group) -> None:
+    n_np = int(grp["Np"].shape[0])
+    for idx_np in range(n_np):
+        _update_np_summary(grp, idx_np)
+
+
+def _update_sigma_attrs(grp: h5py.Group) -> Tuple[float, float]:
+    V = np.asarray(grp["V"][...], dtype=float)
+    E_mean = np.asarray(grp["E_mean"][...], dtype=float)
+    sigma, r = _fit_sigma_from_arrays(V, E_mean)
+    grp.attrs["sigma"] = float(sigma)
+    grp.attrs["pearson_r"] = float(r)
     return float(sigma), float(r)
 
 
+def _subtask_payload(
+    *,
+    run_key: str,
+    idx_np: int,
+    grid_idx: int,
+    np_arr: np.ndarray,
+    params: Dict[str, Any],
+) -> Tuple[Any, ...]:
+    np_value = int(np_arr[int(idx_np)])
+    A = float(np_value) * float(params["A0"])
+    seed_grid = _grid_seed_for_task(int(params["base_seed"]), run_key, int(idx_np), int(grid_idx))
+    return (
+        int(idx_np),
+        int(grid_idx),
+        int(np_value),
+        A,
+        seed_grid,
+        str(params["pool_dir"]),
+        float(params["Df"]),
+        float(params["MAS"]),
+        float(params["X1"]),
+        float(params["A0"]),
+        float(params["int_bre"]),
+        _coerce_str_array(params["STR"]),
+        int(params["NO_FRAG"]),
+        float(params["gamma"]),
+        int(params["N_FRACS"]),
+    )
+
+
+def _run_checkpointed_energy_scan(
+    *,
+    h5_path: str,
+    sqlite_path: str,
+    grp_path: str,
+    run_key: str,
+    params: Dict[str, Any],
+    np_list: Sequence[int],
+) -> Tuple[float, float]:
+    np_arr = np.asarray(list(np_list), dtype=int)
+    v_arr = np_arr.astype(float) * float(params["A0"])
+    expected_tasks = int(np_arr.size) * int(params["N_GRIDS"])
+    n_runs_per_np = int(params["N_GRIDS"]) * int(params["N_FRACS"])
+
+    with h5py.File(h5_path, "a") as h5f, sqlite3.connect(sqlite_path) as conn:
+        _init_status_db(conn)
+
+        if grp_path in h5f and _is_legacy_complete_group(h5f[grp_path], int(np_arr.size), n_runs_per_np):
+            grp = h5f[grp_path]
+            sigma = float(grp.attrs.get("sigma", np.nan))
+            r = float(grp.attrs.get("pearson_r", np.nan))
+            print(f"[SKIP] {grp_path} already exists in legacy-complete format, skip running LMC.")
+            return sigma, r
+
+        grp = _ensure_checkpoint_group(
+            h5f,
+            grp_path,
+            np_arr=np_arr,
+            v_arr=v_arr,
+            params=params,
+        )
+        _ensure_task_rows(conn, run_key, np_arr, int(params["N_GRIDS"]))
+        _sync_task_status_from_h5(conn, run_key, grp)
+
+        pending = _pending_tasks(conn, run_key)
+        done_count = _done_task_count(conn, run_key)
+        grp.attrs["completed_tasks"] = int(done_count)
+        grp.attrs["expected_tasks"] = int(expected_tasks)
+        h5f.flush()
+
+        if not pending:
+            _update_all_summaries(grp)
+            sigma, r = _update_sigma_attrs(grp)
+            h5f.flush()
+            print(f"[SKIP] {grp_path} already complete ({done_count}/{expected_tasks} subtasks).")
+            return sigma, r
+
+        print(
+            f"[RESUME] {grp_path}: {done_count}/{expected_tasks} subtasks complete, "
+            f"{len(pending)} remaining."
+        )
+
+        workers = int(params["workers"])
+        if workers <= 1:
+            for idx_np, grid_idx in pending:
+                payload = _subtask_payload(
+                    run_key=run_key,
+                    idx_np=idx_np,
+                    grid_idx=grid_idx,
+                    np_arr=np_arr,
+                    params=params,
+                )
+                idx_np_ret, grid_idx_ret, np_value, energies = _energy_scan_worker_one_grid(payload)
+                grp["E_samples"][idx_np_ret, grid_idx_ret, :] = energies
+                grp["completed_mask"][idx_np_ret, grid_idx_ret] = True
+                _update_np_summary(grp, idx_np_ret)
+                h5f.flush()
+                _mark_task_done(conn, run_key, idx_np_ret, grid_idx_ret)
+                done_count += 1
+                grp.attrs["completed_tasks"] = int(done_count)
+                h5f.flush()
+                print(
+                    f"[TASK-SEQ] Np={np_value:6d}, grid={grid_idx_ret:4d}, "
+                    f"done {done_count}/{expected_tasks}"
+                )
+        else:
+            pending_futures: Dict[Any, Tuple[int, int]] = {}
+            pending_iter = iter(pending)
+
+            def refill(executor: ProcessPoolExecutor) -> None:
+                while len(pending_futures) < workers:
+                    try:
+                        idx_np, grid_idx = next(pending_iter)
+                    except StopIteration:
+                        break
+                    payload = _subtask_payload(
+                        run_key=run_key,
+                        idx_np=idx_np,
+                        grid_idx=grid_idx,
+                        np_arr=np_arr,
+                        params=params,
+                    )
+                    future = executor.submit(_energy_scan_worker_one_grid, payload)
+                    pending_futures[future] = (idx_np, grid_idx)
+
+            with ProcessPoolExecutor(max_workers=workers) as ex:
+                refill(ex)
+                while pending_futures:
+                    done_set, _ = wait(set(pending_futures.keys()), return_when=FIRST_COMPLETED)
+                    for fut in done_set:
+                        idx_np_sub, grid_idx_sub = pending_futures.pop(fut)
+                        idx_np_ret, grid_idx_ret, np_value, energies = fut.result()
+                        if idx_np_ret != idx_np_sub or grid_idx_ret != grid_idx_sub:
+                            raise RuntimeError(
+                                f"Worker returned mismatched task identity: "
+                                f"expected ({idx_np_sub}, {grid_idx_sub}), got ({idx_np_ret}, {grid_idx_ret})"
+                            )
+
+                        grp["E_samples"][idx_np_ret, grid_idx_ret, :] = energies
+                        grp["completed_mask"][idx_np_ret, grid_idx_ret] = True
+                        _update_np_summary(grp, idx_np_ret)
+                        h5f.flush()
+                        _mark_task_done(conn, run_key, idx_np_ret, grid_idx_ret)
+                        done_count += 1
+                        grp.attrs["completed_tasks"] = int(done_count)
+                        h5f.flush()
+                        print(
+                            f"[TASK-PAR] Np={np_value:6d}, grid={grid_idx_ret:4d}, "
+                            f"done {done_count}/{expected_tasks}"
+                        )
+                    refill(ex)
+
+        _update_all_summaries(grp)
+        sigma, r = _update_sigma_attrs(grp)
+        grp.attrs["completed_tasks"] = int(done_count)
+        grp.attrs["expected_tasks"] = int(expected_tasks)
+        h5f.flush()
+        return sigma, r
+
 # =============================
-# HDF5 save helpers
+# Parameter scan
 # =============================
 def _make_param_key(
     NO_FRAG: int,
@@ -381,60 +539,6 @@ def _make_param_key(
     )
 
 
-def save_result_to_h5(
-    h5_path: str,
-    result: EnergyScanResult,
-    NO_FRAG: int,
-    int_bre: float,
-    gamma: float,
-):
-    params = result.params
-    Df = float(params["Df"])
-    MAS = float(params["MAS"])
-    X1 = float(params["X1"])
-    STR = _coerce_str_array(params["STR"])
-
-    key = _make_param_key(NO_FRAG, int_bre, gamma, Df, MAS, X1, STR)
-    grp_path = f"/runs/{key}"
-
-    Np_arr = result.Np.astype(int)
-    E_samples = np.stack([result.E_all[int(Np)] for Np in Np_arr], axis=0)
-
-    with h5py.File(h5_path, "a") as f:
-        if grp_path in f:
-            print(f"[H5] Group {grp_path} already exists, skip saving.")
-            return
-
-        grp = f.create_group(grp_path)
-        grp.attrs["NO_FRAG"] = int(NO_FRAG)
-        grp.attrs["int_bre"] = float(int_bre)
-        grp.attrs["gamma"] = float(gamma)
-        grp.attrs["Df"] = Df
-        grp.attrs["MAS"] = MAS
-        grp.attrs["X1"] = X1
-        grp.attrs["A0"] = float(params["A0"])
-        grp.attrs["N_GRIDS"] = int(params["N_GRIDS"])
-        grp.attrs["N_FRACS"] = int(params["N_FRACS"])
-        grp.attrs["base_seed"] = int(params["base_seed"])
-        grp.attrs["workers"] = int(params["workers"])
-        grp.attrs["STR"] = STR
-        if "sigma" in params:
-            grp.attrs["sigma"] = float(params["sigma"])
-        if "pearson_r" in params:
-            grp.attrs["pearson_r"] = float(params["pearson_r"])
-
-        grp.create_dataset("Np", data=Np_arr, compression="gzip")
-        grp.create_dataset("V", data=result.V, compression="gzip")
-        grp.create_dataset("E_mean", data=result.E_mean, compression="gzip")
-        grp.create_dataset("E_std", data=result.E_std, compression="gzip")
-        grp.create_dataset("E_samples", data=E_samples, compression="gzip")
-
-        print(f"[H5] Saved result to {grp_path}")
-
-
-# =============================
-# Parameter scan
-# =============================
 def run_full_parameter_scan(
     h5_path: str,
     pool_dir: str,
@@ -452,6 +556,7 @@ def run_full_parameter_scan(
     base_seed: int,
     workers: int,
 ):
+    sqlite_path = _status_db_path(h5_path)
     mas_list = [float(v) for v in _ensure_sequence(MAS)]
     x1_list = [float(v) for v in _ensure_sequence(X1)]
     str_list = [_coerce_str_array(v) for v in _ensure_sequence(STR)]
@@ -463,20 +568,15 @@ def run_full_parameter_scan(
                     for X1_value in x1_list:
                         for STR_value in str_list:
                             key = _make_param_key(
-                                NO_FRAG,
+                                int(NO_FRAG),
                                 float(int_bre),
                                 float(gamma),
-                                Df,
-                                MAS_value,
-                                X1_value,
+                                float(Df),
+                                float(MAS_value),
+                                float(X1_value),
                                 STR_value,
                             )
                             grp_path = f"/runs/{key}"
-
-                            with h5py.File(h5_path, "a") as f:
-                                if grp_path in f:
-                                    print(f"[SKIP] {grp_path} already exists, skip running LMC.")
-                                    continue
 
                             print("\n=====================================================")
                             print(
@@ -487,39 +587,36 @@ def run_full_parameter_scan(
                             )
                             print("=====================================================\n")
 
-                            result = run_energy_scan_from_pool(
-                                pool_dir=pool_dir,
-                                Df=Df,
-                                MAS=MAS_value,
-                                np_list=np_list,
-                                X1=X1_value,
-                                A0=A0,
+                            params = dict(
+                                pool_dir=os.path.abspath(pool_dir),
+                                Df=float(Df),
+                                MAS=float(MAS_value),
+                                X1=float(X1_value),
+                                A0=float(A0),
                                 int_bre=float(int_bre),
-                                STR=STR_value,
+                                STR=_coerce_str_array(STR_value),
                                 NO_FRAG=int(NO_FRAG),
                                 gamma=float(gamma),
-                                N_GRIDS=N_GRIDS,
-                                N_FRACS=N_FRACS,
-                                base_seed=base_seed,
-                                workers=workers,
+                                N_GRIDS=int(N_GRIDS),
+                                N_FRACS=int(N_FRACS),
+                                base_seed=int(base_seed),
+                                workers=int(workers),
                             )
 
-                            sigma, r = plot_loglog_and_fit_sigma(result, show=False)
-                            print(f"[SCAN] sigma={sigma:.4f}, r={r:.4f}")
-
-                            result.params["sigma"] = float(sigma)
-                            result.params["pearson_r"] = float(r)
-
-                            save_result_to_h5(
+                            sigma, r = _run_checkpointed_energy_scan(
                                 h5_path=h5_path,
-                                result=result,
-                                NO_FRAG=int(NO_FRAG),
-                                int_bre=float(int_bre),
-                                gamma=float(gamma),
+                                sqlite_path=sqlite_path,
+                                grp_path=grp_path,
+                                run_key=key,
+                                params=params,
+                                np_list=np_list,
                             )
+
+                            print(f"[SCAN] sigma={sigma:.4f}, r={r:.4f}")
 
     print("\nAll scans finished!")
     print(f"Results saved to {h5_path}")
+    print(f"Checkpoint DB saved to {sqlite_path}")
 
 
 def print_h5_structure(h5_path):
@@ -542,23 +639,25 @@ def print_h5_structure(h5_path):
 
 if __name__ == "__main__":
     pool_dir = r""
-    # pool_dir = os.environ.get("STORAGE_PATH")
+    store_path = r""
+    # pool_dir = os.environ.get("TMP_PATH")
+    # store_path = os.path.join(os.environ.get("STORAGE_PATH"), "energy_pool")
     Df = 1.8
     MAS_list = [0.1, 0.5, 0.9]
 
     A0 = 1.0
     X1_list = [0.1, 0.5, 0.9]
-    
+
     values = np.array([1.0, 1e2, 1e4])
-    a1, a2, a3 = np.meshgrid(values, values, values, indexing='ij')
+    a1, a2, a3 = np.meshgrid(values, values, values, indexing="ij")
     var_STR = np.column_stack((a1.flatten(), a2.flatten(), a3.flatten()))
     var_STR = var_STR[~np.all(var_STR == 0, axis=1)]
     unique_STR = []
     for comp in var_STR:
-        comp_reversed = comp[::-1]  
+        comp_reversed = comp[::-1]
         if not any(np.array_equal(comp, x) or np.array_equal(comp_reversed, x) for x in unique_STR):
             unique_STR.append(comp)
-    STR_list = np.array(unique_STR)   
+    STR_list = np.array(unique_STR)
 
     N_GRIDS = 100
     N_FRACS = 200
@@ -573,7 +672,7 @@ if __name__ == "__main__":
     # gamma_list = np.logspace(-3, 3, 6)
     gamma_list = [1.0]
 
-    output_h5 = "psd_data.h5"
+    output_h5 = os.path.join(store_path, "psd_data.h5")
 
     run_full_parameter_scan(
         h5_path=output_h5,
