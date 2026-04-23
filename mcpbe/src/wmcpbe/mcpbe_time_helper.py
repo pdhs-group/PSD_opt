@@ -87,6 +87,16 @@ def dt_break_from_sum_prop_pair(sum_prop_before: float, sum_prop_after: float) -
         return float("inf")
     return 1.0 / prop_eff
 
+
+def agg_rate_from_sum_prop(a_tot: int, Vc: float, sum_prop: float) -> float:
+    if a_tot < 2 or sum_prop <= 0.0:
+        return 0.0
+    return float(a_tot) * float(sum_prop) / (2.0 * float(Vc) * (float(a_tot) - 1.0))
+
+
+def mix_total_rate_from_sum_prop(a_tot: int, Vc: float, sum_prop_agg: float, sum_prop_break: float) -> float:
+    return agg_rate_from_sum_prop(a_tot, Vc, sum_prop_agg) + max(float(sum_prop_break), 0.0)
+
 class MCPBETimeHelper:
     def _draw_time_multiplier(self) -> float:
         if not bool(getattr(self, "exp_time_step", False)):
@@ -128,6 +138,28 @@ class MCPBETimeHelper:
         else:
             def event_dt(sum_prop_before: float, _sum_prop_after: float) -> float:
                 return self._dt_break_from_sum_prop(float(sum_prop_before)) * self._draw_time_multiplier()
+
+        return initial_dt, event_dt
+
+    def _build_mix_dt_strategy(self):
+        use_pair = bool(getattr(self, "sum_prop_pair", True))
+
+        def initial_dt(total_rate: float) -> float:
+            if total_rate <= 0.0:
+                return float("inf")
+            return (1.0 / float(total_rate)) * self._draw_time_multiplier()
+
+        if use_pair:
+            def event_dt(total_rate_before: float, total_rate_after: float) -> float:
+                prop_eff = self._log_mean_positive(float(total_rate_before), float(total_rate_after))
+                if (not np.isfinite(prop_eff)) or prop_eff <= 0.0:
+                    return float("inf")
+                return (1.0 / prop_eff) * self._draw_time_multiplier()
+        else:
+            def event_dt(total_rate_before: float, _total_rate_after: float) -> float:
+                if total_rate_before <= 0.0:
+                    return float("inf")
+                return (1.0 / float(total_rate_before)) * self._draw_time_multiplier()
 
         return initial_dt, event_dt
 
@@ -185,3 +217,11 @@ class MCPBETimeHelper:
 
     def _dt_break_from_sum_prop_pair(self, sum_prop_before: float, sum_prop_after: float) -> float:
         return dt_break_from_sum_prop_pair(float(sum_prop_before), float(sum_prop_after))
+
+    def _agg_rate_from_sum_prop(self, sum_prop: float) -> float:
+        return agg_rate_from_sum_prop(int(self.a_tot), float(self.Vc), float(sum_prop))
+
+    def _mix_total_rate_from_sum_prop(self, sum_prop_agg: float, sum_prop_break: float) -> float:
+        return mix_total_rate_from_sum_prop(
+            int(self.a_tot), float(self.Vc), float(sum_prop_agg), float(sum_prop_break)
+        )

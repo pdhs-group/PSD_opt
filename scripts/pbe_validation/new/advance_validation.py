@@ -34,7 +34,6 @@ from validation import (  # noqa: E402
     WMCPBEVariantConfig,
 )
 
-
 if __name__ == "__main__":
     case = CaseConfig(
         dim=2,

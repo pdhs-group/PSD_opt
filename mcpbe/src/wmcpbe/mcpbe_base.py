@@ -847,15 +847,24 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         )
         agg_initial_dt, agg_event_dt = self._build_agg_dt_strategy()
         break_initial_dt, break_event_dt = self._build_break_dt_strategy()
+        mix_initial_dt, mix_event_dt = self._build_mix_dt_strategy()
 
-        timer_agg = agg_initial_dt(agg_total_propensity()) if pt in ("agglomeration", "mix") else float("inf")
-        timer_break = break_initial_dt(break_total_propensity()) if pt in ("breakage", "mix") else float("inf")
+        timer_agg = agg_initial_dt(agg_total_propensity()) if pt == "agglomeration" else float("inf")
+        timer_break = break_initial_dt(break_total_propensity()) if pt == "breakage" else float("inf")
+        if pt == "mix":
+            agg_prop0 = agg_total_propensity()
+            break_prop0 = break_total_propensity()
+            timer_mix = mix_initial_dt(self._mix_total_rate_from_sum_prop(agg_prop0, break_prop0))
+        else:
+            timer_mix = float("inf")
 
         if self.VERBOSE:
             if np.isfinite(timer_agg):
                 print(f"Initial dt_agg = {timer_agg:.3e} s")
             if np.isfinite(timer_break):
                 print(f"Initial dt_break = {timer_break:.3e} s")
+            if np.isfinite(timer_mix):
+                print(f"Initial dt_mix = {timer_mix:.3e} s")
                 
         if self.mcpbe_debug:
             self._check_state_before_solve()
@@ -880,7 +889,6 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
 
             if pt == "agglomeration":
                 sum_prop_before = agg_total_propensity()
-
                 self._do_one_agg()  # from AgglomerationMixin
                 self.real_agg_events += float(max(0.0, float(getattr(self, "_last_agg_dW", 0.0))))
                 sum_prop_after = agg_total_propensity()
@@ -890,7 +898,6 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
             elif pt == "breakage":
                 # total propensity BEFORE the event (Î”t uses event Î”W over pre-event propensity)
                 sum_prop_before = break_total_propensity()
-            
                 self._do_one_break()  # sets self._last_break_dW for packeted events
                 self.real_break_events += float(max(0.0, float(getattr(self, "_last_break_dW", 0.0))))
                 sum_prop_after = break_total_propensity()
@@ -898,23 +905,28 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
                 dtd_break = break_event_dt(sum_prop_before, sum_prop_after)
                 timer_break += dtd_break
             else:  # mix
-                if timer_agg <= timer_break:
-                    sum_prop_before = agg_total_propensity()
+                agg_prop_before = agg_total_propensity()
+                break_prop_before = break_total_propensity()
+                agg_rate_before = self._agg_rate_from_sum_prop(agg_prop_before)
+                break_rate_before = max(float(break_prop_before), 0.0)
+                total_rate_before = agg_rate_before + break_rate_before
+                if total_rate_before <= 0.0:
+                    break
 
+                u_event = float(self._rng.random()) * total_rate_before
+                if u_event < agg_rate_before:
                     self._do_one_agg()
                     self.real_agg_events += float(max(0.0, float(getattr(self, "_last_agg_dW", 0.0))))
-                    sum_prop_after = agg_total_propensity()
-                    elapsed_time = timer_agg
-                    dtd_agg = agg_event_dt(sum_prop_before, sum_prop_after)
-                    timer_agg += dtd_agg
                 else:
-                    sum_prop_before = break_total_propensity()
                     self._do_one_break()
                     self.real_break_events += float(max(0.0, float(getattr(self, "_last_break_dW", 0.0))))
-                    sum_prop_after = break_total_propensity()
-                    elapsed_time = timer_break
-                    dtd_break = break_event_dt(sum_prop_before, sum_prop_after)
-                    timer_break += dtd_break
+
+                agg_prop_after = agg_total_propensity()
+                break_prop_after = break_total_propensity()
+                total_rate_after = self._mix_total_rate_from_sum_prop(agg_prop_after, break_prop_after)
+                elapsed_time = timer_mix
+                dtd_mix = mix_event_dt(total_rate_before, total_rate_after)
+                timer_mix += dtd_mix
 
             current_time = float(elapsed_time)
             self._elapsed = current_time
