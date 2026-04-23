@@ -74,6 +74,7 @@ class MCPBEAgg:
             float(getattr(self, "G", 1.0)),
             R,
             W,
+            delta,
         )
         r = np.divide(r, delta, out=np.zeros_like(r, dtype=float), where=delta > 0.0)
         np.maximum(r, 0.0, out=r)
@@ -120,14 +121,20 @@ class MCPBEAgg:
             dW = dW_max
         delta_i = self._update_delta_single(i, attr_name="_delta_agg", dW_const=float(getattr(self, "_agg_dW_const", dW_max)))
         delta_j = self._update_delta_single(j, attr_name="_delta_agg", dW_const=float(getattr(self, "_agg_dW_const", dW_max)))
-        if dW > Wi:
-            dW = Wi
-        if dW > Wj:
-            dW = Wj
-        if delta_i > 0.0 and dW > delta_i:
-            dW = delta_i
-        if delta_j > 0.0 and dW > delta_j:
-            dW = delta_j
+        if i == j:
+            if delta_i <= 0.0 or Wi <= 2.0 * delta_i:
+                return 0.0
+            if dW > delta_i:
+                dW = delta_i
+        else:
+            if dW > Wi:
+                dW = Wi
+            if dW > Wj:
+                dW = Wj
+            if delta_i > 0.0 and dW > delta_i:
+                dW = delta_i
+            if delta_j > 0.0 and dW > delta_j:
+                dW = delta_j
         if not np.isfinite(dW) or dW <= 0.0:
             return 0.0
         return float(dW)
@@ -172,11 +179,11 @@ class MCPBEAgg:
         j, pick_w = nb_pick_partner_weighted(
             i,
             int(self.COLEVAL), float(self.CORR_BETA), float(getattr(self, "G", 1.0)),
-            R, W, V0, V1, int(self.dim),
+            R, W, self._delta_agg[:a].astype(np.float64), V0, V1, int(self.dim),
             float(alpha1d), alpha4, SIZEEVAL, X_SEL, Y_SEL, Vmean2,
             u_sel, u_acc,
         )
-        if j < 0 or j == i or pick_w <= 0.0:
+        if j < 0 or pick_w <= 0.0:
             return
 
         # 3) packet size Î”W for this accepted event
@@ -197,16 +204,25 @@ class MCPBEAgg:
         new_idx = self.a_tot - 1
         self.W[new_idx] = dW
 
-        # 5) consume dW from parents (volumes unchanged for surviving represented particles)
-        for idx in sorted({int(i), int(j)}, reverse=True):
-            if idx >= self.a_tot:
-                continue
-            w_now = float(self.W[idx])
-            w_rem = w_now - dW
-            if w_rem > 0.0:
-                self.W[idx] = w_rem
-            else:
-                self._remove_particle_column(idx)
+        # 5) consume dW from parents (self-agglomeration consumes 2*dW from one packet)
+        if i == j:
+            if i < self.a_tot:
+                w_now = float(self.W[i])
+                w_rem = w_now - 2.0 * dW
+                if w_rem > 0.0:
+                    self.W[i] = w_rem
+                else:
+                    self._remove_particle_column(i)
+        else:
+            for idx in sorted({int(i), int(j)}, reverse=True):
+                if idx >= self.a_tot:
+                    continue
+                w_now = float(self.W[idx])
+                w_rem = w_now - dW
+                if w_rem > 0.0:
+                    self.W[idx] = w_rem
+                else:
+                    self._remove_particle_column(idx)
 
         # 6) full weighted agglomeration propensity refresh (simple and consistent)
         self._rebuild_all_propensities()

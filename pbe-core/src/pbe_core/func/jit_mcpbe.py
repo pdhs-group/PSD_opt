@@ -31,8 +31,16 @@ def nb_rebuild_ragg_weighted(
     G: float,
     R: np.ndarray,
     W: np.ndarray,
+    DELTA: np.ndarray,
 ) -> np.ndarray:
-    """Parallel weighted r_i = W_i * sum_j (W_j * beta(i,j))."""
+    """Parallel weighted r_i for WMCPBE, including self-agglomeration.
+
+    For j != i, the contribution is W_i * W_j * beta(i,j).
+    For j == i, one selected batch of size delta_i can collide with the
+    remaining represented mass in the same compute particle only when
+    W_i > 2 * delta_i. In that case the self contribution is
+    W_i * (W_i - delta_i) * beta(i,i).
+    """
     a = R.shape[0]
     r = np.zeros(a, dtype=np.float64)
     for i in prange(a):
@@ -42,6 +50,9 @@ def nb_rebuild_ragg_weighted(
         s = 0.0
         for j in range(a):
             if j == i:
+                delta_i = DELTA[i]
+                if delta_i > 0.0 and Wi > 2.0 * delta_i:
+                    s += (Wi - delta_i) * _kb_beta(COLEVAL, CORR_BETA, G, R, i, j)
                 continue
             Wj = W[j]
             if Wj <= 0.0:
@@ -156,6 +167,7 @@ def nb_pick_partner_weighted(
     G: float,
     R: np.ndarray,
     W: np.ndarray,
+    DELTA: np.ndarray,
     V0: np.ndarray,
     V1: np.ndarray,
     dim: int,
@@ -168,12 +180,17 @@ def nb_pick_partner_weighted(
     u_sel: float,
     u_acc: float,
 ):
-    """Weighted partner sampling: j ~ W_j*beta(i,j), with alpha accept/reject.
+    """Weighted partner sampling for WMCPBE with self-agglomeration.
 
-    Returns (j, wjbeta_selected), or (-1, 0.0) on reject/failure.
+    For j != i, the sampling weight is W_j * beta(i,j).
+    For j == i, one batch of size delta_i is already selected by choosing i,
+    so self-agglomeration is only possible when W_i > 2 * delta_i and the
+    partner weight becomes (W_i - delta_i) * beta(i,i).
+
+    Returns (j, partner_weight_selected), or (-1, 0.0) on reject/failure.
     """
     a = R.shape[0]
-    nmax = a - 1
+    nmax = a
     if nmax <= 0:
         return -1, 0.0
 
@@ -183,6 +200,20 @@ def nb_pick_partner_weighted(
     tot = 0.0
     for j in range(a):
         if j == i:
+            Wi = W[i]
+            delta_i = DELTA[i]
+            if delta_i <= 0.0 or Wi <= 2.0 * delta_i:
+                continue
+            bij = _kb_beta(COLEVAL, CORR_BETA, G, R, i, j)
+            if bij <= 0.0:
+                continue
+            wij = (Wi - delta_i) * bij
+            if wij <= 0.0:
+                continue
+            js[kk] = j
+            weights[kk] = wij
+            tot += wij
+            kk += 1
             continue
         Wj = W[j]
         if Wj <= 0.0:

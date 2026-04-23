@@ -81,11 +81,13 @@ def dt_break_from_sum_prop(sum_prop: float) -> float:
         return float("inf")
     return 1.0 / sum_prop
 
+
 def dt_break_from_sum_prop_pair(sum_prop_before: float, sum_prop_after: float) -> float:
     prop_eff = log_mean_positive(float(sum_prop_before), float(sum_prop_after))
     if (not np.isfinite(prop_eff)) or prop_eff <= 0.0:
         return float("inf")
     return 1.0 / prop_eff
+
 
 class MCPBETimeHelper:
     def _draw_time_multiplier(self) -> float:
