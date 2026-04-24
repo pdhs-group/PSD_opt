@@ -4,11 +4,9 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-import cProfile, pstats
+# import cProfile, pstats
 
 import numpy as np
-from pbe_core.plotter.plotter_new import PaperPlotter
-
 
 def _bootstrap_project_paths() -> None:
     root = Path(__file__).resolve().parents[3]
@@ -40,7 +38,7 @@ if __name__ == "__main__":
         dim=2,
         kernel="const",
         process="mix",
-        t_vec=np.arange(0.0, 5.0 + 1e-12, 1.0),
+        t_vec=np.arange(0.0, 10.0 + 1e-12, 1.0),
         x=2e-3,
         beta0=1e-6,
         p1=1e-1,
@@ -51,12 +49,12 @@ if __name__ == "__main__":
     config = ValidationConfig(
         case=case,
         dpbe_variants=[
-            DPBEVariantConfig(name="dPBE", grid="geo", ns=20, s=2, enabled=False),
+            DPBEVariantConfig(name="dPBE", grid="geo", ns=20, s=2),
         ],
         wmcpbe_variants=[
             WMCPBEVariantConfig(
                 name="MCPBE",
-                repeats=1,
+                repeats=20,
                 attrs={
                     "a0": 10000,
                     "V_eff_init": 0,
@@ -68,34 +66,34 @@ if __name__ == "__main__":
                     "agg_dW_max": 1,
                 },
             ),
-            # WMCPBEVariantConfig(
-            #     name="WMCPBE",
-            #     repeats=20,
-            #     attrs={
-            #         "a0": 10000,
-            #         "V_eff_init": 1000,
-            #         "recon_enable": True,
-            #         "recon_N_max": 4000,
-            #         "recon_bins": 30,
-            #         "recon_method": "4PMC",
-            #         "break_dW_max": 20,
-            #         "agg_dW_max": 2,
-            #     },
-            # ),
-            # WMCPBEVariantConfig(
-            #     name="WMCPBE2",
-            #     repeats=100,
-            #     attrs={
-            #         "a0": 10000,
-            #         "V_eff_init": 1000,
-            #         "recon_enable": True,
-            #         "recon_N_max": 4000,
-            #         "recon_bins": 30,
-            #         "recon_method": "4PMC",
-            #         "break_dW_max": 20,
-            #         "agg_dW_max": 2,
-            #     },
-            # ),
+            WMCPBEVariantConfig(
+                name="WMCPBE",
+                repeats=20,
+                attrs={
+                    "a0": 10000,
+                    "V_eff_init": 1000,
+                    "recon_enable": True,
+                    "recon_N_max": 4000,
+                    "recon_bins": 30,
+                    "recon_method": "4PMC",
+                    "break_dW_max": 20,
+                    "agg_dW_max": 2,
+                },
+            ),
+            WMCPBEVariantConfig(
+                name="WMCPBE2",
+                repeats=100,
+                attrs={
+                    "a0": 10000,
+                    "V_eff_init": 1000,
+                    "recon_enable": True,
+                    "recon_N_max": 4000,
+                    "recon_bins": 30,
+                    "recon_method": "4PMC",
+                    "break_dW_max": 20,
+                    "agg_dW_max": 2,
+                },
+            ),
         ],
         qmom_variants=[],
         reference_dpbe_name="dPBE",
@@ -114,14 +112,8 @@ if __name__ == "__main__":
     )
 
     advanced = PBEValidationAdvanced(config=config, init_dist=init_dist)
-    
-    profiler = cProfile.Profile()
-    profiler.enable()
     result = advanced.run()
-    profiler.disable()
-    stats = pstats.Stats(profiler).strip_dirs().sort_stats("cumtime")
-    stats.print_stats(20)
-    
+
     advanced.print_moment_error_summary(result)
     advanced.plot_selected_moments(result, relative=True)
     advanced.plot_psd_snapshot(result, t_index=-1, two_d=True, marginal=True, total=True, q0=True, q3=True)

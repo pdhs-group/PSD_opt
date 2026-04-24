@@ -50,14 +50,14 @@ def nb_rebuild_ragg_weighted(
         s = 0.0
         for j in range(a):
             if j == i:
-                delta_i = DELTA[i]
-                if delta_i > 0.0 and Wi > 2.0 * delta_i:
-                    s += (Wi - delta_i) * _kb_beta(COLEVAL, CORR_BETA, G, R, i, j)
                 continue
             Wj = W[j]
             if Wj <= 0.0:
                 continue
             s += Wj * _kb_beta(COLEVAL, CORR_BETA, G, R, i, j)
+        delta_i = DELTA[i]
+        if delta_i > 0.0 and Wi > 2.0 * delta_i:
+            s += (Wi - delta_i) * _kb_beta(COLEVAL, CORR_BETA, G, R, i, i)
         val = Wi * s
         r[i] = val if val > 0.0 else 0.0
     return r
