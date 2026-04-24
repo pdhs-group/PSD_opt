@@ -54,7 +54,7 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         self.CDF_method = "disc"
         self.VERBOSE = verbose
         self.exp_time_step = False
-        self.sum_prop_pair = True
+        self.sum_prop_pair = False
         self.maybe_double_control_volume=False
 
         # Initial distributions flags
@@ -979,6 +979,144 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
             )
         return self
     
+    def solve_old(self, maxiter: int = int(1e12)):
+        t0 = time.time()
+        count = 0
+        current_time = 0.0
+        self.real_agg_events = 0.0
+        self.real_break_events = 0.0
+        self.real_agg_events_save = [0.0]
+        self.real_break_events_save = [0.0]
+
+        pt = getattr(self, "process_type", "agglomeration")
+        agg_total_propensity = (
+            (lambda: float(self._agg_sampler.total()))
+            if self._agg_sampler is not None
+            else (lambda: float(np.sum(self._r_agg[:self.a_tot])))
+        )
+        break_total_propensity = (
+            (lambda: float(self._break_sampler.total()))
+            if self._break_sampler is not None
+            else (lambda: float(np.sum(self._break_rate[:self.a_tot])))
+        )
+        agg_initial_dt, agg_event_dt = self._build_agg_dt_strategy()
+        break_initial_dt, break_event_dt = self._build_break_dt_strategy()
+        
+        timer_agg = agg_initial_dt(agg_total_propensity()) if pt in ("agglomeration", "mix") else float("inf")
+        timer_break = break_initial_dt(break_total_propensity()) if pt in ("breakage", "mix") else float("inf")
+
+        if self.VERBOSE:
+            if np.isfinite(timer_agg):
+                print(f"Initial dt_agg = {timer_agg:.3e} s")
+            if np.isfinite(timer_break):
+                print(f"Initial dt_break = {timer_break:.3e} s")
+                
+        if self.mcpbe_debug:
+            self._check_state_before_solve()
+            self._log_debug_config()
+
+        next_save_idx = 1 if len(self.t_vec) > 1 else 0
+        self._elapsed = 0.0
+        self._iter_count = 0
+
+        cancel_flag = getattr(self, "cancel_flag", None)
+        while current_time <= float(self.t_vec[-1]) and count < maxiter:
+            if cancel_flag is not None and cancel_flag.get("cancel", False):
+                break
+            # keep context for logging/expansion
+            self._elapsed = current_time
+            self._iter_count = count
+            
+            # cache "left" state: state after previous event
+            t_prev = current_time
+            V_prev_active = self.V_flat[:, :self.a_tot].copy()
+            W_prev_active = self.W[:self.a_tot].copy()
+
+            if pt == "agglomeration":
+                sum_prop_before = agg_total_propensity()
+                self._do_one_agg()  # from AgglomerationMixin
+                self.real_agg_events += float(max(0.0, float(getattr(self, "_last_agg_dW", 0.0))))
+                sum_prop_after = agg_total_propensity()
+                elapsed_time = timer_agg
+                dtd_agg = agg_event_dt(sum_prop_before, sum_prop_after)
+                timer_agg += dtd_agg
+            elif pt == "breakage":
+                # total propensity BEFORE the event (Î”t uses event Î”W over pre-event propensity)
+                sum_prop_before = break_total_propensity()
+                self._do_one_break()  # sets self._last_break_dW for packeted events
+                self.real_break_events += float(max(0.0, float(getattr(self, "_last_break_dW", 0.0))))
+                sum_prop_after = break_total_propensity()
+                elapsed_time = timer_break
+                dtd_break = break_event_dt(sum_prop_before, sum_prop_after)
+                timer_break += dtd_break
+            else:  # mix
+                if timer_agg <= timer_break:
+                    sum_prop_before = agg_total_propensity()
+                    self._do_one_agg()
+                    self.real_agg_events += float(max(0.0, float(getattr(self, "_last_agg_dW", 0.0))))
+                    sum_prop_after = agg_total_propensity()
+                    elapsed_time = timer_agg
+                    dtd_agg = agg_event_dt(sum_prop_before, sum_prop_after)
+                    timer_agg += dtd_agg
+                else:
+                    sum_prop_before = break_total_propensity()
+                    self._do_one_break()
+                    self.real_break_events += float(max(0.0, float(getattr(self, "_last_break_dW", 0.0))))
+                    sum_prop_after = break_total_propensity()
+                    elapsed_time = timer_break
+                    dtd_break = break_event_dt(sum_prop_before, sum_prop_after)
+                    timer_break += dtd_break
+
+            current_time = float(elapsed_time)
+            self._elapsed = current_time
+            
+            # current "right" state after this event
+            V_right_active = self.V_flat[:, :self.a_tot]
+            W_right_active = self.W[:self.a_tot]
+
+            # Save snapshots at requested times (active slice only)
+            while next_save_idx < len(self.t_vec) and elapsed_time >= self.t_vec[next_save_idx]:
+                # right snapshots: same behavior as original code
+                self.V_save.append(V_right_active.copy())
+                self.W_save.append(W_right_active.copy())
+            
+                self.Vc_save.append(float(self.Vc))
+                self.step += 1
+            
+                # left/right metadata for this time point
+                self.V_save_left.append(V_prev_active.copy())
+                self.W_save_left.append(W_prev_active.copy())
+            
+                self.t_left.append(t_prev)
+                self.t_right.append(elapsed_time)
+                self.real_agg_events_save.append(float(self.real_agg_events))
+                self.real_break_events_save.append(float(self.real_break_events))
+            
+                next_save_idx += 1
+                if self.VERBOSE:    
+                    print(
+                        f"[MC-PBE] Calculate t={elapsed_time:.6g} after {self._iter_count} events "
+                        f"(real agg={self.real_agg_events:.6g}, real break={self.real_break_events:.6g})"
+                    )
+            # agglomeration-dominated safety (duplicate CV)
+            if self.maybe_double_control_volume:
+                self._maybe_double_control_volume(current_time, count)
+            self.maybe_reconstruct(iter_count=self._iter_count, reason=f"post_event_{pt}")
+
+            count += 1
+            # if count%100 == 0: print([f"[Test] events = {count}"])
+            if self.a_tot < 2 and pt in ("agglomeration", "mix"):
+                break
+        if self.use_lmc_live:
+            self.lmc_live._sim.agg_pool.close_pool_cache()
+        self.MACHINE_TIME = time.time() - t0
+        if self.VERBOSE:
+            print(
+                f"[MC-PBE] The calculation took {getattr(self,'MACHINE_TIME',0.0):.4g}s "
+                f"after {count} events "
+                f"(real agg={self.real_agg_events:.6g}, real break={self.real_break_events:.6g})"
+            )
+        return self
     def solve_repeats(
         self,
         N: int = 5,
