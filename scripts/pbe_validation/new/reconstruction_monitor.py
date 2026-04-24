@@ -85,9 +85,6 @@ class ReconstructionMonitor:
     ) -> None:
         if config.case.dim != 2:
             raise ValueError("ReconstructionMonitor only supports dim=2.")
-        enabled_dpbe = [variant for variant in config.dpbe_variants if variant.enabled]
-        if len(enabled_dpbe) != 1:
-            raise ValueError("ReconstructionMonitor expects exactly one enabled dPBE variant.")
         self.config = config
         self.init_dist = init_dist
         self.runner = Dirichlet2DValidationRunner(config, init_dist)

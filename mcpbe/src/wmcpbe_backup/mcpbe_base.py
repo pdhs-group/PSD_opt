@@ -1016,23 +1016,7 @@ class MCPBEBase(BaseSolver):
         pt = getattr(self, "process_type", "agglomeration")
         timer_agg = 0.0
         timer_break = 0.0
-        # dtd_agg = self._dt_agg() if pt in ("agglomeration", "mix") else float("inf")
-        
-        # if pt == "mix":
-        #     dtd_break = self._dt_break()
-        #     timer_break += dtd_break
-        # else:
-        #     # breakage-only: dt depends on _last_break_dW, which is only known AFTER _do_one_break()
-        #     dtd_break = float("inf")
-
-        # timer_agg += dtd_agg
-
-        # if self.VERBOSE:
-        #     if np.isfinite(dtd_agg):
-        #         print(f"Initial dt_agg = {dtd_agg:.3e} s")
-        #     if np.isfinite(dtd_break):
-        #         print(f"Initial dt_break = {dtd_break:.3e} s")
-                
+  
         if self.mcpbe_debug:
             self._check_state_before_solve()
             self._log_debug_config()

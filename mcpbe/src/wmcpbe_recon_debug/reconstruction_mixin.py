@@ -124,13 +124,13 @@ class ReconstructionMixin:
         valid = np.isfinite(W) & (W > 0.0) & np.isfinite(Vtot) & (Vtot > 0.0)
         for d in range(dim):
             valid &= np.isfinite(Vcomp[d]) & (Vcomp[d] >= 0.0)
-        self._debug_recon_valid_filter(
-            method=method,
-            Vcomp=Vcomp,
-            Vtot=Vtot,
-            W=W,
-            valid=valid,
-        )
+        # self._debug_recon_valid_filter(
+        #     method=method,
+        #     Vcomp=Vcomp,
+        #     Vtot=Vtot,
+        #     W=W,
+        #     valid=valid,
+        # )
     
         if not np.any(valid):
             return
@@ -518,7 +518,7 @@ class ReconstructionMixin:
                 rel_sub = abs(float(post_map[key]) - float(pre_map[key])) / (abs(float(pre_map[key])) + 1e-40)
                 self.__dict__[f"recon_monitor_{prefix}_{key}_rel_err"].append(float(rel_sub))
         self.recon_monitor_L1_err.append(float(l1_err))
-        self._recon_monitor_debug_print_split(payload, moments_post, moments_work_post, moments_protected_post)
+        # self._recon_monitor_debug_print_split(payload, moments_post, moments_work_post, moments_protected_post)
 
     def _recon_monitor_get_active_state(self) -> tuple[Optional[np.ndarray], Optional[np.ndarray]]:
         a = int(getattr(self, "a_tot", 0))
@@ -595,19 +595,19 @@ class ReconstructionMixin:
                 break
         if not has_issue:
             return
-        print(
-            f"[ReconSplitDebug] method={payload['method']} iter={payload['iter_count']} "
-            f"time={float(payload['time_value']):.6g} "
-            f"count_before={payload['count_before']} "
-            f"count_work_before={payload['count_work_before']} "
-            f"count_protected={payload['count_protected']}"
-        )
-        for prefix, pre_map, post_map in pieces:
-            fields = []
-            for key in ("M00", "M01", "M11", "M02"):
-                rel = abs(float(post_map[key]) - float(pre_map[key])) / (abs(float(pre_map[key])) + 1e-40)
-                fields.append(f"{prefix}_{key}_rel={rel:.6e}")
-            print("[ReconSplitDebug] " + " ".join(fields))
+        # print(
+        #     f"[ReconSplitDebug] method={payload['method']} iter={payload['iter_count']} "
+        #     f"time={float(payload['time_value']):.6g} "
+        #     f"count_before={payload['count_before']} "
+        #     f"count_work_before={payload['count_work_before']} "
+        #     f"count_protected={payload['count_protected']}"
+        # )
+        # for prefix, pre_map, post_map in pieces:
+        #     fields = []
+        #     for key in ("M00", "M01", "M11", "M02"):
+        #         rel = abs(float(post_map[key]) - float(pre_map[key])) / (abs(float(pre_map[key])) + 1e-40)
+        #         fields.append(f"{prefix}_{key}_rel={rel:.6e}")
+        #     print("[ReconSplitDebug] " + " ".join(fields))
 
     def _recon_monitor_build_grid(
         self,
@@ -1509,15 +1509,15 @@ class ReconstructionMixin:
         diff = float(wsum - M0)
         if abs(diff) <= 1e-6:
             return
-        print(
-            f"[ReconBucketDebug] method={method} branch={branch} "
-            f"M0={M0:.16e} sum_w={wsum:.16e} diff={diff:.16e} n={len(bucket_weights)}"
-        )
-        for k, (wk, vcol) in enumerate(zip(bucket_weights, bucket_points)):
-            print(
-                f"[ReconBucketDebug]   item={k} wk={float(wk):.16e} "
-                f"vcol={np.asarray(vcol, dtype=float).tolist()}"
-            )
+        # print(
+        #     f"[ReconBucketDebug] method={method} branch={branch} "
+        #     f"M0={M0:.16e} sum_w={wsum:.16e} diff={diff:.16e} n={len(bucket_weights)}"
+        # )
+        # for k, (wk, vcol) in enumerate(zip(bucket_weights, bucket_points)):
+        #     print(
+        #         f"[ReconBucketDebug]   item={k} wk={float(wk):.16e} "
+        #         f"vcol={np.asarray(vcol, dtype=float).tolist()}"
+        #     )
 
     def _debug_recon_bucket_index_coverage(
         self,
@@ -1774,12 +1774,12 @@ class ReconstructionMixin:
 
         n_bins = self.recon_bins
         buckets, _, _ = self._bucket_by_cam_cells(idx, Vcomp, n_bins=n_bins, return_grid=False)
-        self._debug_recon_bucket_index_coverage(
-            method="4PMC",
-            idx_input=idx,
-            buckets=buckets,
-            W=W,
-        )
+        # self._debug_recon_bucket_index_coverage(
+        #     method="4PMC",
+        #     idx_input=idx,
+        #     buckets=buckets,
+        #     W=W,
+        # )
 
         eps_var = float(getattr(self, "recon_4pmc_eps_var", 1e-30))
         V_cols: list[np.ndarray] = []
@@ -1813,13 +1813,13 @@ class ReconstructionMixin:
             if varx <= eps_var and vary <= eps_var:
                 bucket_points.append(np.array([max(mux, 0.0), max(muy, 0.0)], dtype=float))
                 bucket_weights.append(M0)
-                self._debug_recon_bucket_mass(
-                    method="4PMC",
-                    branch="point",
-                    M0=M0,
-                    bucket_points=bucket_points,
-                    bucket_weights=bucket_weights,
-                )
+                # self._debug_recon_bucket_mass(
+                #     method="4PMC",
+                #     branch="point",
+                #     M0=M0,
+                #     bucket_points=bucket_points,
+                #     bucket_weights=bucket_weights,
+                # )
                 V_cols.extend(bucket_points)
                 W_out.extend(bucket_weights)
                 continue
@@ -1832,13 +1832,13 @@ class ReconstructionMixin:
                         continue
                     bucket_points.append(np.array([x_fix, max(float(yk), 0.0)], dtype=float))
                     bucket_weights.append(float(wk))
-                self._debug_recon_bucket_mass(
-                    method="4PMC",
-                    branch="vary_only",
-                    M0=M0,
-                    bucket_points=bucket_points,
-                    bucket_weights=bucket_weights,
-                )
+                # self._debug_recon_bucket_mass(
+                #     method="4PMC",
+                #     branch="vary_only",
+                #     M0=M0,
+                #     bucket_points=bucket_points,
+                #     bucket_weights=bucket_weights,
+                # )
                 V_cols.extend(bucket_points)
                 W_out.extend(bucket_weights)
                 continue
@@ -1851,13 +1851,13 @@ class ReconstructionMixin:
                         continue
                     bucket_points.append(np.array([max(float(xk), 0.0), y_fix], dtype=float))
                     bucket_weights.append(float(wk))
-                self._debug_recon_bucket_mass(
-                    method="4PMC",
-                    branch="varx_only",
-                    M0=M0,
-                    bucket_points=bucket_points,
-                    bucket_weights=bucket_weights,
-                )
+                # self._debug_recon_bucket_mass(
+                #     method="4PMC",
+                #     branch="varx_only",
+                #     M0=M0,
+                #     bucket_points=bucket_points,
+                #     bucket_weights=bucket_weights,
+                # )
                 V_cols.extend(bucket_points)
                 W_out.extend(bucket_weights)
                 continue
@@ -1887,13 +1887,13 @@ class ReconstructionMixin:
                 else:
                     ratio = np.zeros(dim, dtype=float)
                 self._append_two_point_reps(M0, M1, M2, ratio, bucket_points, bucket_weights)
-                self._debug_recon_bucket_mass(
-                    method="4PMC",
-                    branch="fallback_2pm",
-                    M0=M0,
-                    bucket_points=bucket_points,
-                    bucket_weights=bucket_weights,
-                )
+                # self._debug_recon_bucket_mass(
+                #     method="4PMC",
+                #     branch="fallback_2pm",
+                #     M0=M0,
+                #     bucket_points=bucket_points,
+                #     bucket_weights=bucket_weights,
+                # )
                 V_cols.extend(bucket_points)
                 W_out.extend(bucket_weights)
                 continue
@@ -1918,13 +1918,13 @@ class ReconstructionMixin:
                 bucket_points.append(vcol)
                 bucket_weights.append(wk)
 
-            self._debug_recon_bucket_mass(
-                method="4PMC",
-                branch="closed_form",
-                M0=M0,
-                bucket_points=bucket_points,
-                bucket_weights=bucket_weights,
-            )
+            # self._debug_recon_bucket_mass(
+            #     method="4PMC",
+            #     branch="closed_form",
+            #     M0=M0,
+            #     bucket_points=bucket_points,
+            #     bucket_weights=bucket_weights,
+            # )
             V_cols.extend(bucket_points)
             W_out.extend(bucket_weights)
 
