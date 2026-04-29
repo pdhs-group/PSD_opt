@@ -14,7 +14,7 @@ Created on Tue Sep 23 12:47:04 2025
 
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Tuple, Dict, List
+from typing import Any, Tuple, Dict, List
 import numpy as np
 import matplotlib.pyplot as plt
 from numba import njit
@@ -23,7 +23,7 @@ from numba import njit
 # Public API
 # -----------------------------
 from dataclasses import dataclass
-from typing import Tuple, Dict
+from typing import Any, Tuple, Dict
 
 import numpy as np
 
@@ -67,6 +67,13 @@ class MaterialMixParams:
         Metropolis temperature parameter for the MCMC acceptance rule.
     seed : int | None
         Random seed used for the initial labeling and MCMC.
+    low_mas_init_threshold : float
+        If target_MAS is below this value, the initial labeling is selected
+        from spatially segregated exact-composition candidates instead of
+        only a random permutation.
+    low_mas_init_candidates : int
+        Number of BFS-style compact-domain candidates added to the spatial
+        split candidates for low-MAS initialization/probing.
     """
     # composition of A/B (exact counts are enforced)
     frac_A: float = 0.7
@@ -87,6 +94,10 @@ class MaterialMixParams:
     max_bisect: int = 12
     temperature: float = 1.0
     seed: int | None = None
+
+    # low-MAS initialization controls
+    low_mas_init_threshold: float = 0.3
+    low_mas_init_candidates: int = 8
 
 
 @dataclass
@@ -120,7 +131,7 @@ def assign_materials_with_target_mas(
     grid: np.ndarray,
     params: MaterialMixParams,
     phys: MASPhysicalParams = MASPhysicalParams(),
-) -> Tuple[np.ndarray, Dict[str, float]]:
+) -> Tuple[np.ndarray, Dict[str, Any]]:
     """
     Assign binary materials A/B on a fixed aggregate geometry to achieve
     a target Mischgüte (MAS) via MCMC and λ-bisection.
@@ -161,18 +172,21 @@ def assign_materials_with_target_mas(
     nA = max(0, min(M, nA))
     nB = M - nA  # retained for clarity; not used directly further
 
-    # Create a flat label vector over occupied indices.
-    # 'order' is a random permutation of [0, M).
-    # 'lbl_flat' assigns materials strictly according to the target counts.
-    order = rng.permutation(M)
-    lbl_flat = np.empty(M, dtype=np.int8)
-    lbl_flat[order[:nA]] = 0  # A
-    lbl_flat[order[nA:]] = 1  # B
-
     # Mapping between (y, x) <-> flat index on occupied cells.
     H, W = grid.shape
     to_id = {(int(y), int(x)): i for i, (y, x) in enumerate(zip(occ_y, occ_x))}
     neighbors = _build_neighbors_4(occ_y, occ_x, to_id, H, W)
+
+    lbl_flat, init_stats = _choose_initial_labels_for_mas(
+        grid=grid,
+        occ_y=occ_y,
+        occ_x=occ_x,
+        nA=nA,
+        neighbors=neighbors,
+        params=params,
+        phys=phys,
+        rng=rng,
+    )
 
     # ---- tune lambda by bisection to match target MAS ----
     lam_lo, lam_hi = float(params.lambda_min), float(params.lambda_max)
@@ -181,10 +195,11 @@ def assign_materials_with_target_mas(
     # (In this Ising-like model MAS is assumed to be monotonic in λ
     # over the chosen range.)
     lbl_work = lbl_flat.copy()
-    mas_lo, _, _, _ = _evaluate_mas_on_labels(grid, occ_y, occ_x, lbl_work, params, phys)
+    mas_initial = float(init_stats.get("MAS", np.nan))
     _mcmc_exchange(lbl_work, neighbors, lam_lo,
                    sweeps=params.sweeps_per_eval,
                    T=params.temperature, rng=rng)  # slight thermalization
+    mas_lo, _, _, _ = _evaluate_mas_on_labels(grid, occ_y, occ_x, lbl_work, params, phys)
 
     lbl_work2 = lbl_flat.copy()
     _mcmc_exchange(lbl_work2, neighbors, lam_hi,
@@ -200,7 +215,27 @@ def assign_materials_with_target_mas(
 
     target = float(np.clip(params.target_MAS, 0.0, 1.0))
     best_lbl = lbl_flat.copy()
-    best_mas, best_lam = None, None
+    best_mas = float(mas_initial)
+    best_lam = 0.0
+    best_err = abs(best_mas - target) if np.isfinite(best_mas) else float("inf")
+
+    def _record_best(
+        candidate_lbl: np.ndarray,
+        candidate_mas: float,
+        candidate_lam: float,
+    ) -> None:
+        nonlocal best_lbl, best_mas, best_lam, best_err
+        if not np.isfinite(candidate_mas):
+            return
+        err = abs(float(candidate_mas) - target)
+        if err < best_err:
+            best_lbl = candidate_lbl.copy()
+            best_mas = float(candidate_mas)
+            best_lam = float(candidate_lam)
+            best_err = float(err)
+
+    _record_best(lbl_work, mas_lo, lam_lo)
+    _record_best(lbl_work2, mas_hi, lam_hi)
 
     for _ in range(params.max_bisect):
         lam_mid = 0.5 * (lam_lo + lam_hi)
@@ -219,11 +254,11 @@ def assign_materials_with_target_mas(
             grid, occ_y, occ_x, lbl_mid, params, phys
         )
 
-        # Record best (closest to target) so far
-        best_lbl, best_mas, best_lam = lbl_mid, mas_mid, lam_mid
+        # Record the closest candidate seen so far, not just the latest one.
+        _record_best(lbl_mid, mas_mid, lam_mid)
 
         if abs(mas_mid - target) <= params.tol_MAS:
-            lbl_flat = lbl_mid
+            lbl_flat = best_lbl.copy()
             break
 
         # Bisection update based on measured MAS
@@ -236,10 +271,7 @@ def assign_materials_with_target_mas(
     else:
         # If convergence not reached within max_bisect, fall back to
         # the best solution encountered.
-        lbl_flat = best_lbl
-        mas_mid, sigma2, sig0, sigz = _evaluate_mas_on_labels(
-            grid, occ_y, occ_x, lbl_flat, params, phys
-        )
+        lbl_flat = best_lbl.copy()
 
     # Build full label image
     labels = np.full((H, W), fill_value=-1, dtype=np.int8)
@@ -255,15 +287,325 @@ def assign_materials_with_target_mas(
         nA=int((labels == 0).sum()),
         nB=int((labels == 1).sum()),
         frac_A=(labels == 0).sum() / M,
-        lambda_used=float(best_lam if best_lam is not None else lam_mid),
+        lambda_used=float(best_lam),
         MAS=float(MAS),
         sigma2=float(sigma2),
         sigma0_sq=float(sigma0),
         sigmaz_sq=float(sigmaz),
         window=int(params.window),
         stride=int(params.stride),
+        initial_MAS=float(init_stats.get("MAS", np.nan)),
+        initial_strategy=str(init_stats.get("strategy", "")),
+        initial_candidates=int(init_stats.get("n_candidates", 1)),
     )
     return labels, stats
+
+
+def probe_low_mas_geometry(
+    grid: np.ndarray,
+    params: MaterialMixParams,
+    phys: MASPhysicalParams = MASPhysicalParams(),
+    seed: int | None = None,
+) -> Tuple[np.ndarray, Dict[str, Any]]:
+    """
+    Estimate whether a fixed geometry can visibly reach a low MAS.
+
+    This is a geometry pre-screen: it does not modify the MAS definition and
+    does not run MCMC. It builds exact-composition, strongly segregated labels
+    using spatial cuts and compact BFS domains, evaluates the usual MAS for
+    each candidate, and returns the lowest-MAS candidate found.
+    """
+    rng = np.random.default_rng(params.seed if seed is None else seed)
+    occ_y, occ_x = np.nonzero(grid)
+    M = len(occ_y)
+    if M == 0:
+        raise ValueError("Empty aggregate grid.")
+
+    nA = int(round(params.frac_A * M))
+    nA = max(0, min(M, nA))
+    H, W = grid.shape
+    to_id = {(int(y), int(x)): i for i, (y, x) in enumerate(zip(occ_y, occ_x))}
+    neighbors = _build_neighbors_4(occ_y, occ_x, to_id, H, W)
+
+    candidates = _make_low_mas_label_candidates(
+        occ_y=occ_y,
+        occ_x=occ_x,
+        nA=nA,
+        neighbors=neighbors,
+        rng=rng,
+        n_bfs_candidates=int(max(0, params.low_mas_init_candidates)),
+    )
+    best_lbl, best_stats = _select_label_candidate_by_mas(
+        grid=grid,
+        occ_y=occ_y,
+        occ_x=occ_x,
+        candidates=candidates,
+        params=params,
+        phys=phys,
+        target=float(params.target_MAS),
+        objective="lowest",
+    )
+
+    labels = np.full(grid.shape, fill_value=-1, dtype=np.int8)
+    labels[occ_y, occ_x] = best_lbl
+    return labels, best_stats
+
+
+def _make_random_exact_labels(M: int, nA: int, rng: np.random.Generator) -> np.ndarray:
+    labels = np.ones(int(M), dtype=np.int8)
+    nA = int(max(0, min(int(M), int(nA))))
+    if nA > 0:
+        order = rng.permutation(int(M))
+        labels[order[:nA]] = 0
+    return labels
+
+
+def _labels_from_order(order: np.ndarray, M: int, nA: int) -> np.ndarray:
+    labels = np.ones(int(M), dtype=np.int8)
+    nA = int(max(0, min(int(M), int(nA))))
+    if nA > 0:
+        labels[np.asarray(order[:nA], dtype=np.int64)] = 0
+    return labels
+
+
+def _add_unique_candidate(
+    candidates: List[Tuple[str, np.ndarray]],
+    seen: set[bytes],
+    name: str,
+    labels: np.ndarray,
+) -> None:
+    key = labels.tobytes()
+    if key not in seen:
+        seen.add(key)
+        candidates.append((name, labels.astype(np.int8, copy=True)))
+
+
+def _projection_order(values: np.ndarray, occ_y: np.ndarray, occ_x: np.ndarray) -> np.ndarray:
+    return np.lexsort((occ_y, occ_x, values))
+
+
+def _extreme_seed_indices(occ_y: np.ndarray, occ_x: np.ndarray) -> List[int]:
+    projections = [
+        occ_x,
+        -occ_x,
+        occ_y,
+        -occ_y,
+        occ_x + occ_y,
+        -(occ_x + occ_y),
+        occ_x - occ_y,
+        -(occ_x - occ_y),
+    ]
+    seeds: List[int] = []
+    seen: set[int] = set()
+    for values in projections:
+        idx = int(np.argmin(values))
+        if idx not in seen:
+            seen.add(idx)
+            seeds.append(idx)
+    return seeds
+
+
+def _bfs_cluster_indices(
+    neighbors: List[List[int]],
+    seed: int,
+    size: int,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    M = len(neighbors)
+    size = int(max(0, min(M, size)))
+    if size == 0:
+        return np.empty(0, dtype=np.int64)
+
+    selected: List[int] = []
+    visited = np.zeros(M, dtype=bool)
+    queue = [int(seed)]
+    visited[int(seed)] = True
+    head = 0
+
+    while head < len(queue) and len(selected) < size:
+        u = int(queue[head])
+        head += 1
+        selected.append(u)
+
+        nbrs = list(neighbors[u])
+        if len(nbrs) > 1:
+            rng.shuffle(nbrs)
+        for v in nbrs:
+            v = int(v)
+            if not visited[v]:
+                visited[v] = True
+                queue.append(v)
+
+    if len(selected) < size:
+        remaining = np.flatnonzero(~visited)
+        if remaining.size > 0:
+            rng.shuffle(remaining)
+            selected.extend(int(i) for i in remaining[: size - len(selected)])
+
+    return np.asarray(selected[:size], dtype=np.int64)
+
+
+def _labels_from_compact_domain(
+    M: int,
+    nA: int,
+    domain: np.ndarray,
+) -> np.ndarray:
+    nA = int(max(0, min(int(M), int(nA))))
+    nB = int(M) - nA
+
+    if nA <= nB:
+        labels = np.ones(int(M), dtype=np.int8)
+        labels[np.asarray(domain[:nA], dtype=np.int64)] = 0
+    else:
+        labels = np.zeros(int(M), dtype=np.int8)
+        labels[np.asarray(domain[:nB], dtype=np.int64)] = 1
+    return labels
+
+
+def _make_low_mas_label_candidates(
+    occ_y: np.ndarray,
+    occ_x: np.ndarray,
+    nA: int,
+    neighbors: List[List[int]],
+    rng: np.random.Generator,
+    n_bfs_candidates: int,
+) -> List[Tuple[str, np.ndarray]]:
+    M = len(occ_y)
+    candidates: List[Tuple[str, np.ndarray]] = []
+    seen: set[bytes] = set()
+
+    if M == 0:
+        return candidates
+
+    nA = int(max(0, min(M, nA)))
+    if nA == 0 or nA == M:
+        labels = np.zeros(M, dtype=np.int8) if nA == M else np.ones(M, dtype=np.int8)
+        _add_unique_candidate(candidates, seen, "single_phase", labels)
+        return candidates
+
+    projections = [
+        ("x_low", occ_x),
+        ("x_high", -occ_x),
+        ("y_low", occ_y),
+        ("y_high", -occ_y),
+        ("diag_xy_low", occ_x + occ_y),
+        ("diag_xy_high", -(occ_x + occ_y)),
+        ("diag_xmy_low", occ_x - occ_y),
+        ("diag_xmy_high", -(occ_x - occ_y)),
+    ]
+    cy = float(np.mean(occ_y))
+    cx = float(np.mean(occ_x))
+    r2 = (occ_x.astype(float) - cx) ** 2 + (occ_y.astype(float) - cy) ** 2
+    projections.extend([("radial_core", r2), ("radial_shell", -r2)])
+
+    for name, values in projections:
+        order = _projection_order(np.asarray(values), occ_y, occ_x)
+        _add_unique_candidate(
+            candidates,
+            seen,
+            f"spatial_{name}",
+            _labels_from_order(order, M, nA),
+        )
+
+    seed_indices = _extreme_seed_indices(occ_y, occ_x)
+    n_extra = max(0, int(n_bfs_candidates) - len(seed_indices))
+    if n_extra > 0:
+        random_seeds = rng.choice(np.arange(M), size=min(n_extra, M), replace=False)
+        seed_indices.extend(int(i) for i in random_seeds)
+
+    domain_size = min(nA, M - nA)
+    for i, seed in enumerate(seed_indices[: max(0, int(n_bfs_candidates))]):
+        domain = _bfs_cluster_indices(neighbors, seed, domain_size, rng)
+        _add_unique_candidate(
+            candidates,
+            seen,
+            f"bfs_domain_{i:02d}",
+            _labels_from_compact_domain(M, nA, domain),
+        )
+
+    return candidates
+
+
+def _select_label_candidate_by_mas(
+    grid: np.ndarray,
+    occ_y: np.ndarray,
+    occ_x: np.ndarray,
+    candidates: List[Tuple[str, np.ndarray]],
+    params: MaterialMixParams,
+    phys: MASPhysicalParams,
+    target: float,
+    objective: str,
+) -> Tuple[np.ndarray, Dict[str, Any]]:
+    if not candidates:
+        raise ValueError("No material-label candidates were generated.")
+
+    best_lbl: np.ndarray | None = None
+    best_stats: Dict[str, Any] | None = None
+    best_score = float("inf")
+
+    for idx, (name, labels) in enumerate(candidates):
+        MAS, sigma2, sigma0, sigmaz = _evaluate_mas_on_labels(
+            grid, occ_y, occ_x, labels, params, phys
+        )
+        score = float(MAS) if objective == "lowest" else abs(float(MAS) - target)
+        if score < best_score:
+            best_score = score
+            best_lbl = labels.copy()
+            best_stats = {
+                "MAS": float(MAS),
+                "sigma2": float(sigma2),
+                "sigma0_sq": float(sigma0),
+                "sigmaz_sq": float(sigmaz),
+                "strategy": str(name),
+                "strategy_index": int(idx),
+                "n_candidates": int(len(candidates)),
+            }
+
+    if best_lbl is None or best_stats is None:
+        raise ValueError("No finite MAS candidate was generated.")
+    return best_lbl, best_stats
+
+
+def _choose_initial_labels_for_mas(
+    grid: np.ndarray,
+    occ_y: np.ndarray,
+    occ_x: np.ndarray,
+    nA: int,
+    neighbors: List[List[int]],
+    params: MaterialMixParams,
+    phys: MASPhysicalParams,
+    rng: np.random.Generator,
+) -> Tuple[np.ndarray, Dict[str, Any]]:
+    M = len(occ_y)
+    random_labels = _make_random_exact_labels(M, nA, rng)
+    candidates: List[Tuple[str, np.ndarray]] = [("random", random_labels)]
+
+    target = float(np.clip(params.target_MAS, 0.0, 1.0))
+    if (
+        0 < int(nA) < int(M)
+        and target < float(params.low_mas_init_threshold)
+    ):
+        candidates.extend(
+            _make_low_mas_label_candidates(
+                occ_y=occ_y,
+                occ_x=occ_x,
+                nA=nA,
+                neighbors=neighbors,
+                rng=rng,
+                n_bfs_candidates=int(max(0, params.low_mas_init_candidates)),
+            )
+        )
+
+    return _select_label_candidate_by_mas(
+        grid=grid,
+        occ_y=occ_y,
+        occ_x=occ_x,
+        candidates=candidates,
+        params=params,
+        phys=phys,
+        target=target,
+        objective="closest",
+    )
 
 # -----------------------------
 # Visualization (optional)

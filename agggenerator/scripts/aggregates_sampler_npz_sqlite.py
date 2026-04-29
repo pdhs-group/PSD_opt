@@ -45,6 +45,7 @@ from agggenerator.material_mix import (
     MASPhysicalParams,
     MaterialMixParams,
     assign_materials_with_target_mas,
+    probe_low_mas_geometry,
 )
 from lmc import GridFactory
 
@@ -60,10 +61,27 @@ MAS_TOL: float = 0.05
 
 NP_LIST: List[int] = [100, 200, 400, 800, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 12000, 16000,
                       20000, 30000, 40000, 50000]
+
 FRAC_A_LIST: List[float] = [0.1, 0.5, 0.9]
 
 SAMPLES_PER_PARAM: int = 100
 MAX_TRIES_FACTOR: int = 100
+MIX_TRIES_PER_MPTSA: int = 4
+
+GEOMETRY_PRESCREEN_ENABLED: bool = True
+GEOMETRY_PRESCREEN_MAS_THRESHOLD: float = 0.3
+
+# Each MPTSA geometry is reused across several material-mixing attempts.
+# Tuple fields are:
+#   (lambda_min, lambda_max, sweeps_per_eval, max_bisect, temperature)
+# The first entry mirrors the original sampler settings. Later entries widen
+# the positive-lambda side, which is usually the useful direction for low MAS.
+MIX_LAMBDA_SCHEDULES: List[Tuple[float, float, int, int, float]] = [
+    (-3.0, 3.0, 8, 20, 1.0),
+    (0.0, 6.0, 12, 24, 1.0),
+    (1.0, 10.0, 16, 24, 0.8),
+    (2.0, 14.0, 20, 28, 0.7),
+]
 
 OUTPUT_POOL_DIR: str = "aggregate_pool_Df1p8_MAS0p10_npz_single"
 # OUTPUT_POOL_DIR = os.path.join(os.environ.get('STORAGE_PATH'), OUTPUT_POOL_DIR)
@@ -133,6 +151,11 @@ def _make_mix_params(
     target_MAS: float,
     seed: int,
     grid: np.ndarray,
+    lambda_min: float = -3.0,
+    lambda_max: float = 3.0,
+    sweeps_per_eval: int = 8,
+    max_bisect: int = 20,
+    temperature: float = 1.0,
 ) -> MaterialMixParams:
     window, stride = _compute_mix_window_stride(grid)
 
@@ -142,10 +165,19 @@ def _make_mix_params(
         tol_MAS=0.05,
         window=window,
         stride=stride,
-        sweeps_per_eval=8,
-        max_bisect=20,
+        lambda_min=float(lambda_min),
+        lambda_max=float(lambda_max),
+        sweeps_per_eval=int(sweeps_per_eval),
+        max_bisect=int(max_bisect),
+        temperature=float(temperature),
         seed=int(seed),
     )
+
+
+def _mix_schedule_for_attempt(mix_attempt_index: int) -> Tuple[float, float, int, int, float]:
+    if not MIX_LAMBDA_SCHEDULES:
+        return -3.0, 3.0, 8, 20, 1.0
+    return MIX_LAMBDA_SCHEDULES[int(mix_attempt_index) % len(MIX_LAMBDA_SCHEDULES)]
 
 
 
@@ -344,79 +376,185 @@ def _generate_one_sample(
     rng = np.random.default_rng(base_seed)
     grid_factory = GridFactory()
     phys_params = MASPhysicalParams()
-    max_tries = int(max(1, max_tries_factor))
+    max_mptsa_tries = int(max(1, max_tries_factor))
+    mix_tries_per_mptsa = int(max(1, MIX_TRIES_PER_MPTSA))
 
-    tries = 0
-    while tries < max_tries:
-        tries += 1
+    mptsa_tries = 0
+    while mptsa_tries < max_mptsa_tries:
+        mptsa_tries += 1
         seed_mptsa = int(rng.integers(0, 2**31 - 1))
-        seed_mix = int(rng.integers(0, 2**31 - 1))
 
         mptsa_params = _make_mptsa_params(Np=Np, Df=target_Df, seed=seed_mptsa)
 
         try:
             _positions, Ns, Rgs, grid, origin = generate_mptsa_lattice_2d(mptsa_params)
             Df_est, slope = estimate_fractal_dimension_2d(Ns, Rgs)
-
-            mix_params = _make_mix_params(
-                frac_A=frac_A,
-                target_MAS=target_MAS,
-                seed=seed_mix,
-                grid=grid,
-            )
-            labels, stats = assign_materials_with_target_mas(grid, mix_params, phys_params)
         except Exception as e:
             dump = {
                 "error": str(e),
+                "stage": "mptsa",
                 "Np": Np,
                 "frac_A": frac_A,
                 "Df_target": target_Df,
                 "seed_mptsa": seed_mptsa,
-                "seed_mix": seed_mix,
-                "grid_shape": None if "grid" not in locals() else grid.shape,
+                "mptsa_try": mptsa_tries,
+                "grid_shape": None,
             }
             np.save(
-                f"error_dump_{Np}_{frac_A}_{seed_mptsa}_{seed_mix}.npy",
+                f"error_dump_{Np}_{frac_A}_{seed_mptsa}_mptsa.npy",
                 dump,
                 allow_pickle=True,
             )
             continue
 
-        MAS_actual = float(stats.get("MAS", np.nan))
-        if 0.0 < frac_A < 1.0:
-            if (not np.isfinite(MAS_actual)) or (abs(MAS_actual - target_MAS) > mas_tol):
+        geometry_probe_MAS = float("nan")
+        geometry_probe_strategy = ""
+        geometry_prescreened = False
+        if (
+            GEOMETRY_PRESCREEN_ENABLED
+            and target_MAS < GEOMETRY_PRESCREEN_MAS_THRESHOLD
+            and 0.0 < frac_A < 1.0
+        ):
+            geometry_prescreened = True
+            try:
+                probe_params = _make_mix_params(
+                    frac_A=frac_A,
+                    target_MAS=target_MAS,
+                    seed=seed_mptsa,
+                    grid=grid,
+                )
+                _probe_labels, probe_stats = probe_low_mas_geometry(
+                    grid,
+                    probe_params,
+                    phys_params,
+                    seed=seed_mptsa,
+                )
+                geometry_probe_MAS = float(probe_stats.get("MAS", np.nan))
+                geometry_probe_strategy = str(probe_stats.get("strategy", ""))
+            except Exception as e:
+                dump = {
+                    "error": str(e),
+                    "stage": "geometry_prescreen",
+                    "Np": Np,
+                    "frac_A": frac_A,
+                    "Df_target": target_Df,
+                    "seed_mptsa": seed_mptsa,
+                    "mptsa_try": mptsa_tries,
+                    "grid_shape": grid.shape,
+                }
+                np.save(
+                    f"error_dump_{Np}_{frac_A}_{seed_mptsa}_prescreen.npy",
+                    dump,
+                    allow_pickle=True,
+                )
                 continue
 
-        frac_A_actual = _compute_actual_frac_A(labels)
+            if (
+                (not np.isfinite(geometry_probe_MAS))
+                or geometry_probe_MAS > target_MAS + mas_tol
+            ):
+                continue
 
-        M, Hbond, Vbond, meta, bond_counts = grid_factory.make_from_array(
-            labels,
-            a_code=0,
-            b_code=1,
-            empty_code=-1,
-            A0=A0_CELL_AREA,
-            int_bre=INT_BRE,
-        )
+        for mix_try in range(mix_tries_per_mptsa):
+            seed_mix = int(rng.integers(0, 2**31 - 1))
+            (
+                lambda_min,
+                lambda_max,
+                sweeps_per_eval,
+                max_bisect,
+                temperature,
+            ) = _mix_schedule_for_attempt(mix_try)
 
-        return {
-            "Np_target": int(Np),
-            "frac_A_target": float(frac_A),
-            "Df_target": float(target_Df),
-            "Df_est": float(Df_est),
-            "MAS_target": float(target_MAS),
-            "MAS_actual": float(MAS_actual),
-            "frac_A_actual": float(frac_A_actual),
-            "slope": float(slope),
-            "labels": labels.astype(np.int8, copy=False),
-            "M": M,
-            "Hbond": Hbond,
-            "Vbond": Vbond,
-            "meta": asdict(meta),
-            "origin": np.array(origin, dtype=np.int32),
-            "bond_counts": bond_counts,
-            "seed_mptsa": int(seed_mptsa),
-            "seed_mix": int(seed_mix),
-        }
+            try:
+                mix_params = _make_mix_params(
+                    frac_A=frac_A,
+                    target_MAS=target_MAS,
+                    seed=seed_mix,
+                    grid=grid,
+                    lambda_min=lambda_min,
+                    lambda_max=lambda_max,
+                    sweeps_per_eval=sweeps_per_eval,
+                    max_bisect=max_bisect,
+                    temperature=temperature,
+                )
+                labels, stats = assign_materials_with_target_mas(
+                    grid, mix_params, phys_params
+                )
+            except Exception as e:
+                dump = {
+                    "error": str(e),
+                    "stage": "material_mix",
+                    "Np": Np,
+                    "frac_A": frac_A,
+                    "Df_target": target_Df,
+                    "seed_mptsa": seed_mptsa,
+                    "seed_mix": seed_mix,
+                    "mptsa_try": mptsa_tries,
+                    "mix_try": mix_try + 1,
+                    "grid_shape": grid.shape,
+                    "lambda_min": lambda_min,
+                    "lambda_max": lambda_max,
+                    "sweeps_per_eval": sweeps_per_eval,
+                    "max_bisect": max_bisect,
+                    "temperature": temperature,
+                }
+                np.save(
+                    f"error_dump_{Np}_{frac_A}_{seed_mptsa}_{seed_mix}.npy",
+                    dump,
+                    allow_pickle=True,
+                )
+                continue
+
+            MAS_actual = float(stats.get("MAS", np.nan))
+            if 0.0 < frac_A < 1.0:
+                if (
+                    (not np.isfinite(MAS_actual))
+                    or (abs(MAS_actual - target_MAS) > mas_tol)
+                ):
+                    continue
+
+            frac_A_actual = _compute_actual_frac_A(labels)
+
+            M, Hbond, Vbond, meta, bond_counts = grid_factory.make_from_array(
+                labels,
+                a_code=0,
+                b_code=1,
+                empty_code=-1,
+                A0=A0_CELL_AREA,
+                int_bre=INT_BRE,
+            )
+
+            return {
+                "Np_target": int(Np),
+                "frac_A_target": float(frac_A),
+                "Df_target": float(target_Df),
+                "Df_est": float(Df_est),
+                "MAS_target": float(target_MAS),
+                "MAS_actual": float(MAS_actual),
+                "frac_A_actual": float(frac_A_actual),
+                "slope": float(slope),
+                "labels": labels.astype(np.int8, copy=False),
+                "M": M,
+                "Hbond": Hbond,
+                "Vbond": Vbond,
+                "meta": asdict(meta),
+                "origin": np.array(origin, dtype=np.int32),
+                "bond_counts": bond_counts,
+                "seed_mptsa": int(seed_mptsa),
+                "seed_mix": int(seed_mix),
+                "mptsa_try": int(mptsa_tries),
+                "mix_try": int(mix_try + 1),
+                "mix_tries_per_mptsa": int(mix_tries_per_mptsa),
+                "lambda_min": float(lambda_min),
+                "lambda_max": float(lambda_max),
+                "lambda_used": float(stats.get("lambda_used", np.nan)),
+                "sweeps_per_eval": int(sweeps_per_eval),
+                "max_bisect": int(max_bisect),
+                "temperature": float(temperature),
+                "geometry_prescreened": bool(geometry_prescreened),
+                "geometry_probe_MAS": float(geometry_probe_MAS),
+                "geometry_probe_strategy": str(geometry_probe_strategy),
+            }
 
     return None
 
@@ -491,6 +629,18 @@ def _generate_and_store_one_sample(
         "slope": sample["slope"],
         "seed_mptsa": sample["seed_mptsa"],
         "seed_mix": sample["seed_mix"],
+        "mptsa_try": sample["mptsa_try"],
+        "mix_try": sample["mix_try"],
+        "mix_tries_per_mptsa": sample["mix_tries_per_mptsa"],
+        "lambda_min": sample["lambda_min"],
+        "lambda_max": sample["lambda_max"],
+        "lambda_used": sample["lambda_used"],
+        "sweeps_per_eval": sample["sweeps_per_eval"],
+        "max_bisect": sample["max_bisect"],
+        "temperature": sample["temperature"],
+        "geometry_prescreened": sample["geometry_prescreened"],
+        "geometry_probe_MAS": sample["geometry_probe_MAS"],
+        "geometry_probe_strategy": sample["geometry_probe_strategy"],
         "meta": sample["meta"],
         "bond_counts": {str(key): int(val) for key, val in sample["bond_counts"].items()},
     }
@@ -605,6 +755,15 @@ def build_pool() -> None:
         f"[POOL] Fixed targets: Df={TARGET_DF}, MAS={TARGET_MAS}, "
         f"DF_TOL={DF_TOL}, MAS_TOL={MAS_TOL}"
     )
+    print(
+        f"[POOL] Mixing retries: {MIX_TRIES_PER_MPTSA} mix attempts per MPTSA grid, "
+        f"{len(MIX_LAMBDA_SCHEDULES)} lambda schedules"
+    )
+    print(
+        f"[POOL] Geometry prescreen: enabled={GEOMETRY_PRESCREEN_ENABLED}, "
+        f"active for MAS<{GEOMETRY_PRESCREEN_MAS_THRESHOLD}, "
+        "reject if probe_MAS > target + MAS_TOL"
+    )
     print(f"[POOL] NPZ+SQLite output: {output_dir}")
     print(f"[POOL] workers={WORKERS}")
 
@@ -618,6 +777,10 @@ def build_pool() -> None:
         _set_meta_if_missing(conn, "TARGET_MAS", TARGET_MAS)
         _set_meta_if_missing(conn, "DF_TOL", DF_TOL)
         _set_meta_if_missing(conn, "MAS_TOL", MAS_TOL)
+        _set_meta_if_missing(conn, "MIX_TRIES_PER_MPTSA", MIX_TRIES_PER_MPTSA)
+        _set_meta_if_missing(conn, "MIX_LAMBDA_SCHEDULES", MIX_LAMBDA_SCHEDULES)
+        _set_meta_if_missing(conn, "GEOMETRY_PRESCREEN_ENABLED", GEOMETRY_PRESCREEN_ENABLED)
+        _set_meta_if_missing(conn, "GEOMETRY_PRESCREEN_MAS_THRESHOLD", GEOMETRY_PRESCREEN_MAS_THRESHOLD)
         _set_meta_if_missing(conn, "A0_CELL_AREA", A0_CELL_AREA)
         _set_meta_if_missing(conn, "INT_BRE", INT_BRE)
         _set_meta_if_missing(conn, "MASTER_SEED", MASTER_SEED)

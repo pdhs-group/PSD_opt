@@ -11,7 +11,7 @@ import cProfile, pstats
 
 def generate_mptsa():
     mptsa_params = MPTSALatticeParams2D(
-        Np=4000,
+        Np=10000,
         Df=1.8,
         k=1.0,
         max_attempts=50000,
@@ -32,11 +32,11 @@ def generate_mptsa():
     
 def assign_materials(grid, origin):
     mix_params = MaterialMixParams(
-        frac_A=0.3,
-        target_MAS=0.5,
-        tol_MAS=0.05,
-        window=8,
-        stride=2,
+        frac_A=0.1,
+        target_MAS=0.1,
+        tol_MAS=0.1,
+        window=12,
+        stride=3,
         sweeps_per_eval=8,
         max_bisect=10,
         seed=42,
@@ -59,9 +59,9 @@ def main():
     labels = assign_materials(grid, origin)
     return labels
 if __name__ == "__main__":
-    # profiler = cProfile.Profile()
-    # profiler.enable()
+    profiler = cProfile.Profile()
+    profiler.enable()
     labels = main()
-    # profiler.disable()
-    # stats = pstats.Stats(profiler).strip_dirs().sort_stats("cumtime")
-    # stats.print_stats(20)
+    profiler.disable()
+    stats = pstats.Stats(profiler).strip_dirs().sort_stats("cumtime")
+    stats.print_stats(20)
