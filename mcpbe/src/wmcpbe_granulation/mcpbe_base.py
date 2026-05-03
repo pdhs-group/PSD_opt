@@ -8,7 +8,6 @@ import time
 import warnings
 import json
 from typing import Optional, Sequence, Any, Tuple
-from concurrent.futures import ProcessPoolExecutor, as_completed
 import copy
 
 import numpy as np
@@ -670,15 +669,24 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         )
         agg_initial_dt, agg_event_dt = self._build_agg_dt_strategy()
         break_initial_dt, break_event_dt = self._build_break_dt_strategy()
+        mix_initial_dt, mix_event_dt = self._build_mix_dt_strategy()
 
-        timer_agg = agg_initial_dt(agg_total_propensity()) if pt in ("agglomeration", "mix") else float("inf")
-        timer_break = break_initial_dt(break_total_propensity()) if pt in ("breakage", "mix") else float("inf")
+        timer_agg = agg_initial_dt(agg_total_propensity()) if pt == "agglomeration" else float("inf")
+        timer_break = break_initial_dt(break_total_propensity()) if pt == "breakage" else float("inf")
+        if pt == "mix":
+            agg_prop0 = agg_total_propensity()
+            break_prop0 = break_total_propensity()
+            timer_mix = mix_initial_dt(self._mix_total_rate_from_sum_prop(agg_prop0, break_prop0))
+        else:
+            timer_mix = float("inf")
 
         if self.VERBOSE:
             if np.isfinite(timer_agg):
                 print(f"Initial dt_agg = {timer_agg:.3e} s")
             if np.isfinite(timer_break):
                 print(f"Initial dt_break = {timer_break:.3e} s")
+            if np.isfinite(timer_mix):
+                print(f"Initial dt_mix = {timer_mix:.3e} s")
                 
         if self.mcpbe_debug:
             self._check_state_before_solve()
@@ -703,7 +711,6 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
 
             if pt == "agglomeration":
                 sum_prop_before = agg_total_propensity()
-
                 self._do_one_agg()  # from AgglomerationMixin
                 self.real_agg_events += float(max(0.0, float(getattr(self, "_last_agg_dW", 0.0))))
                 sum_prop_after = agg_total_propensity()
@@ -711,9 +718,8 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
                 dtd_agg = agg_event_dt(sum_prop_before, sum_prop_after)
                 timer_agg += dtd_agg
             elif pt == "breakage":
-                # total propensity BEFORE the event (Î”t uses event Î”W over pre-event propensity)
+                # Total propensity before the event; dt uses event dW over pre-event propensity.
                 sum_prop_before = break_total_propensity()
-            
                 self._do_one_break()  # sets self._last_break_dW for packeted events
                 self.real_break_events += float(max(0.0, float(getattr(self, "_last_break_dW", 0.0))))
                 sum_prop_after = break_total_propensity()
@@ -721,23 +727,28 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
                 dtd_break = break_event_dt(sum_prop_before, sum_prop_after)
                 timer_break += dtd_break
             else:  # mix
-                if timer_agg <= timer_break:
-                    sum_prop_before = agg_total_propensity()
+                agg_prop_before = agg_total_propensity()
+                break_prop_before = break_total_propensity()
+                agg_rate_before = self._agg_rate_from_sum_prop(agg_prop_before)
+                break_rate_before = max(float(break_prop_before), 0.0)
+                total_rate_before = agg_rate_before + break_rate_before
+                if total_rate_before <= 0.0:
+                    break
 
+                u_event = float(self._rng.random()) * total_rate_before
+                if u_event < agg_rate_before:
                     self._do_one_agg()
                     self.real_agg_events += float(max(0.0, float(getattr(self, "_last_agg_dW", 0.0))))
-                    sum_prop_after = agg_total_propensity()
-                    elapsed_time = timer_agg
-                    dtd_agg = agg_event_dt(sum_prop_before, sum_prop_after)
-                    timer_agg += dtd_agg
                 else:
-                    sum_prop_before = break_total_propensity()
                     self._do_one_break()
                     self.real_break_events += float(max(0.0, float(getattr(self, "_last_break_dW", 0.0))))
-                    sum_prop_after = break_total_propensity()
-                    elapsed_time = timer_break
-                    dtd_break = break_event_dt(sum_prop_before, sum_prop_after)
-                    timer_break += dtd_break
+
+                agg_prop_after = agg_total_propensity()
+                break_prop_after = break_total_propensity()
+                total_rate_after = self._mix_total_rate_from_sum_prop(agg_prop_after, break_prop_after)
+                elapsed_time = timer_mix
+                dtd_mix = mix_event_dt(total_rate_before, total_rate_after)
+                timer_mix += dtd_mix
 
             current_time = float(elapsed_time)
             self._elapsed = current_time
@@ -798,7 +809,6 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         Vc: float = None,
         V_flat: Optional[np.ndarray] = None,
         W_init: Optional[np.ndarray] = None,
-        workers: int = 1,
         psd_enable: bool = False,
         psd_basis: str = "volume",                 # "volume" or "number"
         psd_x_grid: Optional[np.ndarray] = None,   # if given -> output Q(x)
@@ -809,15 +819,13 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         """
         Run N Monte Carlo realizations (repeats).
 
-        workers = 1  -> serial (original behavior + optional PSD computation)
-        workers > 1  -> parallel with ProcessPoolExecutor
 
         Returns
         -------
         If psd_enable == False:
             List[{"seed_info", "t_vec", "moments"}]
 
-        If psd_enable == True and workers == 1:
+        If psd_enable == True:
             (results, psd_info)  # tuple
 
             results: list of dicts as above
@@ -859,596 +867,280 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
             )
 
         # ----- serial path (supports PSD) -----
-        if workers == 1:
-            if dump_results:
-                if psd_enable and psd_x_grid is None and psd_Q_grid is None:
-                    raise ValueError(
-                        "dump_results=True with psd_enable=True requires psd_x_grid or psd_Q_grid "
-                        "to ensure fixed-length PSD arrays for memmap storage."
+        if dump_results:
+            if psd_enable and psd_x_grid is None and psd_Q_grid is None:
+                raise ValueError(
+                    "dump_results=True with psd_enable=True requires psd_x_grid or psd_Q_grid "
+                    "to ensure fixed-length PSD arrays for memmap storage."
+                )
+
+            dump_dir = getattr(self, "dump_pth", None)
+            if dump_dir is None:
+                dump_dir = os.path.join(self.work_dir, "dump")
+            os.makedirs(dump_dir, exist_ok=True)
+
+            meta_path = os.path.join(dump_dir, "meta.json")
+            tvec_path = os.path.join(dump_dir, "t_vec.npy")
+            seeds_path = os.path.join(dump_dir, "seeds.jsonl")
+            moments_path = os.path.join(dump_dir, "moments.npy")
+            cdf_vals_path = os.path.join(dump_dir, "cdf_vals.npy")
+
+            self._open_mmaps = []
+            self._dump_runtime_paths = {
+                "meta": meta_path,
+                "t_vec": tvec_path,
+                "seeds": seeds_path,
+                "moments": moments_path,
+                "cdf_vals": cdf_vals_path,
+            }
+
+            for pth in (moments_path, cdf_vals_path):
+                if os.path.exists(pth):
+                    try:
+                        os.remove(pth)
+                    except OSError:
+                        pass
+
+            cancel_flag = getattr(self, "cancel_flag", None)
+            psd_mode = None
+            psd_grid = None
+            if psd_enable:
+                if psd_x_grid is not None and psd_Q_grid is not None:
+                    warnings.warn(
+                        "Both psd_x_grid and psd_Q_grid are provided; psd_x_grid will be used and Q(x) will be stored.",
+                        RuntimeWarning,
                     )
+                    psd_mode = "Q_of_x"
+                    psd_grid = np.asarray(psd_x_grid, dtype=float)
+                elif psd_x_grid is not None:
+                    psd_mode = "Q_of_x"
+                    psd_grid = np.asarray(psd_x_grid, dtype=float)
+                else:
+                    psd_mode = "x_of_Q"
+                    psd_grid = np.asarray(psd_Q_grid, dtype=float)
 
-                dump_dir = getattr(self, "dump_pth", None)
-                if dump_dir is None:
-                    dump_dir = os.path.join(self.work_dir, "dump")
-                os.makedirs(dump_dir, exist_ok=True)
+            t_vec_ref: Optional[np.ndarray] = None
+            moments_mm = None
+            cdf_vals_mm = None
+            moment_ij_shape: Optional[tuple[int, int]] = None
+            n_done = 0
 
-                meta_path = os.path.join(dump_dir, "meta.json")
-                tvec_path = os.path.join(dump_dir, "t_vec.npy")
-                seeds_path = os.path.join(dump_dir, "seeds.jsonl")
-                moments_path = os.path.join(dump_dir, "moments.npy")
-                cdf_vals_path = os.path.join(dump_dir, "cdf_vals.npy")
+            with open(seeds_path, "w", encoding="utf-8") as fseed:
+                for k in range(N):
+                    if cancel_flag is not None and cancel_flag.get("cancel", False):
+                        break
 
-                self._open_mmaps = []
-                self._dump_runtime_paths = {
-                    "meta": meta_path,
-                    "t_vec": tvec_path,
-                    "seeds": seeds_path,
-                    "moments": moments_path,
-                    "cdf_vals": cdf_vals_path,
-                }
-
-                for pth in (moments_path, cdf_vals_path):
-                    if os.path.exists(pth):
-                        try:
-                            os.remove(pth)
-                        except OSError:
-                            pass
-
-                cancel_flag = getattr(self, "cancel_flag", None)
-                psd_mode = None
-                psd_grid = None
-                if psd_enable:
-                    if psd_x_grid is not None and psd_Q_grid is not None:
-                        warnings.warn(
-                            "Both psd_x_grid and psd_Q_grid are provided; psd_x_grid will be used and Q(x) will be stored.",
-                            RuntimeWarning,
-                        )
-                        psd_mode = "Q_of_x"
-                        psd_grid = np.asarray(psd_x_grid, dtype=float)
-                    elif psd_x_grid is not None:
-                        psd_mode = "Q_of_x"
-                        psd_grid = np.asarray(psd_x_grid, dtype=float)
+                    m = copy.deepcopy(self)
+                    if cancel_flag is not None:
+                        m.cancel_flag = cancel_flag
+                    sk = seeds[k]
+                    if isinstance(sk, np.random.SeedSequence):
+                        rng = np.random.default_rng(sk)
+                        seed_info = {"spawn_key": tuple(sk.spawn_key)}
                     else:
-                        psd_mode = "x_of_Q"
-                        psd_grid = np.asarray(psd_Q_grid, dtype=float)
+                        rng = np.random.default_rng(int(sk))
+                        seed_info = {"seed": int(sk)}
+                    m._rng = rng
+                    m.V_flat = None
+                    if not init_Vc and Vc is not None:
+                        m.Vc = Vc
+                    m._initialize_particles(init_Vc=init_Vc, V_flat=V_flat, W_init=W_init, init_cdf=init_cdf_payload)
+                    m._initialize_samplers()
+                    m.solve(maxiter=maxiter)
 
-                t_vec_ref: Optional[np.ndarray] = None
-                moments_mm = None
-                cdf_vals_mm = None
-                moment_ij_shape: Optional[tuple[int, int]] = None
-                n_done = 0
+                    mu, tv = m.calc_moments_over_time(normalize=True)
+                    mu = np.asarray(mu, dtype=float)
+                    tv = np.asarray(tv, dtype=float)
+                    if mu.ndim != 3:
+                        raise RuntimeError(f"Unexpected moments shape {mu.shape}; expected 3D array.")
+                    mi, mj, T = mu.shape
+                    P = int(mi * mj)
+                    mu_tp = mu.reshape(P, T).T
 
-                with open(seeds_path, "w", encoding="utf-8") as fseed:
-                    for k in range(N):
-                        if cancel_flag is not None and cancel_flag.get("cancel", False):
-                            break
-
-                        m = copy.deepcopy(self)
-                        if cancel_flag is not None:
-                            m.cancel_flag = cancel_flag
-                        sk = seeds[k]
-                        if isinstance(sk, np.random.SeedSequence):
-                            rng = np.random.default_rng(sk)
-                            seed_info = {"spawn_key": tuple(sk.spawn_key)}
-                        else:
-                            rng = np.random.default_rng(int(sk))
-                            seed_info = {"seed": int(sk)}
-                        m._rng = rng
-                        m.V_flat = None
-                        if not init_Vc and Vc is not None:
-                            m.Vc = Vc
-                        m._initialize_particles(init_Vc=init_Vc, V_flat=V_flat, W_init=W_init, init_cdf=init_cdf_payload)
-                        m._initialize_samplers()
-                        m.solve(maxiter=maxiter)
-
-                        mu, tv = m.calc_moments_over_time(normalize=True)
-                        mu = np.asarray(mu, dtype=float)
-                        tv = np.asarray(tv, dtype=float)
-                        if mu.ndim != 3:
-                            raise RuntimeError(f"Unexpected moments shape {mu.shape}; expected 3D array.")
-                        mi, mj, T = mu.shape
-                        P = int(mi * mj)
-                        mu_tp = mu.reshape(P, T).T
-
-                        if t_vec_ref is None:
-                            t_vec_ref = tv.copy()
-                            np.save(tvec_path, t_vec_ref)
-                            moments_mm = np.lib.format.open_memmap(
-                                moments_path, mode="w+", dtype="float64", shape=(N, T, P)
-                            )
-                            self._open_mmaps.append(moments_mm)
-                            moments_mm[:] = np.nan
-                            moment_ij_shape = (int(mi), int(mj))
-
-                            if psd_enable:
-                                M = int(psd_grid.shape[0])
-                                cdf_vals_mm = np.lib.format.open_memmap(
-                                    cdf_vals_path, mode="w+", dtype="float64", shape=(N, T, M)
-                                )
-                                self._open_mmaps.append(cdf_vals_mm)
-                                cdf_vals_mm[:] = np.nan
-                        else:
-                            if len(t_vec_ref) != len(tv) or not np.allclose(
-                                t_vec_ref, tv, rtol=1e-6, atol=1e-12
-                            ):
-                                raise RuntimeError(
-                                    "t_vec differs between repeats in dump_results mode; "
-                                    "cannot write variable-length records to fixed-shape memmap."
-                                )
-                            if moment_ij_shape is None or moment_ij_shape != (mi, mj):
-                                raise RuntimeError(
-                                    "Moment tensor shape differs between repeats in dump_results mode."
-                                )
-
-                        moments_mm[n_done, :, :] = mu_tp
-                        fseed.write(json.dumps(seed_info, ensure_ascii=False) + "\n")
+                    if t_vec_ref is None:
+                        t_vec_ref = tv.copy()
+                        np.save(tvec_path, t_vec_ref)
+                        moments_mm = np.lib.format.open_memmap(
+                            moments_path, mode="w+", dtype="float64", shape=(N, T, P)
+                        )
+                        self._open_mmaps.append(moments_mm)
+                        moments_mm[:] = np.nan
+                        moment_ij_shape = (int(mi), int(mj))
 
                         if psd_enable:
-                            cdf_list, t_vec_local = m.compute_psd_cdf_over_time(
-                                psd_basis=psd_basis,
-                                time_scheme="interp",
+                            M = int(psd_grid.shape[0])
+                            cdf_vals_mm = np.lib.format.open_memmap(
+                                cdf_vals_path, mode="w+", dtype="float64", shape=(N, T, M)
                             )
-                            t_vec_local = np.asarray(t_vec_local, dtype=float)
-                            if len(t_vec_local) != len(t_vec_ref) or not np.allclose(
-                                t_vec_local, t_vec_ref, rtol=1e-6, atol=1e-12
-                            ):
-                                raise RuntimeError(
-                                    "PSD t_vec differs between repeats in dump_results mode; "
-                                    "cannot write variable-length records to fixed-shape memmap."
-                                )
+                            self._open_mmaps.append(cdf_vals_mm)
+                            cdf_vals_mm[:] = np.nan
+                    else:
+                        if len(t_vec_ref) != len(tv) or not np.allclose(
+                            t_vec_ref, tv, rtol=1e-6, atol=1e-12
+                        ):
+                            raise RuntimeError(
+                                "t_vec differs between repeats in dump_results mode; "
+                                "cannot write variable-length records to fixed-shape memmap."
+                            )
+                        if moment_ij_shape is None or moment_ij_shape != (mi, mj):
+                            raise RuntimeError(
+                                "Moment tensor shape differs between repeats in dump_results mode."
+                            )
 
-                            for it in range(T):
-                                cdf = cdf_list[it] if it < len(cdf_list) else None
-                                if cdf is None:
-                                    continue
-                                x_sorted, Q_sorted = cdf
-                                if psd_mode == "Q_of_x":
-                                    vals = m._eval_Q_of_x(x_sorted, Q_sorted, psd_grid)
-                                else:
-                                    vals = m._eval_x_of_Q(x_sorted, Q_sorted, psd_grid)
-                                cdf_vals_mm[n_done, it, :] = vals
+                    moments_mm[n_done, :, :] = mu_tp
+                    fseed.write(json.dumps(seed_info, ensure_ascii=False) + "\n")
 
-                        n_done += 1
+                    if psd_enable:
+                        cdf_list, t_vec_local = m.compute_psd_cdf_over_time(
+                            psd_basis=psd_basis,
+                            time_scheme="interp",
+                        )
+                        t_vec_local = np.asarray(t_vec_local, dtype=float)
+                        if len(t_vec_local) != len(t_vec_ref) or not np.allclose(
+                            t_vec_local, t_vec_ref, rtol=1e-6, atol=1e-12
+                        ):
+                            raise RuntimeError(
+                                "PSD t_vec differs between repeats in dump_results mode; "
+                                "cannot write variable-length records to fixed-shape memmap."
+                            )
 
-                if moments_mm is not None:
-                    moments_mm.flush()
-                if cdf_vals_mm is not None:
-                    cdf_vals_mm.flush()
+                        for it in range(T):
+                            cdf = cdf_list[it] if it < len(cdf_list) else None
+                            if cdf is None:
+                                continue
+                            x_sorted, Q_sorted = cdf
+                            if psd_mode == "Q_of_x":
+                                vals = m._eval_Q_of_x(x_sorted, Q_sorted, psd_grid)
+                            else:
+                                vals = m._eval_x_of_Q(x_sorted, Q_sorted, psd_grid)
+                            cdf_vals_mm[n_done, it, :] = vals
 
-                self._close_open_mmaps()
+                    n_done += 1
 
-                if t_vec_ref is None or n_done == 0:
-                    meta = {
-                        "N": int(N),
-                        "n_done": int(n_done),
-                        "dim": int(self.dim),
-                        "psd_enable": bool(psd_enable),
-                        "dump_results": True,
-                        "note": "No repeats completed.",
-                    }
-                    with open(meta_path, "w", encoding="utf-8") as fmeta:
-                        json.dump(meta, fmeta, ensure_ascii=False, indent=2)
-                    return [], None
+            if moments_mm is not None:
+                moments_mm.flush()
+            if cdf_vals_mm is not None:
+                cdf_vals_mm.flush()
 
+            self._close_open_mmaps()
+
+            if t_vec_ref is None or n_done == 0:
                 meta = {
                     "N": int(N),
                     "n_done": int(n_done),
                     "dim": int(self.dim),
-                    "t_vec_len": int(len(t_vec_ref)),
-                    "t_vec_path": "t_vec.npy",
-                    "moments_shape": [int(N), int(moments_mm.shape[1]), int(moments_mm.shape[2])],
-                    "moments_tensor_ij": [int(moment_ij_shape[0]), int(moment_ij_shape[1])],
-                    "moments_path": "moments.npy",
-                    "seeds_path": "seeds.jsonl",
                     "psd_enable": bool(psd_enable),
-                    "psd_mode": psd_mode,
                     "dump_results": True,
+                    "note": "No repeats completed.",
                 }
-                if psd_enable:
-                    meta["cdf_vals_shape"] = [int(N), int(cdf_vals_mm.shape[1]), int(cdf_vals_mm.shape[2])]
-                    meta["cdf_vals_path"] = "cdf_vals.npy"
-                    if psd_mode == "Q_of_x":
-                        meta["psd_x_grid"] = psd_grid.tolist()
-                    else:
-                        meta["psd_Q_grid"] = psd_grid.tolist()
-
                 with open(meta_path, "w", encoding="utf-8") as fmeta:
                     json.dump(meta, fmeta, ensure_ascii=False, indent=2)
+                return [], None
 
-                t_vec_loaded = np.load(tvec_path)
-                moments_loaded = np.load(moments_path, mmap_mode="r")
-                with open(seeds_path, "r", encoding="utf-8") as fseed:
-                    seed_lines = [json.loads(line) for line in fseed if line.strip()]
-
-                mi, mj = int(moment_ij_shape[0]), int(moment_ij_shape[1])
-                T = int(moments_loaded.shape[1])
-                P = int(moments_loaded.shape[2])
-                if P != mi * mj:
-                    raise RuntimeError("Invalid moments memmap shape: P != mi*mj")
-
-                results: list[dict[str, Any]] = []
-                for i in range(n_done):
-                    mu_tp = np.asarray(moments_loaded[i], dtype=float)
-                    mu_rec = mu_tp.T.reshape(mi, mj, T)
-                    seed_info = seed_lines[i] if i < len(seed_lines) else {"seed_index": i}
-                    results.append({"seed_info": seed_info, "t_vec": t_vec_loaded, "moments": mu_rec})
-
-                if not psd_enable:
-                    return results, None
-
-                cdf_vals_loaded = np.load(cdf_vals_path, mmap_mode="r")
-                T = int(cdf_vals_loaded.shape[1])
-                M = int(cdf_vals_loaded.shape[2])
-
-                psd_info: dict[str, Any] = {
-                    "basis": psd_basis,
-                    "mode": psd_mode,
-                    "t_vec": np.asarray(t_vec_loaded, dtype=float),
-                    "note": (
-                        "PSD computed at all saved times (aligned with t_vec) "
-                        "and averaged over all repeats."
-                    ),
-                }
-
+            meta = {
+                "N": int(N),
+                "n_done": int(n_done),
+                "dim": int(self.dim),
+                "t_vec_len": int(len(t_vec_ref)),
+                "t_vec_path": "t_vec.npy",
+                "moments_shape": [int(N), int(moments_mm.shape[1]), int(moments_mm.shape[2])],
+                "moments_tensor_ij": [int(moment_ij_shape[0]), int(moment_ij_shape[1])],
+                "moments_path": "moments.npy",
+                "seeds_path": "seeds.jsonl",
+                "psd_enable": bool(psd_enable),
+                "psd_mode": psd_mode,
+                "dump_results": True,
+            }
+            if psd_enable:
+                meta["cdf_vals_shape"] = [int(N), int(cdf_vals_mm.shape[1]), int(cdf_vals_mm.shape[2])]
+                meta["cdf_vals_path"] = "cdf_vals.npy"
                 if psd_mode == "Q_of_x":
-                    Q_sum = np.zeros((T, M), dtype=float)
-                    Q_count = np.zeros(T, dtype=int)
-                    for i in range(n_done):
-                        vals_i = np.asarray(cdf_vals_loaded[i], dtype=float)
-                        for it in range(T):
-                            row = vals_i[it]
-                            if np.any(np.isfinite(row)):
-                                Q_sum[it] += np.nan_to_num(row, nan=0.0)
-                                Q_count[it] += 1
-
-                    Q_mean = np.full((T, M), np.nan, dtype=float)
-                    for it in range(T):
-                        if Q_count[it] > 0:
-                            Q_mean[it] = Q_sum[it] / float(Q_count[it])
-
-                    x_grid = np.asarray(psd_grid, dtype=float)
-                    psd_info["x_grid"] = x_grid
-                    psd_info["Q_mean"] = Q_mean.T
-
-                    x_50 = np.full(T, np.nan, dtype=float)
-                    for it in range(T):
-                        x_50[it] = self._invert_cdf_monotone(x_grid, Q_mean[it, :], q=0.5)
-                    psd_info["x_50"] = x_50
+                    meta["psd_x_grid"] = psd_grid.tolist()
                 else:
-                    x_sum = np.zeros((T, M), dtype=float)
-                    x_count = np.zeros(T, dtype=int)
-                    for i in range(n_done):
-                        vals_i = np.asarray(cdf_vals_loaded[i], dtype=float)
-                        for it in range(T):
-                            row = vals_i[it]
-                            if np.any(np.isfinite(row)):
-                                x_sum[it] += np.nan_to_num(row, nan=0.0)
-                                x_count[it] += 1
+                    meta["psd_Q_grid"] = psd_grid.tolist()
 
-                    x_mean = np.full((T, M), np.nan, dtype=float)
-                    for it in range(T):
-                        if x_count[it] > 0:
-                            x_mean[it] = x_sum[it] / float(x_count[it])
+            with open(meta_path, "w", encoding="utf-8") as fmeta:
+                json.dump(meta, fmeta, ensure_ascii=False, indent=2)
 
-                    Q_grid = np.asarray(psd_grid, dtype=float)
-                    psd_info["Q_grid"] = Q_grid
-                    psd_info["x_mean"] = x_mean
+            t_vec_loaded = np.load(tvec_path)
+            moments_loaded = np.load(moments_path, mmap_mode="r")
+            with open(seeds_path, "r", encoding="utf-8") as fseed:
+                seed_lines = [json.loads(line) for line in fseed if line.strip()]
 
-                    x_50 = np.full(T, np.nan, dtype=float)
-                    q = 0.5
-                    hit = np.where(np.isclose(Q_grid, q, rtol=0.0, atol=1e-12))[0]
-                    if hit.size > 0:
-                        j = int(hit[0])
-                        x_50 = x_mean[:, j].astype(float, copy=False)
-                    else:
-                        for it in range(T):
-                            xq = np.asarray(x_mean[it], dtype=float)
-                            mask = np.isfinite(Q_grid) & np.isfinite(xq)
-                            if not np.any(mask):
-                                x_50[it] = float("nan")
-                                continue
-                            Qm = Q_grid[mask]
-                            xm = xq[mask]
-                            order = np.argsort(Qm)
-                            Qm = Qm[order]
-                            xm = xm[order]
-                            xm = np.maximum.accumulate(xm)
-                            if Qm[0] > q or Qm[-1] < q:
-                                x_50[it] = float("nan")
-                            else:
-                                x_50[it] = float(np.interp(q, Qm, xm))
-                    psd_info["x_50"] = x_50
-
-                return results, psd_info
+            mi, mj = int(moment_ij_shape[0]), int(moment_ij_shape[1])
+            T = int(moments_loaded.shape[1])
+            P = int(moments_loaded.shape[2])
+            if P != mi * mj:
+                raise RuntimeError("Invalid moments memmap shape: P != mi*mj")
 
             results: list[dict[str, Any]] = []
-            cancel_flag = getattr(self, "cancel_flag", None)
-
-            # For PSD aggregation across repeats
-            cdf_repeats: list[Sequence[Optional[Tuple[np.ndarray, np.ndarray]]]] = []
-            t_vec_ref: Optional[np.ndarray] = None
-
-            for k in range(N):
-                if cancel_flag is not None and cancel_flag.get("cancel", False):
-                    break
-                # Deep copy self and run a single realization
-                m = copy.deepcopy(self)
-                if cancel_flag is not None:
-                    m.cancel_flag = cancel_flag
-                sk = seeds[k]
-                if isinstance(sk, np.random.SeedSequence):
-                    rng = np.random.default_rng(sk)
-                    seed_info = {"spawn_key": tuple(sk.spawn_key)}
-                else:
-                    rng = np.random.default_rng(int(sk))
-                    seed_info = {"seed": int(sk)}
-                m._rng = rng
-                m.V_flat = None
-                if not init_Vc and Vc is not None:
-                    m.Vc = Vc
-                    # m.Vc = 1e-10
-                    # print("Controll volume : ", m.Vc)
-                m._initialize_particles(init_Vc=init_Vc, V_flat=V_flat, W_init=W_init, init_cdf=init_cdf_payload)
-                m._initialize_samplers()
-                m.solve(maxiter=maxiter)
-                mu, tv = m.calc_moments_over_time(normalize=True)
-                results.append({"seed_info": seed_info, "t_vec": tv, "moments": mu})
-
-                # PSD CDFs for this realization over all saved times
-                if psd_enable:
-                    cdf_list, t_vec_local = m.compute_psd_cdf_over_time(psd_basis=psd_basis,
-                                                                        time_scheme="interp")
-                    if t_vec_ref is None:
-                        t_vec_ref = np.asarray(t_vec_local, dtype=float)
-                    else:
-                        if len(t_vec_ref) != len(t_vec_local) or not np.allclose(
-                            t_vec_ref, t_vec_local, rtol=1e-6, atol=1e-12
-                        ):
-                            warnings.warn(
-                                "t_vec differs between repeats. PSD averaging assumes identical t_vec; "
-                                "results may be inconsistent.",
-                                RuntimeWarning,
-                            )
-                    cdf_repeats.append(cdf_list)
+            for i in range(n_done):
+                mu_tp = np.asarray(moments_loaded[i], dtype=float)
+                mu_rec = mu_tp.T.reshape(mi, mj, T)
+                seed_info = seed_lines[i] if i < len(seed_lines) else {"seed_index": i}
+                results.append({"seed_info": seed_info, "t_vec": t_vec_loaded, "moments": mu_rec})
 
             if not psd_enable:
-                # original behavior: only moments
                 return results, None
 
-            # Aggregate PSD over repeats using post-processing utilities
-            if t_vec_ref is None:
-                # No PSD data collected
-                psd_info = {
-                    "basis": psd_basis,
-                    "mode": None,
-                    "t_vec": None,
-                    "x_grid": None,
-                    "Q_mean": None,
-                    "Q_grid": None,
-                    "x_mean": None,
-                    "x_50":   None,
-                    "note": "No PSD snapshots were available.",
-                }
-            else:
-                # `self` is a MCPBESolver (MCPBEPost is in MRO), so we can call aggregate_psd_repeats
-                psd_info = self.aggregate_psd_repeats(
-                    cdf_repeats=cdf_repeats,
-                    t_vec=t_vec_ref,
-                    psd_basis=psd_basis,
-                    psd_x_grid=psd_x_grid,
-                    psd_Q_grid=psd_Q_grid,
-                )
+            cdf_vals_loaded = np.load(cdf_vals_path, mmap_mode="r")
+            T = int(cdf_vals_loaded.shape[1])
+            M = int(cdf_vals_loaded.shape[2])
 
-            return results, psd_info
-
-        # ----- parallel path -----
-        base_state = copy.deepcopy(self.__dict__)
-
-        # åŽ»æŽ‰ä¸€äº›è¿è¡Œæ—¶å¯¹è±¡ï¼Œé¿å… pickling/æ–‡ä»¶å¥æŸ„/ç¼“å­˜å¯¼è‡´å·®å¼‚
-        base_state.pop("cancel_flag", None)
-        # Decide parallel PSD return mode:
-        # - If user provides a fixed grid (psd_x_grid or psd_Q_grid): return gridded arrays from workers (fast).
-        # - Else (auto grid): fall back to returning cdf_list (compatible but slow).
-        psd_grid_mode = None  # None | "Q_of_x" | "x_of_Q"
-        x_grid_user = None
-        Q_grid_user = None
-        if psd_enable:
-            if psd_x_grid is not None:
-                psd_grid_mode = "Q_of_x"
-                x_grid_user = np.asarray(psd_x_grid, dtype=float)
-            elif psd_Q_grid is not None:
-                psd_grid_mode = "x_of_Q"
-                Q_grid_user = np.asarray(psd_Q_grid, dtype=float)
-            else:
-                psd_grid_mode = None
-                warnings.warn(
-                    "parallel PSD: neither psd_x_grid nor psd_Q_grid is provided. "
-                    "Falling back to returning full CDF lists from workers (may be slow due to serialization). "
-                    "For speed, provide psd_x_grid or psd_Q_grid.",
-                    RuntimeWarning,
-                )
-
-        payloads = []
-        for k in range(N):
-            payloads.append(
-                {
-                    "idx": k,
-                    "cls": self.__class__,
-                    "state": base_state,
-                    "seed": seeds[k],
-                    "maxiter": maxiter,
-                    "init_Vc": init_Vc,
-                    "Vc": Vc,
-                    "V_flat": V_flat,
-                    "W_init": W_init,
-                    "init_cdf_payload": init_cdf_payload,
-                    # PSD options
-                    "psd_enable": psd_enable,
-                    "psd_basis": psd_basis,
-                    "psd_time_scheme": "interp",
-                    "psd_grid_mode": psd_grid_mode,
-                    "psd_x_grid": x_grid_user,
-                    "psd_Q_grid": Q_grid_user,
-                }
-            )
-
-        results: list[dict[str, Any] | None] = [None] * N
-
-        # PSD containers
-        t_vec_psd_list: list[Any] | None = [None] * N if psd_enable else None
-
-        # Fast path: workers return gridded PSD arrays
-        psd_pack_list: list[Any] | None = [None] * N if (psd_enable and psd_grid_mode is not None) else None
-
-        # Slow fallback: workers return full cdf_list
-        cdf_repeats: list[Any] | None = [None] * N if (psd_enable and psd_grid_mode is None) else None
-
-        with ProcessPoolExecutor(max_workers=workers) as ex:
-            fut_map = {ex.submit(_mcpbe_run_single_parallel, pl): pl["idx"] for pl in payloads}
-            for fut in as_completed(fut_map):
-                idx = fut_map[fut]
-                try:
-                    out = fut.result()
-                except Exception as e:
-                    raise RuntimeError(f"[parallel] worker {idx} failed: {e}")
-
-                if not psd_enable:
-                    results[idx] = out
-                    continue
-
-                # psd_enable == True
-                if psd_grid_mode is not None:
-                    core_res, psd_pack, t_vec_local = out
-                    results[idx] = core_res
-                    psd_pack_list[idx] = psd_pack
-                    t_vec_psd_list[idx] = t_vec_local
-                else:
-                    core_res, cdf_list, t_vec_local = out
-                    results[idx] = core_res
-                    cdf_repeats[idx] = cdf_list
-                    t_vec_psd_list[idx] = t_vec_local
-
-        # Defensive checks
-        if any(r is None for r in results):
-            missing = [i for i, r in enumerate(results) if r is None]
-            raise RuntimeError(f"[parallel] missing results for indices: {missing}")
-
-        if not psd_enable:
-            return results, None
-
-        # Find reference t_vec
-        t_vec_ref = None
-        for t_vec_local in (t_vec_psd_list or []):
-            if t_vec_local is not None and len(t_vec_local) > 0:
-                t_vec_ref = np.asarray(t_vec_local, dtype=float)
-                break
-
-        if t_vec_ref is None:
-            psd_info = {
-                "basis": psd_basis,
-                "mode": None,
-                "t_vec": None,
-                "x_grid": None,
-                "Q_mean": None,
-                "Q_grid": None,
-                "x_mean": None,
-                "x_50": None,
-                "note": "No PSD snapshots were available.",
-            }
-            return results, psd_info
-
-        # Warn if t_vec differs between repeats
-        for t_vec_local in (t_vec_psd_list or []):
-            if t_vec_local is None or len(t_vec_local) == 0:
-                continue
-            if len(t_vec_ref) != len(t_vec_local) or not np.allclose(
-                t_vec_ref, t_vec_local, rtol=1e-6, atol=1e-12
-            ):
-                warnings.warn(
-                    "t_vec differs between repeats. PSD averaging assumes identical t_vec; "
-                    "results may be inconsistent.",
-                    RuntimeWarning,
-                )
-                break
-
-        # -------------------------
-        # Fast aggregation (gridded)
-        # -------------------------
-        if psd_grid_mode is not None:
-            T = int(len(t_vec_ref))
             psd_info: dict[str, Any] = {
                 "basis": psd_basis,
-                "mode": psd_grid_mode,
-                "t_vec": np.asarray(t_vec_ref, dtype=float),
+                "mode": psd_mode,
+                "t_vec": np.asarray(t_vec_loaded, dtype=float),
                 "note": (
                     "PSD computed at all saved times (aligned with t_vec) "
                     "and averaged over all repeats."
                 ),
             }
 
-            if psd_pack_list is None or any(p is None for p in psd_pack_list):
-                raise RuntimeError("[parallel] PSD gridded mode but some repeats returned no psd_pack.")
-
-            if psd_grid_mode == "Q_of_x":
-                x_grid = x_grid_user
-                if x_grid is None:
-                    raise RuntimeError("[parallel] Q_of_x gridded mode requires psd_x_grid.")
-                M = int(x_grid.shape[0])
+            if psd_mode == "Q_of_x":
                 Q_sum = np.zeros((T, M), dtype=float)
                 Q_count = np.zeros(T, dtype=int)
-
-                for pack in psd_pack_list:
-                    Q_vals = np.asarray(pack["vals"], dtype=float)      # (T, M), may contain NaN
-                    cnt = np.asarray(pack["count"], dtype=int)          # (T,), 0/1
-                    # only add valid rows
+                for i in range(n_done):
+                    vals_i = np.asarray(cdf_vals_loaded[i], dtype=float)
                     for it in range(T):
-                        if cnt[it] > 0:
-                            Q_sum[it] += Q_vals[it]
+                        row = vals_i[it]
+                        if np.any(np.isfinite(row)):
+                            Q_sum[it] += np.nan_to_num(row, nan=0.0)
                             Q_count[it] += 1
 
-                Q_mean = np.empty_like(Q_sum)
+                Q_mean = np.full((T, M), np.nan, dtype=float)
                 for it in range(T):
                     if Q_count[it] > 0:
                         Q_mean[it] = Q_sum[it] / float(Q_count[it])
-                    else:
-                        Q_mean[it] = np.nan
 
+                x_grid = np.asarray(psd_grid, dtype=float)
                 psd_info["x_grid"] = x_grid
-                psd_info["Q_mean"] = Q_mean.T  # keep identical to aggregate_psd_repeats
+                psd_info["Q_mean"] = Q_mean.T
 
                 x_50 = np.full(T, np.nan, dtype=float)
                 for it in range(T):
                     x_50[it] = self._invert_cdf_monotone(x_grid, Q_mean[it, :], q=0.5)
                 psd_info["x_50"] = x_50
-                return results, psd_info
-
-            elif psd_grid_mode == "x_of_Q":
-                Q_grid = Q_grid_user
-                if Q_grid is None:
-                    raise RuntimeError("[parallel] x_of_Q gridded mode requires psd_Q_grid.")
-                M = int(Q_grid.shape[0])
+            else:
                 x_sum = np.zeros((T, M), dtype=float)
                 x_count = np.zeros(T, dtype=int)
-
-                for pack in psd_pack_list:
-                    x_vals = np.asarray(pack["vals"], dtype=float)      # (T, M), may contain NaN
-                    cnt = np.asarray(pack["count"], dtype=int)          # (T,), 0/1
+                for i in range(n_done):
+                    vals_i = np.asarray(cdf_vals_loaded[i], dtype=float)
                     for it in range(T):
-                        if cnt[it] > 0:
-                            x_sum[it] += x_vals[it]
+                        row = vals_i[it]
+                        if np.any(np.isfinite(row)):
+                            x_sum[it] += np.nan_to_num(row, nan=0.0)
                             x_count[it] += 1
 
-                x_mean = np.empty_like(x_sum)
+                x_mean = np.full((T, M), np.nan, dtype=float)
                 for it in range(T):
                     if x_count[it] > 0:
                         x_mean[it] = x_sum[it] / float(x_count[it])
-                    else:
-                        x_mean[it] = np.nan
 
+                Q_grid = np.asarray(psd_grid, dtype=float)
                 psd_info["Q_grid"] = Q_grid
                 psd_info["x_mean"] = x_mean
 
-                # x_50 logic identical to aggregate_psd_repeats
                 x_50 = np.full(T, np.nan, dtype=float)
                 q = 0.5
                 hit = np.where(np.isclose(Q_grid, q, rtol=0.0, atol=1e-12))[0]
@@ -1473,24 +1165,87 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
                         else:
                             x_50[it] = float(np.interp(q, Qm, xm))
                 psd_info["x_50"] = x_50
-                return results, psd_info
 
+            return results, psd_info
+
+        results: list[dict[str, Any]] = []
+        cancel_flag = getattr(self, "cancel_flag", None)
+
+        # For PSD aggregation across repeats
+        cdf_repeats: list[Sequence[Optional[Tuple[np.ndarray, np.ndarray]]]] = []
+        t_vec_ref: Optional[np.ndarray] = None
+
+        for k in range(N):
+            if cancel_flag is not None and cancel_flag.get("cancel", False):
+                break
+            # Deep copy self and run a single realization
+            m = copy.deepcopy(self)
+            if cancel_flag is not None:
+                m.cancel_flag = cancel_flag
+            sk = seeds[k]
+            if isinstance(sk, np.random.SeedSequence):
+                rng = np.random.default_rng(sk)
+                seed_info = {"spawn_key": tuple(sk.spawn_key)}
             else:
-                raise RuntimeError(f"[parallel] Unknown psd_grid_mode={psd_grid_mode!r}.")
+                rng = np.random.default_rng(int(sk))
+                seed_info = {"seed": int(sk)}
+            m._rng = rng
+            m.V_flat = None
+            if not init_Vc and Vc is not None:
+                m.Vc = Vc
+                # m.Vc = 1e-10
+                # print("Controll volume : ", m.Vc)
+            m._initialize_particles(init_Vc=init_Vc, V_flat=V_flat, W_init=W_init, init_cdf=init_cdf_payload)
+            m._initialize_samplers()
+            m.solve(maxiter=maxiter)
+            mu, tv = m.calc_moments_over_time(normalize=True)
+            results.append({"seed_info": seed_info, "t_vec": tv, "moments": mu})
 
-        # -------------------------
-        # Slow fallback (cdf_list)
-        # -------------------------
-        if cdf_repeats is None or any(c is None for c in cdf_repeats):
-            raise RuntimeError("[parallel] PSD enabled but some repeats returned no cdf_list.")
+            # PSD CDFs for this realization over all saved times
+            if psd_enable:
+                cdf_list, t_vec_local = m.compute_psd_cdf_over_time(psd_basis=psd_basis,
+                                                                    time_scheme="interp")
+                if t_vec_ref is None:
+                    t_vec_ref = np.asarray(t_vec_local, dtype=float)
+                else:
+                    if len(t_vec_ref) != len(t_vec_local) or not np.allclose(
+                        t_vec_ref, t_vec_local, rtol=1e-6, atol=1e-12
+                    ):
+                        warnings.warn(
+                            "t_vec differs between repeats. PSD averaging assumes identical t_vec; "
+                            "results may be inconsistent.",
+                            RuntimeWarning,
+                        )
+                cdf_repeats.append(cdf_list)
 
-        psd_info = self.aggregate_psd_repeats(
-            cdf_repeats=cdf_repeats,
-            t_vec=t_vec_ref,
-            psd_basis=psd_basis,
-            psd_x_grid=psd_x_grid,
-            psd_Q_grid=psd_Q_grid,
-        )
+        if not psd_enable:
+            # original behavior: only moments
+            return results, None
+
+        # Aggregate PSD over repeats using post-processing utilities
+        if t_vec_ref is None:
+            # No PSD data collected
+            psd_info = {
+                "basis": psd_basis,
+                "mode": None,
+                "t_vec": None,
+                "x_grid": None,
+                "Q_mean": None,
+                "Q_grid": None,
+                "x_mean": None,
+                "x_50":   None,
+                "note": "No PSD snapshots were available.",
+            }
+        else:
+            # `self` is a MCPBESolver (MCPBEPost is in MRO), so we can call aggregate_psd_repeats
+            psd_info = self.aggregate_psd_repeats(
+                cdf_repeats=cdf_repeats,
+                t_vec=t_vec_ref,
+                psd_basis=psd_basis,
+                psd_x_grid=psd_x_grid,
+                psd_Q_grid=psd_Q_grid,
+            )
+
         return results, psd_info
 
     # ---------------------------------------------------------------------
@@ -1820,110 +1575,5 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         else:
             print("    break_rate  = <not initialized>")
         print("[MC-PBE][DEBUG] End of configuration snapshot\n")
-
-
-def _mcpbe_run_single_parallel(payload: dict):
-    cls = payload["cls"]
-    state = payload["state"]
-    seed_k = payload["seed"]
-    maxiter = payload["maxiter"]
-    init_Vc = payload["init_Vc"]
-    Vc = payload["Vc"]
-    V_flat = payload["V_flat"]
-    W_init = payload.get("W_init", None)
-    init_cdf_payload = payload.get("init_cdf_payload", None)
-
-    # PSD opts
-    psd_enable = bool(payload.get("psd_enable", False))
-    psd_basis = payload.get("psd_basis", "volume")
-    psd_time_scheme = payload.get("psd_time_scheme", "interp")
-    psd_grid_mode = payload.get("psd_grid_mode", None)  # None | "Q_of_x" | "x_of_Q"
-    psd_x_grid = payload.get("psd_x_grid", None)
-    psd_Q_grid = payload.get("psd_Q_grid", None)
-
-    # 1) rebuild solver skeleton (IMPORTANT: load_attr=False to avoid config IO)
-    dim = int(state.get("dim", 2))
-    obj = cls(dim=dim, init=False, load_attr=False)
-    obj.__dict__.update(state)
-
-    # 2) re-seed RNG
-    if isinstance(seed_k, np.random.SeedSequence):
-        rng = np.random.default_rng(seed_k)
-        seed_info = {"spawn_key": tuple(seed_k.spawn_key)}
-    else:
-        rng = np.random.default_rng(int(seed_k))
-        seed_info = {"seed": int(seed_k)}
-    obj._rng = rng
-
-    # 3) init order identical to serial
-    obj.V_flat = None
-    if not init_Vc and Vc is not None:
-        obj.Vc = Vc
-    obj._initialize_particles(init_Vc=init_Vc, V_flat=V_flat, W_init=W_init, init_cdf=init_cdf_payload)
-    obj._initialize_samplers()
-
-    # 4) run solve
-    obj.solve(maxiter=maxiter)
-
-    # 5) collect moments
-    mu, tv = obj.calc_moments_over_time(normalize=True)
-    core_res = {"seed_info": seed_info, "t_vec": tv, "moments": mu}
-
-    if not psd_enable:
-        return core_res
-
-    # 6) compute CDF list locally (no serialization of cdf itself unless fallback)
-    if not hasattr(obj, "compute_psd_cdf_over_time"):
-        raise AttributeError(
-            "psd_enable=True but solver has no method compute_psd_cdf_over_time()."
-        )
-
-    cdf_list, t_vec_local = obj.compute_psd_cdf_over_time(
-        psd_basis=psd_basis,
-        time_scheme=psd_time_scheme,
-    )
-
-    # Fast path: return gridded arrays
-    if psd_grid_mode in ("Q_of_x", "x_of_Q"):
-        if psd_grid_mode == "Q_of_x":
-            if psd_x_grid is None:
-                raise RuntimeError("psd_grid_mode='Q_of_x' but psd_x_grid is None.")
-            x_grid = np.asarray(psd_x_grid, dtype=float)
-            T = int(len(t_vec_local))
-            M = int(x_grid.shape[0])
-            vals = np.full((T, M), np.nan, dtype=float)
-            cnt = np.zeros(T, dtype=int)
-
-            for it, cdf in enumerate(cdf_list):
-                if cdf is None:
-                    continue
-                x_sorted, Q_sorted = cdf
-                vals[it, :] = obj._eval_Q_of_x(x_sorted, Q_sorted, x_grid)
-                cnt[it] = 1
-
-            psd_pack = {"mode": "Q_of_x", "vals": vals, "count": cnt}
-            return core_res, psd_pack, t_vec_local
-
-        else:  # "x_of_Q"
-            if psd_Q_grid is None:
-                raise RuntimeError("psd_grid_mode='x_of_Q' but psd_Q_grid is None.")
-            Q_grid = np.asarray(psd_Q_grid, dtype=float)
-            T = int(len(t_vec_local))
-            M = int(Q_grid.shape[0])
-            vals = np.full((T, M), np.nan, dtype=float)
-            cnt = np.zeros(T, dtype=int)
-
-            for it, cdf in enumerate(cdf_list):
-                if cdf is None:
-                    continue
-                x_sorted, Q_sorted = cdf
-                vals[it, :] = obj._eval_x_of_Q(x_sorted, Q_sorted, Q_grid)
-                cnt[it] = 1
-
-            psd_pack = {"mode": "x_of_Q", "vals": vals, "count": cnt}
-            return core_res, psd_pack, t_vec_local
-
-    # Slow fallback: return full cdf_list (compatible but heavy)
-    return core_res, cdf_list, t_vec_local
 
 
