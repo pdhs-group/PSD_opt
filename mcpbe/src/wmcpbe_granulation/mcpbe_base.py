@@ -5,19 +5,17 @@ from __future__ import annotations
 import math
 import os
 import time
-import warnings
-import json
 from typing import Optional, Sequence, Any, Tuple
 import copy
 
 import numpy as np
 from pbe_core.base.base_solver import BaseSolver
-# from .fenwick import FenwickSampler
 from .fenwick import FenwickSampler
+from .mcpbe_initialization import InitialParticleMixin
 from .mcpbe_time_helper import MCPBETimeHelper
 
 
-class MCPBEBase(MCPBETimeHelper, BaseSolver):
+class MCPBEBase(InitialParticleMixin, MCPBETimeHelper, BaseSolver):
     """Base layer for MC-PBE:
     - validates & initializes particle state with capacity buffers
     - maintains control volume & time book-keeping
@@ -81,9 +79,6 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
 
         # cache for breakage CDF tables (keyed by dim, N, BREAKFVAL, pl_v, pl_q)
         self._bf_cache = {}
-        self._open_mmaps = []
-        self._dump_runtime_paths = {}
-        
         self.mcpbe_debug = False
         # Initialize state
         if init:
@@ -96,33 +91,30 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
     # ---------------------------------------------------------------------
     def _validate_input_arrays(self):
         dim = self.dim
-
-        def _len(name: str) -> int:
-            v = getattr(self, name, None)
-            try:
-                return len(v)
-            except Exception:
-                return -1
-
-        for name in ("c", "x", "PGV", "SIG"):
-            L = _len(name)
-            if L != dim:
+        lengths = {
+            "c": len(self.c),
+            "x": len(self.x),
+            "PGV": len(self.PGV),
+            "SIG": len(self.SIG),
+        }
+        for name, length in lengths.items():
+            if length != dim:
                 raise ValueError(
-                    f"`{name}` must be a 1D array (sequence) of length dim={dim}, got length {L}."
+                    f"`{name}` must be a 1D array (sequence) of length dim={dim}, got length {length}."
                 )
 
     def _growth_factor(self) -> float:
         """Dynamic capacity growth factor in [1.1, 2.0], more aggressive early in time."""
-        T = float(getattr(self, "t_total", 1.0))
-        t = float(getattr(self, "_elapsed", 0.0))
+        T = float(self.t_total)
+        t = float(self._elapsed)
         r = 1.0 - min(max(t / max(T, 1e-12), 0.0), 1.0)
         f = 1.1 + 0.9 * r  # in [1.1, 2.0]
         return float(min(2.0, max(1.1, f)))
 
     def _compute_frag_num(self):
         """Expected number of fragments per break event from BREAKFVAL & v."""
-        v = float(getattr(self, "pl_v", 1.0))
-        bf = int(getattr(self, "BREAKFVAL", 1))
+        v = float(self.pl_v)
+        bf = int(self.BREAKFVAL)
         if self.dim == 1:
             if bf == 1:
                 p = 4.0
@@ -163,247 +155,33 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         init_Vc: bool = True,
         V_flat: Optional[np.ndarray] = None,
         W_init: Optional[np.ndarray] = None,
-        init_cdf: Optional[dict] = None,
     ):
-        """
-        Initialize particle arrays (V_flat, X) and NEW: weight array W.
-        This version keeps the original DSMC logic, but adds weight tracking.
-        """
-        dim = int(self.dim)
-        self._validate_input_arrays()
-        if init_Vc:
-            self.c = np.asarray(self.c, dtype=float)
-            self.x = np.asarray(self.x, dtype=float)
-            self.PGV = np.asarray(self.PGV)
-            self.SIG = np.asarray(self.SIG, dtype=float)
-            self.v = (self.x ** 3) * math.pi / 6.0
-            self.n = np.round(self.c / self.v)
-            self.n0 = float(np.sum(self.n))
-            if self.n0 <= 0:
-                raise ValueError("Total primary particle count `n0` must be > 0 (check c and x).")
-            self.Vc = self.a0 / self.n0
-            self.a = np.round(self.n * self.Vc).astype(int)
-            total_cols = int(np.sum(self.a))
-            if total_cols <= 0:
-                raise ValueError("No particles to initialize (sum(a) == 0). Check c/x/PGV/SIG.")
-    
-        used_cdf_init = False
-        if init_cdf is not None:
-            V_init, W_cdf = self._build_init_from_cdf(init_cdf)
-            used_cdf_init = True
-        elif V_flat is None:
-            V_init = np.zeros((dim + 1, total_cols), dtype=float)
-            cnt = 0
-            for i in range(dim):
-                ai = int(self.a[i])
-                if ai <= 0:
-                    continue
-                p = str(self.PGV[i])
-                if p == "mono":
-                    V_init[i, cnt : cnt + ai] = self.v[i]
-                elif p == "norm":
-                    mu = self.v[i]
-                    sig = float(self.SIG[i]) * mu
-                    V_init[i, cnt : cnt + ai] = self._rng.normal(mu, sig, ai)
-                elif p == "weibull":
-                    V_init[i, cnt : cnt + ai] = self._rng.weibull(2.0, ai) * (self.SIG[i] * self.v[i])
-                else:
-                    raise ValueError(
-                        f"Unsupported PGV[{i}]='{p}'. Use 'mono' | 'norm' | 'weibull'."
-                    )
-                cnt += ai
-    
-            # total volume row & filter invalid columns
-            V_init[-1, :] = np.sum(V_init[:dim, :], axis=0)
-            keep = V_init[-1, :] > 0.0
-            V_init = V_init[:, keep]
-        else:
-            V_init = np.asarray(V_flat, dtype=float)
-    
-        if W_init is not None:
-            W_init = np.asarray(W_init, dtype=float).ravel()
-            if W_init.size != V_init.shape[1]:
-                raise ValueError(
-                    "W_init must have the same number of entries as V_flat columns."
-                )
-            keep_w = np.isfinite(W_init) & (W_init > 0.0)
-            V_init = V_init[:, keep_w]
-            W_init = W_init[keep_w]
-
-        a0_eff = V_init.shape[1]
-        if a0_eff <= 0:
-            raise ValueError("No particles initialized after filtering non-positive volumes.")
-        
-        # -------------------------
-        # Optional: compress initial particles & define weights
-        # -------------------------
-        if used_cdf_init:
-            a0_eff_new = int(a0_eff)
-            W_new = np.asarray(W_cdf, dtype=float)
-        elif W_init is not None:
-            a0_eff_new = int(a0_eff)
-            W_new = np.asarray(W_init, dtype=float)
-        else:
-            V_eff_init = int(getattr(self, "V_eff_init", 0) or 0)
-            V_eff_mod = str(getattr(self, "V_eff_mod", "Q0") or "Q0")
-
-            if V_eff_init > 0 and V_eff_init < a0_eff:
-                V_new, W_new = self._compress_init_by_quantile(V_init, V_eff_init, V_eff_mod)
-                V_init = V_new
-                a0_eff_new = int(V_eff_init)
-            else:
-                a0_eff_new = int(a0_eff)
-                W_new = np.ones(a0_eff_new, dtype=float)
-        
-        # -------------------------
-        # Capacity buffers (use *compressed* length)
-        # -------------------------
-        cap = max(a0_eff_new + max(8, a0_eff_new // 10), 16)
-        self._cap = int(cap)
-        
-        self.V_flat = np.zeros((dim + 1, self._cap), dtype=float)
-        self.V_flat[:, :a0_eff_new] = V_init
-        self.a_tot = a0_eff_new
-        
-        self.X = np.zeros(self._cap, dtype=float)
-        self.X[:a0_eff_new] = self._vol2diam(self.V_flat[-1, :a0_eff_new])
-        
-        # -------------------------
-        # Weight array W (use *compressed* length)
-        # -------------------------
-        self.W = np.zeros(self._cap, dtype=float)
-        self.W[:a0_eff_new] = W_new
-
-        # -------------------------
-        # Time & saved snapshots
-        # -------------------------
-        if self.t_vec is None:
-            steps = max(1, int(self.t_total // max(1, self.t_write)))
-            self.t_vec = np.linspace(0.0, float(self.t_total), steps + 1)
-    
-        # Expected fragment number for breakage
-        self._compute_frag_num()
-    
-        # Save initial state (only active slice)
-        self.V0 = self.V_flat[:, :self.a_tot].copy()
-        self.X0 = self.X[:self.a_tot].copy()
-        self.W0 = self.W[:self.a_tot].copy()
-    
-        self.V0_save = [self.V0.copy()]
-        self.W0_save = [self.W0.copy()]
-    
-        self.V_save = [self.V_flat[:, :self.a_tot].copy()]
-        self.W_save = [self.W[:self.a_tot].copy()]
-    
-        self.Vc_save = [float(self.Vc)]
-        self.step = 1
-    
-        # left/right snapshot containers for post-processing
-        self.V_save_left = [self.V_flat[:, :self.a_tot].copy()]
-        self.W_save_left = [self.W[:self.a_tot].copy()]
-        self.t_left = [0.0]
-        self.t_right = [0.0]
-
-        # Reference active-column count for control-volume doubling.
-        # Important when V_eff_init compression is enabled: using raw a0 can
-        # trigger premature doubling right after initialization.
-        self._cv_a_ref = int(self.a_tot)
-
-    def _build_init_from_cdf(self, init_cdf: dict) -> tuple[np.ndarray, np.ndarray]:
-        """Build weighted initial particles directly from experimental CDF data.
-
-        Expected keys in `init_cdf`:
-          - x_grid: diameter grid
-          - cdf: cumulative distribution on x_grid
-          - basis: "number" (Q0) or "volume" (Q3)
-        Optional keys:
-          - n_ref: reference represented-particle count
-          - total_vol_ref: reference total represented volume (used for Q3)
-          - target_n: number of representatives (defaults to V_eff_init or n_ref)
-        """
-        if int(self.dim) != 1:
-            raise ValueError("CDF-based initialization currently supports dim=1 only.")
-
-        x = np.asarray(init_cdf.get("x_grid", None), dtype=float).ravel()
-        cdf = np.asarray(init_cdf.get("cdf", None), dtype=float).ravel()
-        if x.size == 0 or cdf.size == 0 or x.size != cdf.size:
-            raise ValueError("init_cdf requires same-length non-empty x_grid and cdf.")
-
-        basis = str(init_cdf.get("basis", "number")).strip().lower()
-        if basis not in ("number", "volume"):
-            raise ValueError(f"Unsupported init_cdf basis={basis!r}; use 'number' or 'volume'.")
-
-        # finite + sorted + monotone CDF cleanup
-        mask = np.isfinite(x) & np.isfinite(cdf)
-        x = x[mask]
-        cdf = cdf[mask]
-        if x.size < 2:
-            raise ValueError("init_cdf has insufficient finite points.")
-
-        order = np.argsort(x)
-        x = x[order]
-        cdf = cdf[order]
-        cdf = np.maximum.accumulate(cdf)
-
-        cmax = float(cdf[-1])
-        if not np.isfinite(cmax) or cmax <= 0.0:
-            raise ValueError("init_cdf cdf max must be positive.")
-        cdf = cdf / cmax
-
-        # keep unique CDF points for inverse interpolation cdf -> x
-        c_u, idx_u = np.unique(cdf, return_index=True)
-        x_u = x[idx_u]
-        if c_u.size < 2:
-            raise ValueError("init_cdf cdf is degenerate after cleanup.")
-
-        if c_u[0] > 0.0:
-            c_u = np.concatenate(([0.0], c_u))
-            x_u = np.concatenate(([x_u[0]], x_u))
-        if c_u[-1] < 1.0:
-            c_u = np.concatenate((c_u, [1.0]))
-            x_u = np.concatenate((x_u, [x_u[-1]]))
-
-        n_ref = int(init_cdf.get("n_ref", x_u.size))
-        if n_ref <= 0:
-            n_ref = x_u.size
-
-        target_n = int(init_cdf.get("target_n", 0) or 0)
-        if target_n < 1:
-            raise ValueError("init_cdf target_n must be >= 1.")
-
-        q = (np.arange(target_n, dtype=float) + 0.5) / float(target_n)
-        x_rep = np.interp(q, c_u, x_u)
-        v_rep = (math.pi / 6.0) * np.maximum(x_rep, 0.0) ** 3
-        v_rep = np.maximum(v_rep, 1e-300)
-
-        if basis == "number":
-            w_each = float(n_ref) / float(target_n)
-            w_rep = np.full(target_n, w_each, dtype=float)
-        else:
-            total_vol_ref = float(init_cdf.get("total_vol_ref", 0.0) or 0.0)
-            if (not np.isfinite(total_vol_ref)) or total_vol_ref <= 0.0:
-                total_vol_ref = float(np.sum(v_rep)) * (float(n_ref) / float(target_n))
-            rep_vol_each = total_vol_ref / float(target_n)
-            w_rep = rep_vol_each / v_rep
-
-        V_init = np.zeros((2, target_n), dtype=float)
-        V_init[0, :] = v_rep
-        V_init[1, :] = v_rep
-        return V_init, w_rep
-
+        """Initialize particle state from model settings or explicit particles."""
+        total_cols = self._prepare_initial_counts(
+            init_Vc=init_Vc,
+            require_model_init=(V_flat is None),
+        )
+        payload = self._build_initial_particle_payload(
+            total_cols=total_cols,
+            V_flat=V_flat,
+            W_init=W_init,
+        )
+        payload = self._normalize_initial_particle_payload(payload)
+        payload = self._maybe_compress_initial_particle_payload(payload)
+        self._commit_initial_particle_payload(payload)
 
     def _initialize_samplers(self):
         """Build (or resize) samplers for agglomeration/breakage based on process_type."""
-        pt = getattr(self, "process_type", "agglomeration")
+        pt = self.process_type
 
         # Agglomeration
         if pt in ("agglomeration", "mix"):
             self._prepare_agg_delta_config()
+            self._r_agg = np.zeros(self._cap, dtype=float)
             self._rebuild_all_propensities()  # from AgglomerationMixin
-            if not hasattr(self, "_r_agg") or self._r_agg is None or self._r_agg.shape[0] < self._cap:
+            if self._r_agg.shape[0] < self._cap:
                 buf = np.zeros(self._cap, dtype=float)
-                if hasattr(self, "_r_agg") and self._r_agg is not None:
-                    buf[:self.a_tot] = self._r_agg[:self.a_tot]
+                buf[:self.a_tot] = self._r_agg[:self.a_tot]
                 self._r_agg = buf
             self._agg_sampler = FenwickSampler(self._r_agg[:self.a_tot])
         else:
@@ -420,83 +198,6 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
             self._break_rate = np.zeros(self._cap, dtype=float)
             self._delta_break = np.zeros(self._cap, dtype=float)
             self._break_sampler = None
-
-    def _compress_init_by_quantile(
-        self,
-        V_init: np.ndarray,
-        V_eff_init: int,
-        V_eff_mod: str = "Q0",
-    ) -> tuple[np.ndarray, np.ndarray]:
-        """
-        Compress initial particles (columns) to V_eff_init representatives by uniform quantiles
-        on the *vertical axis* (CDF value), using either:
-    
-          - Q0: number-CDF  (each original column has equal probability mass)
-                -> output weights are equal: W = N / V_eff_init
-          - Q3: volume-CDF  (probability mass proportional to Vtot)
-                -> output weights are generally unequal, chosen so each representative carries
-                   equal "represented volume" share: W_k = (total_volume / V_eff_init) / Vtot_k
-    
-        Returns:
-          V_new: shape (dim+1, V_eff_init)
-          W_new: shape (V_eff_init,)
-        """
-        if V_eff_init <= 0:
-            raise ValueError("V_eff_init must be > 0 for compression.")
-    
-        V_eff_mod = str(V_eff_mod).strip().upper()
-        V = np.asarray(V_init, dtype=float)
-        if V.ndim != 2:
-            raise ValueError("V_init must be a 2D array (dim+1, N).")
-    
-        N = int(V.shape[1])
-        if V_eff_init >= N:
-            # no-op: keep all, weights=1
-            return V.copy(), np.ones(N, dtype=float)
-    
-        Vtot = np.asarray(V[-1, :], dtype=float)
-        if np.any(~np.isfinite(Vtot)) or np.any(Vtot <= 0.0):
-            raise ValueError("Compression requires finite, positive Vtot in V_init[-1,:].")
-    
-        # sort by Vtot
-        order = np.argsort(Vtot)
-        V_sorted = V[:, order]
-        Vtot_sorted = Vtot[order]
-    
-        # midpoint quantiles
-        q = (np.arange(V_eff_init, dtype=float) + 0.5) / float(V_eff_init)
-    
-        def pick_indices_from_cdf(cdf: np.ndarray, qgrid: np.ndarray) -> np.ndarray:
-            idx = np.searchsorted(cdf, qgrid, side="left")
-            return np.clip(idx, 0, cdf.size - 1).astype(int)
-    
-        if V_eff_mod == "Q0":
-            # number-CDF
-            cdf = (np.arange(N, dtype=float) + 1.0) / float(N)
-            pick = pick_indices_from_cdf(cdf, q)
-            V_new = V_sorted[:, pick].copy()
-    
-            w_each = float(N) / float(V_eff_init)
-            W_new = np.full(V_eff_init, w_each, dtype=float)
-            return V_new, W_new
-    
-        if V_eff_mod == "Q3":
-            # volume-CDF (mass proportional to Vtot)
-            tot_vol = float(np.sum(Vtot_sorted))
-            if not np.isfinite(tot_vol) or tot_vol <= 0.0:
-                raise ValueError("Invalid total volume for Q3 compression.")
-    
-            cdf = np.cumsum(Vtot_sorted) / tot_vol
-            pick = pick_indices_from_cdf(cdf, q)
-            V_new = V_sorted[:, pick].copy()
-    
-            # equal represented volume share per representative
-            rep_vol_each = tot_vol / float(V_eff_init)
-            Vp = np.maximum(V_new[-1, :].astype(float), 1e-300)
-            W_new = rep_vol_each / Vp
-            return V_new, W_new
-    
-        raise ValueError(f"Unknown V_eff_mod='{V_eff_mod}'. Use 'Q0' or 'Q3'.")
 
     # ---------------------------------------------------------------------
     # Capacity management
@@ -518,29 +219,25 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         self.X = X_new
         self._cap = new_cap
     
-        # NEW: Extend weight array if present (or create it lazily)
-        if hasattr(self, "W") and self.W is not None:
-            W_new = np.zeros(new_cap, dtype=float)
-            W_new[:self.a_tot] = self.W[:self.a_tot]
-            self.W = W_new
-    
-        # Extend auxiliary arrays if present
-        if hasattr(self, "_r_agg") and self._r_agg is not None:
-            r_new = np.zeros(new_cap, dtype=float)
-            r_new[:self.a_tot] = self._r_agg[:self.a_tot]
-            self._r_agg = r_new
-        if hasattr(self, "_break_rate") and self._break_rate is not None:
-            b_new = np.zeros(new_cap, dtype=float)
-            b_new[:self.a_tot] = self._break_rate[:self.a_tot]
-            self._break_rate = b_new
-        if hasattr(self, "_delta_agg") and self._delta_agg is not None:
-            d_new = np.zeros(new_cap, dtype=float)
-            d_new[:self.a_tot] = self._delta_agg[:self.a_tot]
-            self._delta_agg = d_new
-        if hasattr(self, "_delta_break") and self._delta_break is not None:
-            d_new = np.zeros(new_cap, dtype=float)
-            d_new[:self.a_tot] = self._delta_break[:self.a_tot]
-            self._delta_break = d_new
+        W_new = np.zeros(new_cap, dtype=float)
+        W_new[:self.a_tot] = self.W[:self.a_tot]
+        self.W = W_new
+
+        r_new = np.zeros(new_cap, dtype=float)
+        r_new[:self.a_tot] = self._r_agg[:self.a_tot]
+        self._r_agg = r_new
+
+        b_new = np.zeros(new_cap, dtype=float)
+        b_new[:self.a_tot] = self._break_rate[:self.a_tot]
+        self._break_rate = b_new
+
+        d_new = np.zeros(new_cap, dtype=float)
+        d_new[:self.a_tot] = self._delta_agg[:self.a_tot]
+        self._delta_agg = d_new
+
+        d_new = np.zeros(new_cap, dtype=float)
+        d_new[:self.a_tot] = self._delta_break[:self.a_tot]
+        self._delta_break = d_new
     
         # Print expansion info
         if self.VERBOSE:
@@ -553,14 +250,14 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
 
     def _maybe_double_control_volume(self, elapsed_time: float, iter_count: int):
         """Duplicate state to keep statistics when particle count drops (agglomeration dominates)."""
-        if getattr(self, "process_type", "agglomeration") not in ("agglomeration", "mix"):
+        if self.process_type not in ("agglomeration", "mix"):
             return
         if self.a_tot <= 0:
             return
 
         # Use compressed-initial active count as baseline to avoid false trigger
         # when V_eff_init << a0.
-        a_ref = int(getattr(self, "_cv_a_ref", 0))
+        a_ref = int(self._cv_a_ref)
         if a_ref <= 0:
             a_ref = int(self.a_tot)
             self._cv_a_ref = a_ref
@@ -594,41 +291,37 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
             self.X = X_new
             self.W = W_new
 
-            if hasattr(self, "_r_agg") and self._r_agg is not None:
-                r_new = np.zeros(self._cap, dtype=float)
-                r_new[:old_a] = self._r_agg[:old_a]
-                self._r_agg = r_new
-            if hasattr(self, "_break_rate") and self._break_rate is not None:
-                b_new = np.zeros(self._cap, dtype=float)
-                b_new[:old_a] = self._break_rate[:old_a]
-                self._break_rate = b_new
-            if hasattr(self, "_delta_agg") and self._delta_agg is not None:
-                d_new = np.zeros(self._cap, dtype=float)
-                d_new[:old_a] = self._delta_agg[:old_a]
-                self._delta_agg = d_new
-            if hasattr(self, "_delta_break") and self._delta_break is not None:
-                d_new = np.zeros(self._cap, dtype=float)
-                d_new[:old_a] = self._delta_break[:old_a]
-                self._delta_break = d_new
+            r_new = np.zeros(self._cap, dtype=float)
+            r_new[:old_a] = self._r_agg[:old_a]
+            self._r_agg = r_new
+
+            b_new = np.zeros(self._cap, dtype=float)
+            b_new[:old_a] = self._break_rate[:old_a]
+            self._break_rate = b_new
+
+            d_new = np.zeros(self._cap, dtype=float)
+            d_new[:old_a] = self._delta_agg[:old_a]
+            self._delta_agg = d_new
+
+            d_new = np.zeros(self._cap, dtype=float)
+            d_new[:old_a] = self._delta_break[:old_a]
+            self._delta_break = d_new
         else:
             self.V_flat[:, :self.a_tot] = V_dup
             self.X[:self.a_tot] = X_dup
             self.W[:self.a_tot] = W_dup
-            if hasattr(self, "_delta_agg") and self._delta_agg is not None:
-                self._delta_agg[:self.a_tot] = np.concatenate((self._delta_agg[:old_a], self._delta_agg[:old_a]))
-            if hasattr(self, "_delta_break") and self._delta_break is not None:
-                self._delta_break[:self.a_tot] = np.concatenate((self._delta_break[:old_a], self._delta_break[:old_a]))
+            self._delta_agg[:self.a_tot] = np.concatenate((self._delta_agg[:old_a], self._delta_agg[:old_a]))
+            self._delta_break[:self.a_tot] = np.concatenate((self._delta_break[:old_a], self._delta_break[:old_a]))
 
-        if hasattr(self, "W0") and isinstance(self.W0, np.ndarray):
-            # Keep the original initial support fixed; control-volume doubling
-            # only changes the represented multiplicity of that support.
-            self.W0 *= 2.0
+        # Keep the original initial support fixed; control-volume doubling
+        # only changes the represented multiplicity of that support.
+        self.W0 *= 2.0
 
         # Rebuild samplers from active slices
-        if getattr(self, "process_type", "agglomeration") in ("agglomeration", "mix"):
+        if self.process_type in ("agglomeration", "mix"):
             self._rebuild_all_propensities()
             self._agg_sampler = FenwickSampler(self._r_agg[:self.a_tot])
-        if getattr(self, "process_type", "agglomeration") in ("breakage", "mix"):
+        if self.process_type in ("breakage", "mix"):
             self._calc_break_rates_full()
             self._break_sampler = FenwickSampler(self._break_rate[:self.a_tot])
         if self.VERBOSE:    
@@ -656,7 +349,7 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         self.real_agg_events_save = [0.0]
         self.real_break_events_save = [0.0]
 
-        pt = getattr(self, "process_type", "agglomeration")
+        pt = self.process_type
         agg_total_propensity = (
             (lambda: float(self._agg_sampler.total()))
             if self._agg_sampler is not None
@@ -687,7 +380,7 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
                 print(f"Initial dt_break = {timer_break:.3e} s")
             if np.isfinite(timer_mix):
                 print(f"Initial dt_mix = {timer_mix:.3e} s")
-                
+
         if self.mcpbe_debug:
             self._check_state_before_solve()
             self._log_debug_config()
@@ -696,10 +389,7 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         self._elapsed = 0.0
         self._iter_count = 0
 
-        cancel_flag = getattr(self, "cancel_flag", None)
         while current_time <= float(self.t_vec[-1]) and count < maxiter:
-            if cancel_flag is not None and cancel_flag.get("cancel", False):
-                break
             # keep context for logging/expansion
             self._elapsed = current_time
             self._iter_count = count
@@ -712,7 +402,7 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
             if pt == "agglomeration":
                 sum_prop_before = agg_total_propensity()
                 self._do_one_agg()  # from AgglomerationMixin
-                self.real_agg_events += float(max(0.0, float(getattr(self, "_last_agg_dW", 0.0))))
+                self.real_agg_events += float(max(0.0, float(self._last_agg_dW)))
                 sum_prop_after = agg_total_propensity()
                 elapsed_time = timer_agg
                 dtd_agg = agg_event_dt(sum_prop_before, sum_prop_after)
@@ -721,7 +411,7 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
                 # Total propensity before the event; dt uses event dW over pre-event propensity.
                 sum_prop_before = break_total_propensity()
                 self._do_one_break()  # sets self._last_break_dW for packeted events
-                self.real_break_events += float(max(0.0, float(getattr(self, "_last_break_dW", 0.0))))
+                self.real_break_events += float(max(0.0, float(self._last_break_dW)))
                 sum_prop_after = break_total_propensity()
                 elapsed_time = timer_break
                 dtd_break = break_event_dt(sum_prop_before, sum_prop_after)
@@ -738,10 +428,10 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
                 u_event = float(self._rng.random()) * total_rate_before
                 if u_event < agg_rate_before:
                     self._do_one_agg()
-                    self.real_agg_events += float(max(0.0, float(getattr(self, "_last_agg_dW", 0.0))))
+                    self.real_agg_events += float(max(0.0, float(self._last_agg_dW)))
                 else:
                     self._do_one_break()
-                    self.real_break_events += float(max(0.0, float(getattr(self, "_last_break_dW", 0.0))))
+                    self.real_break_events += float(max(0.0, float(self._last_break_dW)))
 
                 agg_prop_after = agg_total_propensity()
                 break_prop_after = break_total_propensity()
@@ -793,7 +483,7 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         self.MACHINE_TIME = time.time() - t0
         if self.VERBOSE:
             print(
-                f"[MC-PBE] The calculation took {getattr(self,'MACHINE_TIME',0.0):.4g}s "
+                f"[MC-PBE] The calculation took {self.MACHINE_TIME:.4g}s "
                 f"after {count} events "
                 f"(real agg={self.real_agg_events:.6g}, real break={self.real_break_events:.6g})"
             )
@@ -813,8 +503,6 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         psd_basis: str = "volume",                 # "volume" or "number"
         psd_x_grid: Optional[np.ndarray] = None,   # if given -> output Q(x)
         psd_Q_grid: Optional[np.ndarray] = None,   # if given -> output x(Q)
-        init_cdf_payload: Optional[dict] = None,
-        dump_results: bool = False,
     ):
         """
         Run N Monte Carlo realizations (repeats).
@@ -859,329 +547,20 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         if len(seeds) != N:
             raise ValueError("Length of seeds must equal N.")
 
-        # warn if PSD grids are given but PSD is disabled
+        # PSD grids are meaningful only when PSD aggregation is enabled.
         if not psd_enable and (psd_x_grid is not None or psd_Q_grid is not None):
-            warnings.warn(
-                "psd_enable=False but psd_x_grid/psd_Q_grid are provided; PSD computation will be skipped.",
-                RuntimeWarning,
-            )
+            raise ValueError("psd_x_grid/psd_Q_grid require psd_enable=True.")
 
         # ----- serial path (supports PSD) -----
-        if dump_results:
-            if psd_enable and psd_x_grid is None and psd_Q_grid is None:
-                raise ValueError(
-                    "dump_results=True with psd_enable=True requires psd_x_grid or psd_Q_grid "
-                    "to ensure fixed-length PSD arrays for memmap storage."
-                )
-
-            dump_dir = getattr(self, "dump_pth", None)
-            if dump_dir is None:
-                dump_dir = os.path.join(self.work_dir, "dump")
-            os.makedirs(dump_dir, exist_ok=True)
-
-            meta_path = os.path.join(dump_dir, "meta.json")
-            tvec_path = os.path.join(dump_dir, "t_vec.npy")
-            seeds_path = os.path.join(dump_dir, "seeds.jsonl")
-            moments_path = os.path.join(dump_dir, "moments.npy")
-            cdf_vals_path = os.path.join(dump_dir, "cdf_vals.npy")
-
-            self._open_mmaps = []
-            self._dump_runtime_paths = {
-                "meta": meta_path,
-                "t_vec": tvec_path,
-                "seeds": seeds_path,
-                "moments": moments_path,
-                "cdf_vals": cdf_vals_path,
-            }
-
-            for pth in (moments_path, cdf_vals_path):
-                if os.path.exists(pth):
-                    try:
-                        os.remove(pth)
-                    except OSError:
-                        pass
-
-            cancel_flag = getattr(self, "cancel_flag", None)
-            psd_mode = None
-            psd_grid = None
-            if psd_enable:
-                if psd_x_grid is not None and psd_Q_grid is not None:
-                    warnings.warn(
-                        "Both psd_x_grid and psd_Q_grid are provided; psd_x_grid will be used and Q(x) will be stored.",
-                        RuntimeWarning,
-                    )
-                    psd_mode = "Q_of_x"
-                    psd_grid = np.asarray(psd_x_grid, dtype=float)
-                elif psd_x_grid is not None:
-                    psd_mode = "Q_of_x"
-                    psd_grid = np.asarray(psd_x_grid, dtype=float)
-                else:
-                    psd_mode = "x_of_Q"
-                    psd_grid = np.asarray(psd_Q_grid, dtype=float)
-
-            t_vec_ref: Optional[np.ndarray] = None
-            moments_mm = None
-            cdf_vals_mm = None
-            moment_ij_shape: Optional[tuple[int, int]] = None
-            n_done = 0
-
-            with open(seeds_path, "w", encoding="utf-8") as fseed:
-                for k in range(N):
-                    if cancel_flag is not None and cancel_flag.get("cancel", False):
-                        break
-
-                    m = copy.deepcopy(self)
-                    if cancel_flag is not None:
-                        m.cancel_flag = cancel_flag
-                    sk = seeds[k]
-                    if isinstance(sk, np.random.SeedSequence):
-                        rng = np.random.default_rng(sk)
-                        seed_info = {"spawn_key": tuple(sk.spawn_key)}
-                    else:
-                        rng = np.random.default_rng(int(sk))
-                        seed_info = {"seed": int(sk)}
-                    m._rng = rng
-                    m.V_flat = None
-                    if not init_Vc and Vc is not None:
-                        m.Vc = Vc
-                    m._initialize_particles(init_Vc=init_Vc, V_flat=V_flat, W_init=W_init, init_cdf=init_cdf_payload)
-                    m._initialize_samplers()
-                    m.solve(maxiter=maxiter)
-
-                    mu, tv = m.calc_moments_over_time(normalize=True)
-                    mu = np.asarray(mu, dtype=float)
-                    tv = np.asarray(tv, dtype=float)
-                    if mu.ndim != 3:
-                        raise RuntimeError(f"Unexpected moments shape {mu.shape}; expected 3D array.")
-                    mi, mj, T = mu.shape
-                    P = int(mi * mj)
-                    mu_tp = mu.reshape(P, T).T
-
-                    if t_vec_ref is None:
-                        t_vec_ref = tv.copy()
-                        np.save(tvec_path, t_vec_ref)
-                        moments_mm = np.lib.format.open_memmap(
-                            moments_path, mode="w+", dtype="float64", shape=(N, T, P)
-                        )
-                        self._open_mmaps.append(moments_mm)
-                        moments_mm[:] = np.nan
-                        moment_ij_shape = (int(mi), int(mj))
-
-                        if psd_enable:
-                            M = int(psd_grid.shape[0])
-                            cdf_vals_mm = np.lib.format.open_memmap(
-                                cdf_vals_path, mode="w+", dtype="float64", shape=(N, T, M)
-                            )
-                            self._open_mmaps.append(cdf_vals_mm)
-                            cdf_vals_mm[:] = np.nan
-                    else:
-                        if len(t_vec_ref) != len(tv) or not np.allclose(
-                            t_vec_ref, tv, rtol=1e-6, atol=1e-12
-                        ):
-                            raise RuntimeError(
-                                "t_vec differs between repeats in dump_results mode; "
-                                "cannot write variable-length records to fixed-shape memmap."
-                            )
-                        if moment_ij_shape is None or moment_ij_shape != (mi, mj):
-                            raise RuntimeError(
-                                "Moment tensor shape differs between repeats in dump_results mode."
-                            )
-
-                    moments_mm[n_done, :, :] = mu_tp
-                    fseed.write(json.dumps(seed_info, ensure_ascii=False) + "\n")
-
-                    if psd_enable:
-                        cdf_list, t_vec_local = m.compute_psd_cdf_over_time(
-                            psd_basis=psd_basis,
-                            time_scheme="interp",
-                        )
-                        t_vec_local = np.asarray(t_vec_local, dtype=float)
-                        if len(t_vec_local) != len(t_vec_ref) or not np.allclose(
-                            t_vec_local, t_vec_ref, rtol=1e-6, atol=1e-12
-                        ):
-                            raise RuntimeError(
-                                "PSD t_vec differs between repeats in dump_results mode; "
-                                "cannot write variable-length records to fixed-shape memmap."
-                            )
-
-                        for it in range(T):
-                            cdf = cdf_list[it] if it < len(cdf_list) else None
-                            if cdf is None:
-                                continue
-                            x_sorted, Q_sorted = cdf
-                            if psd_mode == "Q_of_x":
-                                vals = m._eval_Q_of_x(x_sorted, Q_sorted, psd_grid)
-                            else:
-                                vals = m._eval_x_of_Q(x_sorted, Q_sorted, psd_grid)
-                            cdf_vals_mm[n_done, it, :] = vals
-
-                    n_done += 1
-
-            if moments_mm is not None:
-                moments_mm.flush()
-            if cdf_vals_mm is not None:
-                cdf_vals_mm.flush()
-
-            self._close_open_mmaps()
-
-            if t_vec_ref is None or n_done == 0:
-                meta = {
-                    "N": int(N),
-                    "n_done": int(n_done),
-                    "dim": int(self.dim),
-                    "psd_enable": bool(psd_enable),
-                    "dump_results": True,
-                    "note": "No repeats completed.",
-                }
-                with open(meta_path, "w", encoding="utf-8") as fmeta:
-                    json.dump(meta, fmeta, ensure_ascii=False, indent=2)
-                return [], None
-
-            meta = {
-                "N": int(N),
-                "n_done": int(n_done),
-                "dim": int(self.dim),
-                "t_vec_len": int(len(t_vec_ref)),
-                "t_vec_path": "t_vec.npy",
-                "moments_shape": [int(N), int(moments_mm.shape[1]), int(moments_mm.shape[2])],
-                "moments_tensor_ij": [int(moment_ij_shape[0]), int(moment_ij_shape[1])],
-                "moments_path": "moments.npy",
-                "seeds_path": "seeds.jsonl",
-                "psd_enable": bool(psd_enable),
-                "psd_mode": psd_mode,
-                "dump_results": True,
-            }
-            if psd_enable:
-                meta["cdf_vals_shape"] = [int(N), int(cdf_vals_mm.shape[1]), int(cdf_vals_mm.shape[2])]
-                meta["cdf_vals_path"] = "cdf_vals.npy"
-                if psd_mode == "Q_of_x":
-                    meta["psd_x_grid"] = psd_grid.tolist()
-                else:
-                    meta["psd_Q_grid"] = psd_grid.tolist()
-
-            with open(meta_path, "w", encoding="utf-8") as fmeta:
-                json.dump(meta, fmeta, ensure_ascii=False, indent=2)
-
-            t_vec_loaded = np.load(tvec_path)
-            moments_loaded = np.load(moments_path, mmap_mode="r")
-            with open(seeds_path, "r", encoding="utf-8") as fseed:
-                seed_lines = [json.loads(line) for line in fseed if line.strip()]
-
-            mi, mj = int(moment_ij_shape[0]), int(moment_ij_shape[1])
-            T = int(moments_loaded.shape[1])
-            P = int(moments_loaded.shape[2])
-            if P != mi * mj:
-                raise RuntimeError("Invalid moments memmap shape: P != mi*mj")
-
-            results: list[dict[str, Any]] = []
-            for i in range(n_done):
-                mu_tp = np.asarray(moments_loaded[i], dtype=float)
-                mu_rec = mu_tp.T.reshape(mi, mj, T)
-                seed_info = seed_lines[i] if i < len(seed_lines) else {"seed_index": i}
-                results.append({"seed_info": seed_info, "t_vec": t_vec_loaded, "moments": mu_rec})
-
-            if not psd_enable:
-                return results, None
-
-            cdf_vals_loaded = np.load(cdf_vals_path, mmap_mode="r")
-            T = int(cdf_vals_loaded.shape[1])
-            M = int(cdf_vals_loaded.shape[2])
-
-            psd_info: dict[str, Any] = {
-                "basis": psd_basis,
-                "mode": psd_mode,
-                "t_vec": np.asarray(t_vec_loaded, dtype=float),
-                "note": (
-                    "PSD computed at all saved times (aligned with t_vec) "
-                    "and averaged over all repeats."
-                ),
-            }
-
-            if psd_mode == "Q_of_x":
-                Q_sum = np.zeros((T, M), dtype=float)
-                Q_count = np.zeros(T, dtype=int)
-                for i in range(n_done):
-                    vals_i = np.asarray(cdf_vals_loaded[i], dtype=float)
-                    for it in range(T):
-                        row = vals_i[it]
-                        if np.any(np.isfinite(row)):
-                            Q_sum[it] += np.nan_to_num(row, nan=0.0)
-                            Q_count[it] += 1
-
-                Q_mean = np.full((T, M), np.nan, dtype=float)
-                for it in range(T):
-                    if Q_count[it] > 0:
-                        Q_mean[it] = Q_sum[it] / float(Q_count[it])
-
-                x_grid = np.asarray(psd_grid, dtype=float)
-                psd_info["x_grid"] = x_grid
-                psd_info["Q_mean"] = Q_mean.T
-
-                x_50 = np.full(T, np.nan, dtype=float)
-                for it in range(T):
-                    x_50[it] = self._invert_cdf_monotone(x_grid, Q_mean[it, :], q=0.5)
-                psd_info["x_50"] = x_50
-            else:
-                x_sum = np.zeros((T, M), dtype=float)
-                x_count = np.zeros(T, dtype=int)
-                for i in range(n_done):
-                    vals_i = np.asarray(cdf_vals_loaded[i], dtype=float)
-                    for it in range(T):
-                        row = vals_i[it]
-                        if np.any(np.isfinite(row)):
-                            x_sum[it] += np.nan_to_num(row, nan=0.0)
-                            x_count[it] += 1
-
-                x_mean = np.full((T, M), np.nan, dtype=float)
-                for it in range(T):
-                    if x_count[it] > 0:
-                        x_mean[it] = x_sum[it] / float(x_count[it])
-
-                Q_grid = np.asarray(psd_grid, dtype=float)
-                psd_info["Q_grid"] = Q_grid
-                psd_info["x_mean"] = x_mean
-
-                x_50 = np.full(T, np.nan, dtype=float)
-                q = 0.5
-                hit = np.where(np.isclose(Q_grid, q, rtol=0.0, atol=1e-12))[0]
-                if hit.size > 0:
-                    j = int(hit[0])
-                    x_50 = x_mean[:, j].astype(float, copy=False)
-                else:
-                    for it in range(T):
-                        xq = np.asarray(x_mean[it], dtype=float)
-                        mask = np.isfinite(Q_grid) & np.isfinite(xq)
-                        if not np.any(mask):
-                            x_50[it] = float("nan")
-                            continue
-                        Qm = Q_grid[mask]
-                        xm = xq[mask]
-                        order = np.argsort(Qm)
-                        Qm = Qm[order]
-                        xm = xm[order]
-                        xm = np.maximum.accumulate(xm)
-                        if Qm[0] > q or Qm[-1] < q:
-                            x_50[it] = float("nan")
-                        else:
-                            x_50[it] = float(np.interp(q, Qm, xm))
-                psd_info["x_50"] = x_50
-
-            return results, psd_info
-
         results: list[dict[str, Any]] = []
-        cancel_flag = getattr(self, "cancel_flag", None)
 
         # For PSD aggregation across repeats
         cdf_repeats: list[Sequence[Optional[Tuple[np.ndarray, np.ndarray]]]] = []
         t_vec_ref: Optional[np.ndarray] = None
 
         for k in range(N):
-            if cancel_flag is not None and cancel_flag.get("cancel", False):
-                break
             # Deep copy self and run a single realization
             m = copy.deepcopy(self)
-            if cancel_flag is not None:
-                m.cancel_flag = cancel_flag
             sk = seeds[k]
             if isinstance(sk, np.random.SeedSequence):
                 rng = np.random.default_rng(sk)
@@ -1195,7 +574,7 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
                 m.Vc = Vc
                 # m.Vc = 1e-10
                 # print("Controll volume : ", m.Vc)
-            m._initialize_particles(init_Vc=init_Vc, V_flat=V_flat, W_init=W_init, init_cdf=init_cdf_payload)
+            m._initialize_particles(init_Vc=init_Vc, V_flat=V_flat, W_init=W_init)
             m._initialize_samplers()
             m.solve(maxiter=maxiter)
             mu, tv = m.calc_moments_over_time(normalize=True)
@@ -1211,10 +590,8 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
                     if len(t_vec_ref) != len(t_vec_local) or not np.allclose(
                         t_vec_ref, t_vec_local, rtol=1e-6, atol=1e-12
                     ):
-                        warnings.warn(
-                            "t_vec differs between repeats. PSD averaging assumes identical t_vec; "
-                            "results may be inconsistent.",
-                            RuntimeWarning,
+                        raise ValueError(
+                            "t_vec differs between repeats. PSD averaging requires identical t_vec."
                         )
                 cdf_repeats.append(cdf_list)
 
@@ -1262,21 +639,16 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         last = a - 1
         if j != last:
             # swap active columns (V/X/W + propensities)
-            # self.V_flat[:, [j, last]] = self.V_flat[:, [last, j]]
             tmp = self.V_flat[:, j].copy()
             self.V_flat[:, j] = self.V_flat[:, last]
             self.V_flat[:, last] = tmp
             self.X[j], self.X[last] = self.X[last], self.X[j]
             self.W[j], self.W[last] = self.W[last], self.W[j]
 
-            if self._r_agg is not None:
-                self._r_agg[j], self._r_agg[last] = self._r_agg[last], self._r_agg[j]
-            if self._break_rate is not None:
-                self._break_rate[j], self._break_rate[last] = self._break_rate[last], self._break_rate[j]
-            if hasattr(self, "_delta_agg") and self._delta_agg is not None:
-                self._delta_agg[j], self._delta_agg[last] = self._delta_agg[last], self._delta_agg[j]
-            if hasattr(self, "_delta_break") and self._delta_break is not None:
-                self._delta_break[j], self._delta_break[last] = self._delta_break[last], self._delta_break[j]
+            self._r_agg[j], self._r_agg[last] = self._r_agg[last], self._r_agg[j]
+            self._break_rate[j], self._break_rate[last] = self._break_rate[last], self._break_rate[j]
+            self._delta_agg[j], self._delta_agg[last] = self._delta_agg[last], self._delta_agg[j]
+            self._delta_break[j], self._delta_break[last] = self._delta_break[last], self._delta_break[j]
 
         # logical shrink & zero freed slot
         self.a_tot = last
@@ -1284,27 +656,16 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         self.X[self.a_tot] = 0.0
         self.W[self.a_tot] = 0.0
 
-        if self._r_agg is not None:
-            self._r_agg[self.a_tot] = 0.0
-        if self._break_rate is not None:
-            self._break_rate[self.a_tot] = 0.0
-        if hasattr(self, "_delta_agg") and self._delta_agg is not None:
-            self._delta_agg[self.a_tot] = 0.0
-        if hasattr(self, "_delta_break") and self._delta_break is not None:
-            self._delta_break[self.a_tot] = 0.0
+        self._r_agg[self.a_tot] = 0.0
+        self._break_rate[self.a_tot] = 0.0
+        self._delta_agg[self.a_tot] = 0.0
+        self._delta_break[self.a_tot] = 0.0
 
         # local sampler remove (swap-with-last behavior kept consistent with array swap above)
         if self._agg_sampler is not None:
             self._agg_sampler.remove(j)
         if self._break_sampler is not None:
             self._break_sampler.remove(j)
-
-        # rebuild samplers from active slices (simple & correct)
-        # if self._agg_sampler is not None:
-        #     self._agg_sampler = FenwickSampler(self._r_agg[:self.a_tot])
-        # if self._break_sampler is not None:
-        #     self._break_sampler = FenwickSampler(self._break_rate[:self.a_tot])
-
 
     def _append_particle_column(self, frag_vols: np.ndarray):
         """Append one particle from per-component volumes; caller is responsible for sampler updates."""
@@ -1325,46 +686,22 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         # Default weight for new particle (DSMC baseline).
         # Note: breakage/agglomeration code may overwrite this immediately.
         self.W[idx] = 1.0
-        if hasattr(self, "_delta_agg") and self._delta_agg is not None:
-            self._delta_agg[idx] = 0.0
-        if hasattr(self, "_delta_break") and self._delta_break is not None:
-            self._delta_break[idx] = 0.0
+        self._delta_agg[idx] = 0.0
+        self._delta_break[idx] = 0.0
     
         self.a_tot += 1
     
         # local sampler append
-        if self._agg_sampler is not None and hasattr(self, "_r_agg"):
+        if self._agg_sampler is not None:
             self._agg_sampler.append(float(self._r_agg[idx]))
-        if self._break_sampler is not None and hasattr(self, "_break_rate"):
+        if self._break_sampler is not None:
             self._break_sampler.append(float(self._break_rate[idx]))
 
-        # rebuild samplers from active slices (simple baseline)
-        # if self._agg_sampler is not None and hasattr(self, "_r_agg"):
-        #     self._agg_sampler = FenwickSampler(self._r_agg[:self.a_tot])
-        # if self._break_sampler is not None and hasattr(self, "_break_rate"):
-        #     self._break_sampler = FenwickSampler(self._break_rate[:self.a_tot])
-
-
     def _ensure_break_sampler(self):
-        """(Re)build break sampler from active slice if needed."""
-        if self._break_sampler is None:
-            self._break_sampler = FenwickSampler(self._break_rate[:self.a_tot])
+        """Rebuild break sampler from the active slice."""
+        self._break_sampler = FenwickSampler(self._break_rate[:self.a_tot])
     
     def _close(self, gc_clean=True):
-        self._close_open_mmaps()
-
-        cancel_flag = getattr(self, "cancel_flag", None)
-        cancelled = isinstance(cancel_flag, dict) and bool(cancel_flag.get("cancel", False))
-        if cancelled:
-            dump_paths = getattr(self, "_dump_runtime_paths", {}) or {}
-            for key in ("moments", "cdf_vals"):
-                pth = dump_paths.get(key, None)
-                if pth and os.path.exists(pth):
-                    try:
-                        os.remove(pth)
-                    except OSError:
-                        pass
-
         big_attrs = ("V_flat", "X", "V0", "X0",
              "V0_save", "V_save", "Vc_save",
              "_r_agg", "_break_rate", "_delta_agg", "_delta_break",
@@ -1376,25 +713,6 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
             import gc
             gc.collect()
 
-    def _close_open_mmaps(self):
-        handles = getattr(self, "_open_mmaps", None)
-        if not handles:
-            self._open_mmaps = []
-            return
-
-        for mm in list(handles):
-            try:
-                mm.flush()
-            except Exception:
-                pass
-            try:
-                mmap_obj = getattr(mm, "_mmap", None)
-                if mmap_obj is not None:
-                    mmap_obj.close()
-            except Exception:
-                pass
-        self._open_mmaps = []
-            
     def _check_state_before_solve(self):
         """Light-weight sanity checks before entering the main solve loop.
 
@@ -1414,19 +732,15 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         if not np.all(np.diff(tv) > 0):
             raise ValueError("[MC-PBE][DEBUG] `t_vec` must be strictly increasing.")
         if abs(float(tv[-1]) - float(self.t_total)) > 1e-8:
-            warnings.warn(
+            raise ValueError(
                 f"[MC-PBE][DEBUG] t_vec[-1]={tv[-1]:.6g} differs from t_total={float(self.t_total):.6g}.",
-                RuntimeWarning,
             )
 
         # validate input arrays (c, x, PGV, SIG) against dim
-        try:
-            self._validate_input_arrays()
-        except Exception as exc:
-            raise ValueError(f"[MC-PBE][DEBUG] Input arrays invalid: {exc}") from exc
+        self._validate_input_arrays()
 
         # process_type consistency
-        pt = str(getattr(self, "process_type", "agglomeration")).lower()
+        pt = str(self.process_type).lower()
         if pt not in ("agglomeration", "breakage", "mix"):
             raise ValueError(
                 f"[MC-PBE][DEBUG] Unsupported process_type={pt!r}. "
@@ -1444,15 +758,11 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
                 f"[MC-PBE][DEBUG] `V_flat` must have shape (dim+1, cap); "
                 f"got {self.V_flat.shape}, dim={self.dim}."
             )
-        if not hasattr(self, "X") or self.X is None:
+        if self.X is None:
             raise ValueError(
                 "[MC-PBE][DEBUG] `X` (diameter array) is not initialized. "
                 "Make sure `_initialize_particles` has been called."
             )
-        if not hasattr(self, "a_tot"):
-            raise ValueError("[MC-PBE][DEBUG] `a_tot` is missing on solver instance.")
-        if not hasattr(self, "_cap"):
-            raise ValueError("[MC-PBE][DEBUG] `_cap` (capacity) is missing on solver instance.")
         if self.a_tot < 0 or self.a_tot > self._cap:
             raise ValueError(
                 f"[MC-PBE][DEBUG] Inconsistent a_tot={self.a_tot}, cap={self._cap}."
@@ -1460,20 +770,16 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
 
         # sampler presence (only sanity check; they may be rebuilt during solve)
         if pt in ("agglomeration", "mix"):
-            if not hasattr(self, "_agg_sampler") or self._agg_sampler is None:
-                warnings.warn(
+            if self._agg_sampler is None:
+                raise ValueError(
                     "[MC-PBE][DEBUG] Agglomeration enabled but `_agg_sampler` is None. "
-                    "It will be rebuilt, but this may indicate that `_initialize_samplers` "
-                    "was not called explicitly.",
-                    RuntimeWarning,
+                    "Call `_initialize_samplers` before `solve`.",
                 )
         if pt in ("breakage", "mix"):
-            if not hasattr(self, "_break_sampler") or self._break_sampler is None:
-                warnings.warn(
+            if self._break_sampler is None:
+                raise ValueError(
                     "[MC-PBE][DEBUG] Breakage enabled but `_break_sampler` is None. "
-                    "It will be rebuilt, but this may indicate that `_initialize_samplers` "
-                    "was not called explicitly.",
-                    RuntimeWarning,
+                    "Call `_initialize_samplers` before `solve`.",
                 )
 
     def _log_debug_config(self):
@@ -1490,11 +796,11 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         # General parameters
         # -------------------------
         print("  [General parameters]")
-        print(f"    dim          = {getattr(self, 'dim', None)}")
-        print(f"    t_total      = {getattr(self, 't_total', None)}")
-        print(f"    t_write      = {getattr(self, 't_write', None)}")
+        print(f"    dim          = {self.dim}")
+        print(f"    t_total      = {self.t_total}")
+        print(f"    t_write      = {self.t_write}")
 
-        tv = np.asarray(getattr(self, "t_vec", []), dtype=float)
+        tv = np.asarray(self.t_vec, dtype=float)
         if tv.size > 0:
             print(
                 f"    t_vec        = len={tv.size}, "
@@ -1503,77 +809,70 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         else:
             print("    t_vec        = <empty or None>")
 
-        print(f"    a0           = {getattr(self, 'a0', None)}")
-        print(f"    c            = {getattr(self, 'c', None)}")
-        print(f"    x            = {getattr(self, 'x', None)}")
-        print(f"    Vc           = {getattr(self, 'Vc', None)}")
-        print(f"    PGV          = {getattr(self, 'PGV', None)}")
-        print(f"    SIG          = {getattr(self, 'SIG', None)}")
-        print(f"    VERBOSE      = {getattr(self, 'VERBOSE', None)}")
-        print(f"    process_type = {getattr(self, 'process_type', None)}")
-        print(f"    CDF_method   = {getattr(self, 'CDF_method', None)}")
-        print(f"    USE_PSD      = {getattr(self, 'USE_PSD', None)}")
-        print(f"    DIST1_path   = {getattr(self, 'DIST1_path', None)}")
-        print(f"    DIST1_name   = {getattr(self, 'DIST1_name', None)}")
-        print(f"    DIST3_path   = {getattr(self, 'DIST3_path', None)}")
-        print(f"    DIST3_name   = {getattr(self, 'DIST3_name', None)}")
+        print(f"    a0           = {self.a0}")
+        print(f"    c            = {self.c}")
+        print(f"    x            = {self.x}")
+        print(f"    Vc           = {self.Vc}")
+        print(f"    PGV          = {self.PGV}")
+        print(f"    SIG          = {self.SIG}")
+        print(f"    VERBOSE      = {self.VERBOSE}")
+        print(f"    process_type = {self.process_type}")
+        print(f"    CDF_method   = {self.CDF_method}")
+        print(f"    USE_PSD      = {self.USE_PSD}")
+        print(f"    DIST1_path   = {self.DIST1_path}")
+        print(f"    DIST1_name   = {self.DIST1_name}")
+        print(f"    DIST3_path   = {self.DIST3_path}")
+        print(f"    DIST3_name   = {self.DIST3_name}")
 
         # -------------------------
         # Agglomeration parameters
         # -------------------------
         print("  [Agglomeration parameters]")
-        print(f"    COLEVAL      = {getattr(self, 'COLEVAL', None)}")
-        print(f"    SIZEEVAL     = {getattr(self, 'SIZEEVAL', None)}")
-        print(f"    CORR_BETA    = {getattr(self, 'CORR_BETA', None)}")
-        print(f"    alpha_prim   = {getattr(self, 'alpha_prim', None)}")
-        print(f"    G (shear)    = {getattr(self, 'G', None)}")
+        print(f"    COLEVAL      = {self.COLEVAL}")
+        print(f"    SIZEEVAL     = {self.SIZEEVAL}")
+        print(f"    CORR_BETA    = {self.CORR_BETA}")
+        print(f"    alpha_prim   = {self.alpha_prim}")
+        print(f"    G (shear)    = {self.G}")
 
         # If current state already has propensities, log basic stats
-        if hasattr(self, "_r_agg") and isinstance(self._r_agg, np.ndarray):
-            r_active = self._r_agg[: getattr(self, "a_tot", 0)]
-            if r_active.size > 0:
-                print(
-                    "    r_agg       = active size={}, min={:.3e}, max={:.3e}, mean={:.3e}".format(
-                        r_active.size,
-                        float(np.min(r_active)),
-                        float(np.max(r_active)),
-                        float(np.mean(r_active)),
-                    )
+        r_active = self._r_agg[: self.a_tot]
+        if r_active.size > 0:
+            print(
+                "    r_agg       = active size={}, min={:.3e}, max={:.3e}, mean={:.3e}".format(
+                    r_active.size,
+                    float(np.min(r_active)),
+                    float(np.max(r_active)),
+                    float(np.mean(r_active)),
                 )
-            else:
-                print("    r_agg       = <no active entries>")
+            )
         else:
-            print("    r_agg       = <not initialized>")
+            print("    r_agg       = <no active entries>")
 
         # -------------------------
         # Breakage parameters
         # -------------------------
         print("  [Breakage parameters]")
-        print(f"    BREAKRVAL    = {getattr(self, 'BREAKRVAL', None)}")
-        print(f"    BREAKFVAL    = {getattr(self, 'BREAKFVAL', None)}")
-        print(f"    pl_v         = {getattr(self, 'pl_v', None)}")
-        print(f"    pl_P1        = {getattr(self, 'pl_P1', None)}")
-        print(f"    pl_P2        = {getattr(self, 'pl_P2', None)}")
-        print(f"    pl_P3        = {getattr(self, 'pl_P3', None)}")
-        print(f"    pl_P4        = {getattr(self, 'pl_P4', None)}")
-        if hasattr(self, "frag_num"):
-            print(f"    frag_num     = {getattr(self, 'frag_num', None)}")
+        print(f"    BREAKRVAL    = {self.BREAKRVAL}")
+        print(f"    BREAKFVAL    = {self.BREAKFVAL}")
+        print(f"    pl_v         = {self.pl_v}")
+        print(f"    pl_P1        = {self.pl_P1}")
+        print(f"    pl_P2        = {self.pl_P2}")
+        print(f"    pl_P3        = {self.pl_P3}")
+        print(f"    pl_P4        = {self.pl_P4}")
+        print(f"    frag_num     = {self.frag_num}")
 
-        if hasattr(self, "_break_rate") and isinstance(self._break_rate, np.ndarray):
-            br_active = self._break_rate[: getattr(self, "a_tot", 0)]
-            if br_active.size > 0:
-                print(
-                    "    break_rate  = active size={}, min={:.3e}, max={:.3e}, mean={:.3e}".format(
-                        br_active.size,
-                        float(np.min(br_active)),
-                        float(np.max(br_active)),
-                        float(np.mean(br_active)),
-                    )
+        br_active = self._break_rate[: self.a_tot]
+        if br_active.size > 0:
+            print(
+                "    break_rate  = active size={}, min={:.3e}, max={:.3e}, mean={:.3e}".format(
+                    br_active.size,
+                    float(np.min(br_active)),
+                    float(np.max(br_active)),
+                    float(np.mean(br_active)),
                 )
-            else:
-                print("    break_rate  = <no active entries>")
+            )
         else:
-            print("    break_rate  = <not initialized>")
+            print("    break_rate  = <no active entries>")
         print("[MC-PBE][DEBUG] End of configuration snapshot\n")
 
 

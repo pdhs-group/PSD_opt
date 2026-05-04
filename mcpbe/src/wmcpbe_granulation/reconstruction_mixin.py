@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import math
-import warnings
 from dataclasses import dataclass
 from typing import Optional, List, Tuple
 
@@ -67,6 +66,11 @@ class ReconstructionMixin:
     # internal counters
     _recon_count: int = 0
     _recon_last_iter: int = 0
+    _recon_cooldown_until_iter: int = -1
+    recon_cooldown_events: int = 50
+    recon_4pm_eps_w: float = 1e-14
+    recon_4pm_cond_max: float = 1e12
+    recon_4pmc_eps_var: float = 1e-30
 
     # =============================
     # Public entry points
@@ -75,11 +79,11 @@ class ReconstructionMixin:
         if not self.recon_enable:
             return False
 
-        a = int(getattr(self, "a_tot", 0))
+        a = int(self.a_tot)
         if a <= 0:
             return False
         # Cooldown guard (works even when recon_every_events == 0)
-        until = int(getattr(self, "_recon_cooldown_until_iter", -1))
+        until = int(self._recon_cooldown_until_iter)
         if until >= 0 and int(iter_count) <= until:
             return False
     
@@ -97,7 +101,7 @@ class ReconstructionMixin:
         if not trig:
             return False
         
-        method = str(getattr(self, "recon_method", "CAM"))
+        method = str(self.recon_method)
         self.reconstruct(method=method, reason=reason, iter_count=iter_count)
         return True
 
@@ -315,7 +319,10 @@ class ReconstructionMixin:
             if wf <= 0.0 or (not np.isfinite(wf)):
                 continue
             key = tuple(float(x) for x in np.asarray(vcol, dtype=float).reshape(dim))
-            point_weight[key] = point_weight.get(key, 0.0) + wf
+            if key in point_weight:
+                point_weight[key] += wf
+            else:
+                point_weight[key] = wf
 
         V_cols_merged: list[np.ndarray] = []
         W_out_merged: list[float] = []
@@ -341,7 +348,7 @@ class ReconstructionMixin:
         Logic:
           - Let N_post be particle count after reconstruction.
           - If N_post * threshold_factor > recon_N_max:
-              * emit a warning
+              * raise a RuntimeError
               * trigger a cooldown window to prevent near-dead-loop recon
               * return True  (cooldown triggered)
             else:
@@ -350,7 +357,7 @@ class ReconstructionMixin:
         Requires:
           - self.recon_N_max: int
           - self.recon_cooldown_events: int (recommended default in class: 50)
-          - self._recon_cooldown_until_iter: int (will be created if absent)
+          - self._recon_cooldown_until_iter: int
         """
         N_post = int(post_count)
         N_max = int(self.recon_N_max)
@@ -358,25 +365,19 @@ class ReconstructionMixin:
             return False  # nothing to do
     
         if float(N_post) * float(threshold_factor) > float(N_max):
-            cooldown = int(getattr(self, "recon_cooldown_events", 50))
+            cooldown = int(self.recon_cooldown_events)
             if cooldown < 0:
-                cooldown = 0
+                raise ValueError("`recon_cooldown_events` must be non-negative.")
     
             # set cooldown-until (inclusive)
             self._recon_cooldown_until_iter = int(iter_count) + int(cooldown)
-    
-            warnings.warn(
-                (
-                    f"[ReconstructionSafety] Reconstruction output is too close to/above recon_N_max: "
-                    f"N_post={N_post}, recon_N_max={N_max}, factor={threshold_factor}. "
-                    f"Entering cooldown for {cooldown} events (until iter={self._recon_cooldown_until_iter}). "
-                    f"Reason='{reason}'. Consider increasing recon_N_max or adjusting recon parameters "
-                    f"(e.g., recon_bins / recon_RS_target / QMX quantiles / tail_protect)."
-                ),
-                RuntimeWarning,
-                stacklevel=2,
+
+            raise RuntimeError(
+                f"[ReconstructionSafety] Reconstruction output is too close to/above recon_N_max: "
+                f"N_post={N_post}, recon_N_max={N_max}, factor={threshold_factor}. "
+                f"Cooldown was set for {cooldown} events (until iter={self._recon_cooldown_until_iter}). "
+                f"Reason='{reason}'. Adjust recon_N_max or reconstruction parameters."
             )
-            return True
     
         return False
 # %% CAM
@@ -582,9 +583,17 @@ class ReconstructionMixin:
             w1 = t * M0
 
             if w0 > 0.0:
-                pivot_weight[(i0,)] = pivot_weight.get((i0,), 0.0) + w0
+                key = (i0,)
+                if key in pivot_weight:
+                    pivot_weight[key] += w0
+                else:
+                    pivot_weight[key] = w0
             if w1 > 0.0:
-                pivot_weight[(i1,)] = pivot_weight.get((i1,), 0.0) + w1
+                key = (i1,)
+                if key in pivot_weight:
+                    pivot_weight[key] += w1
+                else:
+                    pivot_weight[key] = w1
             return
 
         if dim == 2:
@@ -599,13 +608,29 @@ class ReconstructionMixin:
             w11 = tx * ty * M0
 
             if w00 > 0.0:
-                pivot_weight[(ix0, iy0)] = pivot_weight.get((ix0, iy0), 0.0) + w00
+                key = (ix0, iy0)
+                if key in pivot_weight:
+                    pivot_weight[key] += w00
+                else:
+                    pivot_weight[key] = w00
             if w10 > 0.0:
-                pivot_weight[(ix1, iy0)] = pivot_weight.get((ix1, iy0), 0.0) + w10
+                key = (ix1, iy0)
+                if key in pivot_weight:
+                    pivot_weight[key] += w10
+                else:
+                    pivot_weight[key] = w10
             if w01 > 0.0:
-                pivot_weight[(ix0, iy1)] = pivot_weight.get((ix0, iy1), 0.0) + w01
+                key = (ix0, iy1)
+                if key in pivot_weight:
+                    pivot_weight[key] += w01
+                else:
+                    pivot_weight[key] = w01
             if w11 > 0.0:
-                pivot_weight[(ix1, iy1)] = pivot_weight.get((ix1, iy1), 0.0) + w11
+                key = (ix1, iy1)
+                if key in pivot_weight:
+                    pivot_weight[key] += w11
+                else:
+                    pivot_weight[key] = w11
             return
 
         raise NotImplementedError("CAM distribution currently supports dim=1 or dim=2 only.")
@@ -711,14 +736,11 @@ class ReconstructionMixin:
                 if not np.isfinite(M0_subset) or M0_subset <= 0.0:
                     N_target = max(1, int(round(0.1 * base)))
                 else:
-                    # attempt "active" weight from current active slice (valid assumed)
-                    a = int(getattr(self, "a_tot", 0))
-                    if a > 0:
-                        W_active = np.asarray(self.W[:a], dtype=float)
-                        m = np.isfinite(W_active) & (W_active > 0.0)
-                        M0_active = float(np.sum(W_active[m]))
-                    else:
-                        M0_active = M0_subset
+                    # active weight from current active slice (valid assumed)
+                    a = int(self.a_tot)
+                    W_active = np.asarray(self.W[:a], dtype=float)
+                    m = np.isfinite(W_active) & (W_active > 0.0)
+                    M0_active = float(np.sum(W_active[m]))
     
                     if not np.isfinite(M0_active) or M0_active <= 0.0:
                         M0_active = M0_subset
@@ -930,15 +952,12 @@ class ReconstructionMixin:
                 [y[a], y[b], y[c]],
             ], dtype=float)
             rhs = np.array([0.0, err[0], err[1]], dtype=float)
-            try:
-                if not np.all(np.isfinite(A)):
-                    continue
-                cnd = float(np.linalg.cond(A))
-                if (not np.isfinite(cnd)) or cnd > 1e12:
-                    continue
-                delta = np.linalg.solve(A, rhs)
-            except Exception:
+            if not np.all(np.isfinite(A)):
                 continue
+            cnd = float(np.linalg.cond(A))
+            if (not np.isfinite(cnd)) or cnd > 1e12:
+                continue
+            delta = np.linalg.solve(A, rhs)
 
             wa = w[a] + float(delta[0])
             wb = w[b] + float(delta[1])
@@ -954,14 +973,7 @@ class ReconstructionMixin:
         return False
     
     def _get_rng(self) -> np.random.Generator:
-        # Try to reuse solver RNG if you have one; otherwise make a local default.
-        rng = getattr(self, "rng", None)
-        if isinstance(rng, np.random.Generator):
-            return rng
-        rng = getattr(self, "_rng", None)
-        if isinstance(rng, np.random.Generator):
-            return rng
-        return np.random.default_rng()
+        return self._rng
     
     def _systematic_resample(self, p: np.ndarray, n: int, rng: np.random.Generator) -> np.ndarray:
         """
@@ -972,10 +984,8 @@ class ReconstructionMixin:
         p = np.where(np.isfinite(p) & (p > 0.0), p, 0.0)
         s = float(np.sum(p))
         if s <= 0.0:
-            # fallback: uniform
-            p = np.ones_like(p) / float(p.size)
-        else:
-            p = p / s
+            raise ValueError("Systematic resampling requires at least one positive probability.")
+        p = p / s
     
         cdf = np.cumsum(p)
         cdf[-1] = 1.0  # guard
@@ -1056,10 +1066,12 @@ class ReconstructionMixin:
     
     def _two_point(self, M0: float, M1: float, M2: float) -> list[tuple[float, float]]:
         if (not np.isfinite(M0)) or M0 <= 0:
-            return []
-        mean = float(M1 / M0) if (np.isfinite(M1) and M0 > 0) else 0.0
+            raise ValueError("Two-point reconstruction requires a positive finite M0.")
+        if (not np.isfinite(M1)) or (not np.isfinite(M2)):
+            raise ValueError("Two-point reconstruction requires finite M1 and M2.")
+        mean = float(M1 / M0)
         mean = max(mean, 0.0)
-        m2b = float(M2 / M0) if np.isfinite(M2) else mean * mean
+        m2b = float(M2 / M0)
         var = max(m2b - mean * mean, 0.0)
         d = math.sqrt(var)
         x1 = mean - d
@@ -1068,13 +1080,13 @@ class ReconstructionMixin:
             return [(0.0, M0)]
         if x1 >= 0:
             return [(x1, 0.5 * M0), (x2, 0.5 * M0)]
-        # fallback {0,x2} keeps M0/M1
+        # Boundary representation {0,x2} keeps M0/M1 when the lower node is negative.
         xh = max(x2, 1e-300)
-        wh = float(M1 / xh) if np.isfinite(M1) else 0.0
+        wh = float(M1 / xh)
         w0 = M0 - wh
         if w0 >= 0 and wh >= 0 and np.isfinite(w0) and np.isfinite(wh):
             return [(0.0, w0), (xh, wh)]
-        return [(mean, M0)]
+        raise ValueError("Two-point reconstruction produced negative or non-finite weights.")
 # %% QMX
     def _weighted_quantile(self, x: np.ndarray, w: np.ndarray, q: float) -> float:
         """Weighted quantile for q in [0,1]."""
@@ -1105,11 +1117,10 @@ class ReconstructionMixin:
         t1 = self._weighted_quantile(vt, wt, q_small)
         t2 = self._weighted_quantile(vt, wt, q_tail)
     
-        # fallback if nan
         if not np.isfinite(t1):
-            t1 = float(np.nanmin(vt))
+            raise ValueError("QMX small quantile is not finite.")
         if not np.isfinite(t2):
-            t2 = float(np.nanmax(vt))
+            raise ValueError("QMX tail quantile is not finite.")
     
         small = idx[vt <= t1]
         mid   = idx[(vt > t1) & (vt <= t2)]
@@ -1224,16 +1235,10 @@ class ReconstructionMixin:
         """
         4PM (2D): per occupied CAM-cell, represent the cell by its 4 corner points and weights
                   that match M0, M1_v1, M1_v2, and M2_(Vtot) where Vtot=v1+v2.
-        1D: fallback to 2PM automatically.
-        On any failure (ill-conditioned / negative weights), fallback to 2PM for that cell.
+        1D or unsupported dimensions fall back to 2PM. Individual ill-conditioned
+        cells also fall back to 2PM.
         """
         dim = int(self.dim)
-    
-        # 1D -> exactly use 2PM
-        if dim == 1:
-            return self._kernel_2pm(idx, Vcomp, Vtot, W)
-    
-        # Only implemented for 2D here; dim>2 -> fallback to 2PM
         if dim != 2:
             return self._kernel_2pm(idx, Vcomp, Vtot, W)
     
@@ -1243,8 +1248,8 @@ class ReconstructionMixin:
         nodes_y = np.asarray(edges_list[1], dtype=float)
     
         # tolerances
-        eps_w = float(getattr(self, "recon_4pm_eps_w", 1e-14))       # allow tiny negatives
-        cond_max = float(getattr(self, "recon_4pm_cond_max", 1e12))  # conditioning guard
+        eps_w = float(self.recon_4pm_eps_w)       # allow tiny negatives
+        cond_max = float(self.recon_4pm_cond_max)  # conditioning guard
     
         V_cols: list[np.ndarray] = []
         W_out: list[float] = []
@@ -1283,7 +1288,7 @@ class ReconstructionMixin:
             ], dtype=float)
             t2 = np.square(np.sum(corners, axis=1))  # (v1+v2)^2
     
-            # solve A w = b with w >= 0 (we do direct solve + nonneg check; fallback if invalid)
+            # solve A w = b with w >= 0
             A = np.array([
                 [1.0, 1.0, 1.0, 1.0],
                 [corners[0, 0], corners[1, 0], corners[2, 0], corners[3, 0]],
@@ -1291,39 +1296,32 @@ class ReconstructionMixin:
                 [t2[0], t2[1], t2[2], t2[3]],
             ], dtype=float)
             b = np.array([M0, M1x, M1y, M2t], dtype=float)
-    
+
+            cnd = float(np.linalg.cond(A))
             use_fallback = False
-            try:
-                cnd = float(np.linalg.cond(A))
-                if (not np.isfinite(cnd)) or (cnd > cond_max):
+            if (not np.isfinite(cnd)) or (cnd > cond_max):
+                use_fallback = True
+            else:
+                wsol = np.linalg.solve(A, b)
+                if not np.all(np.isfinite(wsol)):
                     use_fallback = True
                 else:
-                    wsol = np.linalg.solve(A, b)
-                    if not np.all(np.isfinite(wsol)):
+                    # allow tiny negatives within eps, but reject meaningful negatives
+                    if float(np.min(wsol)) < -abs(eps_w) * (abs(M0) + 1.0):
                         use_fallback = True
-                    else:
-                        # allow tiny negatives within eps, but reject meaningful negatives
-                        if float(np.min(wsol)) < -abs(eps_w) * (abs(M0) + 1.0):
-                            use_fallback = True
-            except Exception:
-                use_fallback = True
-    
+
             if use_fallback:
-                # fallback: your existing 2PM for this cell (ratio-based 1D closure on Vtot)
                 xt_cell = np.asarray(Vtot[idc], dtype=float)
                 M1 = float(np.sum(Wi * xt_cell))
                 M2 = float(np.sum(Wi * xt_cell * xt_cell))
-    
-                M1_tot = M1
                 M1_d = np.array([float(np.sum(Wi * Vcomp[d, idc])) for d in range(dim)], dtype=float)
-                if np.isfinite(M1_tot) and M1_tot > 0:
-                    ratio = np.maximum(np.where(np.isfinite(M1_d), M1_d, 0.0) / M1_tot, 0.0)
+                if np.isfinite(M1) and M1 > 0:
+                    ratio = np.maximum(np.where(np.isfinite(M1_d), M1_d, 0.0) / M1, 0.0)
                     s = float(np.sum(ratio))
                     if s > 1.0 + 1e-12:
                         ratio /= s
                 else:
                     ratio = np.zeros(dim, dtype=float)
-    
                 self._append_two_point_reps(M0, M1, M2, ratio, V_cols, W_out)
                 continue
     
@@ -1333,8 +1331,19 @@ class ReconstructionMixin:
             # optional: tiny renormalization to keep M0 consistent after clamp
             sw = float(np.sum(wsol))
             if sw <= 0.0 or (not np.isfinite(sw)):
-                # extremely unlikely, but be safe
-                return self._kernel_2pm(idx, Vcomp, Vtot, W)
+                xt_cell = np.asarray(Vtot[idc], dtype=float)
+                M1 = float(np.sum(Wi * xt_cell))
+                M2 = float(np.sum(Wi * xt_cell * xt_cell))
+                M1_d = np.array([float(np.sum(Wi * Vcomp[d, idc])) for d in range(dim)], dtype=float)
+                if np.isfinite(M1) and M1 > 0:
+                    ratio = np.maximum(np.where(np.isfinite(M1_d), M1_d, 0.0) / M1, 0.0)
+                    s = float(np.sum(ratio))
+                    if s > 1.0 + 1e-12:
+                        ratio /= s
+                else:
+                    ratio = np.zeros(dim, dtype=float)
+                self._append_two_point_reps(M0, M1, M2, ratio, V_cols, W_out)
+                continue
             if abs(sw - M0) > 1e-12 * (abs(M0) + 1.0):
                 wsol *= (M0 / sw)
     
@@ -1360,16 +1369,16 @@ class ReconstructionMixin:
         local mean, marginal variances, and correlation. This matches
         M00/M10/M01/M20/M02/M11 when the symmetric nodes are admissible.
 
-        1D or dim>2: fallback to 2PM.
+        Unsupported dimensions fall back to 2PM.
         """
         dim = int(self.dim)
-        if dim == 1 or dim != 2:
+        if dim != 2:
             return self._kernel_2pm(idx, Vcomp, Vtot, W)
 
         n_bins = self.recon_bins
         buckets, _, _ = self._bucket_by_cam_cells(idx, Vcomp, n_bins=n_bins, return_grid=False)
 
-        eps_var = float(getattr(self, "recon_4pmc_eps_var", 1e-30))
+        eps_var = float(self.recon_4pmc_eps_var)
         V_cols: list[np.ndarray] = []
         W_out: list[float] = []
 
@@ -1429,8 +1438,6 @@ class ReconstructionMixin:
             y1 = muy - sigy
             y2 = muy + sigy
 
-            # When symmetric nodes leave the nonnegative support, revert to the
-            # more robust per-cell 2PM closure instead of clipping away moments.
             if x1 < 0.0 or y1 < 0.0:
                 xt_cell = np.asarray(Vtot[idc], dtype=float)
                 M1 = float(np.sum(Wi * xt_cell))
@@ -1458,6 +1465,21 @@ class ReconstructionMixin:
                 0.25 * M0 * (1.0 - rho),
                 0.25 * M0 * (1.0 + rho),
             ]
+            weights_arr = np.asarray(weights, dtype=float)
+            if (not np.all(np.isfinite(weights_arr))) or float(np.min(weights_arr)) < 0.0:
+                xt_cell = np.asarray(Vtot[idc], dtype=float)
+                M1 = float(np.sum(Wi * xt_cell))
+                M2 = float(np.sum(Wi * xt_cell * xt_cell))
+                M1_d = np.array([M10, M01], dtype=float)
+                if np.isfinite(M1) and M1 > 0:
+                    ratio = np.maximum(M1_d / M1, 0.0)
+                    s = float(np.sum(ratio))
+                    if s > 1.0 + 1e-12:
+                        ratio /= s
+                else:
+                    ratio = np.zeros(dim, dtype=float)
+                self._append_two_point_reps(M0, M1, M2, ratio, V_cols, W_out)
+                continue
 
             for vcol, wk in zip(nodes, weights):
                 wk = float(wk)

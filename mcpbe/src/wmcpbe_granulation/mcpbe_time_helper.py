@@ -1,17 +1,19 @@
 from __future__ import annotations
 
 import math
-from typing import Optional
 
 import numpy as np
 
 
 def ensure_delta_array(solver, attr_name: str) -> np.ndarray:
-    arr = getattr(solver, attr_name, None)
-    cap = int(getattr(solver, "_cap", 0))
-    if arr is None or arr.shape[0] < cap:
-        arr = np.zeros(max(8, cap), dtype=float)
-        setattr(solver, attr_name, arr)
+    cap = int(solver._cap)
+    arr = np.zeros(cap, dtype=float)
+    if attr_name == "_delta_agg":
+        solver._delta_agg = arr
+    elif attr_name == "_delta_break":
+        solver._delta_break = arr
+    else:
+        raise ValueError(f"Unsupported delta array name: {attr_name!r}")
     return arr
 
 
@@ -21,11 +23,16 @@ def prepare_process_delta_config(
     process_name: str,
     dW_attr_name: str,
     cache_attr_name: str,
-    default_value: float,
 ) -> float:
-    dW_const = float(getattr(solver, dW_attr_name, default_value))
+    if dW_attr_name == "agg_dW_max":
+        dW_const = float(solver.agg_dW_max)
+    elif dW_attr_name == "break_dW_max":
+        dW_const = float(solver.break_dW_max)
+    else:
+        raise ValueError(f"Unsupported delta config attribute: {dW_attr_name!r}")
+
     if (not np.isfinite(dW_const)) or dW_const <= 0.0:
-        dW_const = float(default_value)
+        raise ValueError(f"`{dW_attr_name}` must be a positive finite value.")
     setattr(solver, cache_attr_name, dW_const)
     return dW_const
 
@@ -43,10 +50,18 @@ def update_delta_single(
     attr_name: str,
     dW_const: float,
 ) -> float:
-    arr = ensure_delta_array(solver, attr_name)
-    a_tot = int(getattr(solver, "a_tot", 0))
+    if attr_name == "_delta_agg":
+        arr = solver._delta_agg
+    elif attr_name == "_delta_break":
+        arr = solver._delta_break
+    else:
+        raise ValueError(f"Unsupported delta array name: {attr_name!r}")
+
+    a_tot = int(solver.a_tot)
     if i < 0 or i >= a_tot:
-        return 0.0
+        raise IndexError("delta update index out of active particle range.")
+    if arr.shape[0] < int(solver._cap):
+        raise ValueError(f"`{attr_name}` capacity is smaller than solver._cap.")
     Wi = float(solver.W[i])
     delta = min(float(dW_const), Wi) if (np.isfinite(Wi) and Wi > 0.0) else 0.0
     arr[i] = delta
@@ -99,16 +114,13 @@ def mix_total_rate_from_sum_prop(a_tot: int, Vc: float, sum_prop_agg: float, sum
 
 class MCPBETimeHelper:
     def _draw_time_multiplier(self) -> float:
-        if not bool(getattr(self, "exp_time_step", False)):
+        if not bool(self.exp_time_step):
             return 1.0
-        rng = getattr(self, "_rng", None)
-        if rng is None:
-            return 1.0
-        u = max(float(rng.random()), 1e-300)
+        u = max(float(self._rng.random()), 1e-300)
         return -math.log(u)
 
     def _build_agg_dt_strategy(self):
-        use_pair = bool(getattr(self, "sum_prop_pair", True))
+        use_pair = bool(self.sum_prop_pair)
 
         def initial_dt(sum_prop: float) -> float:
             return self._dt_agg_from_sum_prop(float(sum_prop)) * self._draw_time_multiplier()
@@ -125,7 +137,7 @@ class MCPBETimeHelper:
         return initial_dt, event_dt
 
     def _build_break_dt_strategy(self):
-        use_pair = bool(getattr(self, "sum_prop_pair", True))
+        use_pair = bool(self.sum_prop_pair)
 
         def initial_dt(sum_prop: float) -> float:
             return self._dt_break_from_sum_prop(float(sum_prop)) * self._draw_time_multiplier()
@@ -142,7 +154,7 @@ class MCPBETimeHelper:
         return initial_dt, event_dt
 
     def _build_mix_dt_strategy(self):
-        use_pair = bool(getattr(self, "sum_prop_pair", True))
+        use_pair = bool(self.sum_prop_pair)
 
         def initial_dt(total_rate: float) -> float:
             if total_rate <= 0.0:
@@ -170,7 +182,6 @@ class MCPBETimeHelper:
             process_name="agglomeration",
             dW_attr_name="agg_dW_max",
             cache_attr_name="_agg_dW_const",
-            default_value=1.0,
         )
 
     def _prepare_break_delta_config(self) -> float:
@@ -180,7 +191,6 @@ class MCPBETimeHelper:
             process_name="breakage",
             dW_attr_name="break_dW_max",
             cache_attr_name="_break_dW_const",
-            default_value=50.0,
         )
 
     def _delta_from_weights(self, W: np.ndarray, *, dW_const: float) -> np.ndarray:

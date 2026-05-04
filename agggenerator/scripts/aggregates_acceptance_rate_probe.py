@@ -104,7 +104,6 @@ def _make_mptsa_params(Np: int, Df: float, seed: int) -> MPTSALatticeParams2D:
         verbose=False,
     )
 
-
 def _compute_mix_window_stride(grid: np.ndarray) -> Tuple[int, int]:
     if grid.ndim < 2:
         raise ValueError(f"Expected a 2D grid, got shape={grid.shape!r}")

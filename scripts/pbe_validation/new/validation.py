@@ -22,29 +22,9 @@ from typing import Any, Dict, Iterable, List, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
-
-
-def _bootstrap_project_paths() -> None:
-    """Allow running this script directly from the repository."""
-    root = Path(__file__).resolve().parents[3]
-    candidate_paths = [
-        root,
-        root / "dpbe" / "src",
-        root / "mcpbe" / "src",
-        root / "qmom" / "src",
-        root / "pbe-core" / "src",
-    ]
-    for path in candidate_paths:
-        path_str = str(path)
-        if path.exists() and path_str not in sys.path:
-            sys.path.insert(0, path_str)
-
-
-_bootstrap_project_paths()
-
 from dpbe import DPBESolver, ExtruderPBESolver  # noqa: E402
 from qmom import PBMSolver  # noqa: E402
-from wmcpbe import MCPBESolver  # noqa: E402
+from wmcpbe_granulation import MCPBESolver  # noqa: E402
 
 
 MIN = 1e-40

@@ -22,22 +22,26 @@ class MCPBEBreak:
     - two-level CDF builder (1D/2D) and discrete samplers
     - multi-fragment event by stochastic rounding of expected fragment count
     """
+    break_dW_max: float = 50.0
 
     def _prepare_break_config(self) -> None:
         """Cache breakage configuration that is effectively constant during one solve run."""
         self._bf_ready = False
-        self._break_G = float(getattr(self, "G", 1.0))
-        self._break_pl_P1 = float(getattr(self, "pl_P1", 1.0))
-        self._break_pl_P2 = float(getattr(self, "pl_P2", 1.0))
-        self._break_pl_P3 = float(getattr(self, "pl_P3", 1.0))
-        self._break_pl_P4 = float(getattr(self, "pl_P4", 1.0))
-        self._break_BREAKRVAL = int(getattr(self, "BREAKRVAL", 1))
-        self._break_BREAKFVAL = int(getattr(self, "BREAKFVAL", 1))
-        self._break_pl_v = float(getattr(self, "pl_v", 1.0))
-        self._break_pl_q = float(getattr(self, "pl_q", 1.0))
+        self._break_G = float(self.G)
+        self._break_pl_P1 = float(self.pl_P1)
+        self._break_pl_P2 = float(self.pl_P2)
+        self._break_pl_P3 = float(self.pl_P3)
+        self._break_pl_P4 = float(self.pl_P4)
+        self._break_BREAKRVAL = int(self.BREAKRVAL)
+        self._break_BREAKFVAL = int(self.BREAKFVAL)
+        self._break_pl_v = float(self.pl_v)
+        self._break_pl_q = float(self.pl_q)
+        self._break_dW_const = float(self.break_dW_max)
+        if (not np.isfinite(self._break_dW_const)) or self._break_dW_const <= 0.0:
+            raise ValueError("`break_dW_max` must be a positive finite value.")
 
-        self._prepare_break_delta_config()
-        self._break_dW_const = float(getattr(self, "_break_dW_const", 50.0))
+        self._break_rate = np.zeros(self._cap, dtype=float)
+        self._delta_break = np.zeros(self._cap, dtype=float)
 
     # ------------------------------------------------------------------
     # Breakage rate (full table and single-point)
@@ -54,14 +58,10 @@ class MCPBEBreak:
         if a <= 0:
             return
         cap = self._cap
-        if (not hasattr(self, "_break_rate")
-                or self._break_rate is None
-                or self._break_rate.shape[0] < cap):
-            self._break_rate = np.zeros(max(8, cap), dtype=float)
-        if (not hasattr(self, "_delta_break")
-                or self._delta_break is None
-                or self._delta_break.shape[0] < cap):
-            self._delta_break = np.zeros(max(8, cap), dtype=float)
+        if self._break_rate.shape[0] < cap:
+            self._break_rate = np.zeros(cap, dtype=float)
+        if self._delta_break.shape[0] < cap:
+            self._delta_break = np.zeros(cap, dtype=float)
         W = self.W[:a]
         delta = self._delta_from_weights(W, dW_const=float(self._break_dW_const))
         self._delta_break[:a] = delta
@@ -98,13 +98,10 @@ class MCPBEBreak:
         where S_i is the single-particle breakage rate from the built-in JIT kernels.
         """
         a = self.a_tot
-        if i < 0 or i >= a:
-            return 0.0
 
         Wi = float(self.W[i])
         if Wi <= 0.0:
-            if hasattr(self, "_delta_break") and self._delta_break is not None:
-                self._delta_break[i] = 0.0
+            self._delta_break[i] = 0.0
             return 0.0
         delta_i = self._update_delta_single(i, attr_name="_delta_break", dW_const=float(self._break_dW_const))
         if delta_i <= 0.0:
@@ -153,8 +150,8 @@ class MCPBEBreak:
             self._break_pl_v,
             self._break_pl_q,
         )
-        cached = self._bf_cache.get(key, None)
-        if cached is not None:
+        if key in self._bf_cache:
+            cached = self._bf_cache[key]
             # restore cached tables
             if self.dim == 1:
                 self._bf1_rel, self._bf1_cdf = cached
@@ -287,11 +284,8 @@ class MCPBEBreak:
         resample_attempts = 0
         max_resample = 1000
         while self._fragments_have_zero_volume(frags) and resample_attempts < max_resample:
-            status_retry, frags_retry = self._break_build_fragments(Vrem_ref.copy())
-            if status_retry == "disable":
-                self._mark_unbreakable(k)
-                return
-            if status_retry == "ok" and frags_retry:
+            frags_retry = self._build_fragments_stepwise(Vrem_ref.copy())
+            if frags_retry:
                 frags = frags_retry
             resample_attempts += 1
 
@@ -337,8 +331,7 @@ class MCPBEBreak:
     # Mark particle as unbreakable: zero out breakage rate and update sampler.
     def _mark_unbreakable(self, k: int) -> None:
         self._break_rate[k] = 0.0
-        if hasattr(self, "_delta_break") and self._delta_break is not None:
-            self._delta_break[k] = 0.0
+        self._delta_break[k] = 0.0
         if self._break_sampler is not None:
             self._break_sampler.update(k, 0.0)
     
@@ -379,12 +372,7 @@ class MCPBEBreak:
     
     def _compute_dW_packet(self, k: int) -> float:
         """Compute packet size delta_i for breakage."""
-        if k < 0 or k >= self.a_tot:
-            return 0.0
-        if hasattr(self, "_delta_break") and self._delta_break is not None:
-            dW = float(self._delta_break[k])
-        else:
-            dW = self._update_delta_single(k, attr_name="_delta_break", dW_const=float(self._break_dW_const))
+        dW = float(self._delta_break[k])
         if not np.isfinite(dW) or dW <= 0.0:
             return 0.0
         return float(dW)
@@ -421,10 +409,6 @@ class MCPBEBreak:
             # Store real-event count consumed by this packet event for dt update in solve().
             self._last_break_dW = float(dW_total)
 
-            # Single packet event (no additional chunking, fixed N=1).
-            if k >= self.a_tot:
-                return
-
             Wk_now = float(self.W[k])
             if Wk_now <= 0.0:
                 return
@@ -438,16 +422,8 @@ class MCPBEBreak:
             else:
                 Vrem_k = np.array([self.V_flat[0, k], self.V_flat[1, k]], dtype=float)
 
-            status, frags = self._break_build_fragments(Vrem_k)
-
-            if status == "disable":
-                self._mark_unbreakable(k)
-                return
-
-            if status == "ok":
-                self._break_apply_and_maintain(k, frags, dW, Vrem_k)
-            else:
-                return
+            frags = self._build_fragments_stepwise(Vrem_k)
+            self._break_apply_and_maintain(k, frags, dW, Vrem_k)
     
             return  # Current breakage event completed.
 

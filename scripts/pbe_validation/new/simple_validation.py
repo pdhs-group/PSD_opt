@@ -37,8 +37,8 @@ if __name__ == "__main__":
     case = CaseConfig(
         dim=2,
         kernel="const",
-        process="agglomeration",
-        t_vec=np.arange(0.0, 25.0, 2.0, dtype=float),
+        process="breakage",
+        t_vec=np.arange(0.0, 10.0, 2.0, dtype=float),
         c=1.0,
         x=2e-1,
         beta0=1e-3,
@@ -48,8 +48,7 @@ if __name__ == "__main__":
     )
 
     dpbe_variants = [
-        DPBEVariantConfig(name="dPBE (NS=15)", grid="geo", ns=15, s=2),
-        # DPBEVariantConfig(name="dPBE (NS=25)", grid="geo", ns=25, s=2),
+        DPBEVariantConfig(name="dPBE (NS=15)", grid="geo", ns=15, s=2,enabled=False),
     ]
 
     wmcpbe_variants = [
@@ -66,7 +65,7 @@ if __name__ == "__main__":
         # ),
         WMCPBEVariantConfig(
             name="WMCPBE (fine)",
-            repeats=10,
+            repeats=1,
             attrs={
                 "a0": 100000,
                 "V_eff_init": 1000,
@@ -74,14 +73,13 @@ if __name__ == "__main__":
                 "recon_N_max": 4000,
                 "recon_bins": 30,
                 "recon_method": "4PMC",
-                "break_dW_max": 50.0,
-                "agg_dW_max": 10.0
+                "break_dW_max": 1.0,
+                "agg_dW_max": 1.0
             },
         ),
     ]
 
     qmom_variants = [
-        # QMOMVariantConfig(name="QMOM", n_order=2, n_add=10),
     ]
 
     config = ValidationConfig(
