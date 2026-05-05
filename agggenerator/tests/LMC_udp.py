@@ -20,7 +20,7 @@ def live_generator():
     start_time = time.time()
     F = sim.mc_breakage_udp(mat=labels, N_FRACS=N_FRACS,
                             a_code=0, b_code=1, empty_code=-1,
-                            A0=A0,int_bre=int_bre,seed=seed,plot_each=False)
+                            A0=A0,int_bre=int_bre,seed=seed,plot_each=True)
     end_time = time.time()
     sim_time = end_time - start_time
     print(f"simulation time = {sim_time:6f}", )
@@ -58,8 +58,8 @@ if __name__ == "__main__":
     int_bre = 0
     gamma = 10.0
     
-    N_GRIDS = 10
-    N_FRACS = 1000
+    N_GRIDS = 1
+    N_FRACS = 1
     seed = 42
     
     live_generator()

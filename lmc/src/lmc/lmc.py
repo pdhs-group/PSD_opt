@@ -477,7 +477,7 @@ class LMCSimulator:
                 labels, c1, c2, E, paths = self.simulate_until_fragments(
                     NO_FRAG=self.NO_FRAG,
                     seed=sim_seed,
-                    plot_intermediate=False,
+                    plot_intermediate=True,
                     plot_final=False,
                     track_crack_paths=bool(plot_each),
                 )

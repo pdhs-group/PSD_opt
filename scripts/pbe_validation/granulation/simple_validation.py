@@ -27,7 +27,7 @@ def main() -> None:
         beta0=1e-3,
         p1=3e-2,
         p2=1.0,
-        initial_number_density=1.0,
+        initial_number_density=100000.0,
         initial_total_weight=100000.0,
     )
 
