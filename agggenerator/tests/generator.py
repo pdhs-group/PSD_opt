@@ -11,11 +11,11 @@ import cProfile, pstats
 
 def generate_mptsa():
     mptsa_params = MPTSALatticeParams2D(
-        Np=2000,
-        Df=1.8,
-        k=1.0,
+        Np=5000,
+        Df=2.0,
+        k=2.0,
         max_attempts=50000,
-        seed=42,
+        seed=9,
         fill_hole=True,
         hole_area_max=4,
         compensate_alpha=1.0,
@@ -32,17 +32,21 @@ def generate_mptsa():
     
 def assign_materials(grid, origin):
     mix_params = MaterialMixParams(
-        frac_A=0.4,
-        target_MAS=0.4,
-        tol_MAS=0.1,
+        frac_A=0.5,
+        target_MAS=0.35,
+        tol_MAS=0.005,
         window=12,
         stride=3,
-        sweeps_per_eval=8,
-        max_bisect=10,
+        sweeps_per_eval=12,
+        max_bisect=20,
         seed=42,
+        min_occupancy_ratio=0.5,
         # lower/upper bounds for lambda
-        # lambda_min = -3.0,
-        # lambda_max = 3.0,
+        lambda_min = -6.0,
+        lambda_max = 6.0,
+        temperature = 1.0,
+        low_mas_init_threshold = 0.3,
+        low_mas_init_candidates = 8,
     )
     phys_params = MASPhysicalParams(
         # keep defaults unless you need the transmission upper bound or particle-size effects
@@ -59,9 +63,9 @@ def main():
     labels = assign_materials(grid, origin)
     return labels
 if __name__ == "__main__":
-    profiler = cProfile.Profile()
-    profiler.enable()
+    # profiler = cProfile.Profile()
+    # profiler.enable()
     labels = main()
-    profiler.disable()
-    stats = pstats.Stats(profiler).strip_dirs().sort_stats("cumtime")
-    stats.print_stats(20)
+    # profiler.disable()
+    # stats = pstats.Stats(profiler).strip_dirs().sort_stats("cumtime")
+    # stats.print_stats(20)

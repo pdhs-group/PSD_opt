@@ -115,7 +115,7 @@ class SnapshotWriter:
     ) -> Path:
         fig, ax = plt.subplots(figsize=(7, 7))
         ax.imshow(grid, origin="lower", interpolation="nearest", alpha=0.35)
-        ax.set_title(f"{title}\norigin={origin}, shape={grid.shape}")
+        ax.set_title(title, fontsize=20, pad=8)
         self._style_grid_axis(ax, grid)
         path = self._save_and_close(fig, "mptsa2d", self.mptsa_frame)
         self.mptsa_frame += 1
@@ -133,7 +133,7 @@ class SnapshotWriter:
         ax.imshow(grid, origin="lower", interpolation="nearest", alpha=0.35)
         show = np.ma.masked_where(labels < 0, labels)
         ax.imshow(show, origin="lower", interpolation="nearest")
-        ax.set_title(f"{title}\norigin={origin}, shape={grid.shape}")
+        ax.set_title(title, fontsize=20, pad=8)
         self._style_grid_axis(ax, grid)
         path = self._save_and_close(fig, "material_mix", self.mix_frame)
         self.mix_frame += 1
@@ -175,6 +175,7 @@ def _record_mptsa_state(
             N=int(positions.shape[0]),
             Rg=float(current_rg),
             Df_est=float(df_est),
+            target_Df=float(target_df),
             slope=float(slope),
         )
     )
@@ -211,9 +212,9 @@ def _save_mptsa_snapshots(
         path = writer.save_mptsa(
             frame_grid,
             title=(
-                f"MPTSA | {snap['note']} | N={snap['N']} | "
-                f"Df_est={_fmt_float(float(snap['Df_est']))} | "
-                f"Rg={_fmt_float(float(snap['Rg']))}"
+                f"N={snap['N']} | "
+                f"Df={_fmt_float(float(snap['Df_est']))} | "
+                f"target Df={_fmt_float(float(snap['target_Df']))}"
             ),
             origin=final_origin,
         )
@@ -320,6 +321,7 @@ def generate_mptsa_lattice_2d_trace(
                     np.asarray(Ns, dtype=float),
                     np.asarray(Rgs, dtype=float),
                 )[0]),
+                target_Df=float(Df),
                 slope=float(estimate_fractal_dimension_2d(
                     np.asarray(Ns, dtype=float),
                     np.asarray(Rgs, dtype=float),
@@ -371,6 +373,7 @@ def assign_materials_with_target_mas_trace(
         stage: str,
         lbl_flat: np.ndarray,
         lam: float | None,
+        bisection: int = 0,
     ) -> Tuple[float, float, float, float]:
         nonlocal eval_count
         eval_count += 1
@@ -394,9 +397,9 @@ def assign_materials_with_target_mas_trace(
             grid,
             label_img,
             title=(
-                f"Material mix | eval={eval_count} | {stage}\n"
-                f"MAS={_fmt_float(MAS, digits=6)} | target={target:.6f} | "
-                f"lambda={lam_text}"
+                f"Bisection {int(bisection)} | "
+                f"MAS={_fmt_float(MAS, digits=6)} | "
+                f"target MAS={target:.6f}"
             ),
             origin=origin,
         )
@@ -436,6 +439,7 @@ def assign_materials_with_target_mas_trace(
             stage=f"initial candidate {idx + 1}/{len(candidates)} ({name})",
             lbl_flat=labels,
             lam=None,
+            bisection=0,
         )
         err = abs(mas - target) if np.isfinite(mas) else float("inf")
         if err < best_err:
@@ -471,7 +475,12 @@ def assign_materials_with_target_mas_trace(
         T=float(params.temperature),
         rng=rng,
     )
-    mas_lo, _, _, _ = evaluate_and_print("lambda lower bound after MCMC", lbl_work, lam_lo)
+    mas_lo, _, _, _ = evaluate_and_print(
+        "lambda lower bound after MCMC",
+        lbl_work,
+        lam_lo,
+        bisection=0,
+    )
     record_best(lbl_work, mas_lo, lam_lo)
 
     lbl_work2 = lbl_flat.copy()
@@ -483,7 +492,12 @@ def assign_materials_with_target_mas_trace(
         T=float(params.temperature),
         rng=rng,
     )
-    mas_hi, _, _, _ = evaluate_and_print("lambda upper bound after MCMC", lbl_work2, lam_hi)
+    mas_hi, _, _, _ = evaluate_and_print(
+        "lambda upper bound after MCMC",
+        lbl_work2,
+        lam_hi,
+        bisection=0,
+    )
     record_best(lbl_work2, mas_hi, lam_hi)
 
     if mas_lo > mas_hi:
@@ -507,6 +521,7 @@ def assign_materials_with_target_mas_trace(
             stage=f"bisection {i_bisect + 1}/{int(params.max_bisect)}",
             lbl_flat=lbl_mid,
             lam=lam_mid,
+            bisection=i_bisect + 1,
         )
         record_best(lbl_mid, mas_mid, lam_mid)
 
@@ -526,6 +541,7 @@ def assign_materials_with_target_mas_trace(
         stage=f"final selected (converged={converged})",
         lbl_flat=final_lbl,
         lam=best_lam,
+        bisection=0,
     )
 
     labels = _labels_to_image(grid.shape, occ_y, occ_x, final_lbl)
@@ -592,16 +608,16 @@ def _parse_args() -> argparse.Namespace:
 def main() -> Tuple[np.ndarray, np.ndarray | None, Dict[str, Any] | None]:
     args = _parse_args()
     mptsa_params = MPTSALatticeParams2D(
-        Np=int(args.Np),
-        Df=float(args.Df),
-        k=1.0,
-        max_attempts=int(args.max_attempts),
-        seed=int(args.seed),
-        fill_hole=bool(args.fill_hole),
+        Np=5000,
+        Df=2.0,
+        k=2.0,
+        max_attempts=50000,
+        seed=9,
+        fill_hole=True,
         hole_area_max=4,
         compensate_alpha=1.0,
         compensate_beta=0.25,
-        verbose=False,
+        verbose=True, 
     )
 
     print(
@@ -635,20 +651,21 @@ def main() -> Tuple[np.ndarray, np.ndarray | None, Dict[str, Any] | None]:
         stride = int(args.stride)
 
     mix_params = MaterialMixParams(
-        frac_A=float(args.frac_A),
-        target_MAS=float(args.target_MAS),
-        tol_MAS=float(args.tol_MAS),
-        window=int(window),
-        stride=int(stride),
-        min_occupancy_ratio=float(args.min_occupancy_ratio),
-        lambda_min=float(args.lambda_min),
-        lambda_max=float(args.lambda_max),
-        sweeps_per_eval=int(args.sweeps_per_eval),
-        max_bisect=int(args.max_bisect),
-        temperature=float(args.temperature),
-        seed=int(args.seed),
-        low_mas_init_threshold=float(args.low_mas_init_threshold),
-        low_mas_init_candidates=int(args.low_mas_init_candidates),
+        frac_A=0.5,
+        target_MAS=0.35,
+        tol_MAS=0.005,
+        window=12,
+        stride=3,
+        sweeps_per_eval=12,
+        max_bisect=20,
+        seed=42,
+        min_occupancy_ratio=0.5,
+        # lower/upper bounds for lambda
+        lambda_min = -6.0,
+        lambda_max = 6.0,
+        temperature = 1.0,
+        low_mas_init_threshold = 0.3,
+        low_mas_init_candidates = 8,
     )
     phys_params = MASPhysicalParams()
 

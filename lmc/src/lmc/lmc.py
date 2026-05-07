@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Tuple, Dict, Optional, List
+from typing import Any, Callable, Tuple, Dict, Optional, List
 
 import numpy as np
 import math
@@ -215,6 +215,80 @@ class LMCSimulator:
 
         return (int(r_end), int(c_end)), bool(comp_i), float(energy), path_info
 
+    def _emit_crack_step_trace(
+        self,
+        *,
+        callback: Callable[..., None],
+        Hbond_before: np.ndarray,
+        Vbond_before: np.ndarray,
+        path_info: List[Tuple[int, int, int, int]],
+        crack_groups_before: List[List[List[Tuple[int, int, int]]]],
+        current_group_before: List[List[Tuple[int, int, int]]],
+        crack_index: int,
+        accepted: bool,
+        fragment_count_before: int,
+        fragment_count_after: int,
+        crack_energy: float,
+        trace_stride: int,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        if self.M is None:
+            raise RuntimeError("Grid is not initialized. Call generate_grid() first.")
+        if not path_info:
+            return
+
+        stride = max(1, int(trace_stride))
+        Hb_frame = Hbond_before.copy()
+        Vb_frame = Vbond_before.copy()
+        path_so_far: List[Tuple[int, int, int]] = []
+        energy_so_far = 0.0
+
+        for step_idx, (axis, ii, jj, old_type) in enumerate(path_info):
+            if axis == 0:
+                Hb_frame[ii, jj] = -1
+            else:
+                Vb_frame[ii, jj] = -1
+
+            path_so_far.append((int(axis), int(ii), int(jj)))
+            if int(old_type) == 11:
+                energy_so_far += float(self.STR[0])
+            elif int(old_type) == 12:
+                energy_so_far += float(self.STR[1])
+            elif int(old_type) == 22:
+                energy_so_far += float(self.STR[2])
+
+            is_last = step_idx == len(path_info) - 1
+            if (step_idx % stride) != 0 and not is_last:
+                continue
+
+            crack_groups_frame = [
+                [list(path) for path in group]
+                for group in crack_groups_before
+            ]
+            active_group = [list(path) for path in current_group_before]
+            active_group.append(path_so_far.copy())
+            crack_groups_frame.append(active_group)
+
+            callback(
+                simulator=self,
+                M=self.M,
+                Hbond=Hb_frame.copy(),
+                Vbond=Vb_frame.copy(),
+                crack_paths=crack_groups_frame,
+                path_so_far=path_so_far.copy(),
+                step_index=int(step_idx),
+                step_number=int(step_idx + 1),
+                total_steps=int(len(path_info)),
+                crack_index=int(crack_index),
+                accepted=bool(accepted),
+                fragment_count_before=int(fragment_count_before),
+                fragment_count_after=int(fragment_count_after),
+                old_type=int(old_type),
+                crack_energy=float(crack_energy),
+                energy_so_far=float(energy_so_far),
+                context=dict(context or {}),
+            )
+
     # ------------------------------
     # Fracture until target fragments
     # ------------------------------
@@ -225,11 +299,20 @@ class LMCSimulator:
                                  max_steps: Optional[int] = None,
                                  plot_intermediate: bool = False,
                                  plot_final: bool = False,
-                                 track_crack_paths: bool = True) -> Tuple[np.ndarray, np.ndarray, np.ndarray, float, List[List[Tuple[int, int, int]]]]:
+                                 track_crack_paths: bool = True,
+                                 crack_step_callback: Optional[Callable[..., None]] = None,
+                                 trace_rejected_cracks: bool = False,
+                                 trace_stride: int = 1,
+                                 crack_step_context: Optional[Dict[str, Any]] = None) -> Tuple[np.ndarray, np.ndarray, np.ndarray, float, List[List[Tuple[int, int, int]]]]:
         """
         Keep breaking bonds (with rollback if no new fragment formed) until we reach NO_FRAG.
         Returns:
           labels, cnt1, cnt2, total_energy, crack_paths(list of paths, each path: [(axis,i,j), ...])
+
+        If crack_step_callback is provided, accepted crack paths are replayed
+        step by step on copies of the pre-crack bond arrays and emitted through
+        the callback. Rejected cracks are skipped unless trace_rejected_cracks
+        is True.
         """
         if self.M is None or self.Hbond is None or self.Vbond is None or self.meta is None:
             raise RuntimeError("Grid is not initialized. Call generate_grid() first.")
@@ -250,7 +333,12 @@ class LMCSimulator:
         labels, cnt1, cnt2 = self.analyze_fragments_compact()
         target = max(1, int(NO_FRAG) if NO_FRAG is not None else self.NO_FRAG)
         energy_total = 0.0
-        need_crack_paths = bool(track_crack_paths or plot_intermediate or plot_final)
+        need_crack_paths = bool(
+            track_crack_paths
+            or plot_intermediate
+            or plot_final
+            or crack_step_callback is not None
+        )
         crack_groups: List[List[List[Tuple[int, int, int]]]] = []
         current_group: List[List[Tuple[int, int, int]]] = []
 
@@ -261,9 +349,23 @@ class LMCSimulator:
         steps = 0
         while (cnt1.size + 0) < target and steps < max_steps:
             steps += 1
+            trace_Hbond_before = None
+            trace_Vbond_before = None
+            trace_crack_groups_before: List[List[List[Tuple[int, int, int]]]] = []
+            trace_current_group_before: List[List[Tuple[int, int, int]]] = []
+            if crack_step_callback is not None:
+                trace_Hbond_before = self.Hbond.copy()
+                trace_Vbond_before = self.Vbond.copy()
+                trace_crack_groups_before = [
+                    [list(path) for path in group]
+                    for group in crack_groups
+                ]
+                trace_current_group_before = [list(path) for path in current_group]
+
             _rc_end, _complete, E, path_info = self.run_one_fracture(rng=rng, record_path=True)
 
             labels_new, cnt1_new, cnt2_new = self.analyze_fragments_compact()
+            accepted_for_trace = bool(self.accept_all_cracks or cnt1_new.size > cnt1.size)
 
             if self.accept_all_cracks:
                 energy_total += E
@@ -325,6 +427,28 @@ class LMCSimulator:
                         else:
                             self.Vbond[ii, jj] = int(old)
                     labels_new, cnt1_new, cnt2_new = labels, cnt1, cnt2
+
+            if (
+                crack_step_callback is not None
+                and (accepted_for_trace or bool(trace_rejected_cracks))
+                and trace_Hbond_before is not None
+                and trace_Vbond_before is not None
+            ):
+                self._emit_crack_step_trace(
+                    callback=crack_step_callback,
+                    Hbond_before=trace_Hbond_before,
+                    Vbond_before=trace_Vbond_before,
+                    path_info=path_info,
+                    crack_groups_before=trace_crack_groups_before,
+                    current_group_before=trace_current_group_before,
+                    crack_index=steps,
+                    accepted=accepted_for_trace,
+                    fragment_count_before=int(cnt1.size),
+                    fragment_count_after=int(cnt1_new.size),
+                    crack_energy=float(E),
+                    trace_stride=int(trace_stride),
+                    context=crack_step_context,
+                )
 
             labels, cnt1, cnt2 = labels_new, cnt1_new, cnt2_new
 
@@ -422,7 +546,11 @@ class LMCSimulator:
                         A0: float = 1.0,
                         int_bre: float = 0.0,
                         seed: int | None = None,
-                        plot_each: bool = False) -> np.ndarray:
+                        plot_each: bool = False,
+                        plot_intermediate: bool = False,
+                        crack_step_callback: Optional[Callable[..., None]] = None,
+                        trace_rejected_cracks: bool = False,
+                        trace_stride: int = 1) -> np.ndarray:
         """
         Monte Carlo breakage over user-provided material grids.
     
@@ -444,6 +572,18 @@ class LMCSimulator:
             RNG seed for reproducibility.
         plot_each : bool
             If True, plot final fragments after each run.
+        plot_intermediate : bool
+            If True, plot when a new fragment is created during each run.
+            This is separate from plot_each.
+        crack_step_callback : callable, optional
+            If provided, called for each traced crack-extension step with
+            keyword arguments including M, Hbond, Vbond, crack_paths,
+            step_index, crack_index, accepted, and context.
+        trace_rejected_cracks : bool
+            If True, also emit callback frames for cracks that are rolled back.
+        trace_stride : int
+            Emit one callback every trace_stride extension steps, always
+            including the final step of each traced crack.
     
         Returns
         -------
@@ -477,9 +617,18 @@ class LMCSimulator:
                 labels, c1, c2, E, paths = self.simulate_until_fragments(
                     NO_FRAG=self.NO_FRAG,
                     seed=sim_seed,
-                    plot_intermediate=True,
+                    plot_intermediate=bool(plot_intermediate),
                     plot_final=False,
-                    track_crack_paths=bool(plot_each),
+                    track_crack_paths=bool(plot_each or plot_intermediate or crack_step_callback is not None),
+                    crack_step_callback=crack_step_callback,
+                    trace_rejected_cracks=bool(trace_rejected_cracks),
+                    trace_stride=int(trace_stride),
+                    crack_step_context={
+                        "source": "mc_breakage_udp",
+                        "grid_index": int(g),
+                        "frac_index": int(f),
+                        "sim_seed": int(sim_seed),
+                    },
                 )
     
                 K = int(c1.size)

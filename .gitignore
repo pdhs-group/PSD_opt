@@ -19,6 +19,7 @@
 __pycache__
 myenv
 docs/_build/
+.codex/
 
 *.html
 *.csv
@@ -43,3 +44,6 @@ poetry.lock
 *.lock
 *.whl
 *.mdb
+*.pptx
+*.svg
+*.mjs

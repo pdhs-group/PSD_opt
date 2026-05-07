@@ -369,7 +369,7 @@ class MCPBEBase(InitialParticleMixin, MCPBETimeHelper, BaseSolver):
         if pt == "mix":
             agg_prop0 = agg_total_propensity()
             break_prop0 = break_total_propensity()
-            timer_mix = mix_initial_dt(self._mix_total_rate_from_sum_prop(agg_prop0, break_prop0))
+            timer_mix = mix_initial_dt(self._mix_event_rate_from_sum_prop(agg_prop0, break_prop0))
         else:
             timer_mix = float("inf")
 
@@ -419,8 +419,8 @@ class MCPBEBase(InitialParticleMixin, MCPBETimeHelper, BaseSolver):
             else:  # mix
                 agg_prop_before = agg_total_propensity()
                 break_prop_before = break_total_propensity()
-                agg_rate_before = self._agg_rate_from_sum_prop(agg_prop_before)
-                break_rate_before = max(float(break_prop_before), 0.0)
+                agg_rate_before = self._agg_event_rate_from_sum_prop(agg_prop_before)
+                break_rate_before = self._break_event_rate_from_sum_prop(break_prop_before)
                 total_rate_before = agg_rate_before + break_rate_before
                 if total_rate_before <= 0.0:
                     break
@@ -435,7 +435,7 @@ class MCPBEBase(InitialParticleMixin, MCPBETimeHelper, BaseSolver):
 
                 agg_prop_after = agg_total_propensity()
                 break_prop_after = break_total_propensity()
-                total_rate_after = self._mix_total_rate_from_sum_prop(agg_prop_after, break_prop_after)
+                total_rate_after = self._mix_event_rate_from_sum_prop(agg_prop_after, break_prop_after)
                 elapsed_time = timer_mix
                 dtd_mix = mix_event_dt(total_rate_before, total_rate_after)
                 timer_mix += dtd_mix

@@ -8,13 +8,67 @@ Created on Thu Sep 25 15:17:36 2025
 from __future__ import annotations
 import numpy as np
 import matplotlib.pyplot as plt
-from typing import Optional, List, Tuple, Sequence
+from matplotlib.collections import LineCollection
+from pathlib import Path
+from typing import Any, Dict, Optional, List, Tuple, Sequence
 from .func_jit import to_old_G_layout_jit
 
 def _broken_loc_to_big_coords(l: Tuple[int,int,int]) -> Tuple[int,int]:
     axis, i, j = l
     if axis == 0: return (2*i+1, 2*(j+1))
     return (2*(i+1), 2*j+1)
+
+
+def _normalize_crack_groups(crack_paths: Optional[Sequence]) -> List[List[List[Tuple[int, int, int]]]]:
+    if not crack_paths:
+        return []
+
+    first = crack_paths[0]
+    if (
+        isinstance(first, (list, tuple))
+        and len(first) >= 3
+        and not isinstance(first[0], (list, tuple))
+    ):
+        return [[[tuple(int(v) for v in loc[:3]) for loc in crack_paths]]]
+
+    is_grouped = (
+        isinstance(first, (list, tuple)) and
+        len(first) > 0 and
+        isinstance(first[0], (list, tuple)) and
+        len(first[0]) > 0 and
+        isinstance(first[0][0], (tuple, list))
+    )
+    if is_grouped:
+        return [
+            [
+                [tuple(int(v) for v in loc[:3]) for loc in path]
+                for path in group
+            ]
+            for group in crack_paths
+        ]
+
+    return [
+        [[tuple(int(v) for v in loc[:3]) for loc in path]]
+        for path in crack_paths
+    ]
+
+
+def _bond_loc_to_cell_segment(loc: Tuple[int, int, int], half_len: float = 0.44) -> Tuple[Tuple[float, float], Tuple[float, float]]:
+    axis, i, j = (int(loc[0]), int(loc[1]), int(loc[2]))
+    if axis == 0:
+        x = float(j) + 0.5
+        y = float(i)
+        return (x, y - half_len), (x, y + half_len)
+    y = float(i) + 0.5
+    x = float(j)
+    return (x - half_len, y), (x + half_len, y)
+
+
+def _bond_loc_to_cell_center(loc: Tuple[int, int, int]) -> Tuple[float, float]:
+    axis, i, j = (int(loc[0]), int(loc[1]), int(loc[2]))
+    if axis == 0:
+        return float(j) + 0.5, float(i)
+    return float(j), float(i) + 0.5
 
 class Plotter:
     def plot_compact(self, M: np.ndarray, Hbond: np.ndarray, Vbond: np.ndarray,
@@ -69,10 +123,193 @@ class Plotter:
         ax.set_xlim(-0.5, Wbig - 0.5)
         ax.set_ylim(-0.5, Hbig - 0.5)
         ax.set_aspect('equal', adjustable='box')
-        ax.set_title(title or ('Materials view' if mode == 'materials' else 'Fragments view'))
+        ax.set_title(title or ('Materials view' if mode == 'materials' else 'Fragments view'),
+                     fontsize=20, pad=8)
         ax.set_xlabel("x")
         ax.set_ylabel("y")
         ax.grid(True, which='both', alpha=0.3)
+        plt.tight_layout()
+        return ax, fig
+
+    def plot_crack_step_animation_frame(
+        self,
+        M: np.ndarray,
+        Hbond: np.ndarray,
+        Vbond: np.ndarray,
+        *,
+        crack_paths: Optional[Sequence] = None,
+        current_path: Optional[Sequence[Tuple[int, int, int]]] = None,
+        title: Optional[str] = None,
+        info_text: Optional[str] = None,
+        material_style: str = "phases",
+        show_intact_bonds: bool = False,
+        show_axes: bool = False,
+        padding: float = 3.0,
+        figsize: Tuple[float, float] = (7.0, 7.0),
+        old_crack_color: str = "#1f1f1f",
+        old_crack_alpha: float = 0.36,
+        current_crack_color: str = "#d7263d",
+        latest_step_color: str = "#ffd23f",
+        tip_color: str = "#ffd23f",
+    ):
+        """
+        Animation-oriented crack visualization.
+
+        Materials are drawn as a quiet background, intact bonds are hidden by
+        default, historical cracks are muted, and the current crack is drawn as
+        a high-contrast continuous path.
+        """
+        from matplotlib.colors import ListedColormap
+
+        H, W = M.shape
+        fig = plt.figure(figsize=figsize)
+        ax = fig.add_subplot(111)
+
+        material_style = str(material_style).lower()
+        if material_style == "phases":
+            mat = np.full((H, W), np.nan, dtype=float)
+            mat[M == 1] = 0.0
+            mat[M == 2] = 1.0
+            cmap_mat = ListedColormap([
+                (0.72, 0.78, 0.86, 1.0),
+                (0.86, 0.74, 0.72, 1.0),
+            ])
+            ax.imshow(
+                mat,
+                origin="lower",
+                interpolation="nearest",
+                cmap=cmap_mat,
+                alpha=0.42,
+                extent=(-0.5, W - 0.5, -0.5, H - 0.5),
+                zorder=1,
+            )
+        elif material_style == "mask":
+            mask = np.where(M > 0, 1.0, np.nan)
+            cmap_mask = ListedColormap([(0.82, 0.82, 0.78, 1.0)])
+            ax.imshow(
+                mask,
+                origin="lower",
+                interpolation="nearest",
+                cmap=cmap_mask,
+                alpha=0.50,
+                extent=(-0.5, W - 0.5, -0.5, H - 0.5),
+                zorder=1,
+            )
+        else:
+            ax.imshow(
+                np.full((H, W), np.nan),
+                origin="lower",
+                interpolation="nearest",
+                extent=(-0.5, W - 0.5, -0.5, H - 0.5),
+                zorder=1,
+            )
+
+        occ = (M > 0).astype(float)
+        if np.any(occ):
+            ax.contour(
+                occ,
+                levels=[0.5],
+                colors=["#333333"],
+                linewidths=0.7,
+                alpha=0.55,
+                zorder=2,
+            )
+
+        if show_intact_bonds:
+            intact_segments: List[Tuple[Tuple[float, float], Tuple[float, float]]] = []
+            ys, xs = np.where(Hbond != -1)
+            for y, x in zip(ys, xs):
+                intact_segments.append(_bond_loc_to_cell_segment((0, int(y), int(x)), half_len=0.38))
+            ys, xs = np.where(Vbond != -1)
+            for y, x in zip(ys, xs):
+                intact_segments.append(_bond_loc_to_cell_segment((1, int(y), int(x)), half_len=0.38))
+            if intact_segments:
+                ax.add_collection(LineCollection(
+                    intact_segments,
+                    colors="#4a6fa5",
+                    linewidths=0.25,
+                    alpha=0.10,
+                    zorder=3,
+                ))
+
+        current_path_norm = [
+            tuple(int(v) for v in loc[:3])
+            for loc in (current_path or [])
+        ]
+        current_key = tuple(current_path_norm)
+
+        old_segments: List[Tuple[Tuple[float, float], Tuple[float, float]]] = []
+        for group in _normalize_crack_groups(crack_paths):
+            for path in group:
+                if tuple(path) == current_key:
+                    continue
+                for loc in path:
+                    old_segments.append(_bond_loc_to_cell_segment(loc))
+        if old_segments:
+            ax.add_collection(LineCollection(
+                old_segments,
+                colors=old_crack_color,
+                linewidths=1.15,
+                alpha=float(old_crack_alpha),
+                zorder=5,
+            ))
+
+        current_segments = [_bond_loc_to_cell_segment(loc) for loc in current_path_norm]
+        if current_segments:
+            ax.add_collection(LineCollection(
+                current_segments,
+                colors=current_crack_color,
+                linewidths=2.2,
+                alpha=0.96,
+                zorder=8,
+            ))
+            latest_segment = current_segments[-1]
+            ax.add_collection(LineCollection(
+                [latest_segment],
+                colors=latest_step_color,
+                linewidths=3.2,
+                alpha=0.96,
+                zorder=9,
+            ))
+            tip_x, tip_y = _bond_loc_to_cell_center(current_path_norm[-1])
+            ax.scatter(
+                [tip_x],
+                [tip_y],
+                s=46,
+                c=tip_color,
+                edgecolors="white",
+                linewidths=1.0,
+                zorder=10,
+            )
+
+        pad = float(max(0.0, padding))
+        ax.set_xlim(-0.5 - pad, W - 0.5 + pad)
+        ax.set_ylim(-0.5 - pad, H - 0.5 + pad)
+        ax.set_aspect("equal", adjustable="box")
+
+        if title:
+            ax.set_title(title, fontsize=20, pad=8)
+        if info_text:
+            ax.text(
+                0.02,
+                0.98,
+                info_text,
+                transform=ax.transAxes,
+                va="top",
+                ha="left",
+                fontsize=16,
+                color="#222222",
+                bbox=dict(facecolor="white", edgecolor="none", alpha=0.72, pad=4),
+                zorder=20,
+            )
+
+        if show_axes:
+            ax.set_xlabel("x")
+            ax.set_ylabel("y")
+            ax.grid(True, which="major", alpha=0.12)
+        else:
+            ax.set_axis_off()
+
         plt.tight_layout()
         return ax, fig
 
@@ -82,27 +319,27 @@ class Plotter:
         fig1, ax1 = plt.subplots(figsize=(6,5))
         x1, y1 = F[:,1], F[:,2]
         H1 = ax1.hist2d(x1, y1, bins=20, norm=LogNorm(vmin=1, vmax=max(1, np.sum(np.isfinite(x1))))) 
-        ax1.set_xlabel(r"Partial Volume $V_A$")
-        ax1.set_ylabel(r"Partial Volume $V_B$")
+        ax1.set_xlabel(r"Partial Volume $V_A$", fontsize=16)
+        ax1.set_ylabel(r"Partial Volume $V_B$", fontsize=16)
         plt.colorbar(H1[3], ax=ax1, label='counts')
-        ax1.set_title("Fragments: V_A vs V_B")
+        ax1.set_title(r"Fragments Distribution: $N(V_A,V_B)$", fontsize=16)
         fig2, ax2 = plt.subplots(figsize=(6,4))
         ax2.hist(F[:,3], bins=100)
-        ax2.set_xlabel("Fracture Energy (a.u.)")
-        ax2.set_ylabel("Counts")
-        ax2.set_title("Fracture energy distribution")
+        ax2.set_xlabel("Fracture Energy", fontsize=16)
+        ax2.set_ylabel("Counts", fontsize=16)
+        ax2.set_title("Fracture energy distribution", fontsize=16)
         fig3, ax3 = plt.subplots(figsize=(6,5))
         x3, y3 = F[:,0], F[:,3]
         H3 = ax3.hist2d(x3, y3, bins=20, norm=LogNorm(vmin=1, vmax=max(1, np.sum(np.isfinite(x3))))) 
-        ax3.set_xlabel(r"Fragment Size $V$")
-        ax3.set_ylabel("Fracture Energy (a.u.)")
+        ax3.set_xlabel(r"Fragment Size $V$", fontsize=16)
+        ax3.set_ylabel("Fracture Energy (a.u.)", fontsize=16)
         plt.colorbar(H3[3], ax=ax3, label='counts')
-        ax3.set_title("Size vs Energy")
+        ax3.set_title("Size vs Energy", fontsize=16)
         fig4, ax4 = plt.subplots(figsize=(6,4))
         ax4.hist(F[:,0], bins=100)
-        ax4.set_xlabel(r"Fragment Size $V$")
-        ax4.set_ylabel("Counts")
-        ax4.set_title("Fragment size distribution")
+        ax4.set_xlabel(r"Fragment Size $V$", fontsize=16)
+        ax4.set_ylabel("Counts", fontsize=16)
+        ax4.set_title("Fragment size distribution", fontsize=16)
         plt.tight_layout()
         return ax1, ax2, ax3, ax4
 
@@ -332,7 +569,7 @@ class Plotter:
         ax.set_xlim(-0.5, W - 0.5)
         ax.set_ylim(-0.5, H - 0.5)
     
-        ax.set_title(title)
+        ax.set_title(title, fontsize=20, pad=8)
         ax.set_xlabel("x")
         ax.set_ylabel("y")
     
@@ -346,4 +583,121 @@ class Plotter:
     
         plt.tight_layout()
         return ax, fig
+
+
+class CrackStepSnapshotWriter:
+    """
+    Callback helper for LMCSimulator.simulate_until_fragments.
+
+    It receives crack-extension frames through keyword arguments, renders them
+    as animation-oriented crack frames, and saves each frame as a PNG.
+    """
+
+    def __init__(
+        self,
+        output_dir: str | Path = "crack_snapshots",
+        *,
+        prefix: str = "crack_step",
+        plotter: Plotter | None = None,
+        dpi: int = 120,
+        style: str = "animation",
+        mode: str = "materials",
+        material_style: str = "phases",
+        show_intact_bonds: bool = False,
+        show_axes: bool = False,
+        padding: float = 3.0,
+        figsize: Tuple[float, float] = (7.0, 7.0),
+        close: bool = True,
+    ) -> None:
+        self.output_dir = Path(output_dir)
+        self.prefix = str(prefix)
+        self.plotter = plotter if plotter is not None else Plotter()
+        self.dpi = int(dpi)
+        self.style = str(style)
+        self.mode = str(mode)
+        self.material_style = str(material_style)
+        self.show_intact_bonds = bool(show_intact_bonds)
+        self.show_axes = bool(show_axes)
+        self.padding = float(padding)
+        self.figsize = tuple(figsize)
+        self.close = bool(close)
+        self.frame_index = 0
+        self.saved_paths: List[Path] = []
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+
+    def _filename(self, context: Dict[str, Any], crack_index: int, step_index: int) -> Path:
+        parts = [self.prefix]
+        if "grid_index" in context:
+            parts.append(f"g{int(context['grid_index'])}")
+        if "frac_index" in context:
+            parts.append(f"f{int(context['frac_index'])}")
+        parts.append(f"c{int(crack_index)}")
+        parts.append(f"s{int(step_index)}")
+        parts.append(str(self.frame_index))
+        return self.output_dir / ("_".join(parts) + ".png")
+
+    def __call__(self, **frame: Any) -> Path:
+        M = frame["M"]
+        Hbond = frame["Hbond"]
+        Vbond = frame["Vbond"]
+        crack_paths = frame.get("crack_paths", None)
+        current_path = frame.get("path_so_far", None)
+        context = dict(frame.get("context", {}) or {})
+        crack_index = int(frame.get("crack_index", 0))
+        step_index = int(frame.get("step_index", 0))
+        step_number = int(frame.get("step_number", step_index + 1))
+        total_steps = int(frame.get("total_steps", step_number))
+        accepted = bool(frame.get("accepted", True))
+        frag_before = int(frame.get("fragment_count_before", -1))
+        frag_after = int(frame.get("fragment_count_after", -1))
+        energy_so_far = float(frame.get("energy_so_far", 0.0))
+
+        title = f"Crack {crack_index} | Step {step_number}/{total_steps}"
+        info_lines = [
+            "accepted" if accepted else "rejected",
+            f"fragments {frag_before} -> {frag_after}",
+            f"E = {energy_so_far:.4g}",
+        ]
+        if "grid_index" in context or "frac_index" in context:
+            info_lines.append(
+                f"grid {context.get('grid_index', '-')}, run {context.get('frac_index', '-')}"
+            )
+        info_text = "\n".join(info_lines)
+
+        if self.style.lower() == "compact":
+            _ax, fig = self.plotter.plot_compact(
+                M,
+                Hbond,
+                Vbond,
+                labels=None,
+                crack_paths=crack_paths,
+                title=f"{title}\n{info_text}",
+                mode=self.mode,
+            )
+        else:
+            _ax, fig = self.plotter.plot_crack_step_animation_frame(
+                M,
+                Hbond,
+                Vbond,
+                crack_paths=crack_paths,
+                current_path=current_path,
+                title=title,
+                info_text=info_text,
+                material_style=self.material_style,
+                show_intact_bonds=self.show_intact_bonds,
+                show_axes=self.show_axes,
+                padding=self.padding,
+                figsize=self.figsize,
+            )
+        path = self._filename(context, crack_index, step_index)
+        if self.style.lower() == "compact":
+            fig.savefig(path, dpi=self.dpi, bbox_inches="tight")
+        else:
+            fig.savefig(path, dpi=self.dpi)
+        if self.close:
+            plt.close(fig)
+
+        self.saved_paths.append(path)
+        self.frame_index += 1
+        return path
 
