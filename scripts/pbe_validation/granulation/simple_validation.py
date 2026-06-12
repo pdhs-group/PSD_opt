@@ -61,7 +61,7 @@ def main() -> None:
     config = GranulationValidationConfig(
         case=case,
         wmcpbe_variants=wmcpbe_variants,
-        verbose=False,
+        verbose=True,
     )
 
     result = GranulationValidationRunner(config).run()

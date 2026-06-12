@@ -364,12 +364,20 @@ class PBEValidationAdvanced:
             method_meta = result.base_result.methods[method_name].meta
             cpu_time_total = float(result.cpu_times[method_name])
             cpu_time_mean = float(method_meta.get("elapsed_mean_s", cpu_time_total))
+            sim_agg_events = float(method_meta.get("sim_agg_events_mean", np.nan))
+            sim_break_events = float(method_meta.get("sim_break_events_mean", np.nan))
+            sim_total_events = float(method_meta.get("sim_total_events_mean", np.nan))
             real_agg_events = float(method_meta.get("real_agg_events_mean", np.nan))
             real_break_events = float(method_meta.get("real_break_events_mean", np.nan))
             real_total_events = float(method_meta.get("real_total_events_mean", np.nan))
             mean_events_cpu_time = (
                 cpu_time_mean / real_total_events
                 if np.isfinite(real_total_events) and real_total_events > 0.0
+                else np.nan
+            )
+            mean_sim_events_cpu_time = (
+                cpu_time_mean / sim_total_events
+                if np.isfinite(sim_total_events) and sim_total_events > 0.0
                 else np.nan
             )
             for key in self.MOMENT_KEYS:
@@ -383,6 +391,10 @@ class PBEValidationAdvanced:
                         "aggregated_error": result.aggregated_errors[method_name],
                         "cpu_time_total_s": cpu_time_total,
                         "cpu_time_mean_s": cpu_time_mean,
+                        "sim_agg_events_mean": sim_agg_events,
+                        "sim_break_events_mean": sim_break_events,
+                        "sim_total_events_mean": sim_total_events,
+                        "mean_sim_events_cpu_time_s": mean_sim_events_cpu_time,
                         "real_agg_events_mean": real_agg_events,
                         "real_break_events_mean": real_break_events,
                         "real_total_events_mean": real_total_events,
@@ -409,12 +421,20 @@ class PBEValidationAdvanced:
             method_meta = result.base_result.methods[method_name].meta
             cpu_time_total = float(result.cpu_times[method_name])
             cpu_time_mean = float(method_meta.get("elapsed_mean_s", cpu_time_total))
+            sim_agg_events = float(method_meta.get("sim_agg_events_mean", np.nan))
+            sim_break_events = float(method_meta.get("sim_break_events_mean", np.nan))
+            sim_total_events = float(method_meta.get("sim_total_events_mean", np.nan))
             real_agg_events = float(method_meta.get("real_agg_events_mean", np.nan))
             real_break_events = float(method_meta.get("real_break_events_mean", np.nan))
             real_total_events = float(method_meta.get("real_total_events_mean", np.nan))
             mean_events_cpu_time = (
                 cpu_time_mean / real_total_events
                 if np.isfinite(real_total_events) and real_total_events > 0.0
+                else np.nan
+            )
+            mean_sim_events_cpu_time = (
+                cpu_time_mean / sim_total_events
+                if np.isfinite(sim_total_events) and sim_total_events > 0.0
                 else np.nan
             )
             print(f"{method_name}")
@@ -427,9 +447,12 @@ class PBEValidationAdvanced:
             print(f"  Aggregated error = {result.aggregated_errors[method_name]:.6e}")
             print(f"  CPU time (total) = {cpu_time_total:.3f} s")
             print(f"  CPU time (mean)  = {cpu_time_mean:.3f} s")
+            print(f"  Mean sim agg     = {sim_agg_events:.6e}")
+            print(f"  Mean sim break   = {sim_break_events:.6e}")
+            print(f"  Mean sim-event CPU = {mean_sim_events_cpu_time:.6e} s/event")
             print(f"  Mean real agg    = {real_agg_events:.6e}")
             print(f"  Mean real break  = {real_break_events:.6e}")
-            print(f"  Mean event CPU   = {mean_events_cpu_time:.6e} s/event")
+            print(f"  Mean real-event CPU = {mean_events_cpu_time:.6e} s/event")
             print("")
 
     def plot_psd_snapshot(
@@ -992,6 +1015,8 @@ class PBEValidationAdvanced:
         seeds = seed_sequence.spawn(variant.repeats)
         repeat_moments: List[np.ndarray] = []
         repeat_psd: List[np.ndarray] = []
+        repeat_sim_agg_events: List[float] = []
+        repeat_sim_break_events: List[float] = []
         repeat_real_agg_events: List[float] = []
         repeat_real_break_events: List[float] = []
 
@@ -1009,6 +1034,8 @@ class PBEValidationAdvanced:
             moments, _ = solver.calc_moments_over_time(normalize=True)
             repeat_moments.append(np.asarray(moments, dtype=float))
             repeat_psd.append(self._build_wmcpbe_psd_stack(solver, x_edges=x_edges, y_edges=y_edges))
+            repeat_sim_agg_events.append(float(getattr(solver, "sim_agg_events", np.nan)))
+            repeat_sim_break_events.append(float(getattr(solver, "sim_break_events", np.nan)))
             repeat_real_agg_events.append(float(getattr(solver, "real_agg_events", np.nan)))
             repeat_real_break_events.append(float(getattr(solver, "real_break_events", np.nan)))
         elapsed = time.time() - time_start
@@ -1024,6 +1051,13 @@ class PBEValidationAdvanced:
             moments_var = np.zeros_like(moments_mean)
             psd_mean = repeat_psd[0]
 
+        sim_agg_mean = float(np.nanmean(repeat_sim_agg_events)) if repeat_sim_agg_events else np.nan
+        sim_break_mean = float(np.nanmean(repeat_sim_break_events)) if repeat_sim_break_events else np.nan
+        sim_total_mean = (
+            sim_agg_mean + sim_break_mean
+            if np.isfinite(sim_agg_mean) and np.isfinite(sim_break_mean)
+            else np.nan
+        )
         real_agg_mean = float(np.nanmean(repeat_real_agg_events)) if repeat_real_agg_events else np.nan
         real_break_mean = float(np.nanmean(repeat_real_break_events)) if repeat_real_break_events else np.nan
         real_total_mean = (
@@ -1042,6 +1076,9 @@ class PBEValidationAdvanced:
                 "elapsed_mean_s": elapsed_mean,
                 "repeats": variant.repeats,
                 "base_seed": variant.base_seed,
+                "sim_agg_events_mean": sim_agg_mean,
+                "sim_break_events_mean": sim_break_mean,
+                "sim_total_events_mean": sim_total_mean,
                 "real_agg_events_mean": real_agg_mean,
                 "real_break_events_mean": real_break_mean,
                 "real_total_events_mean": real_total_mean,

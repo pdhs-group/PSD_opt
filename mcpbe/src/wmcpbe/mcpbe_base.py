@@ -829,8 +829,12 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         t0 = time.time()
         count = 0
         current_time = 0.0
+        self.sim_agg_events = 0.0
+        self.sim_break_events = 0.0
         self.real_agg_events = 0.0
         self.real_break_events = 0.0
+        self.sim_agg_events_save = [0.0]
+        self.sim_break_events_save = [0.0]
         self.real_agg_events_save = [0.0]
         self.real_break_events_save = [0.0]
 
@@ -890,7 +894,10 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
             if pt == "agglomeration":
                 sum_prop_before = agg_total_propensity()
                 self._do_one_agg()  # from AgglomerationMixin
-                self.real_agg_events += float(max(0.0, float(getattr(self, "_last_agg_dW", 0.0))))
+                last_agg_dW = float(max(0.0, float(getattr(self, "_last_agg_dW", 0.0))))
+                self.real_agg_events += last_agg_dW
+                if last_agg_dW > 0.0:
+                    self.sim_agg_events += 1.0
                 sum_prop_after = agg_total_propensity()
                 elapsed_time = timer_agg
                 dtd_agg = agg_event_dt(sum_prop_before, sum_prop_after)
@@ -899,7 +906,10 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
                 # total propensity BEFORE the event (Î”t uses event Î”W over pre-event propensity)
                 sum_prop_before = break_total_propensity()
                 self._do_one_break()  # sets self._last_break_dW for packeted events
-                self.real_break_events += float(max(0.0, float(getattr(self, "_last_break_dW", 0.0))))
+                last_break_dW = float(max(0.0, float(getattr(self, "_last_break_dW", 0.0))))
+                self.real_break_events += last_break_dW
+                if last_break_dW > 0.0:
+                    self.sim_break_events += 1.0
                 sum_prop_after = break_total_propensity()
                 elapsed_time = timer_break
                 dtd_break = break_event_dt(sum_prop_before, sum_prop_after)
@@ -916,10 +926,16 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
                 u_event = float(self._rng.random()) * total_rate_before
                 if u_event < agg_rate_before:
                     self._do_one_agg()
-                    self.real_agg_events += float(max(0.0, float(getattr(self, "_last_agg_dW", 0.0))))
+                    last_agg_dW = float(max(0.0, float(getattr(self, "_last_agg_dW", 0.0))))
+                    self.real_agg_events += last_agg_dW
+                    if last_agg_dW > 0.0:
+                        self.sim_agg_events += 1.0
                 else:
                     self._do_one_break()
-                    self.real_break_events += float(max(0.0, float(getattr(self, "_last_break_dW", 0.0))))
+                    last_break_dW = float(max(0.0, float(getattr(self, "_last_break_dW", 0.0))))
+                    self.real_break_events += last_break_dW
+                    if last_break_dW > 0.0:
+                        self.sim_break_events += 1.0
 
                 agg_prop_after = agg_total_propensity()
                 break_prop_after = break_total_propensity()
@@ -950,6 +966,8 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
             
                 self.t_left.append(t_prev)
                 self.t_right.append(elapsed_time)
+                self.sim_agg_events_save.append(float(self.sim_agg_events))
+                self.sim_break_events_save.append(float(self.sim_break_events))
                 self.real_agg_events_save.append(float(self.real_agg_events))
                 self.real_break_events_save.append(float(self.real_break_events))
             
@@ -957,7 +975,8 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
                 if self.VERBOSE:    
                     print(
                         f"[MC-PBE] Calculate t={elapsed_time:.6g} after {self._iter_count} events "
-                        f"(real agg={self.real_agg_events:.6g}, real break={self.real_break_events:.6g})"
+                        f"(sim agg={self.sim_agg_events:.6g}, sim break={self.sim_break_events:.6g}, "
+                        f"real agg={self.real_agg_events:.6g}, real break={self.real_break_events:.6g})"
                     )
             # agglomeration-dominated safety (duplicate CV)
             if self.maybe_double_control_volume:
@@ -975,7 +994,8 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
             print(
                 f"[MC-PBE] The calculation took {getattr(self,'MACHINE_TIME',0.0):.4g}s "
                 f"after {count} events "
-                f"(real agg={self.real_agg_events:.6g}, real break={self.real_break_events:.6g})"
+                f"(sim agg={self.sim_agg_events:.6g}, sim break={self.sim_break_events:.6g}, "
+                f"real agg={self.real_agg_events:.6g}, real break={self.real_break_events:.6g})"
             )
         return self
     

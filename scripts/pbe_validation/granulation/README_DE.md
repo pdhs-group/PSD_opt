@@ -1,5 +1,14 @@
 # Granulation WMCPBE und Validierungsskripte Gebrauchsanleitung
 
+## Installation
+
+```python
+git clone <repo-url>
+cd PSD_opt
+pip install -e ./pbe-core
+pip install -e ./mcpbe
+```
+
 ## 1. Zusammensetzung des WMCPBE-Solvers
 
 `wmcpbe_granulation` ist eine vereinfachte Version eines gewichteten Monte-Carlo-PBE-Solvers.
