@@ -476,7 +476,7 @@ if __name__ == "__main__":
     config = ValidationConfig(
         case=case,
         dpbe_variants=[
-            DPBEVariantConfig(name="dPBE", grid="geo", ns=50, s=1.5, enabled=False),
+            DPBEVariantConfig(name="dPBE", grid="geo", ns=50, s=1.5),
         ],
         wmcpbe_variants=[
             WMCPBEVariantConfig(
@@ -539,3 +539,4 @@ if __name__ == "__main__":
     monitor.plot_moment_errors(result)
     monitor.plot_psd_l1_error(result)
     monitor.show()
+

@@ -63,6 +63,60 @@ def nb_rebuild_ragg_weighted(
     return r
 
 
+@njit(parallel=True, fastmath=True)
+def nb_rebuild_ragg_weighted_pair_delta(
+    COLEVAL: int,
+    CORR_BETA: float,
+    G: float,
+    R: np.ndarray,
+    W: np.ndarray,
+    DELTA: np.ndarray,
+) -> np.ndarray:
+    """Parallel corrected weighted r_i for WMCPBE agglomeration.
+
+    Each pair contribution is scaled by the effective pair batch size
+    delta_ij = min(delta_i, delta_j). Because delta_i is already capped by
+    dW_const, this is equivalent to min(delta_i, delta_j, dW_const).
+    """
+    a = R.shape[0]
+    r = np.zeros(a, dtype=np.float64)
+
+    for i in prange(a):
+        Wi = W[i]
+        if Wi <= 0.0:
+            continue
+        delta_i = DELTA[i]
+        if delta_i <= 0.0:
+            continue
+
+        s = 0.0
+        for j in range(a):
+            if j == i:
+                continue
+            Wj = W[j]
+            if Wj <= 0.0:
+                continue
+            delta_j = DELTA[j]
+            if delta_j <= 0.0:
+                continue
+
+            bij = _kb_beta(COLEVAL, CORR_BETA, G, R, i, j)
+            if bij <= 0.0:
+                continue
+            pair_delta = delta_i
+            if delta_j < pair_delta:
+                pair_delta = delta_j
+            s += Wj * bij / pair_delta
+
+        if Wi > 2.0 * delta_i:
+            bij_self = _kb_beta(COLEVAL, CORR_BETA, G, R, i, i)
+            if bij_self > 0.0:
+                s += (Wi - delta_i) * bij_self / delta_i
+
+        val = Wi * s
+        r[i] = val if val > 0.0 else 0.0
+    return r
+
 @njit(fastmath=True)
 def nb_pick_partner(
     i: int,
@@ -283,6 +337,145 @@ def nb_pick_partner_weighted(
     if u_acc >= alpha:
         return -1, 0.0
     return j, wjbeta
+
+
+@njit(fastmath=True)
+def nb_pick_partner_weighted_pair_delta(
+    i: int,
+    COLEVAL: int,
+    CORR_BETA: float,
+    G: float,
+    R: np.ndarray,
+    W: np.ndarray,
+    DELTA: np.ndarray,
+    PARTNER_TOTAL: float,
+    V0: np.ndarray,
+    V1: np.ndarray,
+    dim: int,
+    alpha1d: float,
+    alpha4: np.ndarray,  # length 4 when dim==2, ignored otherwise
+    SIZEEVAL: int,
+    X_SEL: float,
+    Y_SEL: float,
+    Vmean2: float,
+    u_sel: float,
+    u_acc: float,
+):
+    """Pair-delta corrected partner sampling for WMCPBE agglomeration.
+
+    For j != i, the sampling weight is W_j * beta(i,j) / delta_ij.
+    For j == i, the sampling weight is (W_i - delta_ii) * beta(i,i) / delta_ii,
+    where delta_ij = min(delta_i, delta_j). PARTNER_TOTAL is r_i / W_i.
+
+    Returns (j, corrected_partner_weight_selected), or (-1, 0.0).
+    """
+    a = R.shape[0]
+    if a <= 0 or i < 0 or i >= a:
+        return -1, 0.0
+
+    partner_total = PARTNER_TOTAL
+    if partner_total <= 0.0:
+        return -1, 0.0
+    delta_i = DELTA[i]
+    if delta_i <= 0.0:
+        return -1, 0.0
+
+    thresh = u_sel * partner_total
+    acc = 0.0
+    selected_j = -1
+    selected_w = 0.0
+    last_j = -1
+    last_w = 0.0
+    for j in range(a):
+        if j == i:
+            Wi = W[i]
+            if Wi <= 2.0 * delta_i:
+                continue
+            bij = _kb_beta(COLEVAL, CORR_BETA, G, R, i, j)
+            if bij <= 0.0:
+                continue
+            wij = (Wi - delta_i) * bij / delta_i
+            if wij <= 0.0:
+                continue
+            acc += wij
+            last_j = j
+            last_w = wij
+            if acc > thresh:
+                selected_j = j
+                selected_w = wij
+                break
+            continue
+
+        Wj = W[j]
+        if Wj <= 0.0:
+            continue
+        delta_j = DELTA[j]
+        if delta_j <= 0.0:
+            continue
+
+        bij = _kb_beta(COLEVAL, CORR_BETA, G, R, i, j)
+        if bij <= 0.0:
+            continue
+        pair_delta = delta_i
+        if delta_j < pair_delta:
+            pair_delta = delta_j
+        wij = Wj * bij / pair_delta
+        if wij <= 0.0:
+            continue
+        acc += wij
+        last_j = j
+        last_w = wij
+        if acc > thresh:
+            selected_j = j
+            selected_w = wij
+            break
+
+    if selected_j < 0:
+        selected_j = last_j
+        selected_w = last_w
+    if selected_j < 0 or selected_w <= 0.0:
+        return -1, 0.0
+    j = selected_j
+    wjbeta_over_delta = selected_w
+
+    if dim == 1:
+        alpha = alpha1d
+        Vi = V0[i]
+        Vj = V0[j]
+    else:
+        Vi0 = V0[i]
+        Vi1 = V1[i]
+        Vti = Vi0 + Vi1
+        Vj0 = V0[j]
+        Vj1 = V1[j]
+        Vtj = Vj0 + Vj1
+        if Vti <= 0.0 or Vtj <= 0.0:
+            alpha = 0.0
+        else:
+            p0 = (Vi0 / Vti) * (Vj0 / Vtj)
+            p1 = (Vi0 / Vti) * (Vj1 / Vtj)
+            p2 = (Vi1 / Vti) * (Vj0 / Vtj)
+            p3 = (Vi1 / Vti) * (Vj1 / Vtj)
+            alpha = p0 * alpha4[0] + p1 * alpha4[1] + p2 * alpha4[2] + p3 * alpha4[3]
+        Vi = Vti
+        Vj = Vtj
+
+    if SIZEEVAL == 2:
+        Xi = 2.0 * R[i]
+        Xj = 2.0 * R[j]
+        lam = Xi / Xj if Xi < Xj else Xj / Xi
+        if Vmean2 > 0.0 and Vi > 0.0 and Vj > 0.0:
+            alpha_corr = math.exp(-(X_SEL) * (1.0 - lam) * (1.0 - lam)) / (((Vi * Vj) / Vmean2) ** (Y_SEL))
+            alpha *= alpha_corr
+
+    if alpha < 0.0:
+        alpha = 0.0
+    elif alpha > 1.0:
+        alpha = 1.0
+
+    if u_acc >= alpha:
+        return -1, 0.0
+    return j, wjbeta_over_delta
 
 
 # -----------------------------

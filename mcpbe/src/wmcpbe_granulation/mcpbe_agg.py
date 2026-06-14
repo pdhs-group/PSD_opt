@@ -4,7 +4,10 @@ from __future__ import annotations
 import numpy as np
 
 from .fenwick import FenwickSampler
-from pbe_core.func.jit_mcpbe import nb_rebuild_ragg_weighted, nb_pick_partner_weighted
+from pbe_core.func.jit_mcpbe import (
+    nb_pick_partner_weighted_pair_delta,
+    nb_rebuild_ragg_weighted_pair_delta,
+)
 
 # External JIT kernel for Î²(i,j)
 from pbe_core.func.jit_kernel_agg import calc_beta as _kb_beta
@@ -14,7 +17,7 @@ class MCPBEAgg:
     """Agglomeration logic:
     - _beta: wrapper to JIT kernel
     - _alpha_ccm: 2D alpha based on component fractions (kept for parity)
-    - _rebuild_all_propensities: parallel JIT rebuild r_i = sum_j beta(i,j)
+    - _rebuild_all_propensities: parallel JIT rebuild of pair-delta corrected r_i
     - _do_one_agg: single event with incremental r updates + swap-pop removal
     """
     agg_dW_max: float = 1.0
@@ -49,8 +52,6 @@ class MCPBEAgg:
 
     def _beta(self, i: int, j: int) -> float:
         """Pair kernel Î²(i,j) via external JIT calc_beta (radii array = X/2)."""
-        if i == j:
-            return 0.0
         return float(_kb_beta(int(self.COLEVAL), float(self.CORR_BETA), float(self.G), self.X / 2.0, i, j))
 
     # ------------------------------------------------------------------
@@ -71,7 +72,7 @@ class MCPBEAgg:
         if self._delta_agg.shape[0] < self._cap:
             raise ValueError("`_delta_agg` capacity is smaller than solver._cap.")
         self._delta_agg[:a] = delta
-        r = nb_rebuild_ragg_weighted(
+        r = nb_rebuild_ragg_weighted_pair_delta(
             int(self.COLEVAL),
             float(self.CORR_BETA),
             float(self.G),
@@ -79,7 +80,6 @@ class MCPBEAgg:
             W,
             delta,
         )
-        r = np.divide(r, delta, out=np.zeros_like(r, dtype=float), where=delta > 0.0)
         np.maximum(r, 0.0, out=r)
 
         if self._r_agg.shape[0] < self._cap:
@@ -183,10 +183,20 @@ class MCPBEAgg:
 
         u_sel = float(self._rng.random())
         u_acc = float(self._rng.random())
-        j, pick_w = nb_pick_partner_weighted(
+        Wi_selected = float(W[i])
+        partner_total = (
+            float(self._r_agg[i]) / Wi_selected
+            if Wi_selected > 0.0 and hasattr(self, "_r_agg")
+            else 0.0
+        )
+        j, pick_w = nb_pick_partner_weighted_pair_delta(
             i,
             int(self.COLEVAL), float(self.CORR_BETA), float(self.G),
-            R, W, self._delta_agg[:a].astype(np.float64), V0, V1, int(self.dim),
+            R,
+            W,
+            self._delta_agg[:a].astype(np.float64),
+            partner_total,
+            V0, V1, int(self.dim),
             float(alpha1d), alpha4, SIZEEVAL, X_SEL, Y_SEL, Vmean2,
             u_sel, u_acc,
         )
@@ -196,7 +206,8 @@ class MCPBEAgg:
         # 3) packet size Î”W for this accepted event
         sum_prop_before = float(self._agg_sampler.total())
         Wi = float(self.W[i])
-        pair_prop = Wi * pick_w  # = W_i * (W_j * beta_ij)
+        # pick_w already includes the pair-delta correction used in r_i.
+        pair_prop = Wi * pick_w
         dW = self._compute_agg_dW(i, j, pair_prop, sum_prop_before)
         if dW <= 0.0:
             return

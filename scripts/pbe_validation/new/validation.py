@@ -24,7 +24,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from dpbe import DPBESolver, ExtruderPBESolver  # noqa: E402
 from qmom import PBMSolver  # noqa: E402
-from wmcpbe_granulation import MCPBESolver  # noqa: E402
+from wmcpbe import MCPBESolver  # noqa: E402
 
 
 MIN = 1e-40

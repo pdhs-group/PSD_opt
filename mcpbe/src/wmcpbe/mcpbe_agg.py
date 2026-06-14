@@ -4,7 +4,10 @@ from __future__ import annotations
 import numpy as np
 
 from .fenwick_new import FenwickSampler
-from pbe_core.func.jit_mcpbe import nb_rebuild_ragg_weighted, nb_pick_partner_weighted
+from pbe_core.func.jit_mcpbe import (
+    nb_pick_partner_weighted_pair_delta,
+    nb_rebuild_ragg_weighted_pair_delta,
+)
 
 # External JIT kernel for Î²(i,j)
 from pbe_core.func.jit_kernel_agg import calc_beta as _kb_beta
@@ -14,7 +17,7 @@ class MCPBEAgg:
     """Agglomeration logic:
     - _beta: wrapper to JIT kernel
     - _alpha_ccm: 2D alpha based on component fractions (kept for parity)
-    - _rebuild_all_propensities: parallel JIT rebuild r_i = sum_j beta(i,j)
+    - _rebuild_all_propensities: parallel JIT rebuild of pair-delta corrected r_i
     - _do_one_agg: single event with incremental r updates + swap-pop removal
     """
 
@@ -60,13 +63,13 @@ class MCPBEAgg:
             return
 
         R = (self.X[:a] * 0.5).astype(np.float64)
-        W = self.W[:a].astype(np.float64)
+        W = np.asarray(self.W[:a], dtype=np.float64)
         dW_const = float(getattr(self, "_agg_dW_const", self._prepare_agg_delta_config()))
         delta = self._delta_from_weights(W, dW_const=dW_const)
         if (not hasattr(self, "_delta_agg")) or self._delta_agg is None or self._delta_agg.shape[0] < getattr(self, "_cap", a):
             self._delta_agg = np.zeros(getattr(self, "_cap", a), dtype=float)
         self._delta_agg[:a] = delta
-        r = nb_rebuild_ragg_weighted(
+        r = nb_rebuild_ragg_weighted_pair_delta(
             int(self.COLEVAL),
             float(self.CORR_BETA),
             float(getattr(self, "G", 1.0)),
@@ -74,7 +77,6 @@ class MCPBEAgg:
             W,
             delta,
         )
-        r = np.divide(r, delta, out=np.zeros_like(r, dtype=float), where=delta > 0.0)
         np.maximum(r, 0.0, out=r)
 
         if not hasattr(self, "_r_agg") or self._r_agg is None or self._r_agg.shape[0] < getattr(self, "_cap", a):
@@ -154,18 +156,18 @@ class MCPBEAgg:
 
         # 2) weighted partner sampling + acceptance (numba)
         R = (self.X[:a] * 0.5).astype(np.float64)
-        W = self.W[:a].astype(np.float64)
+        W = np.asarray(self.W[:a], dtype=np.float64)
         if self.dim == 1:
             alpha1d = float(self.alpha_prim if np.ndim(self.alpha_prim) == 0 else np.mean(self.alpha_prim))
             alpha4 = np.zeros(4, dtype=np.float64)
-            V0 = self.V_flat[0, :a].astype(np.float64)
+            V0 = np.asarray(self.V_flat[0, :a], dtype=np.float64)
             V1 = np.zeros_like(V0)
         else:
             alpha1d = 1.0
             ap = np.asarray(self.alpha_prim, dtype=np.float64)
             alpha4 = ap if ap.size == 4 else np.ones(4, dtype=np.float64)
-            V0 = self.V_flat[0, :a].astype(np.float64)
-            V1 = self.V_flat[1, :a].astype(np.float64)
+            V0 = np.asarray(self.V_flat[0, :a], dtype=np.float64)
+            V1 = np.asarray(self.V_flat[1, :a], dtype=np.float64)
 
         SIZEEVAL = int(getattr(self, "SIZEEVAL", 1))
         X_SEL = float(getattr(self, "X_SEL", 0.31))
@@ -174,10 +176,20 @@ class MCPBEAgg:
 
         u_sel = float(self._rng.random())
         u_acc = float(self._rng.random())
-        j, pick_w = nb_pick_partner_weighted(
+        Wi_selected = float(W[i])
+        partner_total = (
+            float(self._r_agg[i]) / Wi_selected
+            if Wi_selected > 0.0 and hasattr(self, "_r_agg")
+            else 0.0
+        )
+        j, pick_w = nb_pick_partner_weighted_pair_delta(
             i,
             int(self.COLEVAL), float(self.CORR_BETA), float(getattr(self, "G", 1.0)),
-            R, W, self._delta_agg[:a].astype(np.float64), V0, V1, int(self.dim),
+            R,
+            W,
+            np.asarray(self._delta_agg[:a], dtype=np.float64),
+            partner_total,
+            V0, V1, int(self.dim),
             float(alpha1d), alpha4, SIZEEVAL, X_SEL, Y_SEL, Vmean2,
             u_sel, u_acc,
         )
@@ -187,7 +199,8 @@ class MCPBEAgg:
         # 3) packet size Î”W for this accepted event
         sum_prop_before = float(self._agg_sampler.total()) if self._agg_sampler is not None else float(np.sum(self._r_agg[: self.a_tot]))
         Wi = float(self.W[i])
-        pair_prop = Wi * pick_w  # distinct pair: W_i*(W_j*beta_ij); self pair: W_i*((W_i-1)*beta_ii)
+        # pick_w already includes the pair-delta correction used in r_i.
+        pair_prop = Wi * pick_w
         dW = self._compute_agg_dW(i, j, pair_prop, sum_prop_before)
         if dW <= 0.0:
             return

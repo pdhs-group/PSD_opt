@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+import cProfile, pstats
 
 import numpy as np
 
@@ -37,12 +38,12 @@ if __name__ == "__main__":
     case = CaseConfig(
         dim=2,
         kernel="const",
-        process="breakage",
+        process="mix",
         t_vec=np.arange(0.0, 10.0, 2.0, dtype=float),
         c=1.0,
         x=2e-1,
-        beta0=1e-3,
-        p1=3e-2,
+        beta0=9e-4,
+        p1=1e-1,
         p2=1.0,
         use_psd=False,
     )
@@ -65,16 +66,16 @@ if __name__ == "__main__":
         # ),
         WMCPBEVariantConfig(
             name="WMCPBE (fine)",
-            repeats=1,
+            repeats=10,
             attrs={
-                "a0": 100000,
+                "a0": 1e5,
                 "V_eff_init": 1000,
-                "recon_enable": False,
+                "recon_enable": True,
                 "recon_N_max": 4000,
                 "recon_bins": 30,
                 "recon_method": "4PMC",
-                "break_dW_max": 1.0,
-                "agg_dW_max": 1.0
+                "break_dW_max": 10.0,
+                "agg_dW_max": 10.0
             },
         ),
     ]
@@ -90,7 +91,12 @@ if __name__ == "__main__":
         reference_dpbe_name="dPBE (NS=15)",
     )
 
+    profiler = cProfile.Profile()
+    profiler.enable()
     result = ValidationRunner(config).run()
+    profiler.disable()
+    stats = pstats.Stats(profiler).strip_dirs().sort_stats("cumtime")
+    stats.print_stats(20)
 
     plotter = ValidationPlotter(result)
     plotter.plot_all_moments(relative=True, include_total_volume=False)

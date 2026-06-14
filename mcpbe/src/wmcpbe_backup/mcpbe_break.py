@@ -46,10 +46,8 @@ class MCPBEBreak:
         self._break_pl_v = float(getattr(self, "pl_v", 1.0))
         self._break_pl_q = float(getattr(self, "pl_q", 1.0))
 
-        dW_const = float(getattr(self, "break_dW_max", 50.0))
-        if (not np.isfinite(dW_const)) or dW_const <= 0.0:
-            dW_const = 50.0
-        self._break_dW_const = dW_const
+        self._prepare_break_delta_config()
+        self._break_dW_const = float(getattr(self, "_break_dW_const", 50.0))
 
     # ------------------------------------------------------------------
     # Breakage rate (full table and single-point)
@@ -58,7 +56,8 @@ class MCPBEBreak:
         """Compute BREAKAGE PROPENSITIES for active slice.
     
         Stored in self._break_rate[:a] as:
-            propensity_i = W[i] * S_i
+            propensity_i = W[i] * S_i / delta_i
+        with delta_i = min(break_dW_const, W[i]).
         where S_i is the single-particle breakage rate from MLP/JIT.
         """
         a = self.a_tot
@@ -69,7 +68,13 @@ class MCPBEBreak:
                 or self._break_rate is None
                 or self._break_rate.shape[0] < cap):
             self._break_rate = np.zeros(max(8, cap), dtype=float)
+        if (not hasattr(self, "_delta_break")
+                or self._delta_break is None
+                or self._delta_break.shape[0] < cap):
+            self._delta_break = np.zeros(max(8, cap), dtype=float)
         W = self.W[:a]
+        delta = self._delta_from_weights(W, dW_const=float(self._break_dW_const))
+        self._delta_break[:a] = delta
     
         # --------- Branch 1: MLP model ---------
         use_mlp = bool(self.lmc_use_breakage_model) and (self.lmc_breakage_adapter is not None)
@@ -77,11 +82,17 @@ class MCPBEBreak:
             rates = self.lmc_breakage_adapter.compute_rates_full(self)
             rates = np.asarray(rates, dtype=float)
 
-            prop = W * rates
+            prop = np.divide(
+                W * rates,
+                delta,
+                out=np.zeros_like(W, dtype=float),
+                where=delta > 0.0,
+            )
             np.maximum(prop, 0.0, out=prop)
             self._break_rate[:a] = prop
             if self._break_rate.shape[0] > a:
                 self._break_rate[a:] = 0.0
+                self._delta_break[a:] = 0.0
             return
     
         # --------- Branch 2: original JIT kernels (single-particle rates) ---------
@@ -96,17 +107,24 @@ class MCPBEBreak:
             raise RuntimeError(f"Unsupported dim={self.dim} for breakage kernels.")
     
         rates = np.asarray(self.B_R, dtype=float)
-        prop = W * rates
+        prop = np.divide(
+            W * rates,
+            delta,
+            out=np.zeros_like(W, dtype=float),
+            where=delta > 0.0,
+        )
         prop[prop < 0.0] = 0.0
         self._break_rate[:a] = prop
         if self._break_rate.shape[0] > a:
             self._break_rate[a:] = 0.0
+            self._delta_break[a:] = 0.0
 
     def _break_rate_single(self, i: int) -> float:
         """Single-particle BREAKAGE PROPENSITY.
     
         Returns:
-            propensity_i = W[i] * S_i
+            propensity_i = W[i] * S_i / delta_i
+        with delta_i = min(break_dW_const, W[i]).
         where S_i is the single-particle breakage rate from MLP/JIT.
         """
         a = self.a_tot
@@ -115,13 +133,18 @@ class MCPBEBreak:
 
         Wi = float(self.W[i])
         if Wi <= 0.0:
+            if hasattr(self, "_delta_break") and self._delta_break is not None:
+                self._delta_break[i] = 0.0
+            return 0.0
+        delta_i = self._update_delta_single(i, attr_name="_delta_break", dW_const=float(self._break_dW_const))
+        if delta_i <= 0.0:
             return 0.0
     
         # --------- Branch 1: MLP model ---------
         use_mlp = bool(self.lmc_use_breakage_model) and (self.lmc_breakage_adapter is not None)
         if use_mlp:
             Si = float(self.lmc_breakage_adapter.compute_rate_single(self, i))
-            val = Wi * Si
+            val = Wi * Si / delta_i
             return float(val) if val > 0.0 else 0.0
     
         # --------- Branch 2: original JIT single-particle rate ---------
@@ -153,7 +176,7 @@ class MCPBEBreak:
                 )
             )
     
-        val = Wi * Si
+        val = Wi * Si / delta_i
         return float(val) if val > 0.0 else 0.0
 
     # ------------------------------------------------------------------
@@ -296,8 +319,27 @@ class MCPBEBreak:
     # Single breakage event (multi-fragment)
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _frag_total_volume(frag: np.ndarray) -> float:
+        return float(np.sum(np.asarray(frag, dtype=float)))
+
+    def _fragments_have_zero_volume(self, frags: list[np.ndarray]) -> bool:
+        if not frags:
+            return False
+        for frag in frags:
+            if self._frag_total_volume(frag) <= 0.0:
+                return True
+        return False
+
+    def _filter_positive_volume_fragments(self, frags: list[np.ndarray]) -> list[np.ndarray]:
+        out: list[np.ndarray] = []
+        for frag in frags:
+            if self._frag_total_volume(frag) > 0.0:
+                out.append(np.asarray(frag, dtype=float))
+        return out
+
     # Unified post-processing: apply fragments and maintain break/agg states.
-    def _break_apply_and_maintain(self, k: int, frags: list[np.ndarray], dW: float) -> None:
+    def _break_apply_and_maintain(self, k: int, frags: list[np.ndarray], dW: float, Vrem_k: np.ndarray) -> None:
         """Apply one *packet* breakage event.
     
         Interpretation:
@@ -319,6 +361,22 @@ class MCPBEBreak:
         if dW <= 0.0:
             self._mark_unbreakable(k)
             return
+
+        Vrem_ref = np.asarray(Vrem_k, dtype=float).copy()
+        resample_attempts = 0
+        max_resample = 1000
+        while self._fragments_have_zero_volume(frags) and resample_attempts < max_resample:
+            status_retry, frags_retry = self._break_build_fragments(Vrem_ref.copy())
+            if status_retry == "disable":
+                self._mark_unbreakable(k)
+                return
+            if status_retry == "ok" and frags_retry:
+                frags = frags_retry
+            resample_attempts += 1
+
+        frags = self._filter_positive_volume_fragments(frags)
+        if not frags:
+            return
     
         new_indices: list[int] = []
     
@@ -329,6 +387,7 @@ class MCPBEBreak:
             new_indices.append(new_idx)
     
             self.W[new_idx] = dW
+            self._update_delta_single(new_idx, attr_name="_delta_break", dW_const=float(self._break_dW_const))
     
             br_new = self._break_rate_single(new_idx)  # already returns W*Si
             self._break_rate[new_idx] = br_new
@@ -338,8 +397,8 @@ class MCPBEBreak:
         # 2) Reduce parent weight but keep its volume unchanged
         w_rem = w_parent_old - dW
         self.W[k] = w_rem
-    
         if w_rem > 0.0:
+            self._update_delta_single(k, attr_name="_delta_break", dW_const=float(self._break_dW_const))
             br_k = self._break_rate_single(k)  # uses new W[k]
             self._break_rate[k] = br_k
             if self._break_sampler is not None:
@@ -347,7 +406,7 @@ class MCPBEBreak:
         else:
             # Parent population fully consumed -> remove compute particle k
             self._remove_particle_column(k)
-    
+
         # 3) Agglomeration maintenance (mix mode): full weighted rebuild for consistency
         pt = self.process_type
         if pt in ("agglomeration", "mix") and self._agg_sampler is not None:
@@ -357,6 +416,8 @@ class MCPBEBreak:
     # Mark particle as unbreakable: zero out breakage rate and update sampler.
     def _mark_unbreakable(self, k: int) -> None:
         self._break_rate[k] = 0.0
+        if hasattr(self, "_delta_break") and self._delta_break is not None:
+            self._delta_break[k] = 0.0
         if self._break_sampler is not None:
             self._break_sampler.update(k, 0.0)
     
@@ -511,8 +572,21 @@ class MCPBEBreak:
             return 0.0
         return float(dW)
     
+    def _compute_dW_packet(self, k: int) -> float:
+        """Compute packet size delta_i for breakage."""
+        if k < 0 or k >= self.a_tot:
+            return 0.0
+        if hasattr(self, "_delta_break") and self._delta_break is not None:
+            dW = float(self._delta_break[k])
+        else:
+            dW = self._update_delta_single(k, attr_name="_delta_break", dW_const=float(self._break_dW_const))
+        if not np.isfinite(dW) or dW <= 0.0:
+            return 0.0
+        return float(dW)
+
     def _do_one_break(self): 
         # Main entry: preprocess -> generate fragments -> unified maintenance.
+        self._last_break_dW = 0.0
         if self.a_tot < 1:
             return
     
@@ -534,7 +608,7 @@ class MCPBEBreak:
                 self._mark_unbreakable(k)
                 continue
     
-            dW_total = self._compute_dW(k)
+            dW_total = self._compute_dW_packet(k)
             if dW_total <= 0.0:
                 self._mark_unbreakable(k)
                 continue
@@ -566,7 +640,7 @@ class MCPBEBreak:
                 return
 
             if status == "ok":
-                self._break_apply_and_maintain(k, frags, dW)
+                self._break_apply_and_maintain(k, frags, dW, Vrem_k)
             else:
                 return
     
