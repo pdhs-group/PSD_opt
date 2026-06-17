@@ -53,9 +53,8 @@ if __name__ == "__main__":
         ],
         wmcpbe_variants=[
             WMCPBEVariantConfig(
-                name="WMCPBE parallel8",
-                repeats=50,
-                workers=8,
+                name="WMCPBE dW=2",
+                repeats=100,
                 attrs={
                     "a0": 2e5,
                     "V_eff_init": 1000,
@@ -63,14 +62,13 @@ if __name__ == "__main__":
                     "recon_N_max": 4000,
                     "recon_bins": 30,
                     "recon_method": "4PMC",
-                    "break_dW_max": 20,
-                    "agg_dW_max": 20,
+                    "break_dW_max": 2, 
+                    "agg_dW_max": 1,
                 },
             ),
             WMCPBEVariantConfig(
-                name="WMCPBE parallel4",
-                repeats=50,
-                workers=4,
+                name="WMCPBE dW=4",
+                repeats=100,
                 attrs={
                     "a0": 2e5,
                     "V_eff_init": 1000,
@@ -78,14 +76,13 @@ if __name__ == "__main__":
                     "recon_N_max": 4000,
                     "recon_bins": 30,
                     "recon_method": "4PMC",
-                    "break_dW_max": 20,
-                    "agg_dW_max": 20,
+                    "break_dW_max": 4,
+                    "agg_dW_max": 1,
                 },
             ),
             WMCPBEVariantConfig(
-                name="WMCPBE parallel2",
-                repeats=50,
-                workers=2,
+                name="WMCPBE dW=8",
+                repeats=100,
                 attrs={
                     "a0": 2e5,
                     "V_eff_init": 1000,
@@ -93,13 +90,13 @@ if __name__ == "__main__":
                     "recon_N_max": 4000,
                     "recon_bins": 30,
                     "recon_method": "4PMC",
-                    "break_dW_max": 20,
-                    "agg_dW_max": 20,
+                    "break_dW_max": 8,
+                    "agg_dW_max": 1,
                 },
             ),
             WMCPBEVariantConfig(
-                name="WMCPBE",
-                repeats=50,
+                name="WMCPBE dW=12",
+                repeats=100,
                 attrs={
                     "a0": 2e5,
                     "V_eff_init": 1000,
@@ -107,8 +104,78 @@ if __name__ == "__main__":
                     "recon_N_max": 4000,
                     "recon_bins": 30,
                     "recon_method": "4PMC",
-                    "break_dW_max": 20,
-                    "agg_dW_max": 20,
+                    "break_dW_max": 12,
+                    "agg_dW_max": 1,
+                },
+            ),
+            WMCPBEVariantConfig(
+                name="WMCPBE dW=16",
+                repeats=100,
+                attrs={
+                    "a0": 2e5,
+                    "V_eff_init": 1000,
+                    "recon_enable": True,
+                    "recon_N_max": 4000,
+                    "recon_bins": 30,
+                    "recon_method": "4PMC",
+                    "break_dW_max": 16,
+                    "agg_dW_max": 1,
+                },
+            ),
+            WMCPBEVariantConfig(
+                name="WMCPBE dW=24",
+                repeats=100,
+                attrs={
+                    "a0": 2e5,
+                    "V_eff_init": 1000,
+                    "recon_enable": True,
+                    "recon_N_max": 4000,
+                    "recon_bins": 30,
+                    "recon_method": "4PMC",
+                    "break_dW_max": 24,
+                    "agg_dW_max": 1,
+                },
+            ),
+            WMCPBEVariantConfig(
+                name="WMCPBE dW=32",
+                repeats=100,
+                attrs={
+                    "a0": 2e5,
+                    "V_eff_init": 1000,
+                    "recon_enable": True,
+                    "recon_N_max": 4000,
+                    "recon_bins": 30,
+                    "recon_method": "4PMC",
+                    "break_dW_max": 32,
+                    "agg_dW_max": 1,
+                },
+            ),
+            WMCPBEVariantConfig(
+                name="WMCPBE dW=40",
+                repeats=100,
+                attrs={
+                    "a0": 2e5,
+                    "V_eff_init": 1000,
+                    "recon_enable": True,
+                    "recon_N_max": 4000,
+                    "recon_bins": 30,
+                    "recon_method": "4PMC",
+                    "break_dW_max": 40,
+                    "agg_dW_max": 1,
+                },
+            ),
+            WMCPBEVariantConfig(
+                name="WMCPBE dW=50",
+                repeats=100,
+                attrs={
+                    "a0": 2e5,
+                    "V_eff_init": 1000,
+                    "recon_enable": True,
+                    "recon_N_max": 4000,
+                    "recon_bins": 30,
+                    "recon_method": "4PMC",
+                    "break_dW_max": 50,
+                    "agg_dW_max": 1,
                 },
             ),
         ],
@@ -128,7 +195,7 @@ if __name__ == "__main__":
         volume_concentration=None,
     )
 
-    advanced = PBEValidationAdvanced(config=config, init_dist=init_dist, export_dir="exports_test")
+    advanced = PBEValidationAdvanced(config=config, init_dist=init_dist, export_dir="exports_break")
     result = advanced.run()
 
     advanced.print_moment_error_summary(result)

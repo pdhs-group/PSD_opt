@@ -47,3 +47,5 @@ poetry.lock
 *.pptx
 *.svg
 *.mjs
+*.MVMVM187
+AGENTS.md

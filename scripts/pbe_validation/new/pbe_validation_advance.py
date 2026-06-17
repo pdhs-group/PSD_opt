@@ -1011,38 +1011,52 @@ class PBEValidationAdvanced:
             weighted_init=weighted_init,
         )
 
-        seed_sequence = np.random.SeedSequence(variant.base_seed)
-        seeds = seed_sequence.spawn(variant.repeats)
-        repeat_moments: List[np.ndarray] = []
-        repeat_psd: List[np.ndarray] = []
-        repeat_sim_agg_events: List[float] = []
-        repeat_sim_break_events: List[float] = []
-        repeat_real_agg_events: List[float] = []
-        repeat_real_break_events: List[float] = []
-
         time_start = time.time()
-        for seed in seeds:
-            solver = copy.deepcopy(solver_template)
-            solver._rng = np.random.default_rng(seed)
-            solver.V_flat = None
-            solver.Vc = vc
-            solver._initialize_particles(init_Vc=False, V_flat=v_flat.copy(), W_init=None if w_init is None else w_init.copy(), init_cdf=None)
-            solver._init_lmc()
-            solver._initialize_samplers()
-            solver.solve(maxiter=variant.maxiter)
-
-            moments, _ = solver.calc_moments_over_time(normalize=True)
-            repeat_moments.append(np.asarray(moments, dtype=float))
-            repeat_psd.append(self._build_wmcpbe_psd_stack(solver, x_edges=x_edges, y_edges=y_edges))
-            repeat_sim_agg_events.append(float(getattr(solver, "sim_agg_events", np.nan)))
-            repeat_sim_break_events.append(float(getattr(solver, "sim_break_events", np.nan)))
-            repeat_real_agg_events.append(float(getattr(solver, "real_agg_events", np.nan)))
-            repeat_real_break_events.append(float(getattr(solver, "real_break_events", np.nan)))
+        repeat_records, _ = solver_template._run_repeat_records(
+            N=variant.repeats,
+            base_seed=variant.base_seed,
+            maxiter=variant.maxiter,
+            init_Vc=False,
+            Vc=vc,
+            V_flat=v_flat,
+            W_init=w_init,
+            workers=variant.workers,
+            collect_hist2d_edges=(x_edges, y_edges),
+            collect_event_stats=True,
+        )
         elapsed = time.time() - time_start
+
+        if not repeat_records:
+            raise RuntimeError("WMCPBE repeat execution produced no completed results.")
+
+        repeat_moments = [
+            np.asarray(record["result"]["moments"], dtype=float)
+            for record in repeat_records
+        ]
+        repeat_psd = [
+            np.asarray(record["hist2d_stack"], dtype=float)
+            for record in repeat_records
+        ]
+        repeat_sim_agg_events = [
+            float((record.get("event_stats") or {}).get("sim_agg_events", np.nan))
+            for record in repeat_records
+        ]
+        repeat_sim_break_events = [
+            float((record.get("event_stats") or {}).get("sim_break_events", np.nan))
+            for record in repeat_records
+        ]
+        repeat_real_agg_events = [
+            float((record.get("event_stats") or {}).get("real_agg_events", np.nan))
+            for record in repeat_records
+        ]
+        repeat_real_break_events = [
+            float((record.get("event_stats") or {}).get("real_break_events", np.nan))
+            for record in repeat_records
+        ]
         elapsed_mean = elapsed / max(variant.repeats, 1)
 
         moments_mean = np.mean(repeat_moments, axis=0)
-        if variant.repeats > 1:
+        if len(repeat_moments) > 1:
             moments_std = np.std(repeat_moments, axis=0, ddof=1)
             moments_var = moments_std ** 2
             psd_mean = np.mean(repeat_psd, axis=0)
@@ -1076,6 +1090,7 @@ class PBEValidationAdvanced:
                 "elapsed_mean_s": elapsed_mean,
                 "repeats": variant.repeats,
                 "base_seed": variant.base_seed,
+                "workers": variant.workers,
                 "sim_agg_events_mean": sim_agg_mean,
                 "sim_break_events_mean": sim_break_mean,
                 "sim_total_events_mean": sim_total_mean,

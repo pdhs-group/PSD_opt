@@ -36,10 +36,10 @@ def nb_rebuild_ragg_weighted(
     """Parallel weighted r_i for WMCPBE, including self-agglomeration.
 
     For j != i, the contribution is W_i * W_j * beta(i,j).
-    For j == i, one selected batch of size delta_i can collide with the
-    remaining represented mass in the same compute particle only when
-    W_i > 2 * delta_i. In that case the self contribution is
-    W_i * (W_i - delta_i) * beta(i,i).
+    For j == i, the effective self batch is delta_ii = min(delta_i, W_i/2)
+    because one self-agglomeration consumes two represented particles from
+    the same weighted class. The self contribution represents ordered
+    physical pairs W_i * (W_i - 1) * beta(i,i).
     """
     a = R.shape[0]
     r = np.zeros(a, dtype=np.float64)
@@ -56,8 +56,15 @@ def nb_rebuild_ragg_weighted(
                 continue
             s += Wj * _kb_beta(COLEVAL, CORR_BETA, G, R, i, j)
         delta_i = DELTA[i]
-        if delta_i > 0.0 and Wi > 2.0 * delta_i:
-            s += (Wi - delta_i) * _kb_beta(COLEVAL, CORR_BETA, G, R, i, i)
+        if delta_i > 0.0 and Wi > 1.0:
+            self_delta = 0.5 * Wi
+            if delta_i < self_delta:
+                self_delta = delta_i
+            if self_delta > 0.0:
+                bij_self = _kb_beta(COLEVAL, CORR_BETA, G, R, i, i)
+                if bij_self > 0.0:
+                    # Legacy callers divide r_i by delta_i afterwards.
+                    s += (Wi - 1.0) * bij_self * (delta_i / self_delta)
         val = Wi * s
         r[i] = val if val > 0.0 else 0.0
     return r
@@ -77,6 +84,7 @@ def nb_rebuild_ragg_weighted_pair_delta(
     Each pair contribution is scaled by the effective pair batch size
     delta_ij = min(delta_i, delta_j). Because delta_i is already capped by
     dW_const, this is equivalent to min(delta_i, delta_j, dW_const).
+    For self-agglomeration, delta_ii = min(delta_i, W_i/2).
     """
     a = R.shape[0]
     r = np.zeros(a, dtype=np.float64)
@@ -108,10 +116,13 @@ def nb_rebuild_ragg_weighted_pair_delta(
                 pair_delta = delta_j
             s += Wj * bij / pair_delta
 
-        if Wi > 2.0 * delta_i:
+        if Wi > 1.0:
+            self_delta = 0.5 * Wi
+            if delta_i < self_delta:
+                self_delta = delta_i
             bij_self = _kb_beta(COLEVAL, CORR_BETA, G, R, i, i)
-            if bij_self > 0.0:
-                s += (Wi - delta_i) * bij_self / delta_i
+            if self_delta > 0.0 and bij_self > 0.0:
+                s += (Wi - 1.0) * bij_self / self_delta
 
         val = Wi * s
         r[i] = val if val > 0.0 else 0.0
@@ -237,9 +248,9 @@ def nb_pick_partner_weighted(
     """Weighted partner sampling for WMCPBE with self-agglomeration.
 
     For j != i, the sampling weight is W_j * beta(i,j).
-    For j == i, one batch of size delta_i is already selected by choosing i,
-    so self-agglomeration is only possible when W_i > 2 * delta_i and the
-    partner weight becomes (W_i - delta_i) * beta(i,i).
+    For j == i, delta_ii = min(delta_i, W_i/2). The self channel represents
+    ordered physical pairs W_i * (W_i - 1), while legacy callers apply the
+    first-step delta_i correction outside this function.
 
     Returns (j, partner_weight_selected), or (-1, 0.0) on reject/failure.
     """
@@ -256,12 +267,15 @@ def nb_pick_partner_weighted(
         if j == i:
             Wi = W[i]
             delta_i = DELTA[i]
-            if delta_i <= 0.0 or Wi <= 2.0 * delta_i:
+            if delta_i <= 0.0 or Wi <= 1.0:
                 continue
+            self_delta = 0.5 * Wi
+            if delta_i < self_delta:
+                self_delta = delta_i
             bij = _kb_beta(COLEVAL, CORR_BETA, G, R, i, j)
-            if bij <= 0.0:
+            if self_delta <= 0.0 or bij <= 0.0:
                 continue
-            wij = (Wi - delta_i) * bij
+            wij = (Wi - 1.0) * bij * (delta_i / self_delta)
             if wij <= 0.0:
                 continue
             js[kk] = j
@@ -364,7 +378,8 @@ def nb_pick_partner_weighted_pair_delta(
     """Pair-delta corrected partner sampling for WMCPBE agglomeration.
 
     For j != i, the sampling weight is W_j * beta(i,j) / delta_ij.
-    For j == i, the sampling weight is (W_i - delta_ii) * beta(i,i) / delta_ii,
+    For j == i, delta_ii = min(delta_i, W_i/2), and the sampling weight is
+    (W_i - 1) * beta(i,i) / delta_ii,
     where delta_ij = min(delta_i, delta_j). PARTNER_TOTAL is r_i / W_i.
 
     Returns (j, corrected_partner_weight_selected), or (-1, 0.0).
@@ -389,12 +404,15 @@ def nb_pick_partner_weighted_pair_delta(
     for j in range(a):
         if j == i:
             Wi = W[i]
-            if Wi <= 2.0 * delta_i:
+            if Wi <= 1.0:
                 continue
+            self_delta = 0.5 * Wi
+            if delta_i < self_delta:
+                self_delta = delta_i
             bij = _kb_beta(COLEVAL, CORR_BETA, G, R, i, j)
-            if bij <= 0.0:
+            if self_delta <= 0.0 or bij <= 0.0:
                 continue
-            wij = (Wi - delta_i) * bij / delta_i
+            wij = (Wi - 1.0) * bij / self_delta
             if wij <= 0.0:
                 continue
             acc += wij

@@ -71,6 +71,7 @@ class WMCPBEVariantConfig:
     repeats: int = 40
     base_seed: int = 42
     maxiter: int = int(1e9)
+    workers: int = 1
     enabled: bool = True
     attrs: Dict[str, Any] = field(default_factory=dict)
 
@@ -258,12 +259,16 @@ class ValidationRunner:
             Vc=mc_vc,
             V_flat=mc_v_flat,
             W_init=mc_w_init,
+            workers=variant.workers,
         )
         elapsed = time.time() - time_start
 
+        if not results:
+            raise RuntimeError("WMCPBE solve_repeats produced no completed results.")
+
         trajectories = [item["moments"] for item in results]
         moments = np.mean(trajectories, axis=0)
-        std = np.std(trajectories, axis=0, ddof=1) if variant.repeats > 1 else None
+        std = np.std(trajectories, axis=0, ddof=1) if len(trajectories) > 1 else None
         return MethodResult(
             name=variant.name,
             family="wmcpbe",
@@ -273,6 +278,7 @@ class ValidationRunner:
                 "elapsed_s": elapsed,
                 "repeats": variant.repeats,
                 "base_seed": variant.base_seed,
+                "workers": variant.workers,
                 **copy.deepcopy(variant.attrs),
             },
         )

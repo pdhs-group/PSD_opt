@@ -294,9 +294,9 @@ class ReconstructionMonitor:
         solver_template.alpha_prim = np.ones(self.config.case.dim ** 2)
         solver_template.break_dW_mode = "const"
         solver_template.break_dW_min = 1.0
-        solver_template.break_dW_max = 50.0
+        solver_template.break_dW_max = 20.0
         solver_template.agg_dW_min = 1.0
-        solver_template.agg_dW_max = 20.0
+        solver_template.agg_dW_max = 5.0
         solver_template.recon_enable = True
         solver_template.V_eff_init = 1000
         solver_template.recon_N_max = 4000
@@ -481,7 +481,7 @@ if __name__ == "__main__":
         wmcpbe_variants=[
             WMCPBEVariantConfig(
                 name="4PM",
-                repeats=20,
+                repeats=40,
                 attrs={
                     "a0": 1e5,
                     "V_eff_init": 1000,
@@ -493,7 +493,7 @@ if __name__ == "__main__":
             ),
             WMCPBEVariantConfig(
                 name="RS",
-                repeats=20,
+                repeats=40,
                 attrs={
                     "a0": 1e5,
                     "V_eff_init": 1000,
@@ -506,7 +506,7 @@ if __name__ == "__main__":
             ),
             WMCPBEVariantConfig(
                 name="CAM",
-                repeats=20,
+                repeats=40,
                 attrs={
                     "a0": 1e5,
                     "V_eff_init": 1000,

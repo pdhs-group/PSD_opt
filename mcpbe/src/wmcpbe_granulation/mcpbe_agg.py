@@ -127,10 +127,13 @@ class MCPBEAgg:
         delta_i = self._update_delta_single(i, attr_name="_delta_agg", dW_const=float(self._agg_dW_const))
         delta_j = self._update_delta_single(j, attr_name="_delta_agg", dW_const=float(self._agg_dW_const))
         if i == j:
-            if delta_i <= 0.0 or Wi <= 2.0 * delta_i:
+            if delta_i <= 0.0 or Wi <= 1.0:
                 return 0.0
-            if dW > delta_i:
-                dW = delta_i
+            delta_ii = min(float(delta_i), 0.5 * Wi)
+            if delta_ii <= 0.0:
+                return 0.0
+            if dW > delta_ii:
+                dW = delta_ii
         else:
             if dW > Wi:
                 dW = Wi

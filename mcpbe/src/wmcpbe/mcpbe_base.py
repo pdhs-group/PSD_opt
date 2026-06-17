@@ -8,7 +8,7 @@ import time
 import warnings
 import json
 from typing import Optional, Sequence, Any, Tuple
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, as_completed, wait
 import copy
 
 import numpy as np
@@ -1137,6 +1137,185 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
                 f"(real agg={self.real_agg_events:.6g}, real break={self.real_break_events:.6g})"
             )
         return self
+
+    @staticmethod
+    def _build_repeat_seeds(
+        N: int,
+        base_seed: int = 42,
+        seeds: Optional[Sequence[int]] = None,
+    ) -> Sequence[int]:
+        if seeds is None:
+            master = np.random.SeedSequence(base_seed)
+            seeds = master.spawn(N)
+        if len(seeds) != N:
+            raise ValueError("Length of seeds must equal N.")
+        return seeds
+
+    def _build_repeat_worker_state(self, *, suppress_verbose: bool = False) -> dict[str, Any]:
+        base_state = copy.deepcopy(self.__dict__)
+        base_state.pop("cancel_flag", None)
+        for key in ("lmc_adapter", "lmc_live", "lmc_breakage_adapter", "_open_mmaps"):
+            if key in base_state:
+                base_state[key] = None
+        if suppress_verbose:
+            base_state["VERBOSE"] = False
+        return base_state
+
+    @staticmethod
+    def _resolve_repeat_psd_request(
+        psd_enable: bool,
+        psd_x_grid: Optional[np.ndarray] = None,
+        psd_Q_grid: Optional[np.ndarray] = None,
+    ) -> dict[str, Any]:
+        if not psd_enable:
+            return {"grid_mode": None, "psd_x_grid": None, "psd_Q_grid": None}
+
+        if psd_x_grid is not None and psd_Q_grid is not None:
+            warnings.warn(
+                "Both psd_x_grid and psd_Q_grid are provided; psd_x_grid will be used and Q(x) will be computed.",
+                RuntimeWarning,
+            )
+            return {
+                "grid_mode": "Q_of_x",
+                "psd_x_grid": np.asarray(psd_x_grid, dtype=float),
+                "psd_Q_grid": None,
+            }
+
+        if psd_x_grid is not None:
+            return {
+                "grid_mode": "Q_of_x",
+                "psd_x_grid": np.asarray(psd_x_grid, dtype=float),
+                "psd_Q_grid": None,
+            }
+
+        if psd_Q_grid is not None:
+            return {
+                "grid_mode": "x_of_Q",
+                "psd_x_grid": None,
+                "psd_Q_grid": np.asarray(psd_Q_grid, dtype=float),
+            }
+
+        return {"grid_mode": None, "psd_x_grid": None, "psd_Q_grid": None}
+
+    def _run_repeat_records(
+        self,
+        N: int = 5,
+        base_seed: int = 42,
+        seeds: Optional[Sequence[int]] = None,
+        maxiter: int = int(1e8),
+        init_Vc: bool = True,
+        Vc: float = None,
+        V_flat: Optional[np.ndarray] = None,
+        W_init: Optional[np.ndarray] = None,
+        workers: int = 1,
+        psd_enable: bool = False,
+        psd_basis: str = "volume",
+        psd_x_grid: Optional[np.ndarray] = None,
+        psd_Q_grid: Optional[np.ndarray] = None,
+        init_cdf_payload: Optional[dict] = None,
+        collect_hist2d_edges: Optional[Tuple[np.ndarray, np.ndarray]] = None,
+        collect_event_stats: bool = False,
+    ) -> Tuple[list[dict[str, Any]], dict[str, Any]]:
+        workers = int(workers)
+        if workers < 1:
+            raise ValueError("workers must be >= 1.")
+
+        seeds = self._build_repeat_seeds(N=N, base_seed=base_seed, seeds=seeds)
+        psd_request = self._resolve_repeat_psd_request(
+            psd_enable=psd_enable,
+            psd_x_grid=psd_x_grid,
+            psd_Q_grid=psd_Q_grid,
+        )
+
+        if workers > 1 and psd_enable and psd_request["grid_mode"] is None:
+            warnings.warn(
+                "parallel PSD: neither psd_x_grid nor psd_Q_grid is provided. "
+                "Falling back to returning full CDF lists from workers (may be slow due to serialization). "
+                "For speed, provide psd_x_grid or psd_Q_grid.",
+                RuntimeWarning,
+            )
+
+        hist2d_x_edges = None
+        hist2d_y_edges = None
+        collect_hist2d = collect_hist2d_edges is not None
+        if collect_hist2d:
+            hist2d_x_edges = np.asarray(collect_hist2d_edges[0], dtype=float)
+            hist2d_y_edges = np.asarray(collect_hist2d_edges[1], dtype=float)
+
+        base_state = self._build_repeat_worker_state(suppress_verbose=workers > 1)
+        cancel_flag = getattr(self, "cancel_flag", None)
+
+        payloads: list[dict[str, Any]] = []
+        for idx in range(N):
+            payloads.append(
+                {
+                    "idx": idx,
+                    "cls": self.__class__,
+                    "state": base_state,
+                    "seed": seeds[idx],
+                    "maxiter": maxiter,
+                    "init_Vc": init_Vc,
+                    "Vc": Vc,
+                    "V_flat": V_flat,
+                    "W_init": W_init,
+                    "init_cdf_payload": init_cdf_payload,
+                    "cancel_flag": cancel_flag,
+                    "suppress_verbose": workers > 1,
+                    "psd_enable": psd_enable,
+                    "psd_basis": psd_basis,
+                    "psd_time_scheme": "interp",
+                    "psd_grid_mode": psd_request["grid_mode"],
+                    "psd_x_grid": psd_request["psd_x_grid"],
+                    "psd_Q_grid": psd_request["psd_Q_grid"],
+                    "collect_hist2d": collect_hist2d,
+                    "hist2d_x_edges": hist2d_x_edges,
+                    "hist2d_y_edges": hist2d_y_edges,
+                    "collect_event_stats": collect_event_stats,
+                }
+            )
+
+        records: list[dict[str, Any] | None] = [None] * N
+
+        if workers == 1:
+            for payload in payloads:
+                if cancel_flag is not None and cancel_flag.get("cancel", False):
+                    break
+                records[payload["idx"]] = _mcpbe_run_single_parallel(payload)
+        else:
+            with ProcessPoolExecutor(max_workers=workers) as executor:
+                pending: dict[Any, int] = {}
+                next_payload_idx = 0
+
+                while next_payload_idx < len(payloads) and len(pending) < workers:
+                    if cancel_flag is not None and cancel_flag.get("cancel", False):
+                        break
+                    payload = payloads[next_payload_idx]
+                    future = executor.submit(_mcpbe_run_single_parallel, payload)
+                    pending[future] = payload["idx"]
+                    next_payload_idx += 1
+
+                while pending:
+                    done, _ = wait(tuple(pending.keys()), return_when=FIRST_COMPLETED)
+                    for future in done:
+                        idx = pending.pop(future)
+                        try:
+                            records[idx] = future.result()
+                        except Exception as exc:
+                            for other in pending:
+                                other.cancel()
+                            raise RuntimeError(f"[parallel] worker {idx} failed: {exc}") from exc
+
+                    while next_payload_idx < len(payloads) and len(pending) < workers:
+                        if cancel_flag is not None and cancel_flag.get("cancel", False):
+                            break
+                        payload = payloads[next_payload_idx]
+                        future = executor.submit(_mcpbe_run_single_parallel, payload)
+                        pending[future] = payload["idx"]
+                        next_payload_idx += 1
+
+        completed_records = [record for record in records if record is not None]
+        return completed_records, psd_request
+
     def solve_repeats(
         self,
         N: int = 5,
@@ -1193,12 +1372,14 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
                     "note": "...",
                 }
         """
+        workers = int(workers)
+        if workers < 1:
+            raise ValueError("workers must be >= 1.")
+        if dump_results and workers > 1:
+            raise ValueError("dump_results=True is only supported with workers == 1.")
+
         # ----- build seeds -----
-        if seeds is None:
-            master = np.random.SeedSequence(base_seed)
-            seeds = master.spawn(N)
-        if len(seeds) != N:
-            raise ValueError("Length of seeds must equal N.")
+        seeds = self._build_repeat_seeds(N=N, base_seed=base_seed, seeds=seeds)
 
         # warn if PSD grids are given but PSD is disabled
         if not psd_enable and (psd_x_grid is not None or psd_Q_grid is not None):
@@ -1207,7 +1388,180 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
                 RuntimeWarning,
             )
 
-        # ----- serial path (supports PSD) -----
+        if not dump_results:
+            repeat_records, psd_request = self._run_repeat_records(
+                N=N,
+                base_seed=base_seed,
+                seeds=seeds,
+                maxiter=maxiter,
+                init_Vc=init_Vc,
+                Vc=Vc,
+                V_flat=V_flat,
+                W_init=W_init,
+                workers=workers,
+                psd_enable=psd_enable,
+                psd_basis=psd_basis,
+                psd_x_grid=psd_x_grid,
+                psd_Q_grid=psd_Q_grid,
+                init_cdf_payload=init_cdf_payload,
+            )
+
+            results = [record["result"] for record in repeat_records]
+            if not psd_enable:
+                return results, None
+
+            t_vec_psd_list = [record.get("psd_t_vec") for record in repeat_records]
+            t_vec_ref = None
+            for t_vec_local in t_vec_psd_list:
+                if t_vec_local is not None and len(t_vec_local) > 0:
+                    t_vec_ref = np.asarray(t_vec_local, dtype=float)
+                    break
+
+            if t_vec_ref is None:
+                psd_info = {
+                    "basis": psd_basis,
+                    "mode": None,
+                    "t_vec": None,
+                    "x_grid": None,
+                    "Q_mean": None,
+                    "Q_grid": None,
+                    "x_mean": None,
+                    "x_50": None,
+                    "note": "No PSD snapshots were available.",
+                }
+                return results, psd_info
+
+            for t_vec_local in t_vec_psd_list:
+                if t_vec_local is None or len(t_vec_local) == 0:
+                    continue
+                if len(t_vec_ref) != len(t_vec_local) or not np.allclose(
+                    t_vec_ref, t_vec_local, rtol=1e-6, atol=1e-12
+                ):
+                    warnings.warn(
+                        "t_vec differs between repeats. PSD averaging assumes identical t_vec; "
+                        "results may be inconsistent.",
+                        RuntimeWarning,
+                    )
+                    break
+
+            psd_grid_mode = psd_request["grid_mode"]
+            x_grid_user = psd_request["psd_x_grid"]
+            Q_grid_user = psd_request["psd_Q_grid"]
+
+            if psd_grid_mode is not None:
+                T = int(len(t_vec_ref))
+                psd_info: dict[str, Any] = {
+                    "basis": psd_basis,
+                    "mode": psd_grid_mode,
+                    "t_vec": np.asarray(t_vec_ref, dtype=float),
+                    "note": (
+                        "PSD computed at all saved times (aligned with t_vec) "
+                        "and averaged over all repeats."
+                    ),
+                }
+
+                psd_pack_list = [record.get("psd_pack") for record in repeat_records]
+                if any(pack is None for pack in psd_pack_list):
+                    raise RuntimeError("[repeat] PSD gridded mode but some repeats returned no psd_pack.")
+
+                if psd_grid_mode == "Q_of_x":
+                    if x_grid_user is None:
+                        raise RuntimeError("[repeat] Q_of_x gridded mode requires psd_x_grid.")
+                    M = int(x_grid_user.shape[0])
+                    Q_sum = np.zeros((T, M), dtype=float)
+                    Q_count = np.zeros(T, dtype=int)
+
+                    for pack in psd_pack_list:
+                        Q_vals = np.asarray(pack["vals"], dtype=float)
+                        cnt = np.asarray(pack["count"], dtype=int)
+                        for it in range(T):
+                            if cnt[it] > 0:
+                                Q_sum[it] += Q_vals[it]
+                                Q_count[it] += 1
+
+                    Q_mean = np.empty_like(Q_sum)
+                    for it in range(T):
+                        if Q_count[it] > 0:
+                            Q_mean[it] = Q_sum[it] / float(Q_count[it])
+                        else:
+                            Q_mean[it] = np.nan
+
+                    psd_info["x_grid"] = x_grid_user
+                    psd_info["Q_mean"] = Q_mean.T
+
+                    x_50 = np.full(T, np.nan, dtype=float)
+                    for it in range(T):
+                        x_50[it] = self._invert_cdf_monotone(x_grid_user, Q_mean[it, :], q=0.5)
+                    psd_info["x_50"] = x_50
+                    return results, psd_info
+
+                if psd_grid_mode == "x_of_Q":
+                    if Q_grid_user is None:
+                        raise RuntimeError("[repeat] x_of_Q gridded mode requires psd_Q_grid.")
+                    M = int(Q_grid_user.shape[0])
+                    x_sum = np.zeros((T, M), dtype=float)
+                    x_count = np.zeros(T, dtype=int)
+
+                    for pack in psd_pack_list:
+                        x_vals = np.asarray(pack["vals"], dtype=float)
+                        cnt = np.asarray(pack["count"], dtype=int)
+                        for it in range(T):
+                            if cnt[it] > 0:
+                                x_sum[it] += x_vals[it]
+                                x_count[it] += 1
+
+                    x_mean = np.empty_like(x_sum)
+                    for it in range(T):
+                        if x_count[it] > 0:
+                            x_mean[it] = x_sum[it] / float(x_count[it])
+                        else:
+                            x_mean[it] = np.nan
+
+                    psd_info["Q_grid"] = Q_grid_user
+                    psd_info["x_mean"] = x_mean
+
+                    x_50 = np.full(T, np.nan, dtype=float)
+                    q = 0.5
+                    hit = np.where(np.isclose(Q_grid_user, q, rtol=0.0, atol=1e-12))[0]
+                    if hit.size > 0:
+                        j = int(hit[0])
+                        x_50 = x_mean[:, j].astype(float, copy=False)
+                    else:
+                        for it in range(T):
+                            xq = np.asarray(x_mean[it], dtype=float)
+                            mask = np.isfinite(Q_grid_user) & np.isfinite(xq)
+                            if not np.any(mask):
+                                x_50[it] = float("nan")
+                                continue
+                            Qm = Q_grid_user[mask]
+                            xm = xq[mask]
+                            order = np.argsort(Qm)
+                            Qm = Qm[order]
+                            xm = xm[order]
+                            xm = np.maximum.accumulate(xm)
+                            if Qm[0] > q or Qm[-1] < q:
+                                x_50[it] = float("nan")
+                            else:
+                                x_50[it] = float(np.interp(q, Qm, xm))
+                    psd_info["x_50"] = x_50
+                    return results, psd_info
+
+                raise RuntimeError(f"[repeat] Unknown psd_grid_mode={psd_grid_mode!r}.")
+
+            cdf_repeats = [record.get("cdf_list") for record in repeat_records]
+            if any(cdf_list is None for cdf_list in cdf_repeats):
+                raise RuntimeError("[repeat] PSD enabled but some repeats returned no cdf_list.")
+
+            psd_info = self.aggregate_psd_repeats(
+                cdf_repeats=cdf_repeats,
+                t_vec=t_vec_ref,
+                psd_basis=psd_basis,
+                psd_x_grid=psd_x_grid,
+                psd_Q_grid=psd_Q_grid,
+            )
+            return results, psd_info
+
+        # ----- serial dump path (supports PSD memmap output) -----
         if workers == 1:
             if dump_results:
                 if psd_enable and psd_x_grid is None and psd_Q_grid is None:
@@ -2230,11 +2584,21 @@ def _mcpbe_run_single_parallel(payload: dict):
     psd_grid_mode = payload.get("psd_grid_mode", None)  # None | "Q_of_x" | "x_of_Q"
     psd_x_grid = payload.get("psd_x_grid", None)
     psd_Q_grid = payload.get("psd_Q_grid", None)
+    cancel_flag = payload.get("cancel_flag", None)
+    suppress_verbose = bool(payload.get("suppress_verbose", False))
+    collect_hist2d = bool(payload.get("collect_hist2d", False))
+    hist2d_x_edges = payload.get("hist2d_x_edges", None)
+    hist2d_y_edges = payload.get("hist2d_y_edges", None)
+    collect_event_stats = bool(payload.get("collect_event_stats", False))
 
     # 1) rebuild solver skeleton (IMPORTANT: load_attr=False to avoid config IO)
     dim = int(state.get("dim", 2))
     obj = cls(dim=dim, init=False, load_attr=False)
     obj.__dict__.update(state)
+    if cancel_flag is not None:
+        obj.cancel_flag = cancel_flag
+    if suppress_verbose:
+        obj.VERBOSE = False
 
     # 2) re-seed RNG
     if isinstance(seed_k, np.random.SeedSequence):
@@ -2259,9 +2623,30 @@ def _mcpbe_run_single_parallel(payload: dict):
     # 5) collect moments
     mu, tv = obj.calc_moments_over_time(normalize=True)
     core_res = {"seed_info": seed_info, "t_vec": tv, "moments": mu}
+    record: dict[str, Any] = {
+        "idx": int(payload.get("idx", -1)),
+        "result": core_res,
+    }
+
+    if collect_hist2d:
+        if hist2d_x_edges is None or hist2d_y_edges is None:
+            raise RuntimeError("collect_hist2d=True requires hist2d_x_edges and hist2d_y_edges.")
+        record["hist2d_stack"] = _mcpbe_build_hist2d_stack(
+            obj,
+            x_edges=np.asarray(hist2d_x_edges, dtype=float),
+            y_edges=np.asarray(hist2d_y_edges, dtype=float),
+        )
+
+    if collect_event_stats:
+        record["event_stats"] = {
+            "sim_agg_events": float(getattr(obj, "sim_agg_events", np.nan)),
+            "sim_break_events": float(getattr(obj, "sim_break_events", np.nan)),
+            "real_agg_events": float(getattr(obj, "real_agg_events", np.nan)),
+            "real_break_events": float(getattr(obj, "real_break_events", np.nan)),
+        }
 
     if not psd_enable:
-        return core_res
+        return record
 
     # 6) compute CDF list locally (no serialization of cdf itself unless fallback)
     if not hasattr(obj, "compute_psd_cdf_over_time"):
@@ -2293,7 +2678,9 @@ def _mcpbe_run_single_parallel(payload: dict):
                 cnt[it] = 1
 
             psd_pack = {"mode": "Q_of_x", "vals": vals, "count": cnt}
-            return core_res, psd_pack, t_vec_local
+            record["psd_pack"] = psd_pack
+            record["psd_t_vec"] = t_vec_local
+            return record
 
         else:  # "x_of_Q"
             if psd_Q_grid is None:
@@ -2312,9 +2699,33 @@ def _mcpbe_run_single_parallel(payload: dict):
                 cnt[it] = 1
 
             psd_pack = {"mode": "x_of_Q", "vals": vals, "count": cnt}
-            return core_res, psd_pack, t_vec_local
+            record["psd_pack"] = psd_pack
+            record["psd_t_vec"] = t_vec_local
+            return record
 
     # Slow fallback: return full cdf_list (compatible but heavy)
-    return core_res, cdf_list, t_vec_local
+    record["cdf_list"] = cdf_list
+    record["psd_t_vec"] = t_vec_local
+    return record
+
+
+def _mcpbe_build_hist2d_stack(
+    obj: Any,
+    x_edges: np.ndarray,
+    y_edges: np.ndarray,
+) -> np.ndarray:
+    t_count = min(len(obj.V_save), len(obj.W_save), len(obj.t_vec))
+    stack = []
+    for tidx in range(t_count):
+        v_snap = np.asarray(obj.V_save[tidx], dtype=float)
+        w_snap = np.asarray(obj.W_save[tidx], dtype=float)
+        hist, _, _ = np.histogram2d(
+            v_snap[0, :],
+            v_snap[1, :],
+            bins=[x_edges, y_edges],
+            weights=w_snap,
+        )
+        stack.append(hist)
+    return np.asarray(stack, dtype=float)
 
 

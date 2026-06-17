@@ -38,10 +38,10 @@ if __name__ == "__main__":
         dim=2,
         kernel="const",
         process="mix",
-        t_vec=np.arange(0.0, 10.0 + 1e-12, 1.0),
+        t_vec=np.arange(0.0, 30.0 + 1e-12, 2.0),
         x=2e-3,
-        beta0=5.2e-7,
-        p1=5.1e-2,
+        beta0=1e-6,
+        p1=1e-1,
         p2=1.0,
         use_psd=False,
     )
@@ -49,66 +49,35 @@ if __name__ == "__main__":
     config = ValidationConfig(
         case=case,
         dpbe_variants=[
-            DPBEVariantConfig(name="dPBE", grid="geo", ns=50, s=1.5, enabled=False),
+            DPBEVariantConfig(name="dPBE", grid="geo", ns=20, s=2),
         ],
         wmcpbe_variants=[
             WMCPBEVariantConfig(
-                name="WMCPBE parallel8",
-                repeats=50,
-                workers=8,
+                name="MCPBE",
+                repeats=40,
                 attrs={
-                    "a0": 2e5,
-                    "V_eff_init": 1000,
-                    "recon_enable": True,
+                    "a0": 1000,
+                    "V_eff_init": 0,
+                    "recon_enable": False,
                     "recon_N_max": 4000,
                     "recon_bins": 30,
                     "recon_method": "4PMC",
-                    "break_dW_max": 20,
-                    "agg_dW_max": 20,
-                },
-            ),
-            WMCPBEVariantConfig(
-                name="WMCPBE parallel4",
-                repeats=50,
-                workers=4,
-                attrs={
-                    "a0": 2e5,
-                    "V_eff_init": 1000,
-                    "recon_enable": True,
-                    "recon_N_max": 4000,
-                    "recon_bins": 30,
-                    "recon_method": "4PMC",
-                    "break_dW_max": 20,
-                    "agg_dW_max": 20,
-                },
-            ),
-            WMCPBEVariantConfig(
-                name="WMCPBE parallel2",
-                repeats=50,
-                workers=2,
-                attrs={
-                    "a0": 2e5,
-                    "V_eff_init": 1000,
-                    "recon_enable": True,
-                    "recon_N_max": 4000,
-                    "recon_bins": 30,
-                    "recon_method": "4PMC",
-                    "break_dW_max": 20,
-                    "agg_dW_max": 20,
+                    "break_dW_max": 1,
+                    "agg_dW_max": 1,
                 },
             ),
             WMCPBEVariantConfig(
                 name="WMCPBE",
-                repeats=50,
+                repeats=40,
                 attrs={
-                    "a0": 2e5,
+                    "a0": 10000,
                     "V_eff_init": 1000,
                     "recon_enable": True,
                     "recon_N_max": 4000,
                     "recon_bins": 30,
                     "recon_method": "4PMC",
                     "break_dW_max": 20,
-                    "agg_dW_max": 20,
+                    "agg_dW_max": 2,
                 },
             ),
         ],
@@ -121,14 +90,15 @@ if __name__ == "__main__":
         alpha_y=3.0,
         alpha_rest=3.0,
         x_min_scale=2.0,
-        x_max_scale=1e-2,
+        x_max_scale=0.5,
         y_min_scale=2.0,
-        y_max_scale=1e-2,
-        total_number=2e5,
+        y_max_scale=0.5,
+        total_number=1e4,
         volume_concentration=None,
+        inverse=True,
     )
 
-    advanced = PBEValidationAdvanced(config=config, init_dist=init_dist, export_dir="exports_test")
+    advanced = PBEValidationAdvanced(config=config, init_dist=init_dist, export_dir="exports_WMCPBE_vorteile")
     result = advanced.run()
 
     advanced.print_moment_error_summary(result)
