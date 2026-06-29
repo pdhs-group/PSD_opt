@@ -476,7 +476,7 @@ if __name__ == "__main__":
     config = ValidationConfig(
         case=case,
         dpbe_variants=[
-            DPBEVariantConfig(name="dPBE", grid="geo", ns=50, s=1.5),
+            DPBEVariantConfig(name="dPBE", grid="geo", ns=50, s=1.5, enabled=False),
         ],
         wmcpbe_variants=[
             WMCPBEVariantConfig(

@@ -17,7 +17,6 @@ from pbe_core.base.base_solver import BaseSolver
 from .fenwick_new import FenwickSampler
 from .mcpbe_time_helper import MCPBETimeHelper
 
-
 class MCPBEBase(MCPBETimeHelper, BaseSolver):
     """Base layer for MC-PBE:
     - validates & initializes particle state with capacity buffers

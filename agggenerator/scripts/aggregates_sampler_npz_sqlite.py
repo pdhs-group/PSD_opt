@@ -368,6 +368,7 @@ def _generate_one_sample(
     Np: int,
     frac_A: float,
     target_Df: float,
+    df_tol: float,
     target_MAS: float,
     mas_tol: float,
     max_tries_factor: int,
@@ -405,6 +406,9 @@ def _generate_one_sample(
                 dump,
                 allow_pickle=True,
             )
+            continue
+
+        if (not np.isfinite(Df_est)) or abs(float(Df_est) - float(target_Df)) > float(df_tol):
             continue
 
         geometry_probe_MAS = float("nan")
@@ -590,6 +594,7 @@ def _generate_and_store_one_sample(
     Np: int,
     frac_A: float,
     target_Df: float,
+    df_tol: float,
     target_MAS: float,
     mas_tol: float,
     max_tries_factor: int,
@@ -601,6 +606,7 @@ def _generate_and_store_one_sample(
         Np=Np,
         frac_A=frac_A,
         target_Df=target_Df,
+        df_tol=df_tol,
         target_MAS=target_MAS,
         mas_tol=mas_tol,
         max_tries_factor=max_tries_factor,
@@ -685,6 +691,18 @@ def _can_submit_group(state: Dict[str, Any]) -> bool:
 
 
 
+def _start_round(states: Dict[Tuple[int, float], Dict[str, Any]]) -> List[Dict[str, Any]]:
+    todo_states: List[Dict[str, Any]] = []
+    for state in states.values():
+        state["missing"] = max(0, int(state["target_total"]) - int(state["done"]))
+        state["launched"] = 0
+        state["inflight"] = 0
+        if state["missing"] > 0:
+            todo_states.append(state)
+    return todo_states
+
+
+
 def _reserve_one_task(conn: sqlite3.Connection, state: Dict[str, Any]) -> Dict[str, Any]:
     sample_index = int(state["next_sample_index"])
     attempt_index = int(state["next_attempt_index"])
@@ -728,6 +746,7 @@ def _submit_one_task(
         int(payload["Np"]),
         float(payload["frac_A"]),
         TARGET_DF,
+        DF_TOL,
         TARGET_MAS,
         MAS_TOL,
         MAX_TRIES_FACTOR,
@@ -787,110 +806,47 @@ def build_pool() -> None:
         conn.commit()
 
         states = _make_group_states(conn, param_pairs)
-        todo_states = [state for state in states.values() if state["missing"] > 0]
-
-        if not todo_states:
-            print("[POOL] All (Np, frac_A) pairs already have enough samples. Nothing to do.")
-            return
-
-        print(
-            f"[POOL] {len(todo_states)} parameter pairs need more samples "
-            f"(SAMPLES_PER_PARAM={SAMPLES_PER_PARAM})."
-        )
+        round_index = 0
 
         if WORKERS <= 1:
-            for state in todo_states:
-                print(
-                    f"[POOL] (serial) Np={state['Np']}, frac_A={state['frac_A']:.4f}: "
-                    f"{state['done']} existing, targeting {state['missing']} more..."
-                )
-                while _can_submit_group(state):
-                    payload = _reserve_one_task(conn, state)
-                    result = _generate_and_store_one_sample(
-                        str(output_dir),
-                        str(payload["group_name"]),
-                        int(payload["sample_index"]),
-                        int(payload["Np"]),
-                        float(payload["frac_A"]),
-                        TARGET_DF,
-                        TARGET_MAS,
-                        MAS_TOL,
-                        MAX_TRIES_FACTOR,
-                        int(payload["task_seed"]),
-                        SAVE_COMPRESSED,
-                    )
-                    state["inflight"] -= 1
-                    if bool(result["success"]):
-                        _register_sample(
-                            conn,
-                            str(result["group_name"]),
-                            str(result["sample_name"]),
-                            int(result["sample_index"]),
-                            str(result["npz_relpath"]),
-                            dict(result["sample_attrs"]),
-                        )
-                        state["done"] += 1
-                        _upsert_group(
-                            conn,
-                            str(state["group_name"]),
-                            int(state["Np"]),
-                            float(state["frac_A"]),
-                            int(state["done"]),
-                            int(state["next_attempt_index"]),
-                        )
-                        conn.commit()
-                        print(
-                            f"[POOL] Np={state['Np']}, frac_A={state['frac_A']:.4f}: "
-                            f"accepted sample {result['sample_name']} ({state['done']}/{state['target_total']})"
-                        )
+            while True:
+                todo_states = _start_round(states)
+                if not todo_states:
+                    if round_index == 0:
+                        print("[POOL] All (Np, frac_A) pairs already have enough samples. Nothing to do.")
                     else:
-                        print(
-                            f"[POOL][WARN] Np={state['Np']}, frac_A={state['frac_A']:.4f}: "
-                            f"task for {result['sample_name']} found no accepted sample within budget."
+                        print(f"[POOL] All parameter pairs reached target after {round_index} round(s).")
+                    break
+
+                round_index += 1
+                print(
+                    f"[POOL] Round {round_index}: {len(todo_states)} parameter pairs need more samples "
+                    f"(up to {sum(int(state['missing']) for state in todo_states)} single-sample tasks)."
+                )
+
+                for state in todo_states:
+                    print(
+                        f"[POOL] (serial, round {round_index}) Np={state['Np']}, frac_A={state['frac_A']:.4f}: "
+                        f"{state['done']} existing, targeting up to {state['missing']} more..."
+                    )
+                    while _can_submit_group(state):
+                        payload = _reserve_one_task(conn, state)
+                        result = _generate_and_store_one_sample(
+                            str(output_dir),
+                            str(payload["group_name"]),
+                            int(payload["sample_index"]),
+                            int(payload["Np"]),
+                            float(payload["frac_A"]),
+                            TARGET_DF,
+                            DF_TOL,
+                            TARGET_MAS,
+                            MAS_TOL,
+                            MAX_TRIES_FACTOR,
+                            int(payload["task_seed"]),
+                            SAVE_COMPRESSED,
                         )
-
-        else:
-            state_by_key = {(int(state["Np"]), float(state["frac_A"])): state for state in todo_states}
-            pending: Dict[Any, Tuple[int, float]] = {}
-            round_robin = list(state_by_key.keys())
-            rr_index = 0
-
-            def refill(executor: ProcessPoolExecutor) -> None:
-                nonlocal rr_index
-                if not round_robin:
-                    return
-                while len(pending) < int(WORKERS):
-                    submitted = False
-                    for _ in range(len(round_robin)):
-                        key = round_robin[rr_index % len(round_robin)]
-                        rr_index += 1
-                        state = state_by_key[key]
-                        if _can_submit_group(state):
-                            payload = _reserve_one_task(conn, state)
-                            future = _submit_one_task(executor, output_dir, payload)
-                            pending[future] = key
-                            submitted = True
-                            break
-                    if not submitted:
-                        break
-
-            with ProcessPoolExecutor(max_workers=WORKERS) as ex:
-                refill(ex)
-                while pending:
-                    done_set, _ = wait(set(pending.keys()), return_when=FIRST_COMPLETED)
-                    for fut in done_set:
-                        key = pending.pop(fut)
-                        state = state_by_key[key]
                         state["inflight"] -= 1
-                        try:
-                            result = fut.result()
-                        except Exception as e:
-                            print(
-                                f"[POOL][ERROR] Np={state['Np']}, frac_A={state['frac_A']:.4f}: worker failed: {e}"
-                            )
-                            result = None
-
-                        if result is not None and bool(result["success"]):
+                        if bool(result["success"]):
                             _register_sample(
                                 conn,
                                 str(result["group_name"]),
@@ -914,22 +870,108 @@ def build_pool() -> None:
                                 f"accepted sample {result['sample_name']} ({state['done']}/{state['target_total']})"
                             )
                         else:
-                            sample_label = "unknown"
-                            if result is not None:
-                                sample_label = str(result.get("sample_name", sample_label))
                             print(
                                 f"[POOL][WARN] Np={state['Np']}, frac_A={state['frac_A']:.4f}: "
-                                f"task for {sample_label} found no accepted sample within budget."
+                                f"task for {result['sample_name']} found no accepted sample within budget."
                             )
 
-                    refill(ex)
+                remaining = sum(1 for state in states.values() if int(state["done"]) < int(state["target_total"]))
+                if remaining > 0:
+                    print(f"[POOL] Round {round_index} completed; {remaining} parameter pairs still need samples.")
 
-        for state in todo_states:
-            if state["done"] < state["target_total"]:
-                print(
-                    f"[POOL][WARN] Np={state['Np']}, frac_A={state['frac_A']:.4f}: "
-                    f"finished with {state['done']}/{state['target_total']} accepted samples."
-                )
+        else:
+            with ProcessPoolExecutor(max_workers=WORKERS) as ex:
+                while True:
+                    todo_states = _start_round(states)
+                    if not todo_states:
+                        if round_index == 0:
+                            print("[POOL] All (Np, frac_A) pairs already have enough samples. Nothing to do.")
+                        else:
+                            print(f"[POOL] All parameter pairs reached target after {round_index} round(s).")
+                        break
+
+                    round_index += 1
+                    print(
+                        f"[POOL] Round {round_index}: {len(todo_states)} parameter pairs need more samples "
+                        f"(up to {sum(int(state['missing']) for state in todo_states)} single-sample tasks)."
+                    )
+
+                    state_by_key = {(int(state["Np"]), float(state["frac_A"])): state for state in todo_states}
+                    pending: Dict[Any, Tuple[int, float]] = {}
+                    round_robin = list(state_by_key.keys())
+                    rr_index = 0
+
+                    def refill() -> None:
+                        nonlocal rr_index
+                        if not round_robin:
+                            return
+                        while len(pending) < int(WORKERS):
+                            submitted = False
+                            for _ in range(len(round_robin)):
+                                key = round_robin[rr_index % len(round_robin)]
+                                rr_index += 1
+                                state = state_by_key[key]
+                                if _can_submit_group(state):
+                                    payload = _reserve_one_task(conn, state)
+                                    future = _submit_one_task(ex, output_dir, payload)
+                                    pending[future] = key
+                                    submitted = True
+                                    break
+                            if not submitted:
+                                break
+
+                    refill()
+                    while pending:
+                        done_set, _ = wait(set(pending.keys()), return_when=FIRST_COMPLETED)
+                        for fut in done_set:
+                            key = pending.pop(fut)
+                            state = state_by_key[key]
+                            state["inflight"] -= 1
+                            try:
+                                result = fut.result()
+                            except Exception as e:
+                                print(
+                                    f"[POOL][ERROR] Np={state['Np']}, frac_A={state['frac_A']:.4f}: worker failed: {e}"
+                                )
+                                result = None
+
+                            if result is not None and bool(result["success"]):
+                                _register_sample(
+                                    conn,
+                                    str(result["group_name"]),
+                                    str(result["sample_name"]),
+                                    int(result["sample_index"]),
+                                    str(result["npz_relpath"]),
+                                    dict(result["sample_attrs"]),
+                                )
+                                state["done"] += 1
+                                _upsert_group(
+                                    conn,
+                                    str(state["group_name"]),
+                                    int(state["Np"]),
+                                    float(state["frac_A"]),
+                                    int(state["done"]),
+                                    int(state["next_attempt_index"]),
+                                )
+                                conn.commit()
+                                print(
+                                    f"[POOL] Np={state['Np']}, frac_A={state['frac_A']:.4f}: "
+                                    f"accepted sample {result['sample_name']} ({state['done']}/{state['target_total']})"
+                                )
+                            else:
+                                sample_label = "unknown"
+                                if result is not None:
+                                    sample_label = str(result.get("sample_name", sample_label))
+                                print(
+                                    f"[POOL][WARN] Np={state['Np']}, frac_A={state['frac_A']:.4f}: "
+                                    f"task for {sample_label} found no accepted sample within budget."
+                                )
+
+                        refill()
+
+                    remaining = sum(1 for state in states.values() if int(state["done"]) < int(state["target_total"]))
+                    if remaining > 0:
+                        print(f"[POOL] Round {round_index} completed; {remaining} parameter pairs still need samples.")
 
     finally:
         conn.close()
