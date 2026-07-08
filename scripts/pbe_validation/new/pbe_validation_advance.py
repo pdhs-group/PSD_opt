@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import copy
+import json
 import math
 import sys
 import time
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -70,11 +71,24 @@ class AdvancedValidationResult:
     reference_y_edges: np.ndarray
     psd_counts: Dict[str, np.ndarray]
     psd_repeat_samples: Dict[str, np.ndarray]
+    moment_repeat_samples: Dict[str, np.ndarray]
+    repeat_seed_info: Dict[str, List[Dict[str, object]]]
     variances: Dict[str, np.ndarray]
     l1_errors: Dict[str, np.ndarray]
     aggregated_errors: Dict[str, float]
+    aggregated_error_variances: Dict[str, float]
     cpu_times: Dict[str, float]
     moment_error_summary: Dict[str, Dict[str, Dict[str, float]]]
+
+
+@dataclass
+class WMCPBERunArtifacts:
+    result: MethodResult
+    psd_mean: np.ndarray
+    moment_variance: np.ndarray
+    psd_repeat_samples: np.ndarray
+    moment_repeat_samples: np.ndarray
+    repeat_seed_info: List[Dict[str, object]]
 
 
 class Dirichlet2DValidationRunner(ValidationRunner):
@@ -230,6 +244,157 @@ class PBEValidationAdvanced:
         print(f"Saved Excel export: {path}")
         return path
 
+    def _raw_repeat_artifacts_path(self, export_stem: Path) -> Path:
+        return export_stem.parent / f"{export_stem.stem}_raw_repeats.h5"
+
+    @staticmethod
+    def _json_default(value: object) -> object:
+        if isinstance(value, np.generic):
+            return value.item()
+        if isinstance(value, np.ndarray):
+            return value.tolist()
+        if isinstance(value, Path):
+            return str(value)
+        if isinstance(value, set):
+            return sorted(value, key=str)
+        return str(value)
+
+    def _create_hdf5_array_dataset(self, group: Any, name: str, data: np.ndarray) -> Any:
+        array = np.asarray(data)
+        if array.shape == ():
+            return group.create_dataset(name, data=array)
+        return group.create_dataset(
+            name,
+            data=array,
+            chunks=True,
+            compression="gzip",
+            compression_opts=4,
+        )
+
+    def _unique_hdf5_group_name(self, parent: Any, name: str) -> str:
+        base = self._slugify(name)
+        candidate = base
+        index = 2
+        while candidate in parent:
+            candidate = f"{base}_{index}"
+            index += 1
+        return candidate
+
+    def _select_moment_curves(self, moments: np.ndarray) -> np.ndarray:
+        return np.stack(
+            [np.asarray(moments[i, j, :], dtype=float) for i, j in self.MOMENT_KEYS.values()],
+            axis=-1,
+        )
+
+    def _select_repeat_moment_samples(self, repeat_moments: List[np.ndarray]) -> np.ndarray:
+        return np.asarray(
+            [self._select_moment_curves(moments) for moments in repeat_moments],
+            dtype=float,
+        )
+
+    def _write_raw_repeat_artifacts(
+        self,
+        result: AdvancedValidationResult,
+        path: Path,
+    ) -> Optional[Path]:
+        method_names = [
+            name
+            for name in result.base_result.methods
+            if name in result.moment_repeat_samples or name in result.psd_repeat_samples
+        ]
+        if not method_names:
+            return None
+
+        try:
+            import h5py
+        except ImportError as exc:
+            raise RuntimeError(
+                "Saving raw repeat artifacts requires h5py in the active Python environment."
+            ) from exc
+
+        string_dtype = h5py.string_dtype(encoding="utf-8")
+        moment_keys = list(self.MOMENT_KEYS.keys())
+
+        with h5py.File(path, "w") as h5:
+            h5.attrs["schema_version"] = 1
+            h5.attrs["process"] = str(result.base_result.process)
+            h5.attrs["kernel"] = str(result.base_result.kernel)
+            h5.attrs["compression"] = "gzip"
+            h5.attrs["compression_opts"] = 4
+            h5.attrs["moment_keys_json"] = json.dumps(moment_keys)
+            h5.attrs["content"] = "Raw WMCPBE repeat moments and PSD counts"
+
+            time_ds = self._create_hdf5_array_dataset(h5, "time_s", result.base_result.time)
+            time_ds.attrs["axes"] = "time"
+
+            reference_group = h5.create_group("reference")
+            self._create_hdf5_array_dataset(reference_group, "x_centers", result.reference_x_centers)
+            self._create_hdf5_array_dataset(reference_group, "y_centers", result.reference_y_centers)
+            self._create_hdf5_array_dataset(reference_group, "x_edges", result.reference_x_edges)
+            self._create_hdf5_array_dataset(reference_group, "y_edges", result.reference_y_edges)
+            analytical = result.base_result.methods.get("Analytical Solution")
+            if analytical is not None:
+                ref_moments = self._create_hdf5_array_dataset(
+                    reference_group,
+                    "moments",
+                    self._select_moment_curves(analytical.moments),
+                )
+                ref_moments.attrs["axes"] = "time,moment"
+                ref_moments.attrs["moment_keys_json"] = json.dumps(moment_keys)
+
+            methods_group = h5.create_group("methods")
+            for method_name in method_names:
+                method = result.base_result.methods[method_name]
+                method_group = methods_group.create_group(
+                    self._unique_hdf5_group_name(methods_group, method_name)
+                )
+                method_group.attrs["method_name"] = method_name
+                method_group.attrs["family"] = method.family
+                method_group.create_dataset(
+                    "method_meta_json",
+                    data=json.dumps(method.meta, default=self._json_default, ensure_ascii=False),
+                    dtype=string_dtype,
+                )
+
+                if method_name in result.repeat_seed_info:
+                    seed_values = np.asarray(
+                        [
+                            json.dumps(info, default=self._json_default, ensure_ascii=False)
+                            for info in result.repeat_seed_info[method_name]
+                        ],
+                        dtype=object,
+                    )
+                    seed_ds = method_group.create_dataset(
+                        "repeat_seed_info_json",
+                        data=seed_values,
+                        dtype=string_dtype,
+                    )
+                    seed_ds.attrs["axes"] = "repeat"
+
+                if method_name in result.moment_repeat_samples:
+                    moment_ds = self._create_hdf5_array_dataset(
+                        method_group,
+                        "moments",
+                        result.moment_repeat_samples[method_name],
+                    )
+                    moment_ds.attrs["axes"] = "repeat,time,moment"
+                    moment_ds.attrs["moment_keys_json"] = json.dumps(moment_keys)
+
+                if method_name in result.psd_repeat_samples:
+                    psd_ds = self._create_hdf5_array_dataset(
+                        method_group,
+                        "psd_counts",
+                        result.psd_repeat_samples[method_name],
+                    )
+                    psd_ds.attrs["axes"] = "repeat,time,x_bin,y_bin"
+                    psd_ds.attrs["x_axis"] = "/reference/x_centers"
+                    psd_ds.attrs["y_axis"] = "/reference/y_centers"
+                    psd_ds.attrs["x_edges"] = "/reference/x_edges"
+                    psd_ds.attrs["y_edges"] = "/reference/y_edges"
+
+        print(f"Saved raw repeat HDF5 export: {path}")
+        return path
+
     def _save_figure(self, fig: plt.Figure, export_stem: Path, suffix: str = "") -> Path:
         filename = export_stem.stem
         if suffix:
@@ -311,6 +476,8 @@ class PBEValidationAdvanced:
 
         psd_counts: Dict[str, np.ndarray] = {}
         psd_repeat_samples: Dict[str, np.ndarray] = {}
+        moment_repeat_samples: Dict[str, np.ndarray] = {}
+        repeat_seed_info: Dict[str, List[Dict[str, object]]] = {}
         variances: Dict[str, np.ndarray] = {}
         cpu_times: Dict[str, float] = {"Analytical Solution": 0.0}
 
@@ -325,19 +492,24 @@ class PBEValidationAdvanced:
         for variant in self.config.wmcpbe_variants:
             if not variant.enabled:
                 continue
-            wm_result, wm_psd, wm_var, wm_psd_repeats = self._run_wmcpbe_variant(
+            wm_artifacts = self._run_wmcpbe_variant(
                 variant=variant,
                 canonical=canonical,
                 x_edges=x_edges,
                 y_edges=y_edges,
+                reference_moments=analytic_moments,
             )
+            wm_result = wm_artifacts.result
             base_result.add_method(wm_result)
-            psd_counts[wm_result.name] = wm_psd
-            psd_repeat_samples[wm_result.name] = wm_psd_repeats
-            variances[wm_result.name] = wm_var
+            psd_counts[wm_result.name] = wm_artifacts.psd_mean
+            psd_repeat_samples[wm_result.name] = wm_artifacts.psd_repeat_samples
+            moment_repeat_samples[wm_result.name] = wm_artifacts.moment_repeat_samples
+            repeat_seed_info[wm_result.name] = wm_artifacts.repeat_seed_info
+            variances[wm_result.name] = wm_artifacts.moment_variance
             cpu_times[wm_result.name] = float(wm_result.meta.get("elapsed_s", 0.0))
 
         aggregated_errors = self._compute_aggregated_errors(base_result)
+        aggregated_error_variances = self._collect_aggregated_error_variances(base_result)
         moment_error_summary = self._compute_moment_error_summary(base_result)
 
         return AdvancedValidationResult(
@@ -348,9 +520,12 @@ class PBEValidationAdvanced:
             reference_y_edges=y_edges,
             psd_counts=psd_counts,
             psd_repeat_samples=psd_repeat_samples,
+            moment_repeat_samples=moment_repeat_samples,
+            repeat_seed_info=repeat_seed_info,
             variances=variances,
             l1_errors={},
             aggregated_errors=aggregated_errors,
+            aggregated_error_variances=aggregated_error_variances,
             cpu_times=cpu_times,
             moment_error_summary=moment_error_summary,
         )
@@ -358,6 +533,7 @@ class PBEValidationAdvanced:
     def print_moment_error_summary(self, result: AdvancedValidationResult) -> None:
         summary_rows: List[Dict[str, object]] = []
         export_stem = self._next_export_stem("print_moment_error_summary")
+        raw_repeat_path = self._raw_repeat_artifacts_path(export_stem)
         for method_name, summary in result.moment_error_summary.items():
             if method_name == "Analytical Solution":
                 continue
@@ -370,6 +546,7 @@ class PBEValidationAdvanced:
             real_agg_events = float(method_meta.get("real_agg_events_mean", np.nan))
             real_break_events = float(method_meta.get("real_break_events_mean", np.nan))
             real_total_events = float(method_meta.get("real_total_events_mean", np.nan))
+            aggregated_error_variance = float(result.aggregated_error_variances.get(method_name, np.nan))
             mean_events_cpu_time = (
                 cpu_time_mean / real_total_events
                 if np.isfinite(real_total_events) and real_total_events > 0.0
@@ -389,6 +566,7 @@ class PBEValidationAdvanced:
                         "max_rel_err": entry["max_rel_err"],
                         "final_rel_err": entry["final_rel_err"],
                         "aggregated_error": result.aggregated_errors[method_name],
+                        "aggregated_error_variance": aggregated_error_variance,
                         "cpu_time_total_s": cpu_time_total,
                         "cpu_time_mean_s": cpu_time_mean,
                         "sim_agg_events_mean": sim_agg_events,
@@ -409,10 +587,12 @@ class PBEValidationAdvanced:
                 "time_points": len(result.base_result.time),
                 "reference": "Analytical Solution",
                 "content": "Moment relative error summary",
+                "raw_repeat_hdf5": str(raw_repeat_path),
             },
             sheets={"summary": pd.DataFrame(summary_rows)},
             export_stem=export_stem,
         )
+        self._write_raw_repeat_artifacts(result, raw_repeat_path)
         print("\nAdvanced moment error summary")
         print("-" * 72)
         for method_name, summary in result.moment_error_summary.items():
@@ -427,6 +607,7 @@ class PBEValidationAdvanced:
             real_agg_events = float(method_meta.get("real_agg_events_mean", np.nan))
             real_break_events = float(method_meta.get("real_break_events_mean", np.nan))
             real_total_events = float(method_meta.get("real_total_events_mean", np.nan))
+            aggregated_error_variance = float(result.aggregated_error_variances.get(method_name, np.nan))
             mean_events_cpu_time = (
                 cpu_time_mean / real_total_events
                 if np.isfinite(real_total_events) and real_total_events > 0.0
@@ -445,6 +626,7 @@ class PBEValidationAdvanced:
                     f"final rel err = {entry['final_rel_err']:.6e}"
                 )
             print(f"  Aggregated error = {result.aggregated_errors[method_name]:.6e}")
+            print(f"  Aggregated error variance = {aggregated_error_variance:.6e}")
             print(f"  CPU time (total) = {cpu_time_total:.3f} s")
             print(f"  CPU time (mean)  = {cpu_time_mean:.3f} s")
             print(f"  Mean sim agg     = {sim_agg_events:.6e}")
@@ -975,7 +1157,8 @@ class PBEValidationAdvanced:
         canonical,
         x_edges: np.ndarray,
         y_edges: np.ndarray,
-    ) -> Tuple[MethodResult, np.ndarray, np.ndarray, np.ndarray]:
+        reference_moments: np.ndarray,
+    ) -> WMCPBERunArtifacts:
         solver_template = MCPBESolver(
             dim=self.config.case.dim,
             t_vec=self.config.case.t_vec,
@@ -1033,10 +1216,18 @@ class PBEValidationAdvanced:
             np.asarray(record["result"]["moments"], dtype=float)
             for record in repeat_records
         ]
+        repeat_moment_samples = self._select_repeat_moment_samples(repeat_moments)
         repeat_psd = [
             np.asarray(record["hist2d_stack"], dtype=float)
             for record in repeat_records
         ]
+        repeat_seed_info: List[Dict[str, object]] = []
+        for repeat_index, record in enumerate(repeat_records):
+            seed_info = copy.deepcopy((record.get("result") or {}).get("seed_info", {}))
+            if not isinstance(seed_info, dict):
+                seed_info = {"seed_info": seed_info}
+            seed_info.setdefault("repeat_index", int(record.get("idx", repeat_index)))
+            repeat_seed_info.append(seed_info)
         repeat_sim_agg_events = [
             float((record.get("event_stats") or {}).get("sim_agg_events", np.nan))
             for record in repeat_records
@@ -1065,6 +1256,25 @@ class PBEValidationAdvanced:
             moments_var = np.zeros_like(moments_mean)
             psd_mean = repeat_psd[0]
 
+        aggregated_error_override = np.nan
+        aggregated_error_variance = np.nan
+        aggregated_error_repeat_count = 0
+        if variant.aggregate_error_per_repeat:
+            repeat_aggregated_errors = np.asarray(
+                [
+                    self._compute_aggregated_error_for_moments(moments, reference_moments)
+                    for moments in repeat_moments
+                ],
+                dtype=float,
+            )
+            aggregated_error_repeat_count = int(repeat_aggregated_errors.size)
+            aggregated_error_override = float(np.mean(repeat_aggregated_errors))
+            aggregated_error_variance = (
+                float(np.var(repeat_aggregated_errors, ddof=1))
+                if repeat_aggregated_errors.size > 1
+                else 0.0
+            )
+
         sim_agg_mean = float(np.nanmean(repeat_sim_agg_events)) if repeat_sim_agg_events else np.nan
         sim_break_mean = float(np.nanmean(repeat_sim_break_events)) if repeat_sim_break_events else np.nan
         sim_total_mean = (
@@ -1091,6 +1301,11 @@ class PBEValidationAdvanced:
                 "repeats": variant.repeats,
                 "base_seed": variant.base_seed,
                 "workers": variant.workers,
+                "aggregate_error_per_repeat": variant.aggregate_error_per_repeat,
+                "aggregated_error_mode": "per_repeat_mean" if variant.aggregate_error_per_repeat else "mean_moments",
+                "aggregated_error_override": aggregated_error_override,
+                "aggregated_error_variance": aggregated_error_variance,
+                "aggregated_error_repeat_count": aggregated_error_repeat_count,
                 "sim_agg_events_mean": sim_agg_mean,
                 "sim_break_events_mean": sim_break_mean,
                 "sim_total_events_mean": sim_total_mean,
@@ -1100,7 +1315,14 @@ class PBEValidationAdvanced:
                 **copy.deepcopy(variant.attrs),
             },
         )
-        return result, psd_mean, moments_var, np.asarray(repeat_psd, dtype=float)
+        return WMCPBERunArtifacts(
+            result=result,
+            psd_mean=psd_mean,
+            moment_variance=moments_var,
+            psd_repeat_samples=np.asarray(repeat_psd, dtype=float),
+            moment_repeat_samples=repeat_moment_samples,
+            repeat_seed_info=repeat_seed_info,
+        )
 
     def _build_wmcpbe_psd_stack(self, solver, x_edges: np.ndarray, y_edges: np.ndarray) -> np.ndarray:
         t_count = min(len(solver.V_save), len(solver.W_save), len(solver.t_vec))
@@ -1251,6 +1473,17 @@ class PBEValidationAdvanced:
             summary[name] = entries
         return summary
 
+    def _compute_aggregated_error_for_moments(
+        self,
+        moments: np.ndarray,
+        reference: np.ndarray,
+    ) -> float:
+        terms = []
+        for i, j in self.MOMENT_KEYS.values():
+            rel = (moments[i, j, :] - reference[i, j, :]) / (reference[i, j, :] + MIN)
+            terms.append(float(np.max(rel ** 2)))
+        return float(np.sqrt(np.sum(terms)))
+
     def _compute_aggregated_errors(self, base_result: ValidationResult) -> Dict[str, float]:
         reference = base_result.methods["Analytical Solution"].moments
         aggregated: Dict[str, float] = {}
@@ -1258,9 +1491,22 @@ class PBEValidationAdvanced:
             if name == "Analytical Solution":
                 aggregated[name] = 0.0
                 continue
-            terms = []
-            for i, j in self.MOMENT_KEYS.values():
-                rel = (method.moments[i, j, :] - reference[i, j, :]) / (reference[i, j, :] + MIN)
-                terms.append(float(np.max(rel ** 2)))
-            aggregated[name] = float(np.sqrt(np.sum(terms)))
+            override = method.meta.get("aggregated_error_override", np.nan)
+            try:
+                override_value = float(override)
+            except (TypeError, ValueError):
+                override_value = np.nan
+            if np.isfinite(override_value):
+                aggregated[name] = override_value
+                continue
+            aggregated[name] = self._compute_aggregated_error_for_moments(method.moments, reference)
         return aggregated
+
+    def _collect_aggregated_error_variances(self, base_result: ValidationResult) -> Dict[str, float]:
+        variances: Dict[str, float] = {}
+        for name, method in base_result.methods.items():
+            if name == "Analytical Solution":
+                variances[name] = 0.0
+            else:
+                variances[name] = float(method.meta.get("aggregated_error_variance", np.nan))
+        return variances

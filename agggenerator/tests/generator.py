@@ -32,11 +32,14 @@ def generate_mptsa():
     
 def assign_materials(grid, origin):
     mix_params = MaterialMixParams(
-        frac_A=0.5,
+        frac_A=0.1,
         target_MAS=0.35,
         tol_MAS=0.005,
-        window=12,
-        stride=3,
+        # window=12,
+        # stride=3,
+        window_max=2500,
+        window_min=25,
+        window_rel=0.05,
         sweeps_per_eval=12,
         max_bisect=20,
         seed=42,
@@ -63,9 +66,9 @@ def main():
     labels = assign_materials(grid, origin)
     return labels
 if __name__ == "__main__":
-    # profiler = cProfile.Profile()
-    # profiler.enable()
+    profiler = cProfile.Profile()
+    profiler.enable()
     labels = main()
-    # profiler.disable()
-    # stats = pstats.Stats(profiler).strip_dirs().sort_stats("cumtime")
-    # stats.print_stats(20)
+    profiler.disable()
+    stats = pstats.Stats(profiler).strip_dirs().sort_stats("cumtime")
+    stats.print_stats(20)

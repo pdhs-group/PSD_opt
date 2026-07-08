@@ -55,6 +55,7 @@ if __name__ == "__main__":
             WMCPBEVariantConfig(
                 name="WMCPBE 10-5",
                 repeats=100,
+                aggregate_error_per_repeat=True,
                 attrs={
                     "a0": 2e5,
                     "V_eff_init": 1000,
@@ -69,6 +70,7 @@ if __name__ == "__main__":
             WMCPBEVariantConfig(
                 name="WMCPBE 10-8",
                 repeats=100,
+                aggregate_error_per_repeat=True,
                 attrs={
                     "a0": 2e5,
                     "V_eff_init": 1000,
@@ -83,6 +85,7 @@ if __name__ == "__main__":
             WMCPBEVariantConfig(
                 name="WMCPBE 10-10",
                 repeats=100,
+                aggregate_error_per_repeat=True,
                 attrs={
                     "a0": 2e5,
                     "V_eff_init": 1000,
@@ -97,6 +100,7 @@ if __name__ == "__main__":
             WMCPBEVariantConfig(
                 name="WMCPBE 10-15",
                 repeats=100,
+                aggregate_error_per_repeat=True,
                 attrs={
                     "a0": 2e5,
                     "V_eff_init": 1000,
@@ -111,6 +115,7 @@ if __name__ == "__main__":
             WMCPBEVariantConfig(
                 name="WMCPBE 10-20",
                 repeats=100,
+                aggregate_error_per_repeat=True,
                 attrs={
                     "a0": 2e5,
                     "V_eff_init": 1000,
@@ -125,6 +130,7 @@ if __name__ == "__main__":
             WMCPBEVariantConfig(
                 name="WMCPBE 20-10",
                 repeats=100,
+                aggregate_error_per_repeat=True,
                 attrs={
                     "a0": 2e5,
                     "V_eff_init": 1000,
@@ -139,6 +145,7 @@ if __name__ == "__main__":
             WMCPBEVariantConfig(
                 name="WMCPBE 20-15",
                 repeats=100,
+                aggregate_error_per_repeat=True,
                 attrs={
                     "a0": 2e5,
                     "V_eff_init": 1000,
@@ -153,6 +160,7 @@ if __name__ == "__main__":
             WMCPBEVariantConfig(
                 name="WMCPBE 20-20",
                 repeats=100,
+                aggregate_error_per_repeat=True,
                 attrs={
                     "a0": 2e5,
                     "V_eff_init": 1000,
@@ -167,6 +175,7 @@ if __name__ == "__main__":
             WMCPBEVariantConfig(
                 name="WMCPBE 20-30",
                 repeats=100,
+                aggregate_error_per_repeat=True,
                 attrs={
                     "a0": 2e5,
                     "V_eff_init": 1000,
@@ -181,6 +190,7 @@ if __name__ == "__main__":
             WMCPBEVariantConfig(
                 name="WMCPBE 20-40",
                 repeats=100,
+                aggregate_error_per_repeat=True,
                 attrs={
                     "a0": 2e5,
                     "V_eff_init": 1000,
@@ -195,6 +205,7 @@ if __name__ == "__main__":
             WMCPBEVariantConfig(
                 name="WMCPBE 50-25",
                 repeats=100,
+                aggregate_error_per_repeat=True,
                 attrs={
                     "a0": 2e5,
                     "V_eff_init": 1000,
@@ -209,6 +220,7 @@ if __name__ == "__main__":
             WMCPBEVariantConfig(
                 name="WMCPBE 50-40",
                 repeats=100,
+                aggregate_error_per_repeat=True,
                 attrs={
                     "a0": 2e5,
                     "V_eff_init": 1000,
@@ -223,6 +235,7 @@ if __name__ == "__main__":
             WMCPBEVariantConfig(
                 name="WMCPBE 50-50",
                 repeats=100,
+                aggregate_error_per_repeat=True,
                 attrs={
                     "a0": 2e5,
                     "V_eff_init": 1000,
@@ -237,6 +250,7 @@ if __name__ == "__main__":
             WMCPBEVariantConfig(
                 name="WMCPBE 50-75",
                 repeats=100,
+                aggregate_error_per_repeat=True,
                 attrs={
                     "a0": 2e5,
                     "V_eff_init": 1000,
@@ -251,6 +265,7 @@ if __name__ == "__main__":
             WMCPBEVariantConfig(
                 name="WMCPBE 50-100",
                 repeats=100,
+                aggregate_error_per_repeat=True,
                 attrs={
                     "a0": 2e5,
                     "V_eff_init": 1000,

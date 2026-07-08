@@ -104,35 +104,20 @@ def _make_mptsa_params(Np: int, Df: float, seed: int) -> MPTSALatticeParams2D:
         verbose=False,
     )
 
-def _compute_mix_window_stride(grid: np.ndarray) -> Tuple[int, int]:
-    if grid.ndim < 2:
-        raise ValueError(f"Expected a 2D grid, got shape={grid.shape!r}")
-
-    shorter_side = int(min(grid.shape[0], grid.shape[1]))
-    window = max(2, min(12, shorter_side // 5))
-    stride = max(1, min(3, window // 4))
-    return window, stride
-
-
 def _make_mix_params(
     frac_A: float,
     target_MAS: float,
     seed: int,
-    grid: np.ndarray,
     lambda_min: float = -3.0,
     lambda_max: float = 3.0,
     sweeps_per_eval: int = 8,
     max_bisect: int = 20,
     temperature: float = 1.0,
 ) -> MaterialMixParams:
-    window, stride = _compute_mix_window_stride(grid)
-
     return MaterialMixParams(
         frac_A=float(frac_A),
         target_MAS=float(target_MAS),
         tol_MAS=0.05,
-        window=window,
-        stride=stride,
         lambda_min=float(lambda_min),
         lambda_max=float(lambda_max),
         sweeps_per_eval=int(sweeps_per_eval),
@@ -370,7 +355,6 @@ def _probe_one_sampler_task(
                     frac_A=frac_A,
                     target_MAS=target_MAS,
                     seed=seed_mptsa,
-                    grid=grid,
                 )
                 _probe_labels, probe_stats = probe_low_mas_geometry(
                     grid,
@@ -408,7 +392,6 @@ def _probe_one_sampler_task(
                     frac_A=frac_A,
                     target_MAS=target_MAS,
                     seed=seed_mix,
-                    grid=grid,
                     lambda_min=lambda_min,
                     lambda_max=lambda_max,
                     sweeps_per_eval=sweeps_per_eval,

@@ -55,6 +55,7 @@ if __name__ == "__main__":
             WMCPBEVariantConfig(
                 name="WMCPBE1",
                 repeats=100,
+                aggregate_error_per_repeat=True,
                 attrs={
                     "a0": 2e5,
                     "V_eff_init": 1000,
@@ -69,6 +70,7 @@ if __name__ == "__main__":
             WMCPBEVariantConfig(
                 name="WMCPBE2",
                 repeats=100,
+                aggregate_error_per_repeat=True,
                 attrs={
                     "a0": 2e5,
                     "V_eff_init": 1000,
@@ -83,6 +85,7 @@ if __name__ == "__main__":
             WMCPBEVariantConfig(
                 name="WMCPBE21",
                 repeats=100,
+                aggregate_error_per_repeat=True,
                 attrs={
                     "a0": 2e5,
                     "V_eff_init": 1000,
@@ -97,6 +100,7 @@ if __name__ == "__main__":
             WMCPBEVariantConfig(
                 name="WMCPBE3",
                 repeats=100,
+                aggregate_error_per_repeat=True,
                 attrs={
                     "a0": 2e5,
                     "V_eff_init": 1000,
@@ -111,6 +115,7 @@ if __name__ == "__main__":
             WMCPBEVariantConfig(
                 name="WMCPBE31",
                 repeats=100,
+                aggregate_error_per_repeat=True,
                 attrs={
                     "a0": 2e5,
                     "V_eff_init": 1000,
@@ -125,6 +130,7 @@ if __name__ == "__main__":
             WMCPBEVariantConfig(
                 name="WMCPBE4",
                 repeats=100,
+                aggregate_error_per_repeat=True,
                 attrs={
                     "a0": 2e5,
                     "V_eff_init": 1000,
@@ -139,6 +145,7 @@ if __name__ == "__main__":
             WMCPBEVariantConfig(
                 name="WMCPBE41",
                 repeats=100,
+                aggregate_error_per_repeat=True,
                 attrs={
                     "a0": 2e5,
                     "V_eff_init": 1000,
@@ -153,6 +160,7 @@ if __name__ == "__main__":
             WMCPBEVariantConfig(
                 name="WMCPBE5",
                 repeats=100,
+                aggregate_error_per_repeat=True,
                 attrs={
                     "a0": 2e5,
                     "V_eff_init": 1000,
@@ -167,6 +175,7 @@ if __name__ == "__main__":
             WMCPBEVariantConfig(
                 name="WMCPBE51",
                 repeats=100,
+                aggregate_error_per_repeat=True,
                 attrs={
                     "a0": 2e5,
                     "V_eff_init": 1000,

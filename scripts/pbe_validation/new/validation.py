@@ -73,6 +73,7 @@ class WMCPBEVariantConfig:
     maxiter: int = int(1e9)
     workers: int = 1
     enabled: bool = True
+    aggregate_error_per_repeat: bool = False
     attrs: Dict[str, Any] = field(default_factory=dict)
 
 

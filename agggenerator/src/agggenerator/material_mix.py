@@ -8,7 +8,7 @@ Created on Tue Sep 23 12:47:04 2025
 # ===============================================
 # Materials stage on a fixed lattice aggregate
 # - exact composition (A/B counts)
-# - target MAS (Ashton & Schmahl) at a given window size
+# - target MAS (Ashton & Schmahl) from fixed randomized window samples
 # - geometry (grid) is NOT changed
 # ===============================================
 
@@ -22,12 +22,6 @@ from numba import njit
 # -----------------------------
 # Public API
 # -----------------------------
-from dataclasses import dataclass
-from typing import Any, Tuple, Dict
-
-import numpy as np
-
-
 @dataclass
 class MaterialMixParams:
     """
@@ -43,11 +37,10 @@ class MaterialMixParams:
         to complete segregation and 1 to an ideally randomized state.
     tol_MAS : float
         Acceptable tolerance for the achieved MAS relative to the target.
-    window : int
-        Sliding window size (in grid cells) used for local variance/MAS
-        computation.
-    stride : int
-        Step of the sliding window. stride=1 means dense evaluation.
+    window_rel, window_min, window_max : float, int, int
+        The MAS window is defined by an area target
+        clip(window_rel * N_total, window_min, window_max). The square window
+        side length is ceil(sqrt(area_target)).
     min_occupancy_ratio : float
         A window is considered valid if (occupied cells / window^2)
         is at least this value.
@@ -80,9 +73,10 @@ class MaterialMixParams:
     target_MAS: float = 0.5
     tol_MAS: float = 0.02
 
-    # sliding-window MAS settings
-    window: int = 16
-    stride: int = 4
+    # randomized-window MAS settings
+    window_rel: float = 0.05
+    window_min: int = 25
+    window_max: int = 2500
     min_occupancy_ratio: float = 0.5
 
     # lower/upper bounds for lambda (interaction strength)
@@ -127,6 +121,19 @@ class MASPhysicalParams:
     transmission_weights: Tuple[float, float, float] | None = None
 
 
+@dataclass
+class _MASWindowSample:
+    window_side: int
+    window_area_target: float
+    min_occupancy_ratio: float
+    y0: np.ndarray
+    x0: np.ndarray
+    occ_counts: np.ndarray
+    n_valid_windows: int
+    n_sampled_windows: int
+    n_bar: float
+
+
 def assign_materials_with_target_mas(
     grid: np.ndarray,
     params: MaterialMixParams,
@@ -159,13 +166,15 @@ def assign_materials_with_target_mas(
           - N_total, nA, nB, frac_A
           - lambda_used
           - MAS, sigma2, sigma0_sq, sigmaz_sq
-          - window, stride
+          - randomized MAS window metadata
     """
     rng = np.random.default_rng(params.seed)
     occ_y, occ_x = np.nonzero(grid)
     M = len(occ_y)
     if M == 0:
         raise ValueError("Empty aggregate grid.")
+
+    mas_window_sample = _prepare_mas_window_sample(grid, params, seed=params.seed)
 
     # ---- exact composition counts ----
     nA = int(round(params.frac_A * M))
@@ -186,6 +195,7 @@ def assign_materials_with_target_mas(
         params=params,
         phys=phys,
         rng=rng,
+        window_sample=mas_window_sample,
     )
 
     # ---- tune lambda by bisection to match target MAS ----
@@ -199,13 +209,17 @@ def assign_materials_with_target_mas(
     _mcmc_exchange(lbl_work, neighbors, lam_lo,
                    sweeps=params.sweeps_per_eval,
                    T=params.temperature, rng=rng)  # slight thermalization
-    mas_lo, _, _, _ = _evaluate_mas_on_labels(grid, occ_y, occ_x, lbl_work, params, phys)
+    mas_lo, _, _, _ = _evaluate_mas_on_labels(
+        grid, occ_y, occ_x, lbl_work, params, phys, mas_window_sample
+    )
 
     lbl_work2 = lbl_flat.copy()
     _mcmc_exchange(lbl_work2, neighbors, lam_hi,
                    sweeps=params.sweeps_per_eval,
                    T=params.temperature, rng=rng)
-    mas_hi, _, _, _ = _evaluate_mas_on_labels(grid, occ_y, occ_x, lbl_work2, params, phys)
+    mas_hi, _, _, _ = _evaluate_mas_on_labels(
+        grid, occ_y, occ_x, lbl_work2, params, phys, mas_window_sample
+    )
 
     # Ensure mas_lo <= mas_hi by swapping bounds if needed
     if mas_lo > mas_hi:
@@ -251,7 +265,7 @@ def assign_materials_with_target_mas(
             rng=rng,
         )
         mas_mid, sigma2, sig0, sigz = _evaluate_mas_on_labels(
-            grid, occ_y, occ_x, lbl_mid, params, phys
+            grid, occ_y, occ_x, lbl_mid, params, phys, mas_window_sample
         )
 
         # Record the closest candidate seen so far, not just the latest one.
@@ -279,7 +293,7 @@ def assign_materials_with_target_mas(
 
     # Final MAS evaluation on the chosen configuration
     MAS, sigma2, sigma0, sigmaz = _evaluate_mas_on_labels(
-        grid, occ_y, occ_x, lbl_flat, params, phys
+        grid, occ_y, occ_x, lbl_flat, params, phys, mas_window_sample
     )
 
     stats = dict(
@@ -292,11 +306,10 @@ def assign_materials_with_target_mas(
         sigma2=float(sigma2),
         sigma0_sq=float(sigma0),
         sigmaz_sq=float(sigmaz),
-        window=int(params.window),
-        stride=int(params.stride),
         initial_MAS=float(init_stats.get("MAS", np.nan)),
         initial_strategy=str(init_stats.get("strategy", "")),
         initial_candidates=int(init_stats.get("n_candidates", 1)),
+        **_mas_window_stats(params, mas_window_sample),
     )
     return labels, stats
 
@@ -321,6 +334,9 @@ def probe_low_mas_geometry(
     if M == 0:
         raise ValueError("Empty aggregate grid.")
 
+    sample_seed = params.seed if seed is None else seed
+    mas_window_sample = _prepare_mas_window_sample(grid, params, seed=sample_seed)
+
     nA = int(round(params.frac_A * M))
     nA = max(0, min(M, nA))
     H, W = grid.shape
@@ -344,6 +360,7 @@ def probe_low_mas_geometry(
         phys=phys,
         target=float(params.target_MAS),
         objective="lowest",
+        window_sample=mas_window_sample,
     )
 
     labels = np.full(grid.shape, fill_value=-1, dtype=np.int8)
@@ -535,6 +552,7 @@ def _select_label_candidate_by_mas(
     phys: MASPhysicalParams,
     target: float,
     objective: str,
+    window_sample: _MASWindowSample,
 ) -> Tuple[np.ndarray, Dict[str, Any]]:
     if not candidates:
         raise ValueError("No material-label candidates were generated.")
@@ -545,7 +563,7 @@ def _select_label_candidate_by_mas(
 
     for idx, (name, labels) in enumerate(candidates):
         MAS, sigma2, sigma0, sigmaz = _evaluate_mas_on_labels(
-            grid, occ_y, occ_x, labels, params, phys
+            grid, occ_y, occ_x, labels, params, phys, window_sample
         )
         score = float(MAS) if objective == "lowest" else abs(float(MAS) - target)
         if score < best_score:
@@ -559,6 +577,7 @@ def _select_label_candidate_by_mas(
                 "strategy": str(name),
                 "strategy_index": int(idx),
                 "n_candidates": int(len(candidates)),
+                **_mas_window_stats(params, window_sample),
             }
 
     if best_lbl is None or best_stats is None:
@@ -575,6 +594,7 @@ def _choose_initial_labels_for_mas(
     params: MaterialMixParams,
     phys: MASPhysicalParams,
     rng: np.random.Generator,
+    window_sample: _MASWindowSample,
 ) -> Tuple[np.ndarray, Dict[str, Any]]:
     M = len(occ_y)
     random_labels = _make_random_exact_labels(M, nA, rng)
@@ -605,6 +625,7 @@ def _choose_initial_labels_for_mas(
         phys=phys,
         target=target,
         objective="closest",
+        window_sample=window_sample,
     )
 
 # -----------------------------
@@ -662,7 +683,259 @@ def plot_materials_grid(grid: np.ndarray, labels: np.ndarray, origin: Tuple[int,
 # MAS Evaluation Internals
 # -----------------------------
 
-def _evaluate_mas_on_labels(grid, occ_y, occ_x, lbl_flat, params, phys):
+def _resolve_mas_window_side(
+    grid: np.ndarray,
+    N_total: int,
+    params: MaterialMixParams,
+) -> Tuple[int, float]:
+    """
+    Resolve the randomized MAS square-window side length from an area target.
+    """
+    if grid.ndim < 2:
+        raise ValueError(f"Expected a 2D grid for MAS evaluation, got shape={grid.shape!r}.")
+
+    H, W = grid.shape
+    if int(N_total) <= 0:
+        raise ValueError("Empty aggregate grid.")
+
+    area_min = max(1.0, float(params.window_min))
+    area_max = max(area_min, float(params.window_max))
+    area_raw = float(params.window_rel) * float(N_total)
+    area_target = float(np.clip(area_raw, area_min, area_max))
+    window_side = int(max(1, np.ceil(np.sqrt(area_target))))
+
+    if window_side > min(H, W):
+        msg = (
+            "[MAS] Grid too small for randomized MAS window evaluation.\n"
+            f"       grid shape = ({H}, {W}), N_total = {int(N_total)}, "
+            f"window_area_target = {area_target:.6g}, window_side = {window_side}.\n"
+            "       Reduce window_rel/window_min/window_max or use a larger aggregate."
+        )
+        print(msg)
+        raise ValueError(msg)
+
+    return window_side, area_target
+
+
+def _mas_window_rng(seed: int | None) -> np.random.Generator:
+    if seed is None:
+        return np.random.default_rng()
+
+    seed_int = int(seed)
+    if seed_int < 0:
+        seed_int %= 2**32
+    return np.random.default_rng(np.random.SeedSequence([seed_int, 0x4D4153]))
+
+
+@njit(cache=True)
+def _valid_mas_windows_from_grid(
+    grid: np.ndarray,
+    window_side: int,
+    min_occ_ratio: float,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    H, W = grid.shape
+    w = int(max(1, window_side))
+
+    occ = np.empty((H, W), dtype=np.int64)
+    for y in range(H):
+        for x in range(W):
+            occ[y, x] = 1 if grid[y, x] == 1 else 0
+
+    occ_ii = _integral_image(occ)
+    min_occ = float(min_occ_ratio) * float(w * w)
+
+    n_valid = 0
+    for y in range(H - w + 1):
+        for x in range(W - w + 1):
+            cnt = _rect_sum(occ_ii, x, y, w, w)
+            if cnt >= min_occ:
+                n_valid += 1
+
+    y0 = np.empty(n_valid, dtype=np.int64)
+    x0 = np.empty(n_valid, dtype=np.int64)
+    occ_counts = np.empty(n_valid, dtype=np.float64)
+
+    k = 0
+    for y in range(H - w + 1):
+        for x in range(W - w + 1):
+            cnt = _rect_sum(occ_ii, x, y, w, w)
+            if cnt >= min_occ:
+                y0[k] = y
+                x0[k] = x
+                occ_counts[k] = float(cnt)
+                k += 1
+
+    return y0, x0, occ_counts
+
+
+def _prepare_mas_window_sample(
+    grid: np.ndarray,
+    params: MaterialMixParams,
+    seed: int | None,
+) -> _MASWindowSample:
+    """
+    Enumerate all valid square MAS windows and choose a fixed random subset.
+    """
+    grid_arr = np.asarray(grid)
+    N_total = int(np.count_nonzero(grid_arr == 1))
+    window_side, area_target = _resolve_mas_window_side(grid, N_total, params)
+
+    valid_y, valid_x, valid_occ_counts = _valid_mas_windows_from_grid(
+        grid_arr,
+        int(window_side),
+        float(params.min_occupancy_ratio),
+    )
+    n_valid = int(valid_y.size)
+    if n_valid == 0:
+        msg = (
+            "[MAS] No valid randomized MAS windows were found.\n"
+            f"       grid shape = {tuple(grid.shape)}, window_side = {int(window_side)}, "
+            f"min_occupancy_ratio = {float(params.min_occupancy_ratio):.6g}."
+        )
+        print(msg)
+        raise ValueError(msg)
+
+    sample_target = max(1000, min(2500, int(np.ceil(0.1 * n_valid))))
+    n_sample = int(min(n_valid, sample_target))
+
+    if n_sample < n_valid:
+        rng = _mas_window_rng(seed)
+        selected = rng.choice(np.arange(n_valid), size=n_sample, replace=False)
+    else:
+        selected = np.arange(n_valid)
+
+    y0 = valid_y[selected].astype(np.int64, copy=False)
+    x0 = valid_x[selected].astype(np.int64, copy=False)
+    occ_counts = valid_occ_counts[selected].astype(np.float64, copy=False)
+
+    return _MASWindowSample(
+        window_side=int(window_side),
+        window_area_target=float(area_target),
+        min_occupancy_ratio=float(params.min_occupancy_ratio),
+        y0=y0,
+        x0=x0,
+        occ_counts=occ_counts,
+        n_valid_windows=n_valid,
+        n_sampled_windows=n_sample,
+        n_bar=float(occ_counts.mean()),
+    )
+
+
+def _mas_window_stats(
+    params: MaterialMixParams,
+    window_sample: _MASWindowSample,
+) -> Dict[str, Any]:
+    return {
+        "window": int(window_sample.window_side),
+        "window_rel": float(params.window_rel),
+        "window_min": int(params.window_min),
+        "window_max": int(params.window_max),
+        "window_area_target": float(window_sample.window_area_target),
+        "N_valid_windows": int(window_sample.n_valid_windows),
+        "N_sampled_windows": int(window_sample.n_sampled_windows),
+        "min_occupancy_ratio": float(window_sample.min_occupancy_ratio),
+    }
+
+
+def _sampled_window_variance(
+    labels: np.ndarray,
+    window_sample: _MASWindowSample,
+) -> float:
+    """
+    Compute sigma^2 from the fixed random MAS window subset.
+    """
+    return float(
+        _sampled_window_variance_jit(
+            labels,
+            window_sample.y0,
+            window_sample.x0,
+            window_sample.occ_counts,
+            int(window_sample.window_side),
+        )
+    )
+
+
+@njit(cache=True)
+def _sampled_window_variance_jit(
+    labels: np.ndarray,
+    y0: np.ndarray,
+    x0: np.ndarray,
+    occ_counts: np.ndarray,
+    window_side: int,
+) -> float:
+    H, W = labels.shape
+    w = int(max(1, window_side))
+
+    A_mask = np.empty((H, W), dtype=np.int64)
+    for y in range(H):
+        for x in range(W):
+            A_mask[y, x] = 1 if labels[y, x] == 0 else 0
+
+    A_ii = _integral_image(A_mask)
+
+    k = y0.shape[0]
+    if k == 0:
+        return 0.0
+
+    total = 0.0
+    total_sq = 0.0
+    for i in range(k):
+        y = int(y0[i])
+        x = int(x0[i])
+        A_cnt = _rect_sum(A_ii, x, y, w, w)
+        value = float(A_cnt) / max(float(occ_counts[i]), 1.0)
+        total += value
+        total_sq += value * value
+
+    mean = total / k
+    var = total_sq / k - mean * mean
+    if var < 0.0:
+        return 0.0
+    return var
+
+
+def _sigmaz_lower_bound_from_nbar(
+    X_A: float,
+    N_bar: float,
+    phys: MASPhysicalParams,
+) -> float:
+    return float(
+        _sigmaz_lower_bound_from_nbar_jit(
+            float(X_A),
+            float(N_bar),
+            float(phys.dc),
+            float(phys.dSi),
+            float(phys.dcSi),
+            float(phys.Cc),
+            float(phys.CSi),
+        )
+    )
+
+
+@njit(cache=True)
+def _sigmaz_lower_bound_from_nbar_jit(
+    X_A: float,
+    N_bar: float,
+    phys_dc: float,
+    phys_dSi: float,
+    phys_dcSi: float,
+    phys_Cc: float,
+    phys_CSi: float,
+) -> float:
+    geom_factor = (phys_dc * phys_dSi / max(phys_dcSi, 1e-12)) ** 2
+    size_factor = 1.0 + (1.0 - X_A) * (phys_Cc ** 2) + X_A * (phys_CSi ** 2)
+    return (X_A * (1.0 - X_A) / max(N_bar, 1e-12)) * geom_factor * size_factor
+
+
+def _evaluate_mas_on_labels(
+    grid,
+    occ_y,
+    occ_x,
+    lbl_flat,
+    params,
+    phys,
+    window_sample: _MASWindowSample,
+):
     """
     Compute MAS (Mischgüte) and related statistics for a particular
     A/B labeling on a fixed aggregate geometry.
@@ -676,9 +949,12 @@ def _evaluate_mas_on_labels(grid, occ_y, occ_x, lbl_flat, params, phys):
     lbl_flat : length-M array of {0,1}
         Material labels for each occupied cell in flat ordering.
     params : MaterialMixParams
-        Controls MAS evaluation (window, stride, etc.).
+        Controls MAS evaluation and material mixing.
     phys : MASPhysicalParams
         Physical constants for sigma_z^2 and sigma_0^2 models.
+    window_sample : _MASWindowSample
+        Fixed randomized MAS window subset reused throughout one material
+        assignment or geometry probe.
 
     Returns
     -------
@@ -693,8 +969,8 @@ def _evaluate_mas_on_labels(grid, occ_y, occ_x, lbl_flat, params, phys):
 
     Notes
     -----
-    - A sliding-window variance σ² is computed via integral images.
-    - The grid must be large enough to accommodate the window size.
+    - A sampled-window variance is computed via integral images.
+    - The randomized window subset is prepared once per material assignment.
     """
 
     H, W = grid.shape
@@ -705,29 +981,13 @@ def _evaluate_mas_on_labels(grid, occ_y, occ_x, lbl_flat, params, phys):
     nA = int((lbl_flat == 0).sum())
     X_A = nA / M
 
-    # Check that the MAS window fits inside the grid
-    if H < params.window or W < params.window:
-        msg = (
-            "[MAS] Grid too small for window-based MAS evaluation.\n"
-            f"       grid shape = ({H}, {W}), "
-            f"window = {params.window}, stride = {params.stride}.\n"
-            "       Increase aggregate size or reduce window/stride."
-        )
-        print(msg)
-        raise ValueError(msg)
-
-    sigma2 = _sigma2_window_variance(
-        labels, grid, params.window, params.stride, params.min_occupancy_ratio
-    )
+    sigma2 = _sampled_window_variance(labels, window_sample)
 
     # Upper bound σ₀²
     sigma0_sq = _sigma0_upper_bound(X_A, phys)
 
     # Lower bound σ_z²
-    sigmaz_sq = _sigmaz_lower_bound(
-        X_A, labels, grid, params.window, params.stride,
-        phys.dc, phys.dSi, phys.dcSi, phys.Cc, phys.CSi
-    )
+    sigmaz_sq = _sigmaz_lower_bound_from_nbar(X_A, window_sample.n_bar, phys)
 
     # Compute MAS = log(σ₀² / σ²) / log(σ₀² / σ_z²)
     eps = 1e-12
@@ -737,86 +997,6 @@ def _evaluate_mas_on_labels(grid, occ_y, occ_x, lbl_flat, params, phys):
 
     return float(MAS), float(sigma2), float(sigma0_sq), float(sigmaz_sq)
 
-
-@njit(cache=True)
-def _sigma2_window_variance(labels: np.ndarray, grid: np.ndarray,
-                            window: int, stride: int, min_occ_ratio: float) -> float:
-    """
-    Compute the local composition variance σ² using sliding
-    windows with integral-image acceleration.
-
-    Parameters
-    ----------
-    labels : (H, W) int array
-        Material labels where {0,1} indicate materials and -1 = empty.
-    grid : (H, W) array of {0,1}
-        Aggregate occupancy map.
-    window : int
-        Window size (w × w).
-    stride : int
-        Sliding-window stride.
-    min_occ_ratio : float
-        Minimum fraction of occupied cells inside a window for it
-        to be considered valid.
-
-    Returns
-    -------
-    float
-        The population variance of A-fraction across all valid windows.
-
-    Notes
-    -----
-    - This uses integral images for O(1) window sums.
-    - Only windows with sufficient occupancy contribute.
-    - If no valid windows exist, σ² = 0 by definition.
-    """
-
-    H, W = grid.shape
-    w = int(max(1, window))
-    s = int(max(1, stride))
-
-    # Occupancy mask
-    occ = (grid.astype(np.uint8) == 1).astype(np.int32)
-
-    # A-phase mask (only on occupied cells)
-    A_mask = ((labels == 0) & (occ == 1)).astype(np.int32)
-
-    occ_ii = _integral_image(occ)
-    A_ii = _integral_image(A_mask)
-
-    # Upper bound for all windows assuming all valid
-    max_n = ((H - w) // s + 1) * ((W - w) // s + 1)
-    vals = np.empty(max_n, dtype=np.float64)
-    k = 0
-
-    y = 0
-    while y <= H - w:
-        x = 0
-        while x <= W - w:
-            occ_cnt = _rect_sum(occ_ii, x, y, w, w)
-            if occ_cnt >= min_occ_ratio * (w*w) and occ_cnt > 0:
-                A_cnt = _rect_sum(A_ii, x, y, w, w)
-                vals[k] = A_cnt / occ_cnt
-                k += 1
-            x += s
-        y += s
-
-    if k == 0:
-        return 0.0
-
-    # population variance
-    mean = 0.0
-    for i in range(k):
-        mean += vals[i]
-    mean /= k
-
-    var = 0.0
-    for i in range(k):
-        d = vals[i] - mean
-        var += d * d
-    var /= k
-
-    return var
 
 def _sigma0_upper_bound(X_A: float, phys: MASPhysicalParams) -> float:
     """
@@ -843,77 +1023,6 @@ def _sigma0_upper_bound(X_A: float, phys: MASPhysicalParams) -> float:
         w11 * (0.5 - X_A) ** 2
     )
     return float(term)
-
-
-@njit(cache=True)
-def _sigmaz_lower_bound(X_A: float, labels: np.ndarray, grid: np.ndarray,
-                        window: int, stride: int,
-                        phys_dc: float, phys_dSi: float, phys_dcSi: float,
-                        phys_Cc: float, phys_CSi: float) -> float:
-    """
-    Compute the lower variance bound σ_z² for a random homogeneous
-    mixture of A and B, using physical parameters.
-
-    The bound is of the form:
-        σ_z² = [ X_A (1 - X_A) / N̄ ] * geom_factor * size_factor
-
-    where
-        N̄          = average number of occupied pixels per valid window,
-        geom_factor = (dc * dSi / dcSi)²,
-        size_factor = 1 + (1 - X_A) * Cc² + X_A * CSi².
-
-    Parameters
-    ----------
-    X_A : float
-        Global fraction of phase A.
-    labels : (H, W) array
-        Label map; not used directly here but kept for consistency.
-    grid : (H, W) array of {0,1}
-        Occupancy mask of the aggregate.
-    window : int
-        Window size for counting occupancy.
-    stride : int
-        Step size between windows.
-    phys_dc, phys_dSi, phys_dcSi : float
-        Physical thickness / scaling parameters.
-    phys_Cc, phys_CSi : float
-        Coefficients encoding size contrast of the two phases.
-
-    Returns
-    -------
-    float
-        Lower variance bound σ_z².
-    """
-    H, W = grid.shape
-    w = int(max(1, window))
-    s = int(max(1, stride))
-
-    occ = (grid.astype(np.uint8) == 1).astype(np.int32)
-    occ_ii = _integral_image(occ)
-
-    # Accumulate occupied counts over all windows and take the mean
-    total = 0.0
-    count = 0
-    y = 0
-    while y <= H - w:
-        x = 0
-        while x <= W - w:
-            cnt = _rect_sum(occ_ii, x, y, w, w)
-            if cnt > 0:
-                total += cnt
-                count += 1
-            x += s
-        y += s
-
-    if count == 0:
-        return 0.0
-
-    N_bar = total / count
-
-    geom_factor = (phys_dc * phys_dSi / max(phys_dcSi, 1e-12)) ** 2
-    size_factor = 1.0 + (1.0 - X_A) * (phys_Cc ** 2) + X_A * (phys_CSi ** 2)
-
-    return (X_A * (1.0 - X_A) / max(N_bar, 1e-12)) * geom_factor * size_factor
 
 
 @njit(cache=True)

@@ -17,6 +17,8 @@ written incrementally and resumed after interruptions.
 
 from __future__ import annotations
 
+import json
+import multiprocessing as mp
 import os
 import sqlite3
 import zlib
@@ -65,6 +67,257 @@ def _status_db_path(h5_path: str) -> str:
     return str(path.with_name(f"{path.name}_status.sqlite"))
 
 
+def _normalized_pool_dir(value: Any) -> str:
+    return os.path.abspath(str(value))
+
+
+def _make_scan_signature(params: Dict[str, Any], np_arr: np.ndarray) -> Tuple[Dict[str, Any], str, int]:
+    payload = {
+        "schema_version": 1,
+        "NO_FRAG": int(params["NO_FRAG"]),
+        "int_bre": float(params["int_bre"]),
+        "gamma": float(params["gamma"]),
+        "Df": float(params["Df"]),
+        "MAS": float(params["MAS"]),
+        "X1": float(params["X1"]),
+        "STR": [float(v) for v in _coerce_str_array(params["STR"])],
+        "A0": float(params["A0"]),
+        "N_GRIDS": int(params["N_GRIDS"]),
+        "N_FRACS": int(params["N_FRACS"]),
+        "base_seed": int(params["base_seed"]),
+        "np_list": [int(v) for v in np_arr.astype(int)],
+        "pool_dir": _normalized_pool_dir(params["pool_dir"]),
+    }
+    signature_json = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    signature_crc32 = zlib.crc32(signature_json.encode("utf-8")) & 0xFFFFFFFF
+    return payload, signature_json, int(signature_crc32)
+
+
+def _read_attr_as_str(value: Any) -> str:
+    if isinstance(value, bytes):
+        return value.decode("utf-8")
+    if isinstance(value, np.bytes_):
+        return bytes(value).decode("utf-8")
+    if isinstance(value, np.ndarray) and value.shape == ():
+        return _read_attr_as_str(value.item())
+    return str(value)
+
+
+def _checkpoint_mismatch(grp_path: str, run_key: str, reason: str) -> None:
+    raise ValueError(
+        "[CHECKPOINT] Existing energy-scan checkpoint is incompatible with "
+        "the current parameters.\n"
+        f"  group   : {grp_path}\n"
+        f"  run_key : {run_key}\n"
+        f"  reason  : {reason}\n"
+        "Use a new h5_path, delete the old HDF5 group/SQLite rows, or restore "
+        "the original scan parameters."
+    )
+
+
+def _require_attr_int(grp: h5py.Group, name: str, expected: int, grp_path: str, run_key: str) -> None:
+    if name not in grp.attrs:
+        _checkpoint_mismatch(grp_path, run_key, f"missing HDF5 attr {name!r}")
+    actual = int(grp.attrs[name])
+    if actual != int(expected):
+        _checkpoint_mismatch(grp_path, run_key, f"attr {name!r}: existing {actual!r}, current {int(expected)!r}")
+
+
+def _require_attr_float(grp: h5py.Group, name: str, expected: float, grp_path: str, run_key: str) -> None:
+    if name not in grp.attrs:
+        _checkpoint_mismatch(grp_path, run_key, f"missing HDF5 attr {name!r}")
+    actual = float(grp.attrs[name])
+    if not np.isclose(actual, float(expected), rtol=1e-12, atol=1e-12):
+        _checkpoint_mismatch(
+            grp_path,
+            run_key,
+            f"attr {name!r}: existing {actual!r}, current {float(expected)!r}",
+        )
+
+
+def _require_attr_array(
+    grp: h5py.Group,
+    name: str,
+    expected: np.ndarray,
+    grp_path: str,
+    run_key: str,
+) -> None:
+    if name not in grp.attrs:
+        _checkpoint_mismatch(grp_path, run_key, f"missing HDF5 attr {name!r}")
+    actual = np.asarray(grp.attrs[name], dtype=float)
+    expected_arr = np.asarray(expected, dtype=float)
+    if actual.shape != expected_arr.shape or not np.allclose(actual, expected_arr, rtol=1e-12, atol=1e-12):
+        _checkpoint_mismatch(
+            grp_path,
+            run_key,
+            f"attr {name!r}: existing {actual.tolist()!r}, current {expected_arr.tolist()!r}",
+        )
+
+
+def _validate_signature_or_legacy_attrs(
+    grp: h5py.Group,
+    *,
+    grp_path: str,
+    run_key: str,
+    params: Dict[str, Any],
+    signature_json: str,
+    signature_crc32: int,
+) -> None:
+    has_signature_json = "scan_signature_json" in grp.attrs
+    has_signature_crc = "scan_signature_crc32" in grp.attrs
+    if has_signature_json or has_signature_crc:
+        if has_signature_json:
+            existing_json = _read_attr_as_str(grp.attrs["scan_signature_json"])
+            if existing_json != signature_json:
+                _checkpoint_mismatch(grp_path, run_key, "scan_signature_json differs")
+        if has_signature_crc:
+            existing_crc = int(grp.attrs["scan_signature_crc32"])
+            if existing_crc != int(signature_crc32):
+                _checkpoint_mismatch(
+                    grp_path,
+                    run_key,
+                    f"scan_signature_crc32 differs: existing {existing_crc}, current {int(signature_crc32)}",
+                )
+        return
+
+    _require_attr_int(grp, "NO_FRAG", int(params["NO_FRAG"]), grp_path, run_key)
+    _require_attr_float(grp, "int_bre", float(params["int_bre"]), grp_path, run_key)
+    _require_attr_float(grp, "gamma", float(params["gamma"]), grp_path, run_key)
+    _require_attr_float(grp, "Df", float(params["Df"]), grp_path, run_key)
+    _require_attr_float(grp, "MAS", float(params["MAS"]), grp_path, run_key)
+    _require_attr_float(grp, "X1", float(params["X1"]), grp_path, run_key)
+    _require_attr_float(grp, "A0", float(params["A0"]), grp_path, run_key)
+    _require_attr_int(grp, "N_GRIDS", int(params["N_GRIDS"]), grp_path, run_key)
+    _require_attr_int(grp, "N_FRACS", int(params["N_FRACS"]), grp_path, run_key)
+    _require_attr_int(grp, "base_seed", int(params["base_seed"]), grp_path, run_key)
+    _require_attr_array(grp, "STR", _coerce_str_array(params["STR"]), grp_path, run_key)
+
+    if "pool_dir" in grp.attrs:
+        existing_pool_dir = os.path.normcase(_normalized_pool_dir(_read_attr_as_str(grp.attrs["pool_dir"])))
+        current_pool_dir = os.path.normcase(_normalized_pool_dir(params["pool_dir"]))
+        if existing_pool_dir != current_pool_dir:
+            _checkpoint_mismatch(
+                grp_path,
+                run_key,
+                f"attr 'pool_dir': existing {existing_pool_dir!r}, current {current_pool_dir!r}",
+            )
+
+
+def _validate_dataset_shape(
+    grp: h5py.Group,
+    name: str,
+    expected_shape: Tuple[int, ...],
+    grp_path: str,
+    run_key: str,
+) -> None:
+    if name in grp and tuple(grp[name].shape) != tuple(expected_shape):
+        _checkpoint_mismatch(
+            grp_path,
+            run_key,
+            f"dataset {name!r}: existing shape {tuple(grp[name].shape)}, current {tuple(expected_shape)}",
+        )
+
+
+def _validate_np_and_v(
+    grp: h5py.Group,
+    *,
+    np_arr: np.ndarray,
+    v_arr: np.ndarray,
+    grp_path: str,
+    run_key: str,
+) -> None:
+    if "Np" in grp:
+        existing_np = np.asarray(grp["Np"][...], dtype=int)
+        if existing_np.shape != np_arr.shape or not np.array_equal(existing_np, np_arr.astype(int)):
+            _checkpoint_mismatch(
+                grp_path,
+                run_key,
+                f"dataset 'Np' differs: existing {existing_np.tolist()!r}, current {np_arr.astype(int).tolist()!r}",
+            )
+    if "V" in grp:
+        existing_v = np.asarray(grp["V"][...], dtype=float)
+        if existing_v.shape != v_arr.shape or not np.allclose(existing_v, v_arr.astype(float), rtol=1e-12, atol=1e-12):
+            _checkpoint_mismatch(grp_path, run_key, "dataset 'V' differs from np_list * A0")
+
+
+def _validate_existing_checkpoint_group(
+    grp: h5py.Group,
+    *,
+    grp_path: str,
+    run_key: str,
+    np_arr: np.ndarray,
+    v_arr: np.ndarray,
+    params: Dict[str, Any],
+    signature_json: str,
+    signature_crc32: int,
+) -> None:
+    n_np = int(np_arr.size)
+    n_grids = int(params["N_GRIDS"])
+    n_fracs = int(params["N_FRACS"])
+    _validate_signature_or_legacy_attrs(
+        grp,
+        grp_path=grp_path,
+        run_key=run_key,
+        params=params,
+        signature_json=signature_json,
+        signature_crc32=signature_crc32,
+    )
+    _validate_np_and_v(grp, np_arr=np_arr, v_arr=v_arr, grp_path=grp_path, run_key=run_key)
+    _validate_dataset_shape(grp, "E_samples", (n_np, n_grids, n_fracs), grp_path, run_key)
+    _validate_dataset_shape(grp, "completed_mask", (n_np, n_grids), grp_path, run_key)
+    _validate_dataset_shape(grp, "E_mean", (n_np,), grp_path, run_key)
+    _validate_dataset_shape(grp, "E_std", (n_np,), grp_path, run_key)
+
+
+def _validate_legacy_complete_group(
+    grp: h5py.Group,
+    *,
+    grp_path: str,
+    run_key: str,
+    np_arr: np.ndarray,
+    v_arr: np.ndarray,
+    params: Dict[str, Any],
+    n_runs_per_np: int,
+    signature_json: str,
+    signature_crc32: int,
+) -> None:
+    _validate_signature_or_legacy_attrs(
+        grp,
+        grp_path=grp_path,
+        run_key=run_key,
+        params=params,
+        signature_json=signature_json,
+        signature_crc32=signature_crc32,
+    )
+    _validate_np_and_v(grp, np_arr=np_arr, v_arr=v_arr, grp_path=grp_path, run_key=run_key)
+    _validate_dataset_shape(grp, "E_samples", (int(np_arr.size), int(n_runs_per_np)), grp_path, run_key)
+
+
+def _write_scan_signature_attrs(
+    grp: h5py.Group,
+    *,
+    params: Dict[str, Any],
+    signature_json: str,
+    signature_crc32: int,
+    mp_start_method: str,
+) -> None:
+    grp.attrs["pool_dir"] = _normalized_pool_dir(params["pool_dir"])
+    grp.attrs["scan_signature_json"] = signature_json
+    grp.attrs["scan_signature_crc32"] = int(signature_crc32)
+    grp.attrs["mp_start_method"] = str(mp_start_method)
+
+
+def _mp_start_method_for_workers(workers: int) -> str:
+    if int(workers) <= 1:
+        return "serial"
+    return mp.get_context("spawn").get_start_method()
+
+
+def _make_process_pool(workers: int) -> ProcessPoolExecutor:
+    spawn_context = mp.get_context("spawn")
+    return ProcessPoolExecutor(max_workers=int(workers), mp_context=spawn_context)
+
+
 def _grid_seed_for_task(base_seed: int, run_key: str, idx_np: int, grid_idx: int) -> int:
     run_crc = zlib.crc32(run_key.encode("utf-8")) & 0xFFFFFFFF
     seq = np.random.SeedSequence([int(base_seed), int(run_crc), int(idx_np), int(grid_idx)])
@@ -93,49 +346,56 @@ def _energy_scan_worker_one_grid(args: Tuple[Any, ...]) -> Tuple[int, int, int, 
         N_FRACS,
     ) = args
 
-    sim = LMCSimulator(
-        STR=STR,
-        NO_FRAG=NO_FRAG,
-        gamma=gamma,
-        allow_loops=False,
-        accept_all_cracks=False,
-        use_weighted_start=True,
-        plotter=None,
-        pool_dir=pool_dir,
-    )
-
-    F = sim.mc_breakage_from_pool(
-        pool_dir=pool_dir,
-        Df=Df,
-        MAS=MAS,
-        A=A,
-        X1=X1,
-        N_GRIDS=1,
-        N_FRACS=N_FRACS,
-        A0=A0,
-        int_bre=int_bre,
-        seed=seed_grid,
-        plot_each=False,
-        interp="knn",
-        KNN=1,
-        sigma=0.35,
-    )
-
-    n_runs_local = N_FRACS
+    sim = None
     try:
-        F_run = F.reshape(n_runs_local, NO_FRAG, 4)
-    except ValueError as exc:
-        raise RuntimeError(
-            f"[worker] Unexpected F shape for Np={Np}: "
-            f"F.shape={F.shape}, expected {n_runs_local * NO_FRAG} rows"
-        ) from exc
+        sim = LMCSimulator(
+            STR=STR,
+            NO_FRAG=NO_FRAG,
+            gamma=gamma,
+            allow_loops=False,
+            accept_all_cracks=False,
+            use_weighted_start=True,
+            plotter=None,
+            pool_dir=pool_dir,
+        )
 
-    energies = F_run[:, 0, 3].copy()
+        F = sim.mc_breakage_from_pool(
+            pool_dir=pool_dir,
+            Df=Df,
+            MAS=MAS,
+            A=A,
+            X1=X1,
+            N_GRIDS=1,
+            N_FRACS=N_FRACS,
+            A0=A0,
+            int_bre=int_bre,
+            seed=seed_grid,
+            plot_each=False,
+            interp="knn",
+            KNN=1,
+            sigma=0.35,
+        )
 
-    if sim.agg_pool is not None:
-        sim.agg_pool.close_pool_cache()
+        n_runs_local = N_FRACS
+        try:
+            F_run = F.reshape(n_runs_local, NO_FRAG, 4)
+        except ValueError as exc:
+            raise RuntimeError(
+                f"[worker] Unexpected F shape for Np={Np}: "
+                f"F.shape={F.shape}, expected {n_runs_local * NO_FRAG} rows"
+            ) from exc
 
-    return idx_np, grid_idx, Np, energies
+        energies = F_run[:, 0, 3].copy()
+        return idx_np, grid_idx, Np, energies
+    finally:
+        if sim is not None and getattr(sim, "agg_pool", None) is not None:
+            try:
+                sim.agg_pool.close_pool_cache()
+            except Exception as exc:
+                print(
+                    f"[WARN] Failed to close aggregate pool cache for "
+                    f"Np={Np}, grid={grid_idx}: {exc!r}"
+                )
 
 def _fit_sigma_from_arrays(V: np.ndarray, E: np.ndarray) -> Tuple[float, float]:
     mask = (V > 0.0) & np.isfinite(V) & (E > 0.0) & np.isfinite(E)
@@ -173,8 +433,120 @@ def _init_status_db(conn: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_task_status_run_status
         ON task_status(run_key, status);
+
+        CREATE TABLE IF NOT EXISTS run_metadata (
+            run_key TEXT PRIMARY KEY,
+            signature_crc32 INTEGER NOT NULL,
+            signature_json TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
         """
     )
+
+
+def _task_row_count(conn: sqlite3.Connection, run_key: str) -> int:
+    row = conn.execute(
+        "SELECT COUNT(*) FROM task_status WHERE run_key = ?",
+        (run_key,),
+    ).fetchone()
+    return int(row[0]) if row is not None else 0
+
+
+def _ensure_run_metadata(
+    conn: sqlite3.Connection,
+    *,
+    run_key: str,
+    signature_json: str,
+    signature_crc32: int,
+    allow_legacy_migration: bool,
+) -> None:
+    row = conn.execute(
+        """
+        SELECT signature_crc32, signature_json
+        FROM run_metadata
+        WHERE run_key = ?
+        """,
+        (run_key,),
+    ).fetchone()
+
+    if row is not None:
+        existing_crc = int(row[0])
+        existing_json = str(row[1])
+        if existing_crc != int(signature_crc32) or existing_json != signature_json:
+            raise ValueError(
+                "[CHECKPOINT] SQLite run_metadata is incompatible with the "
+                "current scan parameters.\n"
+                f"  run_key : {run_key}\n"
+                f"  existing crc32 : {existing_crc}\n"
+                f"  current crc32  : {int(signature_crc32)}\n"
+                "Use a new h5_path, delete the old SQLite rows, or restore "
+                "the original scan parameters."
+            )
+        conn.execute(
+            "UPDATE run_metadata SET updated_at = CURRENT_TIMESTAMP WHERE run_key = ?",
+            (run_key,),
+        )
+        conn.commit()
+        return
+
+    if _task_row_count(conn, run_key) > 0 and not allow_legacy_migration:
+        raise ValueError(
+            "[CHECKPOINT] SQLite task rows exist for this run_key, but no "
+            "run_metadata row or compatible HDF5 group was found.\n"
+            f"  run_key : {run_key}\n"
+            "Use a new h5_path, delete the old SQLite rows, or restore the "
+            "matching HDF5 checkpoint."
+        )
+
+    conn.execute(
+        """
+        INSERT INTO run_metadata(run_key, signature_crc32, signature_json)
+        VALUES (?, ?, ?)
+        """,
+        (run_key, int(signature_crc32), signature_json),
+    )
+    conn.commit()
+
+
+def _validate_existing_task_rows(
+    conn: sqlite3.Connection,
+    *,
+    run_key: str,
+    np_arr: np.ndarray,
+    n_grids: int,
+) -> None:
+    rows = conn.execute(
+        """
+        SELECT idx_np, grid_idx, np_value
+        FROM task_status
+        WHERE run_key = ?
+        """,
+        (run_key,),
+    ).fetchall()
+    for idx_np, grid_idx, np_value in rows:
+        idx_np = int(idx_np)
+        grid_idx = int(grid_idx)
+        np_value = int(np_value)
+        if idx_np < 0 or idx_np >= int(np_arr.size):
+            raise ValueError(
+                f"[CHECKPOINT] SQLite task row has out-of-range idx_np={idx_np} "
+                f"for run_key={run_key!r}."
+            )
+        if grid_idx < 0 or grid_idx >= int(n_grids):
+            raise ValueError(
+                f"[CHECKPOINT] SQLite task row has out-of-range grid_idx={grid_idx} "
+                f"for run_key={run_key!r}."
+            )
+        expected_np = int(np_arr[idx_np])
+        if np_value != expected_np:
+            raise ValueError(
+                "[CHECKPOINT] SQLite task row np_value is incompatible with "
+                "the current np_list.\n"
+                f"  run_key : {run_key}\n"
+                f"  idx_np  : {idx_np}\n"
+                f"  existing np_value : {np_value}\n"
+                f"  current np_value  : {expected_np}"
+            )
 
 
 def _ensure_task_rows(
@@ -247,6 +619,9 @@ def _ensure_checkpoint_group(
     np_arr: np.ndarray,
     v_arr: np.ndarray,
     params: Dict[str, Any],
+    signature_json: str,
+    signature_crc32: int,
+    mp_start_method: str,
 ) -> h5py.Group:
     n_np = int(np_arr.size)
     n_grids = int(params["N_GRIDS"])
@@ -269,7 +644,14 @@ def _ensure_checkpoint_group(
     grp.attrs["base_seed"] = int(params["base_seed"])
     grp.attrs["workers"] = int(params["workers"])
     grp.attrs["STR"] = _coerce_str_array(params["STR"])
-    grp.attrs["checkpoint_version"] = 1
+    grp.attrs["checkpoint_version"] = 2
+    _write_scan_signature_attrs(
+        grp,
+        params=params,
+        signature_json=signature_json,
+        signature_crc32=signature_crc32,
+        mp_start_method=mp_start_method,
+    )
 
     if "Np" not in grp:
         grp.create_dataset("Np", data=np_arr.astype(int), compression="gzip")
@@ -400,16 +782,81 @@ def _run_checkpointed_energy_scan(
     v_arr = np_arr.astype(float) * float(params["A0"])
     expected_tasks = int(np_arr.size) * int(params["N_GRIDS"])
     n_runs_per_np = int(params["N_GRIDS"]) * int(params["N_FRACS"])
+    _signature_payload, signature_json, signature_crc32 = _make_scan_signature(params, np_arr)
+    mp_start_method = _mp_start_method_for_workers(int(params["workers"]))
 
     with h5py.File(h5_path, "a") as h5f, sqlite3.connect(sqlite_path) as conn:
         _init_status_db(conn)
 
-        if grp_path in h5f and _is_legacy_complete_group(h5f[grp_path], int(np_arr.size), n_runs_per_np):
+        group_exists = grp_path in h5f
+        if not group_exists and _task_row_count(conn, run_key) > 0:
+            raise ValueError(
+                "[CHECKPOINT] SQLite task rows exist for this run_key, but "
+                "the matching HDF5 group does not exist.\n"
+                f"  group   : {grp_path}\n"
+                f"  run_key : {run_key}\n"
+                "Use a new h5_path, delete the old SQLite rows, or restore "
+                "the matching HDF5 checkpoint."
+            )
+
+        if group_exists and _is_legacy_complete_group(h5f[grp_path], int(np_arr.size), n_runs_per_np):
             grp = h5f[grp_path]
+            _validate_legacy_complete_group(
+                grp,
+                grp_path=grp_path,
+                run_key=run_key,
+                np_arr=np_arr,
+                v_arr=v_arr,
+                params=params,
+                n_runs_per_np=n_runs_per_np,
+                signature_json=signature_json,
+                signature_crc32=signature_crc32,
+            )
+            _ensure_run_metadata(
+                conn,
+                run_key=run_key,
+                signature_json=signature_json,
+                signature_crc32=signature_crc32,
+                allow_legacy_migration=True,
+            )
+            _write_scan_signature_attrs(
+                grp,
+                params=params,
+                signature_json=signature_json,
+                signature_crc32=signature_crc32,
+                mp_start_method=mp_start_method,
+            )
+            h5f.flush()
             sigma = float(grp.attrs.get("sigma", np.nan))
             r = float(grp.attrs.get("pearson_r", np.nan))
             print(f"[SKIP] {grp_path} already exists in legacy-complete format, skip running LMC.")
             return sigma, r
+
+        if group_exists:
+            _validate_existing_checkpoint_group(
+                h5f[grp_path],
+                grp_path=grp_path,
+                run_key=run_key,
+                np_arr=np_arr,
+                v_arr=v_arr,
+                params=params,
+                signature_json=signature_json,
+                signature_crc32=signature_crc32,
+            )
+
+        _ensure_run_metadata(
+            conn,
+            run_key=run_key,
+            signature_json=signature_json,
+            signature_crc32=signature_crc32,
+            allow_legacy_migration=group_exists,
+        )
+        _validate_existing_task_rows(
+            conn,
+            run_key=run_key,
+            np_arr=np_arr,
+            n_grids=int(params["N_GRIDS"]),
+        )
 
         grp = _ensure_checkpoint_group(
             h5f,
@@ -417,6 +864,9 @@ def _run_checkpointed_energy_scan(
             np_arr=np_arr,
             v_arr=v_arr,
             params=params,
+            signature_json=signature_json,
+            signature_crc32=signature_crc32,
+            mp_start_method=mp_start_method,
         )
         _ensure_task_rows(conn, run_key, np_arr, int(params["N_GRIDS"]))
         _sync_task_status_from_h5(conn, run_key, grp)
@@ -482,7 +932,7 @@ def _run_checkpointed_energy_scan(
                     future = executor.submit(_energy_scan_worker_one_grid, payload)
                     pending_futures[future] = (idx_np, grid_idx)
 
-            with ProcessPoolExecutor(max_workers=workers) as ex:
+            with _make_process_pool(workers) as ex:
                 refill(ex)
                 while pending_futures:
                     done_set, _ = wait(set(pending_futures.keys()), return_when=FIRST_COMPLETED)
@@ -669,8 +1119,8 @@ if __name__ == "__main__":
     no_frag_list = [2]
     # int_bre_list = np.linspace(0.0, 1.0, 6)
     int_bre_list = [0.0]
-    # gamma_list = np.logspace(-3, 3, 6)
-    gamma_list = [1.0]
+    gamma_list = np.logspace(-3, 3, 6)
+    # gamma_list = [1.0]
 
     output_h5 = os.path.join(store_path, "psd_data.h5")
 
