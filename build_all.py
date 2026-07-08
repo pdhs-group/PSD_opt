@@ -7,6 +7,17 @@ import sys
 from pathlib import Path
 
 
+PACKAGE_INSTALL_ORDER = ("pbe-core", "dpbe", "mcpbe", "qmom")
+
+
+def package_sort_key(package_dir: Path) -> tuple[int, str]:
+    try:
+        order_index = PACKAGE_INSTALL_ORDER.index(package_dir.name)
+    except ValueError:
+        order_index = len(PACKAGE_INSTALL_ORDER)
+    return (order_index, package_dir.name.lower())
+
+
 def find_package_dirs(root: Path) -> list[Path]:
     package_dirs: list[Path] = []
     for child in root.iterdir():
@@ -18,11 +29,11 @@ def find_package_dirs(root: Path) -> list[Path]:
             continue
         if (child / "pyproject.toml").exists():
             package_dirs.append(child)
-    return sorted(package_dirs, key=lambda p: p.name.lower())
+    return sorted(package_dirs, key=package_sort_key)
 
 
 def run_poetry_build(package_dir: Path) -> None:
-    cmd = ["poetry", "build", "-f", "wheel"]
+    cmd = [sys.executable, "-m", "poetry", "build", "-f", "wheel"]
     result = subprocess.run(cmd, cwd=package_dir, capture_output=True, text=True)
     if result.returncode != 0:
         raise RuntimeError(
@@ -30,6 +41,25 @@ def run_poetry_build(package_dir: Path) -> None:
             f"stdout:\n{result.stdout}\n"
             f"stderr:\n{result.stderr}"
         )
+
+
+def check_poetry_module() -> bool:
+    cmd = [sys.executable, "-m", "poetry", "--version"]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode == 0:
+        version_text = result.stdout.strip() or result.stderr.strip()
+        print(f"[INFO] Using Poetry from current Python: {sys.executable}")
+        if version_text:
+            print(f"[INFO] {version_text}")
+        return True
+
+    print(f"[ERROR] Poetry is not available from current Python: {sys.executable}")
+    print("Install it into this environment with:")
+    print(f'  "{sys.executable}" -m pip install poetry')
+    if result.stderr.strip():
+        print("stderr:")
+        print(result.stderr.strip())
+    return False
 
 
 def run_editable_install(package_dir: Path) -> None:
@@ -81,9 +111,7 @@ def main() -> int:
     root = args.root.resolve()
     out_dir = root / "dist-wheels"
 
-    if shutil.which("poetry") is None:
-        print("[ERROR] 'poetry' was not found in PATH.")
-        print("Please install Poetry or run inside an environment where Poetry is available.")
+    if not args.editable and not check_poetry_module():
         return 1
 
     if args.clean_output and out_dir.exists() and not args.editable:
