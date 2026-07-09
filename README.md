@@ -16,6 +16,11 @@ The case scripts are located in:
 scripts
 ```
 
+**Note: Please manually install openpyxl in your current Python environment.**
+```powershell
+python -m pip install openpyxl
+```
+
 ## Installation Option 1: Editable Install from the Repository
 
 Use this option if you want to copy or clone the whole repository locally and link the source code directly into your current Python environment.
