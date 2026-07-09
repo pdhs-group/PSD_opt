@@ -538,7 +538,7 @@ if __name__ == "__main__":
         dim=1,
         kernel="const",
         process="breakage",
-        t_vec=np.linspace(0.0, 100.0, 101),
+        t_vec=np.linspace(0.0, 10.0, 101),
         c=1.0,
         p1=0.1,
         p2=1.0,
@@ -558,7 +558,7 @@ if __name__ == "__main__":
     variants = [
         WMCPBEVariantConfig(
             name="WMCPBE (bias)",
-            repeats=100,
+            repeats=1,
             attrs={
                 "a0": a0,
                 "V_eff_init": V_eff_init,

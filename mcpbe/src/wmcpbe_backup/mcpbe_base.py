@@ -15,10 +15,9 @@ import numpy as np
 from pbe_core.base.base_solver import BaseSolver
 # from .fenwick import FenwickSampler
 from .fenwick_new import FenwickSampler
-from .mcpbe_time_helper import MCPBETimeHelper
 
 
-class MCPBEBase(MCPBETimeHelper, BaseSolver):
+class MCPBEBase(BaseSolver):
     """Base layer for MC-PBE:
     - validates & initializes particle state with capacity buffers
     - maintains control volume & time book-keeping
@@ -53,9 +52,6 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         self.a0 = 1e3
         self.CDF_method = "disc"
         self.VERBOSE = verbose
-        self.exp_time_step = False
-        self.sum_prop_pair = False
-        self.maybe_double_control_volume=False
 
         # Initial distributions flags
         self.PGV = np.full(dim, "mono")
@@ -86,6 +82,12 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         self._dump_runtime_paths = {}
         
         self.mcpbe_debug = False
+        self.bias_enable = False
+        self.bias_monitor_warn = True
+        self.bias_monitor_supported = False
+        self._bias_last_local = {"M0": 0.0, "M1": 0.0, "M2": 0.0, "r2": float("nan")}
+        self._bias_cum = {"M0": 0.0, "M1": 0.0, "M2": 0.0}
+        self._bias_err_pred_M2 = 0.0
         # Initialize state
         if init:
             self._initialize_particles()
@@ -129,7 +131,7 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
 
                 # -------------- LMC geometry / breakage parameters --------------
         self.lmc_STR = np.asarray(
-            getattr(self, "lmc_STR", np.array([1.0, 1.0, 1.0], dtype=float)),
+            getattr(self, "lmc_STR", np.array([1.0, 0.1, 1.0], dtype=float)),
             dtype=float,
         )
         self.lmc_NO_FRAG = int(getattr(self, "lmc_NO_FRAG", 4))
@@ -340,7 +342,6 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         self,
         init_Vc: bool = True,
         V_flat: Optional[np.ndarray] = None,
-        W_init: Optional[np.ndarray] = None,
         init_cdf: Optional[dict] = None,
     ):
         """
@@ -398,16 +399,6 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         else:
             V_init = np.asarray(V_flat, dtype=float)
     
-        if W_init is not None:
-            W_init = np.asarray(W_init, dtype=float).ravel()
-            if W_init.size != V_init.shape[1]:
-                raise ValueError(
-                    "W_init must have the same number of entries as V_flat columns."
-                )
-            keep_w = np.isfinite(W_init) & (W_init > 0.0)
-            V_init = V_init[:, keep_w]
-            W_init = W_init[keep_w]
-
         a0_eff = V_init.shape[1]
         if a0_eff <= 0:
             raise ValueError("No particles initialized after filtering non-positive volumes.")
@@ -418,9 +409,6 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         if used_cdf_init:
             a0_eff_new = int(a0_eff)
             W_new = np.asarray(W_cdf, dtype=float)
-        elif W_init is not None:
-            a0_eff_new = int(a0_eff)
-            W_new = np.asarray(W_init, dtype=float)
         else:
             V_eff_init = int(getattr(self, "V_eff_init", 0) or 0)
             V_eff_mod = str(getattr(self, "V_eff_mod", "Q0") or "Q0")
@@ -576,7 +564,6 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
 
         # Agglomeration
         if pt in ("agglomeration", "mix"):
-            self._prepare_agg_delta_config()
             self._rebuild_all_propensities()  # from AgglomerationMixin
             if not hasattr(self, "_r_agg") or self._r_agg is None or self._r_agg.shape[0] < self._cap:
                 buf = np.zeros(self._cap, dtype=float)
@@ -586,7 +573,6 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
             self._agg_sampler = FenwickSampler(self._r_agg[:self.a_tot])
         else:
             self._r_agg = np.zeros(self._cap, dtype=float)
-            self._delta_agg = np.zeros(self._cap, dtype=float)
             self._agg_sampler = None
 
         # Breakage
@@ -596,8 +582,151 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
             self._break_sampler = FenwickSampler(self._break_rate[:self.a_tot])
         else:
             self._break_rate = np.zeros(self._cap, dtype=float)
-            self._delta_break = np.zeros(self._cap, dtype=float)
             self._break_sampler = None
+
+        if hasattr(self, "bias_time"):
+            self._bias_refresh_monitor_state()
+        else:
+            self._bias_reset_monitor()
+
+    def _bias_case_supported(self) -> bool:
+        return (
+            bool(getattr(self, "bias_enable", False))
+            and int(getattr(self, "dim", 0)) == 1
+            and str(getattr(self, "process_type", "")).lower() == "breakage"
+            and int(getattr(self, "BREAKRVAL", -1)) == 1
+            and int(getattr(self, "BREAKFVAL", -1)) == 2
+        )
+
+    def _bias_compute_local_from_state(
+        self,
+        V_active: np.ndarray,
+        W_active: np.ndarray,
+    ) -> dict[str, float]:
+        out = {"M0": 0.0, "M1": 0.0, "M2": 0.0, "r2": float("nan")}
+        if not self._bias_case_supported():
+            return out
+
+        V_active = np.asarray(V_active, dtype=float)
+        W_active = np.asarray(W_active, dtype=float)
+        if V_active.ndim != 2 or V_active.shape[1] == 0 or W_active.size == 0:
+            return out
+
+        W = W_active.reshape(-1)
+        V = np.asarray(V_active[0, :], dtype=float).reshape(-1)
+        m = np.isfinite(W) & (W > 0.0) & np.isfinite(V) & (V >= 0.0)
+        if not np.any(m):
+            return out
+
+        W = W[m]
+        V = V[m]
+        N0 = float(np.sum(W))
+        if N0 <= 0.0 or (not np.isfinite(N0)):
+            return out
+
+        lam = float(getattr(self, "pl_P1", 0.0))
+        delta_const = float(getattr(self, "_break_dW_const", getattr(self, "break_dW_max", 0.0)))
+        if lam <= 0.0 or (not np.isfinite(lam)) or delta_const <= 0.0:
+            return out
+
+        delta = np.minimum(W, delta_const)
+        mean_delta = float(np.sum(W * delta) / N0)
+        if mean_delta <= 0.0 or (not np.isfinite(mean_delta)):
+            return out
+
+        x2 = V * V
+        mean_x2 = float(np.sum(W * x2) / N0)
+        mean_delta_x2 = float(np.sum(W * delta * x2) / N0)
+        cov_delta_x2 = mean_delta_x2 - mean_delta * mean_x2
+
+        out["M2"] = float(-(lam * N0 / 3.0) * cov_delta_x2 / mean_delta)
+        if mean_x2 > 0.0 and np.isfinite(mean_x2):
+            out["r2"] = float(cov_delta_x2 / (mean_delta * mean_x2))
+        return out
+
+    def _bias_reset_monitor(self) -> None:
+        self.bias_monitor_supported = self._bias_case_supported()
+        if bool(getattr(self, "bias_enable", False)) and (not self.bias_monitor_supported):
+            if bool(getattr(self, "bias_monitor_warn", True)):
+                warnings.warn(
+                    "Bias monitor currently supports only dim=1, process_type='breakage', "
+                    "BREAKRVAL=1, BREAKFVAL=2.",
+                    RuntimeWarning,
+                )
+            self.bias_monitor_warn = False
+
+        local0 = self._bias_compute_local_from_state(self.V_flat[:, :self.a_tot], self.W[:self.a_tot])
+        self._bias_last_local = local0.copy()
+        self._bias_cum = {"M0": 0.0, "M1": 0.0, "M2": 0.0}
+        self._bias_err_pred_M2 = 0.0
+        self.bias_time = [0.0]
+        self.bias_local_M0 = [float(local0["M0"])]
+        self.bias_local_M1 = [float(local0["M1"])]
+        self.bias_local_M2 = [float(local0["M2"])]
+        self.bias_ratio_M2 = [float(local0["r2"])]
+        self.bias_cum_M0 = [0.0]
+        self.bias_cum_M1 = [0.0]
+        self.bias_cum_M2 = [0.0]
+        self.bias_err_pred_M2 = [0.0]
+
+    def _bias_refresh_monitor_state(self) -> None:
+        self.bias_monitor_supported = self._bias_case_supported()
+        if bool(getattr(self, "bias_enable", False)) and (not self.bias_monitor_supported):
+            if bool(getattr(self, "bias_monitor_warn", True)):
+                warnings.warn(
+                    "Bias monitor currently supports only dim=1, process_type='breakage', "
+                    "BREAKRVAL=1, BREAKFVAL=2.",
+                    RuntimeWarning,
+                )
+            self.bias_monitor_warn = False
+
+        local = self._bias_compute_local_from_state(self.V_flat[:, :self.a_tot], self.W[:self.a_tot])
+        self._bias_last_local = local.copy()
+
+        if not hasattr(self, "_bias_cum"):
+            self._bias_cum = {"M0": 0.0, "M1": 0.0, "M2": 0.0}
+        if not hasattr(self, "_bias_err_pred_M2"):
+            self._bias_err_pred_M2 = 0.0
+
+    def _bias_update_after_break_event(
+        self,
+        V_prev_active: np.ndarray,
+        W_prev_active: np.ndarray,
+        dt_event: float,
+    ) -> None:
+        if not self.bias_monitor_supported:
+            return
+        local = self._bias_compute_local_from_state(V_prev_active, W_prev_active)
+        self._bias_last_local = local.copy()
+        dt = float(dt_event)
+        if np.isfinite(dt) and dt > 0.0:
+            self._bias_cum["M0"] += float(local["M0"]) * dt
+            self._bias_cum["M1"] += float(local["M1"]) * dt
+            self._bias_cum["M2"] += float(local["M2"]) * dt
+            lam = float(getattr(self, "pl_P1", 0.0))
+            alpha = lam / 3.0
+            if np.isfinite(alpha) and alpha > 0.0:
+                decay = float(np.exp(-alpha * dt))
+                kernel_int = float((1.0 - decay) / alpha)
+            else:
+                decay = 1.0
+                kernel_int = dt
+            self._bias_err_pred_M2 = (
+                decay * float(self._bias_err_pred_M2) + kernel_int * float(local["M2"])
+            )
+
+    def _bias_append_snapshot(self, time_value: float) -> None:
+        if not hasattr(self, "bias_time"):
+            return
+        self.bias_time.append(float(time_value))
+        self.bias_local_M0.append(float(self._bias_last_local["M0"]))
+        self.bias_local_M1.append(float(self._bias_last_local["M1"]))
+        self.bias_local_M2.append(float(self._bias_last_local["M2"]))
+        self.bias_ratio_M2.append(float(self._bias_last_local["r2"]))
+        self.bias_cum_M0.append(float(self._bias_cum["M0"]))
+        self.bias_cum_M1.append(float(self._bias_cum["M1"]))
+        self.bias_cum_M2.append(float(self._bias_cum["M2"]))
+        self.bias_err_pred_M2.append(float(self._bias_err_pred_M2))
 
     def _compress_init_by_quantile(
         self,
@@ -711,14 +840,6 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
             b_new = np.zeros(new_cap, dtype=float)
             b_new[:self.a_tot] = self._break_rate[:self.a_tot]
             self._break_rate = b_new
-        if hasattr(self, "_delta_agg") and self._delta_agg is not None:
-            d_new = np.zeros(new_cap, dtype=float)
-            d_new[:self.a_tot] = self._delta_agg[:self.a_tot]
-            self._delta_agg = d_new
-        if hasattr(self, "_delta_break") and self._delta_break is not None:
-            d_new = np.zeros(new_cap, dtype=float)
-            d_new[:self.a_tot] = self._delta_break[:self.a_tot]
-            self._delta_break = d_new
     
         # Print expansion info
         if self.VERBOSE:
@@ -780,27 +901,15 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
                 b_new = np.zeros(self._cap, dtype=float)
                 b_new[:old_a] = self._break_rate[:old_a]
                 self._break_rate = b_new
-            if hasattr(self, "_delta_agg") and self._delta_agg is not None:
-                d_new = np.zeros(self._cap, dtype=float)
-                d_new[:old_a] = self._delta_agg[:old_a]
-                self._delta_agg = d_new
-            if hasattr(self, "_delta_break") and self._delta_break is not None:
-                d_new = np.zeros(self._cap, dtype=float)
-                d_new[:old_a] = self._delta_break[:old_a]
-                self._delta_break = d_new
         else:
             self.V_flat[:, :self.a_tot] = V_dup
             self.X[:self.a_tot] = X_dup
             self.W[:self.a_tot] = W_dup
-            if hasattr(self, "_delta_agg") and self._delta_agg is not None:
-                self._delta_agg[:self.a_tot] = np.concatenate((self._delta_agg[:old_a], self._delta_agg[:old_a]))
-            if hasattr(self, "_delta_break") and self._delta_break is not None:
-                self._delta_break[:self.a_tot] = np.concatenate((self._delta_break[:old_a], self._delta_break[:old_a]))
 
+        if hasattr(self, "V0") and isinstance(self.V0, np.ndarray):
+            self.V0 = np.concatenate((self.V0, self.V0), axis=1)
         if hasattr(self, "W0") and isinstance(self.W0, np.ndarray):
-            # Keep the original initial support fixed; control-volume doubling
-            # only changes the represented multiplicity of that support.
-            self.W0 *= 2.0
+            self.W0 = np.concatenate((self.W0, self.W0), axis=0)
 
         # Rebuild samplers from active slices
         if getattr(self, "process_type", "agglomeration") in ("agglomeration", "mix"):
@@ -821,6 +930,80 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
     def _vol2diam(self, V: np.ndarray) -> np.ndarray:
         return (6.0 * V / math.pi) ** (1.0 / 3.0)
 
+    def _dt_agg(self) -> float:
+        """Agglomeration Î”t for weighted packet events using current weighted propensities."""
+        a = self.a_tot
+        if a < 2:
+            return float("inf")
+        return self._dt_agg_from_sum_prop(float(np.sum(self._r_agg[:a])))
+
+    def _dt_agg_from_sum_prop(self, sum_prop: float) -> float:
+        a = self.a_tot
+        if a < 2 or sum_prop <= 0.0:
+            return float("inf")
+
+        dW = float(getattr(self, "_last_agg_dW", 1.0))
+        if dW <= 0.0:
+            dW = 1.0
+        return dW * 2.0 * float(self.Vc) * (a - 1) / (a * sum_prop)
+
+    @staticmethod
+    def _log_mean_positive(x: float, y: float) -> float:
+        """Logarithmic mean for positive numbers, with stable limit near x==y."""
+        if (not np.isfinite(x)) or (not np.isfinite(y)) or x <= 0.0 or y <= 0.0:
+            return float("nan")
+        if np.isclose(x, y, rtol=1e-12, atol=0.0):
+            return 0.5 * (x + y)
+        return (y - x) / math.log(y / x)
+
+    def _dt_agg_from_sum_prop_pair(self, sum_prop_before: float, sum_prop_after: float) -> float:
+        a = self.a_tot
+        if a < 2:
+            return float("inf")
+        prop_eff = self._log_mean_positive(float(sum_prop_before), float(sum_prop_after))
+        if (not np.isfinite(prop_eff)) or prop_eff <= 0.0:
+            return float("inf")
+
+        dW = float(getattr(self, "_last_agg_dW", 1.0))
+        if dW <= 0.0:
+            dW = 1.0
+        return dW * 2.0 * float(self.Vc) * (a - 1) / (a * prop_eff)
+
+    def _dt_break(self) -> float:
+        """Breakage Î”t for weighted packet events.
+    
+        If break propensities are defined as:
+            propensity_i = W[i] * S_i
+        then total propensity is sum_i propensity_i (events per unit time for real particles).
+    
+        In packeted breakage (one MC event represents Î”W real break events),
+        we advance time by:
+            Î”t = Î”W / sum(propensity)
+        where Î”W is stored in self._last_break_dW by _do_one_break().
+        """
+        if self.a_tot <= 0:
+            return float("inf")
+
+        return self._dt_break_from_sum_prop(float(np.sum(self._break_rate[:self.a_tot])))
+
+    def _dt_break_from_sum_prop(self, sum_prop: float) -> float:
+        if sum_prop <= 0.0:
+            return float("inf")
+
+        dW = float(getattr(self, "_last_break_dW", 1.0))
+        if dW <= 0.0:
+            dW = 1.0
+        return dW / sum_prop
+
+    def _dt_break_from_sum_prop_pair(self, sum_prop_before: float, sum_prop_after: float) -> float:
+        prop_eff = self._log_mean_positive(float(sum_prop_before), float(sum_prop_after))
+        if (not np.isfinite(prop_eff)) or prop_eff <= 0.0:
+            return float("inf")
+
+        dW = float(getattr(self, "_last_break_dW", 1.0))
+        if dW <= 0.0:
+            dW = 1.0
+        return dW / prop_eff
 
     # ---------------------------------------------------------------------
     # Main solve loop
@@ -829,47 +1012,11 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         t0 = time.time()
         count = 0
         current_time = 0.0
-        self.sim_agg_events = 0.0
-        self.sim_break_events = 0.0
-        self.real_agg_events = 0.0
-        self.real_break_events = 0.0
-        self.sim_agg_events_save = [0.0]
-        self.sim_break_events_save = [0.0]
-        self.real_agg_events_save = [0.0]
-        self.real_break_events_save = [0.0]
 
         pt = getattr(self, "process_type", "agglomeration")
-        agg_total_propensity = (
-            (lambda: float(self._agg_sampler.total()))
-            if self._agg_sampler is not None
-            else (lambda: float(np.sum(self._r_agg[:self.a_tot])))
-        )
-        break_total_propensity = (
-            (lambda: float(self._break_sampler.total()))
-            if self._break_sampler is not None
-            else (lambda: float(np.sum(self._break_rate[:self.a_tot])))
-        )
-        agg_initial_dt, agg_event_dt = self._build_agg_dt_strategy()
-        break_initial_dt, break_event_dt = self._build_break_dt_strategy()
-        mix_initial_dt, mix_event_dt = self._build_mix_dt_strategy()
-
-        timer_agg = agg_initial_dt(agg_total_propensity()) if pt == "agglomeration" else float("inf")
-        timer_break = break_initial_dt(break_total_propensity()) if pt == "breakage" else float("inf")
-        if pt == "mix":
-            agg_prop0 = agg_total_propensity()
-            break_prop0 = break_total_propensity()
-            timer_mix = mix_initial_dt(self._mix_total_rate_from_sum_prop(agg_prop0, break_prop0))
-        else:
-            timer_mix = float("inf")
-
-        if self.VERBOSE:
-            if np.isfinite(timer_agg):
-                print(f"Initial dt_agg = {timer_agg:.3e} s")
-            if np.isfinite(timer_break):
-                print(f"Initial dt_break = {timer_break:.3e} s")
-            if np.isfinite(timer_mix):
-                print(f"Initial dt_mix = {timer_mix:.3e} s")
-                
+        timer_agg = 0.0
+        timer_break = 0.0
+  
         if self.mcpbe_debug:
             self._check_state_before_solve()
             self._log_debug_config()
@@ -892,199 +1039,66 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
             W_prev_active = self.W[:self.a_tot].copy()
 
             if pt == "agglomeration":
-                sum_prop_before = agg_total_propensity()
-                self._do_one_agg()  # from AgglomerationMixin
-                last_agg_dW = float(max(0.0, float(getattr(self, "_last_agg_dW", 0.0))))
-                self.real_agg_events += last_agg_dW
-                if last_agg_dW > 0.0:
-                    self.sim_agg_events += 1.0
-                sum_prop_after = agg_total_propensity()
-                elapsed_time = timer_agg
-                dtd_agg = agg_event_dt(sum_prop_before, sum_prop_after)
-                timer_agg += dtd_agg
-            elif pt == "breakage":
-                # total propensity BEFORE the event (Î”t uses event Î”W over pre-event propensity)
-                sum_prop_before = break_total_propensity()
-                self._do_one_break()  # sets self._last_break_dW for packeted events
-                last_break_dW = float(max(0.0, float(getattr(self, "_last_break_dW", 0.0))))
-                self.real_break_events += last_break_dW
-                if last_break_dW > 0.0:
-                    self.sim_break_events += 1.0
-                sum_prop_after = break_total_propensity()
-                elapsed_time = timer_break
-                dtd_break = break_event_dt(sum_prop_before, sum_prop_after)
-                timer_break += dtd_break
-            else:  # mix
-                agg_prop_before = agg_total_propensity()
-                break_prop_before = break_total_propensity()
-                agg_rate_before = self._agg_rate_from_sum_prop(agg_prop_before)
-                break_rate_before = max(float(break_prop_before), 0.0)
-                total_rate_before = agg_rate_before + break_rate_before
-                if total_rate_before <= 0.0:
-                    break
-
-                u_event = float(self._rng.random()) * total_rate_before
-                if u_event < agg_rate_before:
-                    self._do_one_agg()
-                    last_agg_dW = float(max(0.0, float(getattr(self, "_last_agg_dW", 0.0))))
-                    self.real_agg_events += last_agg_dW
-                    if last_agg_dW > 0.0:
-                        self.sim_agg_events += 1.0
+                if self._agg_sampler is not None:
+                    sum_prop_before = float(self._agg_sampler.total())
                 else:
-                    self._do_one_break()
-                    last_break_dW = float(max(0.0, float(getattr(self, "_last_break_dW", 0.0))))
-                    self.real_break_events += last_break_dW
-                    if last_break_dW > 0.0:
-                        self.sim_break_events += 1.0
+                    sum_prop_before = float(np.sum(self._r_agg[:self.a_tot]))
 
-                agg_prop_after = agg_total_propensity()
-                break_prop_after = break_total_propensity()
-                total_rate_after = self._mix_total_rate_from_sum_prop(agg_prop_after, break_prop_after)
-                elapsed_time = timer_mix
-                dtd_mix = mix_event_dt(total_rate_before, total_rate_after)
-                timer_mix += dtd_mix
-
-            current_time = float(elapsed_time)
-            self._elapsed = current_time
-            
-            # current "right" state after this event
-            V_right_active = self.V_flat[:, :self.a_tot]
-            W_right_active = self.W[:self.a_tot]
-
-            # Save snapshots at requested times (active slice only)
-            while next_save_idx < len(self.t_vec) and elapsed_time >= self.t_vec[next_save_idx]:
-                # right snapshots: same behavior as original code
-                self.V_save.append(V_right_active.copy())
-                self.W_save.append(W_right_active.copy())
-            
-                self.Vc_save.append(float(self.Vc))
-                self.step += 1
-            
-                # left/right metadata for this time point
-                self.V_save_left.append(V_prev_active.copy())
-                self.W_save_left.append(W_prev_active.copy())
-            
-                self.t_left.append(t_prev)
-                self.t_right.append(elapsed_time)
-                self.sim_agg_events_save.append(float(self.sim_agg_events))
-                self.sim_break_events_save.append(float(self.sim_break_events))
-                self.real_agg_events_save.append(float(self.real_agg_events))
-                self.real_break_events_save.append(float(self.real_break_events))
-            
-                next_save_idx += 1
-                if self.VERBOSE:    
-                    print(
-                        f"[MC-PBE] Calculate t={elapsed_time:.6g} after {self._iter_count} events "
-                        f"(sim agg={self.sim_agg_events:.6g}, sim break={self.sim_break_events:.6g}, "
-                        f"real agg={self.real_agg_events:.6g}, real break={self.real_break_events:.6g})"
-                    )
-            # agglomeration-dominated safety (duplicate CV)
-            if self.maybe_double_control_volume:
-                self._maybe_double_control_volume(current_time, count)
-            self.maybe_reconstruct(iter_count=self._iter_count, reason=f"post_event_{pt}")
-
-            count += 1
-            # if count%100 == 0: print([f"[Test] events = {count}"])
-            if self.a_tot < 2 and pt in ("agglomeration", "mix"):
-                break
-        if self.use_lmc_live:
-            self.lmc_live._sim.agg_pool.close_pool_cache()
-        self.MACHINE_TIME = time.time() - t0
-        if self.VERBOSE:
-            print(
-                f"[MC-PBE] The calculation took {getattr(self,'MACHINE_TIME',0.0):.4g}s "
-                f"after {count} events "
-                f"(sim agg={self.sim_agg_events:.6g}, sim break={self.sim_break_events:.6g}, "
-                f"real agg={self.real_agg_events:.6g}, real break={self.real_break_events:.6g})"
-            )
-        return self
-    
-    def solve_old(self, maxiter: int = int(1e12)):
-        t0 = time.time()
-        count = 0
-        current_time = 0.0
-        self.real_agg_events = 0.0
-        self.real_break_events = 0.0
-        self.real_agg_events_save = [0.0]
-        self.real_break_events_save = [0.0]
-
-        pt = getattr(self, "process_type", "agglomeration")
-        agg_total_propensity = (
-            (lambda: float(self._agg_sampler.total()))
-            if self._agg_sampler is not None
-            else (lambda: float(np.sum(self._r_agg[:self.a_tot])))
-        )
-        break_total_propensity = (
-            (lambda: float(self._break_sampler.total()))
-            if self._break_sampler is not None
-            else (lambda: float(np.sum(self._break_rate[:self.a_tot])))
-        )
-        agg_initial_dt, agg_event_dt = self._build_agg_dt_strategy()
-        break_initial_dt, break_event_dt = self._build_break_dt_strategy()
-        
-        timer_agg = agg_initial_dt(agg_total_propensity()) if pt in ("agglomeration", "mix") else float("inf")
-        timer_break = break_initial_dt(break_total_propensity()) if pt in ("breakage", "mix") else float("inf")
-
-        if self.VERBOSE:
-            if np.isfinite(timer_agg):
-                print(f"Initial dt_agg = {timer_agg:.3e} s")
-            if np.isfinite(timer_break):
-                print(f"Initial dt_break = {timer_break:.3e} s")
-                
-        if self.mcpbe_debug:
-            self._check_state_before_solve()
-            self._log_debug_config()
-
-        next_save_idx = 1 if len(self.t_vec) > 1 else 0
-        self._elapsed = 0.0
-        self._iter_count = 0
-
-        cancel_flag = getattr(self, "cancel_flag", None)
-        while current_time <= float(self.t_vec[-1]) and count < maxiter:
-            if cancel_flag is not None and cancel_flag.get("cancel", False):
-                break
-            # keep context for logging/expansion
-            self._elapsed = current_time
-            self._iter_count = count
-            
-            # cache "left" state: state after previous event
-            t_prev = current_time
-            V_prev_active = self.V_flat[:, :self.a_tot].copy()
-            W_prev_active = self.W[:self.a_tot].copy()
-
-            if pt == "agglomeration":
-                sum_prop_before = agg_total_propensity()
                 self._do_one_agg()  # from AgglomerationMixin
-                self.real_agg_events += float(max(0.0, float(getattr(self, "_last_agg_dW", 0.0))))
-                sum_prop_after = agg_total_propensity()
+                if self._agg_sampler is not None:
+                    sum_prop_after = float(self._agg_sampler.total())
+                else:
+                    sum_prop_after = float(np.sum(self._r_agg[:self.a_tot]))
                 elapsed_time = timer_agg
-                dtd_agg = agg_event_dt(sum_prop_before, sum_prop_after)
+                dtd_agg = self._dt_agg_from_sum_prop_pair(sum_prop_before, sum_prop_after)
                 timer_agg += dtd_agg
             elif pt == "breakage":
                 # total propensity BEFORE the event (Î”t uses event Î”W over pre-event propensity)
-                sum_prop_before = break_total_propensity()
+                if self._break_sampler is not None:
+                    sum_prop_before = float(self._break_sampler.total())
+                else:
+                    sum_prop_before = float(np.sum(self._break_rate[:self.a_tot]))
+            
                 self._do_one_break()  # sets self._last_break_dW for packeted events
-                self.real_break_events += float(max(0.0, float(getattr(self, "_last_break_dW", 0.0))))
-                sum_prop_after = break_total_propensity()
-                elapsed_time = timer_break
-                dtd_break = break_event_dt(sum_prop_before, sum_prop_after)
+                if self._break_sampler is not None:
+                    sum_prop_after = float(self._break_sampler.total())
+                else:
+                    sum_prop_after = float(np.sum(self._break_rate[:self.a_tot]))
+                dtd_break = self._dt_break_from_sum_prop_pair(sum_prop_before, sum_prop_after)
+                # dtd_break = self._dt_break_from_sum_prop(sum_prop_before)
+                # u = max(self._rng.random(), 1e-300)
+                # dtd_break *= -math.log(u)
+                self._bias_update_after_break_event(V_prev_active, W_prev_active, dtd_break)
                 timer_break += dtd_break
+                elapsed_time = timer_break
             else:  # mix
                 if timer_agg <= timer_break:
-                    sum_prop_before = agg_total_propensity()
+                    if self._agg_sampler is not None:
+                        sum_prop_before = float(self._agg_sampler.total())
+                    else:
+                        sum_prop_before = float(np.sum(self._r_agg[:self.a_tot]))
+
                     self._do_one_agg()
-                    self.real_agg_events += float(max(0.0, float(getattr(self, "_last_agg_dW", 0.0))))
-                    sum_prop_after = agg_total_propensity()
+                    if self._agg_sampler is not None:
+                        sum_prop_after = float(self._agg_sampler.total())
+                    else:
+                        sum_prop_after = float(np.sum(self._r_agg[:self.a_tot]))
                     elapsed_time = timer_agg
-                    dtd_agg = agg_event_dt(sum_prop_before, sum_prop_after)
+                    dtd_agg = self._dt_agg_from_sum_prop_pair(sum_prop_before, sum_prop_after)
                     timer_agg += dtd_agg
                 else:
-                    sum_prop_before = break_total_propensity()
+                    if self._break_sampler is not None:
+                        sum_prop_before = float(self._break_sampler.total())
+                    else:
+                        sum_prop_before = float(np.sum(self._break_rate[:self.a_tot]))
                     self._do_one_break()
-                    self.real_break_events += float(max(0.0, float(getattr(self, "_last_break_dW", 0.0))))
-                    sum_prop_after = break_total_propensity()
+                    if self._break_sampler is not None:
+                        sum_prop_after = float(self._break_sampler.total())
+                    else:
+                        sum_prop_after = float(np.sum(self._break_rate[:self.a_tot]))
                     elapsed_time = timer_break
-                    dtd_break = break_event_dt(sum_prop_before, sum_prop_after)
+                    dtd_break = self._dt_break_from_sum_prop_pair(sum_prop_before, sum_prop_after)
+                    self._bias_update_after_break_event(V_prev_active, W_prev_active, dtd_break)
                     timer_break += dtd_break
 
             current_time = float(elapsed_time)
@@ -1109,18 +1123,15 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
             
                 self.t_left.append(t_prev)
                 self.t_right.append(elapsed_time)
-                self.real_agg_events_save.append(float(self.real_agg_events))
-                self.real_break_events_save.append(float(self.real_break_events))
+                self._bias_append_snapshot(elapsed_time)
             
                 next_save_idx += 1
                 if self.VERBOSE:    
                     print(
-                        f"[MC-PBE] Calculate t={elapsed_time:.6g} after {self._iter_count} events "
-                        f"(real agg={self.real_agg_events:.6g}, real break={self.real_break_events:.6g})"
+                        f"[MC-PBE] Calculate t={elapsed_time:.6g} after {self._iter_count} events"
                     )
             # agglomeration-dominated safety (duplicate CV)
-            if self.maybe_double_control_volume:
-                self._maybe_double_control_volume(current_time, count)
+            self._maybe_double_control_volume(current_time, count)
             self.maybe_reconstruct(iter_count=self._iter_count, reason=f"post_event_{pt}")
 
             count += 1
@@ -1131,12 +1142,9 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
             self.lmc_live._sim.agg_pool.close_pool_cache()
         self.MACHINE_TIME = time.time() - t0
         if self.VERBOSE:
-            print(
-                f"[MC-PBE] The calculation took {getattr(self,'MACHINE_TIME',0.0):.4g}s "
-                f"after {count} events "
-                f"(real agg={self.real_agg_events:.6g}, real break={self.real_break_events:.6g})"
-            )
+            print(f"[MC-PBE] The calculation took {getattr(self,'MACHINE_TIME',0.0):.4g}s after {count} events")
         return self
+    
     def solve_repeats(
         self,
         N: int = 5,
@@ -1146,7 +1154,6 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         init_Vc: bool = True,
         Vc: float = None,
         V_flat: Optional[np.ndarray] = None,
-        W_init: Optional[np.ndarray] = None,
         workers: int = 1,
         psd_enable: bool = False,
         psd_basis: str = "volume",                 # "volume" or "number"
@@ -1286,7 +1293,7 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
                         m.V_flat = None
                         if not init_Vc and Vc is not None:
                             m.Vc = Vc
-                        m._initialize_particles(init_Vc=init_Vc, V_flat=V_flat, W_init=W_init, init_cdf=init_cdf_payload)
+                        m._initialize_particles(init_Vc=init_Vc, V_flat=V_flat, init_cdf=init_cdf_payload)
                         m._init_lmc()
                         m._initialize_samplers()
                         m.solve(maxiter=maxiter)
@@ -1538,7 +1545,7 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
                     m.Vc = Vc
                     # m.Vc = 1e-10
                     # print("Controll volume : ", m.Vc)
-                m._initialize_particles(init_Vc=init_Vc, V_flat=V_flat, W_init=W_init, init_cdf=init_cdf_payload)
+                m._initialize_particles(init_Vc=init_Vc, V_flat=V_flat, init_cdf=init_cdf_payload)
                 m._init_lmc()
                 m._initialize_samplers()
                 m.solve(maxiter=maxiter)
@@ -1635,7 +1642,6 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
                     "init_Vc": init_Vc,
                     "Vc": Vc,
                     "V_flat": V_flat,
-                    "W_init": W_init,
                     "init_cdf_payload": init_cdf_payload,
                     # PSD options
                     "psd_enable": psd_enable,
@@ -1873,10 +1879,6 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
                 self._r_agg[j], self._r_agg[last] = self._r_agg[last], self._r_agg[j]
             if self._break_rate is not None:
                 self._break_rate[j], self._break_rate[last] = self._break_rate[last], self._break_rate[j]
-            if hasattr(self, "_delta_agg") and self._delta_agg is not None:
-                self._delta_agg[j], self._delta_agg[last] = self._delta_agg[last], self._delta_agg[j]
-            if hasattr(self, "_delta_break") and self._delta_break is not None:
-                self._delta_break[j], self._delta_break[last] = self._delta_break[last], self._delta_break[j]
 
         # logical shrink & zero freed slot
         self.a_tot = last
@@ -1888,10 +1890,6 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
             self._r_agg[self.a_tot] = 0.0
         if self._break_rate is not None:
             self._break_rate[self.a_tot] = 0.0
-        if hasattr(self, "_delta_agg") and self._delta_agg is not None:
-            self._delta_agg[self.a_tot] = 0.0
-        if hasattr(self, "_delta_break") and self._delta_break is not None:
-            self._delta_break[self.a_tot] = 0.0
 
         # local sampler remove (swap-with-last behavior kept consistent with array swap above)
         if self._agg_sampler is not None:
@@ -1925,10 +1923,6 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         # Default weight for new particle (DSMC baseline).
         # Note: breakage/agglomeration code may overwrite this immediately.
         self.W[idx] = 1.0
-        if hasattr(self, "_delta_agg") and self._delta_agg is not None:
-            self._delta_agg[idx] = 0.0
-        if hasattr(self, "_delta_break") and self._delta_break is not None:
-            self._delta_break[idx] = 0.0
     
         self.a_tot += 1
     
@@ -1967,7 +1961,7 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
 
         big_attrs = ("V_flat", "X", "V0", "X0",
              "V0_save", "V_save", "Vc_save",
-             "_r_agg", "_break_rate", "_delta_agg", "_delta_break",
+             "_r_agg", "_break_rate",
              "_agg_sampler", "_break_sampler")
         for name in big_attrs:
             setattr(self, name, None)
@@ -2220,7 +2214,6 @@ def _mcpbe_run_single_parallel(payload: dict):
     init_Vc = payload["init_Vc"]
     Vc = payload["Vc"]
     V_flat = payload["V_flat"]
-    W_init = payload.get("W_init", None)
     init_cdf_payload = payload.get("init_cdf_payload", None)
 
     # PSD opts
@@ -2249,7 +2242,7 @@ def _mcpbe_run_single_parallel(payload: dict):
     obj.V_flat = None
     if not init_Vc and Vc is not None:
         obj.Vc = Vc
-    obj._initialize_particles(init_Vc=init_Vc, V_flat=V_flat, W_init=W_init, init_cdf=init_cdf_payload)
+    obj._initialize_particles(init_Vc=init_Vc, V_flat=V_flat, init_cdf=init_cdf_payload)
     obj._init_lmc()
     obj._initialize_samplers()
 

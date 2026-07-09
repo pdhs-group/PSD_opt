@@ -4,10 +4,7 @@ from __future__ import annotations
 import numpy as np
 
 from .fenwick_new import FenwickSampler
-from pbe_core.func.jit_mcpbe import (
-    nb_pick_partner_weighted_pair_delta,
-    nb_rebuild_ragg_weighted_pair_delta,
-)
+from pbe_core.func.jit_mcpbe import nb_rebuild_ragg_weighted, nb_pick_partner_weighted
 
 # External JIT kernel for Î²(i,j)
 from pbe_core.func.jit_kernel_agg import calc_beta as _kb_beta
@@ -17,7 +14,7 @@ class MCPBEAgg:
     """Agglomeration logic:
     - _beta: wrapper to JIT kernel
     - _alpha_ccm: 2D alpha based on component fractions (kept for parity)
-    - _rebuild_all_propensities: parallel JIT rebuild of pair-delta corrected r_i
+    - _rebuild_all_propensities: parallel JIT rebuild r_i = sum_j beta(i,j)
     - _do_one_agg: single event with incremental r updates + swap-pop removal
     """
 
@@ -45,47 +42,39 @@ class MCPBEAgg:
 
     def _beta(self, i: int, j: int) -> float:
         """Pair kernel Î²(i,j) via external JIT calc_beta (radii array = X/2)."""
+        if i == j:
+            return 0.0
         return float(_kb_beta(int(self.COLEVAL), float(self.CORR_BETA), float(getattr(self, "G", 1.0)), self.X / 2.0, i, j))
 
     # ------------------------------------------------------------------
     # r_agg maintenance (full rebuild)
     # ------------------------------------------------------------------
     def _rebuild_all_propensities(self):
-        """Rebuild weighted agglomeration propensities with shared packet correction."""
+        """Rebuild weighted agglomeration propensities r_i = W_i * sum_j (W_j * beta(i,j))."""
         a = self.a_tot
         if a <= 0:
             if not hasattr(self, "_r_agg") or self._r_agg is None or self._r_agg.shape[0] < getattr(self, "_cap", a):
                 self._r_agg = np.zeros(getattr(self, "_cap", max(8, a)), dtype=float)
             else:
                 self._r_agg[:] = 0.0
-            if hasattr(self, "_delta_agg") and self._delta_agg is not None:
-                self._delta_agg[:] = 0.0
             return
 
         R = (self.X[:a] * 0.5).astype(np.float64)
-        W = np.asarray(self.W[:a], dtype=np.float64)
-        dW_const = float(getattr(self, "_agg_dW_const", self._prepare_agg_delta_config()))
-        delta = self._delta_from_weights(W, dW_const=dW_const)
-        if (not hasattr(self, "_delta_agg")) or self._delta_agg is None or self._delta_agg.shape[0] < getattr(self, "_cap", a):
-            self._delta_agg = np.zeros(getattr(self, "_cap", a), dtype=float)
-        self._delta_agg[:a] = delta
-        r = nb_rebuild_ragg_weighted_pair_delta(
+        W = self.W[:a].astype(np.float64)
+        r = nb_rebuild_ragg_weighted(
             int(self.COLEVAL),
             float(self.CORR_BETA),
             float(getattr(self, "G", 1.0)),
             R,
             W,
-            delta,
+            np.ones_like(W, dtype=np.float64),
         )
-        np.maximum(r, 0.0, out=r)
 
         if not hasattr(self, "_r_agg") or self._r_agg is None or self._r_agg.shape[0] < getattr(self, "_cap", a):
             self._r_agg = np.zeros(getattr(self, "_cap", a), dtype=float)
         self._r_agg[:a] = r
         if self._r_agg.shape[0] > a:
             self._r_agg[a:] = 0.0
-        if self._delta_agg.shape[0] > a:
-            self._delta_agg[a:] = 0.0
 
     def _compute_agg_dW(self, i: int, j: int, pair_prop: float, sum_prop_before: float) -> float:
         """Compute packet size Î”W for one agglomeration event on pair (i,j)."""
@@ -119,25 +108,10 @@ class MCPBEAgg:
             dW = dW_min
         if dW > dW_max:
             dW = dW_max
-        delta_i = self._update_delta_single(i, attr_name="_delta_agg", dW_const=float(getattr(self, "_agg_dW_const", dW_max)))
-        delta_j = self._update_delta_single(j, attr_name="_delta_agg", dW_const=float(getattr(self, "_agg_dW_const", dW_max)))
-        if i == j:
-            if delta_i <= 0.0 or Wi <= 1.0:
-                return 0.0
-            delta_ii = min(float(delta_i), 0.5 * Wi)
-            if delta_ii <= 0.0:
-                return 0.0
-            if dW > delta_ii:
-                dW = delta_ii
-        else:
-            if dW > Wi:
-                dW = Wi
-            if dW > Wj:
-                dW = Wj
-            if delta_i > 0.0 and dW > delta_i:
-                dW = delta_i
-            if delta_j > 0.0 and dW > delta_j:
-                dW = delta_j
+        if dW > Wi:
+            dW = Wi
+        if dW > Wj:
+            dW = Wj
         if not np.isfinite(dW) or dW <= 0.0:
             return 0.0
         return float(dW)
@@ -148,29 +122,29 @@ class MCPBEAgg:
     def _do_one_agg(self):
         a = self.a_tot
         if a < 2:
-            self._last_agg_dW = 0.0
+            self._last_agg_dW = 1.0
             return
 
         # default packet for rejected/empty attempts
-        self._last_agg_dW = 0.0
+        self._last_agg_dW = 1.0
 
         # 1) pick first partner by r_i
         i = self._agg_sampler.sample(self._rng)
 
         # 2) weighted partner sampling + acceptance (numba)
         R = (self.X[:a] * 0.5).astype(np.float64)
-        W = np.asarray(self.W[:a], dtype=np.float64)
+        W = self.W[:a].astype(np.float64)
         if self.dim == 1:
             alpha1d = float(self.alpha_prim if np.ndim(self.alpha_prim) == 0 else np.mean(self.alpha_prim))
             alpha4 = np.zeros(4, dtype=np.float64)
-            V0 = np.asarray(self.V_flat[0, :a], dtype=np.float64)
+            V0 = self.V_flat[0, :a].astype(np.float64)
             V1 = np.zeros_like(V0)
         else:
             alpha1d = 1.0
             ap = np.asarray(self.alpha_prim, dtype=np.float64)
             alpha4 = ap if ap.size == 4 else np.ones(4, dtype=np.float64)
-            V0 = np.asarray(self.V_flat[0, :a], dtype=np.float64)
-            V1 = np.asarray(self.V_flat[1, :a], dtype=np.float64)
+            V0 = self.V_flat[0, :a].astype(np.float64)
+            V1 = self.V_flat[1, :a].astype(np.float64)
 
         SIZEEVAL = int(getattr(self, "SIZEEVAL", 1))
         X_SEL = float(getattr(self, "X_SEL", 0.31))
@@ -179,31 +153,20 @@ class MCPBEAgg:
 
         u_sel = float(self._rng.random())
         u_acc = float(self._rng.random())
-        Wi_selected = float(W[i])
-        partner_total = (
-            float(self._r_agg[i]) / Wi_selected
-            if Wi_selected > 0.0 and hasattr(self, "_r_agg")
-            else 0.0
-        )
-        j, pick_w = nb_pick_partner_weighted_pair_delta(
+        j, pick_w = nb_pick_partner_weighted(
             i,
             int(self.COLEVAL), float(self.CORR_BETA), float(getattr(self, "G", 1.0)),
-            R,
-            W,
-            np.asarray(self._delta_agg[:a], dtype=np.float64),
-            partner_total,
-            V0, V1, int(self.dim),
+            R, W, np.ones_like(W, dtype=np.float64), V0, V1, int(self.dim),
             float(alpha1d), alpha4, SIZEEVAL, X_SEL, Y_SEL, Vmean2,
             u_sel, u_acc,
         )
-        if j < 0 or pick_w <= 0.0:
+        if j < 0 or j == i or pick_w <= 0.0:
             return
 
         # 3) packet size Î”W for this accepted event
         sum_prop_before = float(self._agg_sampler.total()) if self._agg_sampler is not None else float(np.sum(self._r_agg[: self.a_tot]))
         Wi = float(self.W[i])
-        # pick_w already includes the pair-delta correction used in r_i.
-        pair_prop = Wi * pick_w
+        pair_prop = Wi * pick_w  # = W_i * (W_j * beta_ij)
         dW = self._compute_agg_dW(i, j, pair_prop, sum_prop_before)
         if dW <= 0.0:
             return
@@ -218,25 +181,16 @@ class MCPBEAgg:
         new_idx = self.a_tot - 1
         self.W[new_idx] = dW
 
-        # 5) consume dW from parents (self-agglomeration consumes 2*dW from one packet)
-        if i == j:
-            if i < self.a_tot:
-                w_now = float(self.W[i])
-                w_rem = w_now - 2.0 * dW
-                if w_rem > 0.0:
-                    self.W[i] = w_rem
-                else:
-                    self._remove_particle_column(i)
-        else:
-            for idx in sorted({int(i), int(j)}, reverse=True):
-                if idx >= self.a_tot:
-                    continue
-                w_now = float(self.W[idx])
-                w_rem = w_now - dW
-                if w_rem > 0.0:
-                    self.W[idx] = w_rem
-                else:
-                    self._remove_particle_column(idx)
+        # 5) consume dW from parents (volumes unchanged for surviving represented particles)
+        for idx in sorted({int(i), int(j)}, reverse=True):
+            if idx >= self.a_tot:
+                continue
+            w_now = float(self.W[idx])
+            w_rem = w_now - dW
+            if w_rem > 0.0:
+                self.W[idx] = w_rem
+            else:
+                self._remove_particle_column(idx)
 
         # 6) full weighted agglomeration propensity refresh (simple and consistent)
         self._rebuild_all_propensities()
