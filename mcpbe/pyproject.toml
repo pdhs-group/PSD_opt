@@ -8,6 +8,7 @@ readme = "README.md"
 packages = [
     { include = "mcpbe", from = "src" },
     { include = "wmcpbe", from = "src" },
+    { include = "wmcpbe_backup", from = "src" },
     { include = "wmcpbe_recon_debug", from = "src" },
 ]
 

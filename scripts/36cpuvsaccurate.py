@@ -55,7 +55,7 @@ if __name__ == "__main__":
             WMCPBEVariantConfig(
                 name="WMCPBE1",
                 repeats=100,
-                aggregate_error_per_repeat=True,
+                base_seed=42,
                 attrs={
                     "a0": 2e5,
                     "V_eff_init": 1000,
@@ -70,7 +70,7 @@ if __name__ == "__main__":
             WMCPBEVariantConfig(
                 name="WMCPBE2",
                 repeats=100,
-                aggregate_error_per_repeat=True,
+                base_seed=42,
                 attrs={
                     "a0": 2e5,
                     "V_eff_init": 1000,
@@ -85,7 +85,7 @@ if __name__ == "__main__":
             WMCPBEVariantConfig(
                 name="WMCPBE21",
                 repeats=100,
-                aggregate_error_per_repeat=True,
+                base_seed=42,
                 attrs={
                     "a0": 2e5,
                     "V_eff_init": 1000,
@@ -100,7 +100,7 @@ if __name__ == "__main__":
             WMCPBEVariantConfig(
                 name="WMCPBE3",
                 repeats=100,
-                aggregate_error_per_repeat=True,
+                base_seed=42,
                 attrs={
                     "a0": 2e5,
                     "V_eff_init": 1000,
@@ -115,7 +115,7 @@ if __name__ == "__main__":
             WMCPBEVariantConfig(
                 name="WMCPBE31",
                 repeats=100,
-                aggregate_error_per_repeat=True,
+                base_seed=42,
                 attrs={
                     "a0": 2e5,
                     "V_eff_init": 1000,
@@ -130,7 +130,7 @@ if __name__ == "__main__":
             WMCPBEVariantConfig(
                 name="WMCPBE4",
                 repeats=100,
-                aggregate_error_per_repeat=True,
+                base_seed=42,
                 attrs={
                     "a0": 2e5,
                     "V_eff_init": 1000,
@@ -145,7 +145,7 @@ if __name__ == "__main__":
             WMCPBEVariantConfig(
                 name="WMCPBE41",
                 repeats=100,
-                aggregate_error_per_repeat=True,
+                base_seed=42,
                 attrs={
                     "a0": 2e5,
                     "V_eff_init": 1000,
@@ -160,7 +160,7 @@ if __name__ == "__main__":
             WMCPBEVariantConfig(
                 name="WMCPBE5",
                 repeats=100,
-                aggregate_error_per_repeat=True,
+                base_seed=42,
                 attrs={
                     "a0": 2e5,
                     "V_eff_init": 1000,
@@ -175,7 +175,7 @@ if __name__ == "__main__":
             WMCPBEVariantConfig(
                 name="WMCPBE51",
                 repeats=100,
-                aggregate_error_per_repeat=True,
+                base_seed=42,
                 attrs={
                     "a0": 2e5,
                     "V_eff_init": 1000,
@@ -204,7 +204,7 @@ if __name__ == "__main__":
         volume_concentration=None,
     )
 
-    advanced = PBEValidationAdvanced(config=config, init_dist=init_dist, export_dir="exports_cpu_time_vs_accuracy - dw20")
+    advanced = PBEValidationAdvanced(config=config, init_dist=init_dist, export_dir="exports_cpu_time_vs_accuracy")
     result = advanced.run()
 
     advanced.print_moment_error_summary(result)
