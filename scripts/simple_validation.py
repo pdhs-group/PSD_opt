@@ -2,28 +2,11 @@
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
 import cProfile, pstats
 
 import numpy as np
 
-
-def _bootstrap_project_paths() -> None:
-    root = Path(__file__).resolve().parents[3]
-    candidate_paths = [
-        root,
-        root / "scripts" / "pbe_validation" / "new",
-    ]
-    for path in candidate_paths:
-        path_str = str(path)
-        if path.exists() and path_str not in sys.path:
-            sys.path.insert(0, path_str)
-
-
-_bootstrap_project_paths()
-
-from validation import (  # noqa: E402
+from validation import (
     CaseConfig,
     DPBEVariantConfig,
     QMOMVariantConfig,

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import copy
 import math
-import sys
 import time
 import warnings
 from dataclasses import dataclass, field
@@ -15,25 +14,9 @@ import numpy as np
 import pandas as pd
 
 
-def _bootstrap_project_paths() -> None:
-    root = Path(__file__).resolve().parents[3]
-    candidate_paths = [
-        root,
-        root / "scripts" / "pbe_validation" / "new",
-        root / "mcpbe" / "src",
-        root / "pbe-core" / "src",
-    ]
-    for path in candidate_paths:
-        path_str = str(path)
-        if path.exists() and path_str not in sys.path:
-            sys.path.insert(0, path_str)
-
-
-_bootstrap_project_paths()
-
-from validation import MIN, CaseConfig, WMCPBEVariantConfig  # noqa: E402
-from pbe_core.plotter.plotter_new import PaperPlotter  # noqa: E402
-from wmcpbe_backup import MCPBESolver  # noqa: E402
+from validation import MIN, CaseConfig, WMCPBEVariantConfig
+from pbe_core.plotter.plotter_new import PaperPlotter
+from wmcpbe_backup import MCPBESolver
 
 
 @dataclass
