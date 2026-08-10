@@ -35,6 +35,15 @@ import numpy as np
 
 from .data_io import EnergyGroupRecord
 from .base import BaseEnergyModel
+from .features import (
+    INT_BRE_FEATURE_INDEX,
+    active_feature_indices,
+    group_theta_features,
+    normalize_active_feature_names,
+    require_full_feature_matrix,
+    theta_feature_indices,
+    theta_feature_names,
+)
 
 
 # =============================================================================
@@ -563,6 +572,7 @@ class PowerLawSeparableModel(BaseEnergyModel):
         plateau_weight: float = 3.0,
         regress_type: str = "linear",   # "linear" or "ridge"
         ridge_lambda: float = 1e-2,
+        active_feature_names: Optional[Sequence[str]] = None,
     ):
         super().__init__(name=name or "PowerLawSeparableModel")
 
@@ -581,13 +591,17 @@ class PowerLawSeparableModel(BaseEnergyModel):
         self.plateau_weight = plateau_weight
         self.regress_type = regress_type
         self.ridge_lambda = ridge_lambda
-
-        # θ 维度固定为 6: [log gamma, log NO_FRAG, int_bre, Df, MAS, X1]
-        self._theta_dim: int = 6
+        self.active_feature_names = normalize_active_feature_names(active_feature_names)
+        self._active_feature_indices = active_feature_indices(self.active_feature_names)
+        self._theta_feature_names = theta_feature_names(self.active_feature_names)
+        self._theta_feature_indices = theta_feature_indices(self.active_feature_names)
+        self._theta_dim = len(self._theta_feature_names)
 
         # 两簇各自线性回归系数
         self._coef_erosion: Optional[np.ndarray] = None   # shape (d+1, k_e)
         self._coef_normal: Optional[np.ndarray] = None    # shape (d+1, k_n)
+        self._theta_scaler_erosion: Optional[Tuple[np.ndarray, np.ndarray]] = None
+        self._theta_scaler_normal: Optional[Tuple[np.ndarray, np.ndarray]] = None
 
     # ------------------------------------------------------------------
     # 内部：从一簇 groups 中收集 θ 和 (σ, logVc, logEmax[, α])，并标记 plateau
@@ -650,12 +664,7 @@ class PowerLawSeparableModel(BaseEnergyModel):
                 alpha_g = 0.0
 
             # θ 特征: [log gamma, log NO_FRAG, int_bre, Df, MAS, X1]
-            log_gamma = np.log(rec.gamma)
-            log_NOFRAG = np.log(rec.NO_FRAG)
-            theta_vec = np.array(
-                [log_gamma, log_NOFRAG, rec.int_bre, rec.Df, rec.MAS, rec.X1],
-                dtype=float,
-            )
+            theta_vec = group_theta_features(rec, self.active_feature_names)
 
             theta_list.append(theta_vec)
 
@@ -687,6 +696,55 @@ class PowerLawSeparableModel(BaseEnergyModel):
     # ------------------------------------------------------------------
     # 训练接口
     # ------------------------------------------------------------------
+    def _fit_theta_scaler(
+        self,
+        theta: np.ndarray,
+        branch_name: str,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """Fit the branch-specific standardization used by structural regressions."""
+        if theta.ndim != 2 or theta.shape[1] != self._theta_dim:
+            raise ValueError(
+                f"{branch_name} theta has shape {theta.shape}; expected "
+                f"(n, {self._theta_dim})."
+            )
+        if theta.shape[0] == 0:
+            raise ValueError(f"Cannot fit {branch_name} regression without curves.")
+        if self._theta_dim == 0:
+            return np.zeros(0, dtype=float), np.ones(0, dtype=float)
+
+        mean = np.mean(theta, axis=0)
+        scale = np.std(theta, axis=0)
+        constant = scale < 1e-12
+        if np.any(constant):
+            names = [
+                self._theta_feature_names[index]
+                for index in np.flatnonzero(constant)
+            ]
+            raise ValueError(
+                f"Selected active features are constant in the {branch_name} "
+                f"training branch: {names}. Remove them from active_feature_names."
+            )
+        return mean, scale
+
+    def _scale_theta(
+        self,
+        theta: np.ndarray,
+        scaler: Optional[Tuple[np.ndarray, np.ndarray]],
+        branch_name: str,
+    ) -> np.ndarray:
+        """Apply a previously fitted branch-specific theta standardization."""
+        if scaler is None:
+            raise RuntimeError(f"{branch_name} regression scaler has not been fitted.")
+        mean, scale = scaler
+        if theta.ndim != 2 or theta.shape[1] != self._theta_dim:
+            raise ValueError(
+                f"{branch_name} theta has shape {theta.shape}; expected "
+                f"(n, {self._theta_dim})."
+            )
+        if mean.shape != (self._theta_dim,) or scale.shape != (self._theta_dim,):
+            raise RuntimeError(f"{branch_name} regression scaler has an invalid shape.")
+        return (theta - mean) / scale
+
     def fit_from_groups(
         self,
         groups: Sequence[EnergyGroupRecord],
@@ -727,11 +785,28 @@ class PowerLawSeparableModel(BaseEnergyModel):
             )
 
         # θ 维度（两个簇应该一致）
-        self._theta_dim = 6
+        self._theta_dim = len(self._theta_feature_names)
 
         # 选择回归类型 & λ
-        regress_type = getattr(self, "regress_type", "linear").lower()
-        ridge_lambda = float(getattr(self, "ridge_lambda", 1e-2))
+        regress_type = self.regress_type.lower()
+        ridge_lambda = float(self.ridge_lambda)
+
+        self._theta_scaler_erosion = None
+        self._theta_scaler_normal = None
+        if Theta_e is not None:
+            self._theta_scaler_erosion = self._fit_theta_scaler(
+                Theta_e, "erosion"
+            )
+            Theta_e = self._scale_theta(
+                Theta_e, self._theta_scaler_erosion, "erosion"
+            )
+        if Theta_n is not None:
+            self._theta_scaler_normal = self._fit_theta_scaler(
+                Theta_n, "normal"
+            )
+            Theta_n = self._scale_theta(
+                Theta_n, self._theta_scaler_normal, "normal"
+            )
 
         # ------------------------------------------------------------------
         # 侵蚀簇回归：不加权，可选 linear / ridge
@@ -765,7 +840,7 @@ class PowerLawSeparableModel(BaseEnergyModel):
             A_n = np.column_stack([np.ones(n_n), Theta_n])   # (n_n, d_n+1)
 
             if plateau_n is not None and plateau_n.size == n_n:
-                K = getattr(self, "plateau_weight", 3.0)
+                K = self.plateau_weight
                 # 权重向量：plateau 组权重 K，其余为 1
                 w = np.ones(n_n, dtype=float)
                 w[plateau_n] = K
@@ -836,6 +911,8 @@ class PowerLawSeparableModel(BaseEnergyModel):
         theta: np.ndarray,
         coef: np.ndarray,
         *,
+        scaler: Optional[Tuple[np.ndarray, np.ndarray]],
+        branch_name: str,
         enable_tail_for_subset: bool,
     ) -> np.ndarray:
         """
@@ -845,6 +922,7 @@ class PowerLawSeparableModel(BaseEnergyModel):
         if coef is None:
             raise RuntimeError("Internal error: coef is None in _predict_subset.")
 
+        theta = self._scale_theta(theta, scaler, branch_name)
         n, d = theta.shape
         A = np.column_stack([np.ones(n), theta])   # (n, d+1)
         Y = A @ coef                               # (n, n_param)
@@ -868,137 +946,51 @@ class PowerLawSeparableModel(BaseEnergyModel):
         )
         return E_pred
 
-    # ------------------------------------------------------------------
-    # 预测接口
-    # ------------------------------------------------------------------
-    def predict(self, X: np.ndarray) -> np.ndarray:
-        """
-        输入特征矩阵 X：
-
-            X[i] = [logV, log gamma, log NO_FRAG, int_bre, Df, MAS, X1]
-
-        输出：
-            y_pred[i] = log(E_pred(V_i, θ_i))
-        """
-        if not self._is_fitted:
-            raise RuntimeError("PowerLawSeparableModel is not fitted.")
-
-        if X.ndim != 2 or X.shape[1] < 1 + self._theta_dim:
-            raise ValueError(
-                f"X shape not compatible: got {X.shape}, "
-                f"expect (n_samples, {1 + self._theta_dim})"
-            )
-
-        logV = X[:, 0]
-        V = np.exp(logV)
-        theta = X[:, 1:1 + self._theta_dim]
-
-        int_bre = theta[:, 2]
-        erosion_mask = np.isclose(int_bre, 0.0)
-        normal_mask = ~erosion_mask
-
-        E_pred = np.empty_like(V)
-
-        # erosion subset (int_bre == 0)
-        if np.any(erosion_mask):
-            if self._coef_erosion is not None:
-                E_pred[erosion_mask] = self._predict_subset(
-                    V[erosion_mask],
-                    theta[erosion_mask],
-                    self._coef_erosion,
-                    enable_tail_for_subset=self.enable_tail,
-                )
-            elif self._coef_normal is not None:
-                # fallback：若没有 erosion 模型，则用 normal 模型
-                E_pred[erosion_mask] = self._predict_subset(
-                    V[erosion_mask],
-                    theta[erosion_mask],
-                    self._coef_normal,
-                    enable_tail_for_subset=False,
-                )
-            else:
-                raise RuntimeError("No valid coef for erosion subset.")
-
-        # normal subset (int_bre != 0)
-        if np.any(normal_mask):
-            if self._coef_normal is not None:
-                E_pred[normal_mask] = self._predict_subset(
-                    V[normal_mask],
-                    theta[normal_mask],
-                    self._coef_normal,
-                    enable_tail_for_subset=False,
-                )
-            elif self._coef_erosion is not None:
-                # fallback：若没有 normal 模型，则用 erosion 模型但禁用 tail
-                E_pred[normal_mask] = self._predict_subset(
-                    V[normal_mask],
-                    theta[normal_mask],
-                    self._coef_erosion,
-                    enable_tail_for_subset=False,
-                )
-            else:
-                raise RuntimeError("No valid coef for normal subset.")
-
-        E_pred = np.maximum(E_pred, 1e-12)  # 避免 log(0)
-        return np.log(E_pred)
-
     def predict_energy(self, X: np.ndarray) -> np.ndarray:
-        """
-        与 predict 相同，但返回的是 E_pred 而非 log(E_pred)。
-        """
+        """Predict energy from the canonical full ten-column feature matrix."""
         if not self._is_fitted:
             raise RuntimeError("PowerLawSeparableModel is not fitted.")
 
-        if X.ndim != 2 or X.shape[1] < 1 + self._theta_dim:
-            raise ValueError(
-                f"X shape not compatible: got {X.shape}, "
-                f"expect (n_samples, {1 + self._theta_dim})"
-            )
-
-        logV = X[:, 0]
-        V = np.exp(logV)
-        theta = X[:, 1:1 + self._theta_dim]
-
-        int_bre = theta[:, 2]
-        erosion_mask = np.isclose(int_bre, 0.0)
+        X = require_full_feature_matrix(X)
+        V = np.exp(X[:, 0])
+        theta = X[:, self._theta_feature_indices]
+        int_bre = X[:, INT_BRE_FEATURE_INDEX]
+        erosion_mask = np.isclose(int_bre, 0.0, rtol=0.0, atol=1e-12)
         normal_mask = ~erosion_mask
-
-        E_pred = np.empty_like(V)
+        energy = np.empty_like(V)
 
         if np.any(erosion_mask):
-            if self._coef_erosion is not None:
-                E_pred[erosion_mask] = self._predict_subset(
-                    V[erosion_mask],
-                    theta[erosion_mask],
-                    self._coef_erosion,
-                    enable_tail_for_subset=self.enable_tail,
+            if self._coef_erosion is None:
+                raise RuntimeError(
+                    "The model was not trained on the requested int_bre == 0 branch."
                 )
-            elif self._coef_normal is not None:
-                E_pred[erosion_mask] = self._predict_subset(
-                    V[erosion_mask],
-                    theta[erosion_mask],
-                    self._coef_normal,
-                    enable_tail_for_subset=False,
-                )
-            else:
-                raise RuntimeError("No valid coef for erosion subset.")
+            energy[erosion_mask] = self._predict_subset(
+                V[erosion_mask],
+                theta[erosion_mask],
+                self._coef_erosion,
+                scaler=self._theta_scaler_erosion,
+                branch_name="erosion",
+                enable_tail_for_subset=self.enable_tail,
+            )
 
         if np.any(normal_mask):
-            if self._coef_normal is not None:
-                E_pred[normal_mask] = self._predict_subset(
-                    V[normal_mask],
-                    theta[normal_mask],
-                    self._coef_normal,
-                    enable_tail_for_subset=False,
+            if self._coef_normal is None:
+                raise RuntimeError(
+                    "The model was not trained on the requested int_bre != 0 branch."
                 )
-            elif self._coef_erosion is not None:
-                E_pred[normal_mask] = self._predict_subset(
-                    V[normal_mask],
-                    theta[normal_mask],
-                    self._coef_erosion,
-                    enable_tail_for_subset=False,
-                )
-            else:
-                raise RuntimeError("No valid coef for normal subset.")
+            energy[normal_mask] = self._predict_subset(
+                V[normal_mask],
+                theta[normal_mask],
+                self._coef_normal,
+                scaler=self._theta_scaler_normal,
+                branch_name="normal",
+                enable_tail_for_subset=False,
+            )
 
-        return E_pred
+        if not np.all(np.isfinite(energy)) or np.any(energy <= 0.0):
+            raise FloatingPointError("Power-law prediction produced invalid energy.")
+        return energy
+
+    def predict(self, X: np.ndarray) -> np.ndarray:
+        """Predict log energy from the canonical full ten-column feature matrix."""
+        return np.log(self.predict_energy(X))

@@ -285,6 +285,12 @@ class BaseEnergyModel(ABC):
         with open(path, "rb") as f:
             model = pickle.load(f)
 
+        if not hasattr(model, "active_feature_names"):
+            raise ValueError(
+                "This model pickle predates the canonical full-feature interface and "
+                "cannot be loaded. Retrain it with the current code."
+            )
+
         # 对 torch 模型做一下设备修正（若可用）
         try:
             import torch

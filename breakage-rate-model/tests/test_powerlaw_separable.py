@@ -33,7 +33,7 @@ def main():
     h5_file = "energy_scan_results.h5"
 
     print(f"Loading groups from {h5_file} ...")
-    groups = load_energy_groups_from_h5(h5_file)
+    groups = load_energy_groups_from_h5(h5_file, load_samples=False)
     print(f"Loaded {len(groups)} groups.")
 
     # 构建用于评估的 dataset：直接拟合 log(E_mean)
@@ -48,16 +48,13 @@ def main():
     print(f"EnergyDataset: X.shape={X.shape}, y.shape={y.shape}")
 
     # 简单切一刀 train/val（这里只是 sanity check，用整集也可以）
-    n_samples = X.shape[0]
-    idx = np.arange(n_samples)
-    np.random.shuffle(idx)
-
-    split = int(0.8 * n_samples)
-    idx_train = idx[:split]
-    idx_val = idx[split:]
-
-    X_train, y_train = X[idx_train], y[idx_train]
-    X_val, y_val = X[idx_val], y[idx_val]
+    group_order = np.random.default_rng(42).permutation(len(groups))
+    n_val_groups = max(1, int(np.ceil(0.2 * len(groups))))
+    val_group_idx = group_order[:n_val_groups]
+    train_group_idx = group_order[n_val_groups:]
+    train_groups = [groups[index] for index in train_group_idx]
+    val_mask = np.isin(energy_ds.meta_idx[:, 0], val_group_idx)
+    X_val, y_val = X[val_mask], y[val_mask]
 
     # 训练 PowerLawSeparableModel
     print("Fitting PowerLawSeparableModel from groups ...")
@@ -71,13 +68,16 @@ def main():
         max_V=None,
     )
     # 注意：fit 忽略 X_train/y_train，直接用 groups 进行 group-level 拟合
-    model.fit(None, None, groups=groups)
+    model.fit(None, None, groups=train_groups)
 
     # 在 val 集上评估（注意：目标是 log_mean，predict 也返回 logE）
-    metrics = model.validate(X_val, y_val, metrics=("mse", "mae", "mape", "r2"))
-    print("Validation metrics on log(E_mean):")
-    for k, v in metrics.items():
-        print(f"  {k}: {v:.6g}")
+    y_pred = model.predict(X_val)
+    energy_true = np.exp(y_val)
+    energy_pred = np.exp(y_pred)
+    print("Validation metrics on held-out groups:")
+    print(f"  rmse_log: {np.sqrt(np.mean((y_pred - y_val) ** 2)):.6g}")
+    print(f"  mae_log: {np.mean(np.abs(y_pred - y_val)):.6g}")
+    print(f"  mape_E: {np.mean(np.abs((energy_pred - energy_true) / energy_true)):.6g}")
 
     # 可视化某一组
     group_index = 1  # 换成你想看的组号

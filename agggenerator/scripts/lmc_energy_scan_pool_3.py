@@ -1082,10 +1082,10 @@ if __name__ == "__main__":
     pool_dir = os.environ.get("TMP_PATH")
     store_path = os.path.join(os.environ.get("STORAGE_PATH"), "energy_pool")
     Df = 1.8
-    MAS_list = [0.1, 0.5, 0.9]
+    MAS_list = [0.9]
 
     A0 = 1.0
-    X1_list = [0.1, 0.5, 0.9]
+    X1_list = [0.1]
 
     values = np.array([1.0, 1e1, 1e2, 1e3])
     a1, a2, a3 = np.meshgrid(values, values, values, indexing="ij")
@@ -1108,7 +1108,7 @@ if __name__ == "__main__":
     int_bre_list = [0.0]
     gamma_list = np.logspace(-3, 3, 6)
 
-    output_h5 = os.path.join(store_path, "psd_data.h5")
+    output_h5 = os.path.join(store_path, "psd_data3.h5")
 
     run_full_parameter_scan(
         h5_path=output_h5,

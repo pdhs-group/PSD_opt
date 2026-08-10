@@ -29,6 +29,15 @@ from .powerlaw_separable import (
     find_plateau_transition,
     split_groups_by_int_bre,
 )
+from .features import (
+    INT_BRE_FEATURE_INDEX,
+    active_feature_indices,
+    group_theta_features,
+    normalize_active_feature_names,
+    require_full_feature_matrix,
+    theta_feature_indices,
+    theta_feature_names,
+)
 
 # =============================================================================
 # ParametricEnergyModel
@@ -70,6 +79,7 @@ class ParametricEnergyModel(BaseEnergyModel):
         plateau_weight: float = 3.0,    # normal 簇 plateau 组的权重 (>=1)
         tol_int_bre: float = 1e-12,
         name: Optional[str] = None,
+        active_feature_names: Optional[Sequence[str]] = None,
     ):
         super().__init__(name=name or "ParametricEnergyModel")
 
@@ -81,7 +91,9 @@ class ParametricEnergyModel(BaseEnergyModel):
         self.pure_powerlaw_if_no_plateau = pure_powerlaw_if_no_plateau
 
         self.enable_tail = enable_tail
-        self.plateau_weight = max(float(plateau_weight), 1.0)
+        self.plateau_weight = float(plateau_weight)
+        if self.plateau_weight < 1.0:
+            raise ValueError("plateau_weight must be at least 1.0.")
         self.tol_int_bre = tol_int_bre
 
         # ---- 残差模型相关超参数 ----
@@ -89,13 +101,19 @@ class ParametricEnergyModel(BaseEnergyModel):
         self.residual_lambda = residual_lambda
 
         # θ 维度固定为 6: [log gamma, log NO_FRAG, int_bre, Df, MAS, X1]
-        self._theta_dim: int = 6
+        self.active_feature_names = normalize_active_feature_names(active_feature_names)
+        self._active_feature_indices = active_feature_indices(self.active_feature_names)
+        self._theta_feature_names = theta_feature_names(self.active_feature_names)
+        self._theta_feature_indices = theta_feature_indices(self.active_feature_names)
+        self._theta_dim: int = len(self._theta_feature_names)
 
         # ---- trend: θ→参数 的线性回归系数（erosion / normal 两簇） ----
         # erosion: params = [σ, logVc, logEmax, (α)]
         self._coef_trend_erosion: Optional[np.ndarray] = None  # (d+1, k_e)
         # normal:  params = [σ, logVc, logEmax]
         self._coef_trend_normal: Optional[np.ndarray] = None   # (d+1, 3)
+        self._trend_scaler_erosion: Optional[Tuple[np.ndarray, np.ndarray]] = None
+        self._trend_scaler_normal: Optional[Tuple[np.ndarray, np.ndarray]] = None
 
         # 记录 plateau 标记（按 group key）
         self._plateau_flag_erosion: Dict[object, bool] = {}
@@ -169,12 +187,7 @@ class ParametricEnergyModel(BaseEnergyModel):
                 alpha_g = 0.0
 
             # θ 特征
-            log_gamma = np.log(rec.gamma)
-            log_NOFRAG = np.log(rec.NO_FRAG)
-            theta_vec = np.array(
-                [log_gamma, log_NOFRAG, rec.int_bre, rec.Df, rec.MAS, rec.X1],
-                dtype=float,
-            )
+            theta_vec = group_theta_features(rec, self.active_feature_names)
 
             theta_list.append(theta_vec)
 
@@ -200,6 +213,48 @@ class ParametricEnergyModel(BaseEnergyModel):
         Params = np.vstack(param_list)
         plateau_mask = np.array(plateau_flags, dtype=bool)
         return Theta, Params, plateau_mask, keys
+
+    def _fit_feature_scaler(
+        self,
+        values: np.ndarray,
+        feature_names: Sequence[str],
+        branch_name: str,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        if values.ndim != 2:
+            raise ValueError(f"{branch_name} features must be two-dimensional.")
+        if values.shape[0] == 0:
+            raise ValueError(f"Cannot fit {branch_name} regression without samples.")
+        if values.shape[1] != len(feature_names):
+            raise ValueError(
+                f"{branch_name} feature width is {values.shape[1]}; expected "
+                f"{len(feature_names)}."
+            )
+        if values.shape[1] == 0:
+            return np.zeros(0, dtype=float), np.ones(0, dtype=float)
+
+        mean = np.mean(values, axis=0)
+        scale = np.std(values, axis=0)
+        constant = scale < 1e-12
+        if np.any(constant):
+            names = [feature_names[index] for index in np.flatnonzero(constant)]
+            raise ValueError(
+                f"Selected active features are constant in the {branch_name} "
+                f"training branch: {names}. Remove them from active_feature_names."
+            )
+        return mean, scale
+
+    @staticmethod
+    def _apply_feature_scaler(
+        values: np.ndarray,
+        scaler: Optional[Tuple[np.ndarray, np.ndarray]],
+        branch_name: str,
+    ) -> np.ndarray:
+        if scaler is None:
+            raise RuntimeError(f"{branch_name} scaler has not been fitted.")
+        mean, scale = scaler
+        if values.ndim != 2 or values.shape[1] != mean.size or scale.shape != mean.shape:
+            raise ValueError(f"{branch_name} feature/scaler shape mismatch.")
+        return (values - mean) / scale
 
     def _fit_trend_from_groups(
         self,
@@ -244,10 +299,17 @@ class ParametricEnergyModel(BaseEnergyModel):
         if Theta_e is None and Theta_n is None:
             raise RuntimeError("ParametricEnergyModel: no valid groups to train trend on.")
 
-        self._theta_dim = 6  # 固定
-
         # ---- erosion 簇：普通 least-squares ----
+        self._theta_dim = len(self._theta_feature_names)
+        self._trend_scaler_erosion = None
+        self._trend_scaler_normal = None
         if Theta_e is not None:
+            self._trend_scaler_erosion = self._fit_feature_scaler(
+                Theta_e, self._theta_feature_names, "erosion trend"
+            )
+            Theta_e = self._apply_feature_scaler(
+                Theta_e, self._trend_scaler_erosion, "erosion trend"
+            )
             n_e, d_e = Theta_e.shape
             A_e = np.column_stack([np.ones(n_e), Theta_e])  # (n_e, d_e+1)
             coef_e, *_ = np.linalg.lstsq(A_e, Y_e, rcond=None)
@@ -257,6 +319,12 @@ class ParametricEnergyModel(BaseEnergyModel):
 
         # ---- normal 簇：plateau 组加权 ----
         if Theta_n is not None:
+            self._trend_scaler_normal = self._fit_feature_scaler(
+                Theta_n, self._theta_feature_names, "normal trend"
+            )
+            Theta_n = self._apply_feature_scaler(
+                Theta_n, self._trend_scaler_normal, "normal trend"
+            )
             n_n, d_n = Theta_n.shape
             A_n = np.column_stack([np.ones(n_n), Theta_n])  # (n_n, d_n+1)
             if plateau_n is not None and plateau_n.size == n_n and self.plateau_weight > 1.0:
@@ -298,12 +366,17 @@ class ParametricEnergyModel(BaseEnergyModel):
 
         if is_erosion:
             coef = self._coef_trend_erosion
+            scaler = self._trend_scaler_erosion
         else:
             coef = self._coef_trend_normal
+            scaler = self._trend_scaler_normal
 
         if coef is None:
             raise RuntimeError("Trend coefficients for the requested subset are not fitted.")
 
+        theta = self._apply_feature_scaler(
+            theta, scaler, "erosion trend" if is_erosion else "normal trend"
+        )
         A = np.column_stack([np.ones(n), theta])  # (n, d+1)
         Y = A @ coef                              # (n, n_param)
 
@@ -332,7 +405,7 @@ class ParametricEnergyModel(BaseEnergyModel):
 
         若 residual_type 为 "none"，则不拟合残差模型。
         """
-        rtype = (self.residual_type or "none").lower()
+        rtype = self.residual_type.lower()
         if rtype == "none":
             self._coef_residual_erosion = None
             self._coef_residual_normal = None
@@ -361,12 +434,7 @@ class ParametricEnergyModel(BaseEnergyModel):
             is_erosion = abs(rec.int_bre) <= self.tol_int_bre
 
             # θ 特征
-            log_gamma = np.log(rec.gamma)
-            log_NOFRAG = np.log(rec.NO_FRAG)
-            theta_vec = np.array(
-                [log_gamma, log_NOFRAG, rec.int_bre, rec.Df, rec.MAS, rec.X1],
-                dtype=float,
-            )
+            theta_vec = group_theta_features(rec, self.active_feature_names)
 
             # trend 参数
             sigma_g, Vc_g, Emax_g, alpha_g = self._predict_trend_params(
@@ -401,7 +469,8 @@ class ParametricEnergyModel(BaseEnergyModel):
                 alpha_g,
                 enable_tail=(self.enable_tail and is_erosion),
             )
-            E_trend = np.maximum(E_trend, 1e-12)
+            if not np.all(np.isfinite(E_trend)) or np.any(E_trend <= 0.0):
+                raise FloatingPointError("Trend fit produced invalid energy.")
 
             logE_true = np.log(E_sel)
             logE_trend = np.log(E_trend)
@@ -409,10 +478,7 @@ class ParametricEnergyModel(BaseEnergyModel):
 
             logV_sel = np.log(V_sel)
             for lv, dlt in zip(logV_sel, delta):
-                feat = np.array(
-                    [lv, log_gamma, log_NOFRAG, rec.int_bre, rec.Df, rec.MAS, rec.X1],
-                    dtype=float,
-                )
+                feat = np.concatenate(([lv], theta_vec))
                 if is_erosion:
                     X_e_list.append(feat)
                     y_e_list.append(float(dlt))
@@ -435,11 +501,13 @@ class ParametricEnergyModel(BaseEnergyModel):
             self._residual_dim = p
 
             # 标准化特征：mean/std 存入 scaler
-            mu_e = X_e.mean(axis=0)
-            std_e = X_e.std(axis=0)
-            std_e[std_e < 1e-12] = 1.0
-            X_e_scaled = (X_e - mu_e) / std_e
-            self._residual_scaler_erosion = (mu_e, std_e)
+            feature_names = ("logV",) + self._theta_feature_names
+            self._residual_scaler_erosion = self._fit_feature_scaler(
+                X_e, feature_names, "erosion residual"
+            )
+            X_e_scaled = self._apply_feature_scaler(
+                X_e, self._residual_scaler_erosion, "erosion residual"
+            )
 
             A_e = np.column_stack([np.ones(n_e), X_e_scaled])  # (n_e, p+1)
 
@@ -450,8 +518,6 @@ class ParametricEnergyModel(BaseEnergyModel):
                 elif rtype == "ridge":
                     lam = float(self.residual_lambda)
                     ATA = A_e.T @ A_e
-                    cond = np.linalg.cond(ATA)
-                    print(cond)
                     reg = np.eye(p + 1)
                     reg[0, 0] = 0.0  # 不正则化偏置
                     coef_e = np.linalg.solve(ATA + lam * reg, A_e.T @ y_e)
@@ -488,11 +554,13 @@ class ParametricEnergyModel(BaseEnergyModel):
             self._residual_dim = p
 
             # 标准化特征
-            mu_n = X_n.mean(axis=0)
-            std_n = X_n.std(axis=0)
-            std_n[std_n < 1e-12] = 1.0
-            X_n_scaled = (X_n - mu_n) / std_n
-            self._residual_scaler_normal = (mu_n, std_n)
+            feature_names = ("logV",) + self._theta_feature_names
+            self._residual_scaler_normal = self._fit_feature_scaler(
+                X_n, feature_names, "normal residual"
+            )
+            X_n_scaled = self._apply_feature_scaler(
+                X_n, self._residual_scaler_normal, "normal residual"
+            )
 
             A_n = np.column_stack([np.ones(n_n), X_n_scaled])  # (n_n, p+1)
 
@@ -516,8 +584,6 @@ class ParametricEnergyModel(BaseEnergyModel):
                 elif rtype == "ridge":
                     lam = float(self.residual_lambda)
                     ATA = A_w.T @ A_w
-                    cond = np.linalg.cond(ATA)
-                    print(cond)
                     reg = np.eye(p + 1)
                     reg[0, 0] = 0.0
                     coef_n = np.linalg.solve(ATA + lam * reg, A_w.T @ y_w)
@@ -590,13 +656,18 @@ class ParametricEnergyModel(BaseEnergyModel):
             coef = self._coef_residual_normal
             scaler = self._residual_scaler_normal
 
-        if coef is None or scaler is None:
-            # 没有残差模型或没有 scaler：返回 0
+        if self.residual_type.lower() == "none":
             return np.zeros(X_res.shape[0], dtype=float)
-
-        mu, std = scaler
-        std_safe = np.where(std < 1e-12, 1.0, std)
-        X_scaled = (X_res - mu) / std_safe
+        if coef is None or scaler is None:
+            branch_name = "erosion" if is_erosion else "normal"
+            raise RuntimeError(
+                f"Residual coefficients for the requested {branch_name} branch are not fitted."
+            )
+        X_scaled = self._apply_feature_scaler(
+            X_res,
+            scaler,
+            "erosion residual" if is_erosion else "normal residual",
+        )
 
         n = X_scaled.shape[0]
         A = np.column_stack([np.ones(n), X_scaled])  # (n, p+1)
@@ -615,18 +686,16 @@ class ParametricEnergyModel(BaseEnergyModel):
         if not self._is_fitted:
             raise RuntimeError("ParametricEnergyModel is not fitted.")
 
-        if X.ndim != 2 or X.shape[1] < 1 + self._theta_dim:
-            raise ValueError(
-                f"X shape not compatible: got {X.shape}, "
-                f"expect (n_samples, {1 + self._theta_dim})"
-            )
+        X = require_full_feature_matrix(X)
 
         logV = X[:, 0]
         V = np.exp(logV)
-        theta = X[:, 1:1 + self._theta_dim]
-        int_bre = theta[:, 2]
+        theta = X[:, self._theta_feature_indices]
+        int_bre = X[:, INT_BRE_FEATURE_INDEX]
 
-        erosion_mask = np.isclose(int_bre, 0.0, atol=self.tol_int_bre)
+        erosion_mask = np.isclose(
+            int_bre, 0.0, rtol=0.0, atol=self.tol_int_bre
+        )
         normal_mask = ~erosion_mask
 
         logE_pred = np.empty_like(logV)
@@ -647,10 +716,11 @@ class ParametricEnergyModel(BaseEnergyModel):
                 alpha_e,
                 enable_tail=self.enable_tail,
             )
-            E_trend_e = np.maximum(E_trend_e, 1e-12)
+            if not np.all(np.isfinite(E_trend_e)) or np.any(E_trend_e <= 0.0):
+                raise FloatingPointError("Erosion trend prediction produced invalid energy.")
             logE_trend_e = np.log(E_trend_e)
 
-            X_res_e = X[erosion_mask, :1 + self._theta_dim]
+            X_res_e = np.column_stack([logV[erosion_mask], theta_e])
             delta_e = self._predict_residual_subset(X_res_e, is_erosion=True)
             logE_pred[erosion_mask] = logE_trend_e + delta_e
 
@@ -670,10 +740,11 @@ class ParametricEnergyModel(BaseEnergyModel):
                 alpha_n,
                 enable_tail=False,  # normal 簇无尾巴
             )
-            E_trend_n = np.maximum(E_trend_n, 1e-12)
+            if not np.all(np.isfinite(E_trend_n)) or np.any(E_trend_n <= 0.0):
+                raise FloatingPointError("Normal trend prediction produced invalid energy.")
             logE_trend_n = np.log(E_trend_n)
 
-            X_res_n = X[normal_mask, :1 + self._theta_dim]
+            X_res_n = np.column_stack([logV[normal_mask], theta_n])
             delta_n = self._predict_residual_subset(X_res_n, is_erosion=False)
             logE_pred[normal_mask] = logE_trend_n + delta_n
 
