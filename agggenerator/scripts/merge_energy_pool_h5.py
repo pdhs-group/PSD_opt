@@ -21,7 +21,7 @@ import numpy as np
 # Spyder configuration
 # =============================================================================
 
-INPUT_DIRECTORY = Path(os.environ["STORAGE_PATH"]) / "energy_pool"
+INPUT_DIRECTORY =  Path(r"D:\LMC\energy_pool")
 INPUT_FILENAMES = tuple(f"psd_data{index}.h5" for index in range(1, 10))
 OUTPUT_FILENAME = "energy_scan_results.h5"
 TEMPORARY_PREFIX = ".energy_scan_results.h5.merge-"

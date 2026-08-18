@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """Spyder-friendly training and validation entry point for energy surrogates.
 
 The HDF5 reader deliberately uses ``load_samples=False`` here: fitting the
@@ -305,10 +305,10 @@ def run_experiment(
 
 if __name__ == "__main__":
     # Edit these values directly when debugging through Spyder.
-    DATA_PATH = r"C:\Users\px2030\Code\PSD_opt\breakage-rate-model\data"
+    DATA_PATH = r"D:\LMC\energy_pool"
     H5_FILE = os.path.join(DATA_PATH, "energy_scan_results.h5")
-    MODEL_KIND = "mlp"  # powerlaw / parametric / mlp / ann / all
-    ONLY_ANALYZE = False
+    MODEL_KIND = "all"  # powerlaw / parametric / mlp / ann / all
+    ONLY_ANALYZE = True
     ACTIVE_FEATURE_NAMES = DEFAULT_ACTIVE_FEATURE_NAMES
 
     EXPERIMENT_RESULT = run_experiment(
