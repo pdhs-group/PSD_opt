@@ -1204,6 +1204,7 @@ class LMCLiveAdapter:
         # 'fallback' -> raise LMCLiveFallback, 'disable' -> raise LMCLiveDisable
         self.small_particle_policy = "fallback"
         self.delta_cells = 0.1  # safety margin on A / A0_run
+        self.warn_pool_out_of_bounds = True
 
         self._sim: Optional[LMCSimulator] = None
 
@@ -1224,6 +1225,7 @@ class LMCLiveAdapter:
         pool_dir: Optional[str] = None,
         Df: Optional[float] = None,
         MAS: Optional[float] = None,
+        warn_pool_out_of_bounds: Optional[bool] = None,
         rebuild: bool = True,
     ) -> None:
         """
@@ -1263,6 +1265,9 @@ class LMCLiveAdapter:
             Fractal dimension tag used when selecting aggregates from the pool.
         MAS : float, optional
             MischgÃ¼te (mixing quality) tag used for selecting aggregates.
+        warn_pool_out_of_bounds : bool, optional
+            Print a one-time warning when the requested normalized area or
+            X1 lies outside the selected aggregate pool coverage.
         rebuild : bool, default True
             If True or if no simulator exists yet, build a new LMCSimulator.
         """
@@ -1288,6 +1293,8 @@ class LMCLiveAdapter:
             self.Df = float(Df)
         if MAS is not None:
             self.MAS = float(MAS)
+        if warn_pool_out_of_bounds is not None:
+            self.warn_pool_out_of_bounds = bool(warn_pool_out_of_bounds)
         if small_particle_policy is not None:
             if small_particle_policy not in ("fallback", "disable"):
                 raise ValueError("small_particle_policy must be 'fallback' or 'disable'")
@@ -1307,6 +1314,7 @@ class LMCLiveAdapter:
                 use_weighted_start=self.use_weighted_start,
                 plotter=None,
                 pool_dir=self.pool_dir,
+                warn_pool_out_of_bounds=self.warn_pool_out_of_bounds,
             )
 
     def _AX1_from_Vparent(self, V_parent: np.ndarray) -> Tuple[float, float]:

@@ -64,7 +64,7 @@ class MCPBEAgg:
 
         R = (self.X[:a] * 0.5).astype(np.float64)
         W = np.asarray(self.W[:a], dtype=np.float64)
-        dW_const = float(getattr(self, "_agg_dW_const", self._prepare_agg_delta_config()))
+        dW_const = float(self.agg_dW_const)
         delta = self._delta_from_weights(W, dW_const=dW_const)
         if (not hasattr(self, "_delta_agg")) or self._delta_agg is None or self._delta_agg.shape[0] < getattr(self, "_cap", a):
             self._delta_agg = np.zeros(getattr(self, "_cap", a), dtype=float)
@@ -87,40 +87,17 @@ class MCPBEAgg:
         if self._delta_agg.shape[0] > a:
             self._delta_agg[a:] = 0.0
 
-    def _compute_agg_dW(self, i: int, j: int, pair_prop: float, sum_prop_before: float) -> float:
-        """Compute packet size Î”W for one agglomeration event on pair (i,j)."""
+    def _compute_agg_dW(self, i: int, j: int) -> float:
+        """Compute the fixed packet size Î”W for one agglomeration event."""
         Wi = float(self.W[i])
         Wj = float(self.W[j])
         if Wi <= 0.0 or Wj <= 0.0:
             return 0.0
 
-        dW_max = float(getattr(self, "agg_dW_max", 1.0))
-        dW_min = float(getattr(self, "agg_dW_min", 1.0))
-        if dW_max <= 0.0:
-            return 0.0
-        if dW_min < 0.0:
-            dW_min = 0.0
-
-        mode = str(getattr(self, "agg_dW_mode", "const")).lower()
-        if mode == "const":
-            dW = dW_max
-        else:
-            f = 0.0 if sum_prop_before <= 0.0 else float(pair_prop) / float(sum_prop_before)
-            f = float(np.clip(f, 0.0, 1.0))
-            alpha = float(getattr(self, "agg_dW_alpha", 100.0))
-            if alpha <= 0.0:
-                alpha = 1.0
-            if mode == "sqrt":
-                dW = dW_min + alpha * (f ** 0.5) * (dW_max - dW_min)
-            else:
-                dW = dW_min + alpha * f * (dW_max - dW_min)
-
-        if dW < dW_min:
-            dW = dW_min
-        if dW > dW_max:
-            dW = dW_max
-        delta_i = self._update_delta_single(i, attr_name="_delta_agg", dW_const=float(getattr(self, "_agg_dW_const", dW_max)))
-        delta_j = self._update_delta_single(j, attr_name="_delta_agg", dW_const=float(getattr(self, "_agg_dW_const", dW_max)))
+        dW_const = float(self.agg_dW_const)
+        dW = dW_const
+        delta_i = self._update_delta_single(i, attr_name="_delta_agg", dW_const=dW_const)
+        delta_j = self._update_delta_single(j, attr_name="_delta_agg", dW_const=dW_const)
         if i == j:
             if delta_i <= 0.0 or Wi <= 1.0:
                 return 0.0
@@ -199,12 +176,8 @@ class MCPBEAgg:
         if j < 0 or pick_w <= 0.0:
             return
 
-        # 3) packet size Î”W for this accepted event
-        sum_prop_before = float(self._agg_sampler.total()) if self._agg_sampler is not None else float(np.sum(self._r_agg[: self.a_tot]))
-        Wi = float(self.W[i])
-        # pick_w already includes the pair-delta correction used in r_i.
-        pair_prop = Wi * pick_w
-        dW = self._compute_agg_dW(i, j, pair_prop, sum_prop_before)
+        # 3) fixed packet size Î”W for this accepted event
+        dW = self._compute_agg_dW(i, j)
         if dW <= 0.0:
             return
         self._last_agg_dW = dW

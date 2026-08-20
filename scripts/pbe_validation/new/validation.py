@@ -229,11 +229,8 @@ class ValidationRunner:
         solver.G = self.config.case.g
         solver.process_type = self.config.case.process
         solver.alpha_prim = np.ones(self.config.case.dim ** 2)
-        solver.break_dW_mode = "const"
-        solver.break_dW_min = 1.0
-        solver.break_dW_max = 50.0
-        solver.agg_dW_min = 1.0
-        solver.agg_dW_max = 20.0
+        solver.break_dW_const = 1.0
+        solver.agg_dW_const = 1.0
         solver.recon_enable = True
         solver.V_eff_init = 1000
         solver.recon_N_max = 4000

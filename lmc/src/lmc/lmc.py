@@ -43,7 +43,8 @@ class LMCSimulator:
                  accept_all_cracks: bool = False,   # incremental mode: accept ineffective cracks without rollback
                  use_weighted_start: bool = False,
                  plotter: Plotter | None = None,
-                 pool_dir: str | None = None) -> None:
+                 pool_dir: str | None = None,
+                 warn_pool_out_of_bounds: bool = True) -> None:
         self.STR = np.asarray(STR, dtype=float)  # [11,12,22]
         self.NO_FRAG = int(NO_FRAG)
         self.gamma = float(gamma)
@@ -52,6 +53,7 @@ class LMCSimulator:
         if self.allow_loops and accept_all_cracks:
             print("[Warning]")
         self.use_weighted_start = bool(use_weighted_start)
+        self.warn_pool_out_of_bounds = bool(warn_pool_out_of_bounds)
 
         # runtime state (set by generate_grid)
         self.M: np.ndarray | None = None
@@ -70,7 +72,11 @@ class LMCSimulator:
         self.inter_start_cnt = 0
         self._pool_debug_logger = PoolMemoryLogger()
 
-        self.agg_pool = AggPool(pool_dir) if pool_dir is not None else None
+        self.agg_pool = (
+            AggPool(pool_dir, warn_out_of_bounds=self.warn_pool_out_of_bounds)
+            if pool_dir is not None
+            else None
+        )
 
     def close(self) -> None:
         if self.agg_pool is not None:
@@ -704,11 +710,14 @@ class LMCSimulator:
         rng = np.random.default_rng(seed)
 
         if self.agg_pool is None:
-            self.agg_pool = AggPool(pool_dir)
+            self.agg_pool = AggPool(
+                pool_dir, warn_out_of_bounds=self.warn_pool_out_of_bounds
+            )
         else:
             if self.agg_pool.pool_dir != pool_dir:
                 self.agg_pool.close_pool_cache()
                 self.agg_pool.pool_dir = pool_dir
+            self.agg_pool.warn_out_of_bounds = self.warn_pool_out_of_bounds
 
         A_norm = float(A) / float(A0) if A0 > 0 else float(A)
 

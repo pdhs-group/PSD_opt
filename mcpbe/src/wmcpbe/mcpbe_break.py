@@ -46,9 +46,6 @@ class MCPBEBreak:
         self._break_pl_v = float(getattr(self, "pl_v", 1.0))
         self._break_pl_q = float(getattr(self, "pl_q", 1.0))
 
-        self._prepare_break_delta_config()
-        self._break_dW_const = float(getattr(self, "_break_dW_const", 50.0))
-
     # ------------------------------------------------------------------
     # Breakage rate (full table and single-point)
     # ------------------------------------------------------------------
@@ -58,7 +55,7 @@ class MCPBEBreak:
         Stored in self._break_rate[:a] as:
             propensity_i = W[i] * S_i / delta_i
         with delta_i = min(break_dW_const, W[i]).
-        where S_i is the single-particle breakage rate from MLP/JIT.
+        where S_i is the single-particle breakage rate from the energy surrogate/JIT.
         """
         a = self.a_tot
         if a <= 0:
@@ -73,12 +70,12 @@ class MCPBEBreak:
                 or self._delta_break.shape[0] < cap):
             self._delta_break = np.zeros(max(8, cap), dtype=float)
         W = self.W[:a]
-        delta = self._delta_from_weights(W, dW_const=float(self._break_dW_const))
+        delta = self._delta_from_weights(W, dW_const=float(self.break_dW_const))
         self._delta_break[:a] = delta
     
-        # --------- Branch 1: MLP model ---------
-        use_mlp = bool(self.lmc_use_breakage_model) and (self.lmc_breakage_adapter is not None)
-        if use_mlp:
+        # --------- Branch 1: energy-surrogate model ---------
+        use_energy_model = bool(self.lmc_use_breakage_model) and (self.lmc_breakage_adapter is not None)
+        if use_energy_model:
             rates = self.lmc_breakage_adapter.compute_rates_full(self)
             rates = np.asarray(rates, dtype=float)
 
@@ -125,7 +122,7 @@ class MCPBEBreak:
         Returns:
             propensity_i = W[i] * S_i / delta_i
         with delta_i = min(break_dW_const, W[i]).
-        where S_i is the single-particle breakage rate from MLP/JIT.
+        where S_i is the single-particle breakage rate from the energy surrogate/JIT.
         """
         a = self.a_tot
         if i < 0 or i >= a:
@@ -136,13 +133,13 @@ class MCPBEBreak:
             if hasattr(self, "_delta_break") and self._delta_break is not None:
                 self._delta_break[i] = 0.0
             return 0.0
-        delta_i = self._update_delta_single(i, attr_name="_delta_break", dW_const=float(self._break_dW_const))
+        delta_i = self._update_delta_single(i, attr_name="_delta_break", dW_const=float(self.break_dW_const))
         if delta_i <= 0.0:
             return 0.0
     
-        # --------- Branch 1: MLP model ---------
-        use_mlp = bool(self.lmc_use_breakage_model) and (self.lmc_breakage_adapter is not None)
-        if use_mlp:
+        # --------- Branch 1: energy-surrogate model ---------
+        use_energy_model = bool(self.lmc_use_breakage_model) and (self.lmc_breakage_adapter is not None)
+        if use_energy_model:
             Si = float(self.lmc_breakage_adapter.compute_rate_single(self, i))
             val = Wi * Si / delta_i
             return float(val) if val > 0.0 else 0.0
@@ -387,7 +384,7 @@ class MCPBEBreak:
             new_indices.append(new_idx)
     
             self.W[new_idx] = dW
-            self._update_delta_single(new_idx, attr_name="_delta_break", dW_const=float(self._break_dW_const))
+            self._update_delta_single(new_idx, attr_name="_delta_break", dW_const=float(self.break_dW_const))
     
             br_new = self._break_rate_single(new_idx)  # already returns W*Si
             self._break_rate[new_idx] = br_new
@@ -398,7 +395,7 @@ class MCPBEBreak:
         w_rem = w_parent_old - dW
         self.W[k] = w_rem
         if w_rem > 0.0:
-            self._update_delta_single(k, attr_name="_delta_break", dW_const=float(self._break_dW_const))
+            self._update_delta_single(k, attr_name="_delta_break", dW_const=float(self.break_dW_const))
             br_k = self._break_rate_single(k)  # uses new W[k]
             self._break_rate[k] = br_k
             if self._break_sampler is not None:
@@ -560,26 +557,15 @@ class MCPBEBreak:
     
         # Use original stepwise splitting logic.
         return "ok", self._build_fragments_stepwise(Vrem_k)
-
+    
     def _compute_dW(self, k: int) -> float:
-        """Compute packet size Î”W for breakage using a single constant event size."""
-        Wk = float(self.W[k])
-        if Wk <= 0.0 or not np.isfinite(Wk):
-            return 0.0
-        dW = min(float(self._break_dW_const), Wk)
-    
-        if not np.isfinite(dW) or dW <= 0.0:
-            return 0.0
-        return float(dW)
-    
-    def _compute_dW_packet(self, k: int) -> float:
         """Compute packet size delta_i for breakage."""
         if k < 0 or k >= self.a_tot:
             return 0.0
         if hasattr(self, "_delta_break") and self._delta_break is not None:
             dW = float(self._delta_break[k])
         else:
-            dW = self._update_delta_single(k, attr_name="_delta_break", dW_const=float(self._break_dW_const))
+            dW = self._update_delta_single(k, attr_name="_delta_break", dW_const=float(self.break_dW_const))
         if not np.isfinite(dW) or dW <= 0.0:
             return 0.0
         return float(dW)
@@ -608,7 +594,7 @@ class MCPBEBreak:
                 self._mark_unbreakable(k)
                 continue
     
-            dW_total = self._compute_dW_packet(k)
+            dW_total = self._compute_dW(k)
             if dW_total <= 0.0:
                 self._mark_unbreakable(k)
                 continue

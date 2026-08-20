@@ -15,21 +15,6 @@ def ensure_delta_array(solver, attr_name: str) -> np.ndarray:
     return arr
 
 
-def prepare_process_delta_config(
-    solver,
-    *,
-    process_name: str,
-    dW_attr_name: str,
-    cache_attr_name: str,
-    default_value: float,
-) -> float:
-    dW_const = float(getattr(solver, dW_attr_name, default_value))
-    if (not np.isfinite(dW_const)) or dW_const <= 0.0:
-        dW_const = float(default_value)
-    setattr(solver, cache_attr_name, dW_const)
-    return dW_const
-
-
 def delta_from_weights(W: np.ndarray, dW_const: float) -> np.ndarray:
     delta = np.minimum(np.asarray(W, dtype=float), float(dW_const))
     delta = np.where(np.isfinite(delta) & (delta > 0.0), delta, 0.0)
@@ -162,26 +147,6 @@ class MCPBETimeHelper:
                 return (1.0 / float(total_rate_before)) * self._draw_time_multiplier()
 
         return initial_dt, event_dt
-
-    def _prepare_agg_delta_config(self) -> float:
-        ensure_delta_array(self, "_delta_agg")
-        return prepare_process_delta_config(
-            self,
-            process_name="agglomeration",
-            dW_attr_name="agg_dW_max",
-            cache_attr_name="_agg_dW_const",
-            default_value=1.0,
-        )
-
-    def _prepare_break_delta_config(self) -> float:
-        ensure_delta_array(self, "_delta_break")
-        return prepare_process_delta_config(
-            self,
-            process_name="breakage",
-            dW_attr_name="break_dW_max",
-            cache_attr_name="_break_dW_const",
-            default_value=50.0,
-        )
 
     def _delta_from_weights(self, W: np.ndarray, *, dW_const: float) -> np.ndarray:
         return delta_from_weights(W, dW_const)

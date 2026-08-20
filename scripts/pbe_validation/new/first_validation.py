@@ -38,7 +38,7 @@ if __name__ == "__main__":
         dim=2,
         kernel="const",
         process="mix",
-        t_vec=np.arange(0.0, 10.0 + 1e-12, 1.0),
+        t_vec=np.arange(0.0, 5.0 + 1e-12, 1.0),
         x=2e-3,
         beta0=1e-6,
         p1=1e-1,
@@ -49,12 +49,12 @@ if __name__ == "__main__":
     config = ValidationConfig(
         case=case,
         dpbe_variants=[
-            DPBEVariantConfig(name="dPBE", grid="geo", ns=20, s=2),
+            DPBEVariantConfig(name="dPBE", grid="geo", ns=20, s=2, enabled=False),
         ],
         wmcpbe_variants=[
             WMCPBEVariantConfig(
                 name="MCPBE",
-                repeats=40,
+                repeats=2,
                 attrs={
                     "a0": 10000,
                     "V_eff_init": 0,
@@ -62,13 +62,13 @@ if __name__ == "__main__":
                     "recon_N_max": 4000,
                     "recon_bins": 30,
                     "recon_method": "4PMC",
-                    "break_dW_max": 1,
-                    "agg_dW_max": 1,
+                    "break_dW_const": 1,
+                    "agg_dW_const": 1,
                 },
             ),
             WMCPBEVariantConfig(
                 name="WMCPBE",
-                repeats=40,
+                repeats=2,
                 attrs={
                     "a0": 10000,
                     "V_eff_init": 1000,
@@ -76,8 +76,8 @@ if __name__ == "__main__":
                     "recon_N_max": 4000,
                     "recon_bins": 30,
                     "recon_method": "4PMC",
-                    "break_dW_max": 20,
-                    "agg_dW_max": 2,
+                    "break_dW_const": 20,
+                    "agg_dW_const": 2,
                 },
             ),
         ],

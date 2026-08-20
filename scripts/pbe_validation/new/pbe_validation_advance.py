@@ -1171,11 +1171,8 @@ class PBEValidationAdvanced:
         solver_template.G = self.config.case.g
         solver_template.process_type = self.config.case.process
         solver_template.alpha_prim = np.ones(self.config.case.dim ** 2)
-        solver_template.break_dW_mode = "const"
-        solver_template.break_dW_min = 1.0
-        solver_template.break_dW_max = 50.0
-        solver_template.agg_dW_min = 1.0
-        solver_template.agg_dW_max = 20.0
+        solver_template.break_dW_const = 1.0
+        solver_template.agg_dW_const = 1.0
         solver_template.recon_enable = True
         solver_template.V_eff_init = 1000
         solver_template.recon_N_max = 4000

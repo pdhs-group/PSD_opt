@@ -28,12 +28,14 @@ class AggPool:
         sample_cache_size: int = 0,
         pool_suffix: str = POOL_SUFFIX,
         sqlite_name: str = SQLITE_NAME,
+        warn_out_of_bounds: bool = True,
     ):
         self.pool_dir = pool_dir
         self.max_open_pools = max(1, int(max_open_pools))
         self.sample_cache_size = max(0, int(sample_cache_size))
         self.pool_suffix = str(pool_suffix)
         self.sqlite_name = str(sqlite_name)
+        self.warn_out_of_bounds = bool(warn_out_of_bounds)
 
         self._pool_cache: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
         self._sample_array_cache: "OrderedDict[Tuple[str, str, str], Tuple[np.ndarray, np.ndarray, np.ndarray]]" = OrderedDict()
@@ -43,6 +45,7 @@ class AggPool:
         self._sample_cache_misses = 0
         self._index_builds = 0
         self._npz_file_opens = 0
+        self._warned_out_of_bounds: set[Tuple[str, str, str]] = set()
 
     def close_pool_cache(self) -> None:
         self._pool_cache.clear()
@@ -91,7 +94,12 @@ class AggPool:
     def _build_index(self, pool_path: str) -> Dict[str, Any]:
         self._index_builds += 1
         sqlite_path = os.path.join(pool_path, self.sqlite_name)
-        conn = sqlite3.connect(sqlite_path)
+        # Aggregate pools are completed offline artifacts.  Opening their index
+        # in SQLite's default read-write mode can require write/lock access to
+        # the containing directory even though this reader never mutates it.
+        # ``immutable=1`` prevents those side effects for a finalized pool.
+        sqlite_uri = Path(sqlite_path).resolve().as_uri() + "?mode=ro&immutable=1"
+        conn = sqlite3.connect(sqlite_uri, uri=True)
         conn.row_factory = sqlite3.Row
         try:
             group_rows = conn.execute(
@@ -165,6 +173,44 @@ class AggPool:
         self._pool_cache.move_to_end(pool_path)
         self._enforce_pool_cache_limit()
         return cache
+
+    def _warn_if_out_of_bounds(
+        self,
+        cache: Dict[str, Any],
+        *,
+        Df: float,
+        MAS: float,
+        A_norm: float,
+        X1: float,
+    ) -> None:
+        """Report endpoint selection once per selected pool and direction."""
+        if not self.warn_out_of_bounds:
+            return
+
+        pool_path = str(cache["pool_path"])
+        checks = (
+            ("A_norm", float(A_norm), cache["Np_vals"]),
+            ("X1", float(X1), cache["XA_vals"]),
+        )
+        for axis, value, values in checks:
+            lower = float(values[0])
+            upper = float(values[-1])
+            if value < lower:
+                direction = "below"
+            elif value > upper:
+                direction = "above"
+            else:
+                continue
+            warning_key = (pool_path, axis, direction)
+            if warning_key in self._warned_out_of_bounds:
+                continue
+            print(
+                "[AggPool][WARNING] Requested "
+                f"{axis}={value:.6g} is {direction} the available range "
+                f"[{lower:.6g}, {upper:.6g}] for Df={Df}, MAS={MAS}; "
+                "the existing endpoint-selection behavior will be used."
+            )
+            self._warned_out_of_bounds.add(warning_key)
 
     def _read_sample_triplet(self, cache: Dict[str, Any], gname: str, subname: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         self._read_calls += 1
@@ -304,6 +350,9 @@ class AggPool:
         log_bilinear: bool = False,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         cache = self._get_cache(Df, MAS)
+        self._warn_if_out_of_bounds(
+            cache, Df=Df, MAS=MAS, A_norm=A_norm, X1=X1
+        )
 
         if interp != "bilinear":
             group = self._pick_group_knn(cache, A_norm, X1, rng, KNN=KNN, sigma=sigma)

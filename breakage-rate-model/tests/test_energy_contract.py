@@ -24,7 +24,7 @@ from breakage_rate_model.datasets import build_energy_dataset
 from breakage_rate_model.mlp_model import MLPEnergyModel
 from breakage_rate_model.parametric_model import ParametricEnergyModel
 from breakage_rate_model.powerlaw_separable import PowerLawSeparableModel
-from wmcpbe.mlp_breakage_adapter import MLPBreakageRateAdapter
+from wmcpbe.breakage_adapter import BreakageRateAdapter
 
 
 MERGE_SCRIPT_PATH = PROJECT_ROOT / "agggenerator" / "scripts" / "merge_energy_pool_h5.py"
@@ -34,7 +34,7 @@ assert MERGE_SPEC is not None and MERGE_SPEC.loader is not None
 MERGE_MODULE = importlib.util.module_from_spec(MERGE_SPEC)
 MERGE_SPEC.loader.exec_module(MERGE_MODULE)
 
-TRAINING_SCRIPT_PATH = PROJECT_ROOT / "breakage-rate-model" / "tests" / "test.py"
+TRAINING_SCRIPT_PATH = PROJECT_ROOT / "breakage-rate-model" / "tests" / "train_4_models.py"
 TRAINING_SPEC = importlib.util.spec_from_file_location("energy_training_entry", TRAINING_SCRIPT_PATH)
 assert TRAINING_SPEC is not None and TRAINING_SPEC.loader is not None
 TRAINING_MODULE = importlib.util.module_from_spec(TRAINING_SPEC)
@@ -198,12 +198,63 @@ class TestFeatureSelectionAndAdapter(unittest.TestCase):
             a_tot = 2
             V_flat = np.array([[1.0, 2.0]])
 
-        adapter = MLPBreakageRateAdapter(model=model, gamma=6.0, NO_FRAG=2.0, Df=1.8)
+        adapter = BreakageRateAdapter(
+            model_kind="mlp", model=model, gamma=6.0, NO_FRAG=2.0, Df=1.8
+        )
         features, _ = adapter._build_features_batch(PBE())
         self.assertEqual(features.shape, (2, 10))
         rates = adapter.compute_rates_full(PBE())
         self.assertEqual(rates.shape, (2,))
         self.assertTrue(np.all(np.isfinite(rates)))
+
+        with self.assertRaisesRegex(TypeError, "model_kind='ann'"):
+            BreakageRateAdapter(model_kind="ann", model=model)
+
+    def test_adapter_model_volume_warning_is_once_and_can_be_disabled(self) -> None:
+        X = np.array(
+            [
+                [0.0, 1.0, 0.0, 0.0, 1.8, 0.0, 0.1, 1.0, 1.1, 1.2],
+                [0.2, 1.1, 0.0, 0.0, 1.8, 0.1, 0.2, 1.1, 1.2, 1.3],
+                [0.4, 1.2, 0.0, 0.0, 1.8, 0.2, 0.3, 1.2, 1.3, 1.4],
+                [0.6, 1.3, 0.0, 0.0, 1.8, 0.3, 0.4, 1.3, 1.4, 1.5],
+            ],
+            dtype=float,
+        )
+        model = MLPEnergyModel(
+            hidden_sizes=(4,), max_epochs=1, batch_size=2, patience=None, seed=1
+        ).fit(X, np.array([0.0, 0.1, 0.2, 0.3], dtype=float))
+
+        class PBE:
+            dim = 1
+            a_tot = 2
+            V_flat = np.array([[1.0, 2.0]])
+
+        adapter = BreakageRateAdapter(
+            model_kind="mlp", model=model, model_logV_bounds=(0.1, 0.5)
+        )
+        from contextlib import redirect_stdout
+        from io import StringIO
+
+        with StringIO() as stream, redirect_stdout(stream):
+            adapter.compute_rates_full(PBE())
+            first_output = stream.getvalue()
+            stream.seek(0)
+            stream.truncate(0)
+            adapter.compute_rates_full(PBE())
+            second_output = stream.getvalue()
+        self.assertIn("below", first_output)
+        self.assertIn("above", first_output)
+        self.assertEqual(second_output, "")
+
+        silent_adapter = BreakageRateAdapter(
+            model_kind="mlp",
+            model=model,
+            model_logV_bounds=(0.1, 0.5),
+            warn_model_extrapolation=False,
+        )
+        with StringIO() as stream, redirect_stdout(stream):
+            silent_adapter.compute_rates_full(PBE())
+            self.assertEqual(stream.getvalue(), "")
 
 
 class TestStructuralTraining(unittest.TestCase):

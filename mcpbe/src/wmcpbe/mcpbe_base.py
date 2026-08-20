@@ -56,6 +56,11 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         self.sum_prop_pair = False
         self.maybe_double_control_volume=False
 
+        # Fixed representative-particle weights for packeted events.  These
+        # are the only supported packet-weight controls in the active wmcpbe.
+        self.break_dW_const = 1.0
+        self.agg_dW_const = 1.0
+
         # Initial distributions flags
         self.PGV = np.full(dim, "mono")
         self.SIG = np.full(dim, 0.1)
@@ -97,7 +102,7 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
                 Initialize LMC-related adapters used by weighted MCPBE:
                     - Precomputed/offline adapters: table | rank | copula | flow
                     - Online LMC: live
-                    - MLP breakage-rate model: breakage_adapter
+                    - energy-surrogate breakage-rate model: breakage_adapter
 
                 Rules:
                     1) If use_lmc_pre_model=False, no offline adapter is loaded.
@@ -142,12 +147,27 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         self.lmc_Df = float(getattr(self, "lmc_Df", 1.6))
         self.lmc_MAS = float(getattr(self, "lmc_MAS", 0.5))
         self.use_lmc_live = bool(getattr(self, "use_lmc_live", False))
-        # —— MLP breakage-rate model related settings ——
+        # —— Energy-surrogate breakage-rate model related settings ——
         self.lmc_use_breakage_model = bool(
             getattr(self, "lmc_use_breakage_model", False)
         )
         self.lmc_breakage_model_path = getattr(
             self, "lmc_breakage_model_path", None
+        )
+        self.lmc_breakage_model_kind = str(
+            getattr(self, "lmc_breakage_model_kind", "mlp")
+        )
+        # Bounds are for the energy-model input feature log(V / A0_runtime).
+        # They are optional because existing model pickles predate persisted
+        # training-volume metadata.
+        self.lmc_breakage_model_logV_bounds = getattr(
+            self, "lmc_breakage_model_logV_bounds", None
+        )
+        self.lmc_warn_model_extrapolation = bool(
+            getattr(self, "lmc_warn_model_extrapolation", True)
+        )
+        self.lmc_warn_pool_out_of_bounds = bool(
+            getattr(self, "lmc_warn_pool_out_of_bounds", True)
         )
         # E_in(V) = lambda_E * V^energy_exp
         self.lmc_lambda_E = float(getattr(self, "lmc_lambda_E", 1.0))
@@ -241,19 +261,21 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
                 pool_dir=self.lmc_pool_dir,
                 Df=self.lmc_Df,
                 MAS=self.lmc_MAS,
+                warn_pool_out_of_bounds=self.lmc_warn_pool_out_of_bounds,
                 rebuild=True,
             )
 
-        # -------------- MLP breakage-rate model init (import on demand) --------------
+        # -------------- Energy-surrogate breakage-rate model init (import on demand) --------------
         if self.lmc_use_breakage_model:
             if not self.lmc_breakage_model_path:
                 raise ValueError(
                     "lmc_use_breakage_model=True but lmc_breakage_model_path is not set."
                 )
 
-            from .mlp_breakage_adapter import MLPBreakageRateAdapter
+            from .breakage_adapter import BreakageRateAdapter
 
-            self.lmc_breakage_adapter = MLPBreakageRateAdapter(
+            self.lmc_breakage_adapter = BreakageRateAdapter(
+                model_kind=self.lmc_breakage_model_kind,
                 model_path=self.lmc_breakage_model_path,
                 lambda_E=self.lmc_lambda_E,
                 energy_exp=self.lmc_energy_exp,
@@ -265,6 +287,8 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
                 rate_min=self.lmc_rate_min,
                 rate_max=self.lmc_rate_max,
                 A0_run=self.lmc_A0_runtime,
+                model_logV_bounds=self.lmc_breakage_model_logV_bounds,
+                warn_model_extrapolation=self.lmc_warn_model_extrapolation,
             )
 
     
@@ -569,13 +593,40 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         return V_init, w_rep
 
 
+    def _validate_packet_weight_configuration(self, process_type: str) -> None:
+        """Reject removed packet controls and validate active fixed weights."""
+        legacy_attributes = (
+            "break_dW_min",
+            "break_dW_max",
+            "break_dW_mode",
+            "agg_dW_min",
+            "agg_dW_max",
+            "agg_dW_mode",
+            "agg_dW_alpha",
+        )
+        for attribute_name in legacy_attributes:
+            if hasattr(self, attribute_name):
+                raise AttributeError(
+                    f"`{attribute_name}` is no longer supported. "
+                    "Use `break_dW_const` or `agg_dW_const` instead."
+                )
+
+        if process_type in ("agglomeration", "mix"):
+            agg_dW_const = float(self.agg_dW_const)
+            if not math.isfinite(agg_dW_const) or agg_dW_const <= 0.0:
+                raise ValueError("`agg_dW_const` must be a positive finite value.")
+        if process_type in ("breakage", "mix"):
+            break_dW_const = float(self.break_dW_const)
+            if not math.isfinite(break_dW_const) or break_dW_const <= 0.0:
+                raise ValueError("`break_dW_const` must be a positive finite value.")
+
     def _initialize_samplers(self):
         """Build (or resize) samplers for agglomeration/breakage based on process_type."""
         pt = getattr(self, "process_type", "agglomeration")
+        self._validate_packet_weight_configuration(pt)
 
         # Agglomeration
         if pt in ("agglomeration", "mix"):
-            self._prepare_agg_delta_config()
             self._rebuild_all_propensities()  # from AgglomerationMixin
             if not hasattr(self, "_r_agg") or self._r_agg is None or self._r_agg.shape[0] < self._cap:
                 buf = np.zeros(self._cap, dtype=float)

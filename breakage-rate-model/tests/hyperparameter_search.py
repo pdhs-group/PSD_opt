@@ -2,7 +2,7 @@
 """Spyder-friendly CMA-ES hyperparameter searches for energy surrogate models.
 
 This module intentionally imports the data-loading, group-splitting, and
-evaluation helpers from the adjacent ``test.py`` entry point.  Therefore a
+evaluation helpers from the adjacent ``train_4_models.py`` entry point.  Therefore a
 search uses exactly the same completed-v2 HDF5 contract, group-disjoint split,
 and validation metrics as a normal training run, without writing a model for
 every Optuna trial.
@@ -94,8 +94,8 @@ class SearchResult:
 
 
 def _load_training_module() -> ModuleType:
-    """Load the adjacent training entry point without importing an ambiguous ``test`` module."""
-    path = Path(__file__).with_name("test.py")
+    """Load the adjacent training entry point without relying on the working directory."""
+    path = Path(__file__).with_name("train_4_models.py")
     spec = importlib.util.spec_from_file_location("energy_training_entry", path)
     if spec is None or spec.loader is None:
         raise ImportError(f"Cannot create an import specification for {path}.")
