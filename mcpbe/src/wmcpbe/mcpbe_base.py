@@ -17,6 +17,21 @@ from pbe_core.base.base_solver import BaseSolver
 from .fenwick_new import FenwickSampler
 from .mcpbe_time_helper import MCPBETimeHelper
 
+
+_REMOVED_OFFLINE_LMC_ATTRIBUTES = (
+    "use_lmc_pre_model",
+    "lmc_pre_model",
+    "lmc_tables_path",
+    "lmc_rank_tables_path",
+    "lmc_copula_path",
+    "lmc_flow_pure_path",
+    "lmc_flow_mix_path",
+    "lmc_interp",
+    "lmc_tables_cache",
+    "lmc_small_particle_policy",
+)
+
+
 class MCPBEBase(MCPBETimeHelper, BaseSolver):
     """Base layer for MC-PBE:
     - validates & initializes particle state with capacity buffers
@@ -98,40 +113,23 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
             self._bf_ready = False  # breakage CDFs (mix-in will build on demand)
                         
     def _init_lmc(self):
+        """Initialize the optional live LMC and energy-rate adapters.
+
+        The active solver has no offline LMC fragment-distribution model.  A
+        configuration that still declares one of those removed controls is
+        rejected explicitly so that it cannot silently run with changed
+        fragmentation physics.
         """
-                Initialize LMC-related adapters used by weighted MCPBE:
-                    - Precomputed/offline adapters: table | rank | copula | flow
-                    - Online LMC: live
-                    - energy-surrogate breakage-rate model: breakage_adapter
+        for attribute_name in _REMOVED_OFFLINE_LMC_ATTRIBUTES:
+            if hasattr(self, attribute_name):
+                raise AttributeError(
+                    f"{attribute_name!r} configures a removed offline LMC adapter. "
+                    "Use use_lmc_live=True for aggregate-pool LMC, or "
+                    "use_lmc_live=False for the analytical PBE distribution."
+                )
 
-                Rules:
-                    1) If use_lmc_pre_model=False, no offline adapter is loaded.
-                    2) If use_lmc_pre_model=True, adapter selection follows lmc_pre_model.
-                    3) Missing required paths raise clear errors.
-                    4) Adapters are imported only when corresponding flags are enabled.
-        """
-                # -------------- Read base configuration (normalized to lmc_* names) --------------
-                # Whether to enable precomputed LMC
-        self.use_lmc_pre_model = bool(getattr(self, "use_lmc_pre_model", False))
-        self.lmc_pre_model = str(getattr(self, "lmc_pre_model", "table"))  # table|rank|copula|flow
-
-                # Paths for precomputed models
-        self.lmc_tables_path = getattr(self, "lmc_tables_path", None)
-        self.lmc_rank_tables_path = getattr(self, "lmc_rank_tables_path", None)
-        self.lmc_copula_path = getattr(self, "lmc_copula_path", None)
-        self.lmc_flow_pure_path = getattr(self, "lmc_flow_pure_path", None)
-        self.lmc_flow_mix_path = getattr(self, "lmc_flow_mix_path", None)
-
-                # Other generic LMC settings
         self.lmc_A0_runtime = float(getattr(self, "lmc_A0_runtime", 1.0))
-        self.lmc_interp = str(getattr(self, "lmc_interp", "bilinear"))
-        self.lmc_tables_cache = bool(getattr(self, "lmc_tables_cache", False))
-        self.lmc_small_particle_policy = str(
-            getattr(self, "lmc_small_particle_policy", "fallback")
-        )
         self.lmc_pool_dir = getattr(self, "lmc_pool_dir", "Pool_Path")
-
-                # -------------- LMC geometry / breakage parameters --------------
         self.lmc_STR = np.asarray(
             getattr(self, "lmc_STR", np.array([1.0, 1.0, 1.0], dtype=float)),
             dtype=float,
@@ -175,73 +173,9 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         # Breakage-rate clipping
         self.lmc_rate_min = float(getattr(self, "lmc_rate_min", 0.0))
         self.lmc_rate_max = getattr(self, "lmc_rate_max", None)
-        # Store final adapter instances
-        self.lmc_adapter = None          # Offline fragment-distribution adapter (table/rank/copula/flow)
-        self.lmc_live = None             # Online LMC fragment generator
-        self.lmc_breakage_adapter = None # MLP-based breakage-rate model adapter
+        self.lmc_live = None
+        self.lmc_breakage_adapter = None
 
-        # -------------- Offline / precomputed model init (import on demand) --------------
-        if self.use_lmc_pre_model:
-            # Import only when required to avoid unnecessary deps/circular imports
-            from .lmc_adapter import (
-                LMCTableAdapter,
-                LMCRankAdapter,
-                LMCCopulaAdapter,
-                LMCFlowAdapter,
-            )
-
-            pre = self.lmc_pre_model.lower().strip()
-            valid = {"table", "rank", "copula", "flow"}
-            if pre not in valid:
-                raise ValueError(f"lmc_pre_model='{self.lmc_pre_model}' is not in {valid}")
-
-            if pre == "table":
-                if not self.lmc_tables_path:
-                    raise ValueError("lmc_pre_model='table' but lmc_tables_path is not set.")
-                self.lmc_adapter = LMCTableAdapter(
-                    self.lmc_tables_path,
-                    interp=self.lmc_interp,
-                    A0_run=self.lmc_A0_runtime,
-                    cache_enabled=self.lmc_tables_cache,
-                )
-
-            elif pre == "rank":
-                if not self.lmc_rank_tables_path:
-                    raise ValueError("lmc_pre_model='rank' but lmc_rank_tables_path is not set.")
-                self.lmc_adapter = LMCRankAdapter(
-                    self.lmc_rank_tables_path,
-                    interp=self.lmc_interp,
-                    A0_run=self.lmc_A0_runtime,
-                    cache_enabled=self.lmc_tables_cache,
-                )
-
-            elif pre == "copula":
-                if not self.lmc_copula_path:
-                    raise ValueError("lmc_pre_model='copula' but lmc_copula_path is not set.")
-                self.lmc_adapter = LMCCopulaAdapter(
-                    self.lmc_copula_path,
-                    interp=self.lmc_interp,
-                    A0_run=self.lmc_A0_runtime,
-                    cache_enabled=self.lmc_tables_cache,
-                )
-
-            elif pre == "flow":
-                if not self.lmc_flow_pure_path or not self.lmc_flow_mix_path: 
-                    raise ValueError("lmc_pre_model='flow' but lmc_flow_path is not set.") 
-                self.lmc_adapter = LMCFlowAdapter( 
-                        pure_model_path=self.lmc_flow_pure_path, 
-                        mix_model_path=self.lmc_flow_mix_path, 
-                        A0_run=self.lmc_A0_runtime, 
-                        cache_enabled=self.lmc_tables_cache, 
-                    )
-
-            # Apply small-particle policy for any offline adapter
-            if self.lmc_adapter is not None and hasattr(self.lmc_adapter, "set_small_particle_policy"):
-                self.lmc_adapter.set_small_particle_policy(
-                    policy=self.lmc_small_particle_policy
-                )
-
-        # -------------- Live LMC init (import on demand) --------------
         if self.use_lmc_live:
             from .lmc_adapter import LMCLiveAdapter
 
@@ -256,7 +190,6 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
                 aspect_ratio=self.lmc_aspect_ratio,
                 int_bre=self.lmc_int_bre,
                 A0_run=self.lmc_A0_runtime,
-                small_particle_policy=self.lmc_small_particle_policy,
                 delta_cells=self.lmc_delta_cells,
                 pool_dir=self.lmc_pool_dir,
                 Df=self.lmc_Df,
@@ -1037,7 +970,7 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
             # if count%100 == 0: print([f"[Test] events = {count}"])
             if self.a_tot < 2 and pt in ("agglomeration", "mix"):
                 break
-        if self.use_lmc_live:
+        if self.use_lmc_live and self.lmc_live._sim.agg_pool is not None:
             self.lmc_live._sim.agg_pool.close_pool_cache()
         self.MACHINE_TIME = time.time() - t0
         if self.VERBOSE:
@@ -1177,7 +1110,7 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
             # if count%100 == 0: print([f"[Test] events = {count}"])
             if self.a_tot < 2 and pt in ("agglomeration", "mix"):
                 break
-        if self.use_lmc_live:
+        if self.use_lmc_live and self.lmc_live._sim.agg_pool is not None:
             self.lmc_live._sim.agg_pool.close_pool_cache()
         self.MACHINE_TIME = time.time() - t0
         if self.VERBOSE:
@@ -1204,7 +1137,7 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
     def _build_repeat_worker_state(self, *, suppress_verbose: bool = False) -> dict[str, Any]:
         base_state = copy.deepcopy(self.__dict__)
         base_state.pop("cancel_flag", None)
-        for key in ("lmc_adapter", "lmc_live", "lmc_breakage_adapter", "_open_mmaps"):
+        for key in ("lmc_live", "lmc_breakage_adapter", "_open_mmaps"):
             if key in base_state:
                 base_state[key] = None
         if suppress_verbose:
@@ -2001,7 +1934,7 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
 
         # åŽ»æŽ‰ä¸€äº›è¿è¡Œæ—¶å¯¹è±¡ï¼Œé¿å… pickling/æ–‡ä»¶å¥æŸ„/ç¼“å­˜å¯¼è‡´å·®å¼‚
         base_state.pop("cancel_flag", None)
-        for k_rm in ("lmc_adapter", "lmc_live", "lmc_breakage_adapter"):
+        for k_rm in ("lmc_live", "lmc_breakage_adapter"):
             if k_rm in base_state:
                 base_state[k_rm] = None
 
@@ -2481,16 +2414,6 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
                     RuntimeWarning,
                 )
 
-        # LMC configuration sanity
-        use_lmc_pre = bool(getattr(self, "use_lmc_pre_model", False))
-        if use_lmc_pre and getattr(self, "lmc_adapter", None) is None:
-            warnings.warn(
-                "[MC-PBE][DEBUG] use_lmc_pre_model=True but `lmc_adapter` is None. "
-                "Check LMC table/rank/copula/flow paths in config.",
-                RuntimeWarning,
-            )
-
-    
     def _log_debug_config(self):
         """Print a categorized snapshot of key MCPBE configuration parameters.
 
@@ -2591,27 +2514,14 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
             print("    break_rate  = <not initialized>")
 
         # LMC-related configuration
-        print(f"    CDF_method   = {getattr(self, 'CDF_method', None)}")
-        print(f"    use_lmc_pre_model  = {getattr(self, 'use_lmc_pre_model', None)}")
-        print(f"    lmc_pre_model      = {getattr(self, 'lmc_pre_model', None)}")
-        print(f"    lmc_tables_path    = {getattr(self, 'lmc_tables_path', None)}")
-        print(f"    lmc_rank_tables_path = {getattr(self, 'lmc_rank_tables_path', None)}")
-        print(f"    lmc_copula_path    = {getattr(self, 'lmc_copula_path', None)}")
-        print(f"    lmc_flow_pure_path = {getattr(self, 'lmc_flow_pure_path', None)}")
-        print(f"    lmc_flow_mix_path  = {getattr(self, 'lmc_flow_mix_path', None)}")
         print(f"    lmc_A0_runtime     = {getattr(self, 'lmc_A0_runtime', None)}")
-        print(f"    lmc_interp         = {getattr(self, 'lmc_interp', None)}")
-        print(f"    lmc_tables_cache   = {getattr(self, 'lmc_tables_cache', None)}")
         print(f"    use_lmc_live       = {getattr(self, 'use_lmc_live', None)}")
-        print(f"    lmc_small_particle_policy = {getattr(self, 'lmc_small_particle_policy', None)}")
         print(f"    lmc_pool_dir       = {getattr(self, 'lmc_pool_dir', None)}")
         print(f"    lmc_Df             = {getattr(self, 'lmc_Df', None)}")
         print(f"    lmc_MAS            = {getattr(self, 'lmc_MAS', None)}")
 
-        # LMC adapter/live presence
-        adapter = getattr(self, "lmc_adapter", None)
+        # Live adapter presence
         live = getattr(self, "lmc_live", None)
-        print(f"    lmc_adapter        = {type(adapter).__name__ if adapter is not None else None}")
         print(f"    lmc_live           = {type(live).__name__ if live is not None else None}")
         print("[MC-PBE][DEBUG] End of configuration snapshot\n")
 

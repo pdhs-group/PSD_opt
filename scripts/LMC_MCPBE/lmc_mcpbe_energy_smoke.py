@@ -85,7 +85,6 @@ SEED = 42
 END_TIME = 10.0
 MAX_EVENTS = 1
 BREAK_DW_CONST = 1.0
-SMALL_PARTICLE_POLICY = "disable"
 DELTA_CELLS = 0.1
 MASS_CONSERVATION_RTOL = 1e-12  # double-precision summation check
 
@@ -134,11 +133,6 @@ def _validate_configuration() -> None:
         or logV_bounds[0] >= logV_bounds[1]
     ):
         raise ValueError("MODEL_LOGV_BOUNDS must be two finite increasing log-volume values.")
-    if SMALL_PARTICLE_POLICY != "disable":
-        raise ValueError(
-            "This smoke test requires SMALL_PARTICLE_POLICY='disable' so an LMC/pool "
-            "failure cannot silently use the uniform-fragment fallback."
-        )
 
 
 def _initial_particle_state() -> tuple[np.ndarray, np.ndarray]:
@@ -180,7 +174,6 @@ def _build_solver() -> MCPBESolver:
     solver.break_dW_const = BREAK_DW_CONST
 
     # Live LMC + aggregate pool.
-    solver.use_lmc_pre_model = False
     solver.use_lmc_live = True
     solver.lmc_pool_dir = str(AGGREGATE_POOL_ROOT)
     solver.lmc_A0_runtime = LMC_A0_RUNTIME
@@ -193,7 +186,6 @@ def _build_solver() -> MCPBESolver:
     solver.lmc_allow_loops = True
     solver.lmc_accept_all_cracks = False
     solver.lmc_use_weighted_start = False
-    solver.lmc_small_particle_policy = SMALL_PARTICLE_POLICY
     solver.lmc_delta_cells = DELTA_CELLS
 
     # Energy-rate adapter.  It keeps this full ten-feature runtime interface

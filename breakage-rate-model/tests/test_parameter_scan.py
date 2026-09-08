@@ -30,7 +30,7 @@ def _fake_result(config, case):
     order_count = config.moment_max_order + 1
     return {
         "case": case.as_dict(),
-        "seed": np.array([10, 11, 12], dtype=np.uint64),
+        "seed": np.arange(10, 10 + repeats, dtype=np.uint64),
         "moments": np.full((repeats, order_count, order_count, time_count), 2.0),
         "psd_Q": np.full((repeats, time_count, grid_count), 0.5),
         "x50": np.full((repeats, time_count), 4.0),
@@ -39,14 +39,28 @@ def _fake_result(config, case):
         "initial_phase_volume": np.full((repeats, 2), 500.0),
         "final_phase_volume": np.full((repeats, 2), 500.0),
         "phase_volume_relative_error": np.zeros(repeats),
-        "reconstruction_count": np.array([0, 1, 2], dtype=int),
-        "machine_seconds": np.array([1.0, 2.0, 3.0]),
+        "reconstruction_count": np.arange(repeats, dtype=int),
+        "machine_seconds": np.arange(1, repeats + 1, dtype=float),
     }
+
+
+def _full_scan_config():
+    """Make tests independent from Spyder's editable single-test switch."""
+    return replace(
+        SCAN_MODULE.DEFAULT_CONFIG,
+        single_test_case=False,
+        result_filename=SCAN_MODULE.RESULT_FILENAME,
+        mas_values=(0.1, 0.5, 0.9),
+        x1_values=(0.1, 0.5, 0.9),
+        str_values=(1.0, 10.0, 100.0, 1000.0),
+        gamma_values=(1.0e-3, 1.0, 1.0e3),
+        case_indices=None,
+    )
 
 
 class TestPhase1ParameterScan(unittest.TestCase):
     def test_case_enumeration_and_deterministic_repeat_seeds(self) -> None:
-        config = SCAN_MODULE.DEFAULT_CONFIG
+        config = _full_scan_config()
         cases = SCAN_MODULE.build_scan_cases(config)
         self.assertEqual(len(cases), 1080)
         self.assertEqual(len({case.case_id for case in cases}), 1080)
@@ -57,12 +71,36 @@ class TestPhase1ParameterScan(unittest.TestCase):
         first = SCAN_MODULE.derive_repeat_seeds(config, cases[17].index)
         second = SCAN_MODULE.derive_repeat_seeds(config, cases[17].index)
         self.assertEqual(first, second)
-        self.assertEqual(len(first), 3)
-        self.assertEqual(len(set(first)), 3)
+        self.assertEqual(len(first), config.n_repeats)
+        self.assertEqual(len(set(first)), config.n_repeats)
         self.assertNotEqual(first, SCAN_MODULE.derive_repeat_seeds(config, cases[18].index))
 
+    def test_single_test_branch_overrides_scan_space_and_case_selection(self) -> None:
+        original_flag = SCAN_MODULE.RUN_SINGLE_TEST_CASE
+        try:
+            SCAN_MODULE.RUN_SINGLE_TEST_CASE = True
+            config = SCAN_MODULE.build_default_config()
+        finally:
+            SCAN_MODULE.RUN_SINGLE_TEST_CASE = original_flag
+
+        self.assertTrue(config.single_test_case)
+        self.assertEqual(config.result_filename, SCAN_MODULE.SINGLE_TEST_RESULT_FILENAME)
+        self.assertEqual(config.mas_values, (0.5,))
+        self.assertEqual(config.x1_values, (0.5,))
+        self.assertEqual(config.str_values, (1.0,))
+        self.assertEqual(config.gamma_values, (1.0,))
+        self.assertIsNone(config.case_indices)
+
+        cases = SCAN_MODULE.build_scan_cases(config)
+        self.assertEqual(len(cases), 1)
+        self.assertEqual(cases[0].MAS, 0.5)
+        self.assertEqual(cases[0].X1, 0.5)
+        self.assertEqual(cases[0].STR, (1.0, 1.0, 1.0))
+        self.assertEqual(cases[0].gamma, 1.0)
+        SCAN_MODULE._validate_config_values(config, cases)
+
     def test_validation_rejects_invalid_values_before_asset_access(self) -> None:
-        config = SCAN_MODULE.DEFAULT_CONFIG
+        config = _full_scan_config()
         cases = SCAN_MODULE.build_scan_cases(config)
         with self.assertRaises(ValueError):
             SCAN_MODULE._validate_config_values(replace(config, model_kind="unknown"), cases)
@@ -165,8 +203,16 @@ class TestPhase1ParameterScan(unittest.TestCase):
         np.testing.assert_allclose(volumes[1], 0.75 * config.initial_particle_volume)
         np.testing.assert_allclose(volumes[2], config.initial_particle_volume)
         np.testing.assert_allclose(weights, config.initial_weight_per_compute_particle)
-        self.assertEqual(config.initial_represented_particle_count, 4.0)
-        self.assertEqual(config.initial_represented_total_volume, 4_000.0)
+        self.assertEqual(
+            config.initial_represented_particle_count,
+            config.initial_compute_particles * config.initial_weight_per_compute_particle,
+        )
+        self.assertEqual(
+            config.initial_represented_total_volume,
+            config.initial_compute_particles
+            * config.initial_weight_per_compute_particle
+            * config.initial_particle_volume,
+        )
 
         modified = replace(
             config,
@@ -205,7 +251,7 @@ class TestPhase1ParameterScan(unittest.TestCase):
     def test_h5_write_csv_and_strict_resume(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             config = replace(
-                SCAN_MODULE.DEFAULT_CONFIG,
+                _full_scan_config(),
                 output_directory=Path(directory),
                 result_filename="phase1_test.h5",
                 case_indices=(0,),
@@ -228,14 +274,37 @@ class TestPhase1ParameterScan(unittest.TestCase):
             with h5py.File(config.result_path, "r") as h5_file:
                 self.assertEqual(h5_file.attrs["format_version"], 2)
                 self.assertEqual(h5_file.attrs["initial_state_kind"], "monodisperse_2d_explicit")
-                self.assertEqual(h5_file.attrs["initial_compute_particles"], 4)
-                self.assertEqual(h5_file.attrs["initial_represented_particle_count"], 4.0)
+                self.assertEqual(
+                    h5_file.attrs["initial_compute_particles"],
+                    config.initial_compute_particles,
+                )
+                self.assertEqual(
+                    h5_file.attrs["initial_represented_particle_count"],
+                    config.initial_represented_particle_count,
+                )
                 group = h5_file["conditions"][cases[0].case_id]
                 self.assertTrue(bool(group.attrs["complete"]))
-                self.assertEqual(group["moments"].shape, (3, 3, 3, config.n_time_points))
-                self.assertEqual(group["psd_Q"].shape, (3, config.n_time_points, len(config.psd_x_grid)))
-                np.testing.assert_array_equal(group["reconstruction_count"], (0, 1, 2))
-                self.assertEqual(group["reconstruction_count_mean"][()], 1.0)
+                self.assertEqual(
+                    group["moments"].shape,
+                    (
+                        config.n_repeats,
+                        config.moment_max_order + 1,
+                        config.moment_max_order + 1,
+                        config.n_time_points,
+                    ),
+                )
+                self.assertEqual(
+                    group["psd_Q"].shape,
+                    (config.n_repeats, config.n_time_points, len(config.psd_x_grid)),
+                )
+                expected_reconstruction_counts = np.arange(config.n_repeats, dtype=int)
+                np.testing.assert_array_equal(
+                    group["reconstruction_count"], expected_reconstruction_counts
+                )
+                self.assertEqual(
+                    group["reconstruction_count_mean"][()],
+                    float(np.mean(expected_reconstruction_counts)),
+                )
                 np.testing.assert_allclose(group["x50_mean"], 4.0)
 
             full_selection = replace(config, case_indices=None)

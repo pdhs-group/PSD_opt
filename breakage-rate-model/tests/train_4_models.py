@@ -17,7 +17,11 @@ import numpy as np
 from breakage_rate_model.ann_model import ANNEnergyModel
 from breakage_rate_model.data_io import EnergyGroupRecord, load_energy_groups_from_h5
 from breakage_rate_model.datasets import EnergyDataset, build_energy_dataset
-from breakage_rate_model.features import DEFAULT_ACTIVE_FEATURE_NAMES
+from breakage_rate_model.features import (
+    DEFAULT_ACTIVE_FEATURE_NAMES,
+    FULL_ENERGY_FEATURE_NAMES,
+    full_energy_features,
+)
 from breakage_rate_model.mlp_model import MLPEnergyModel
 from breakage_rate_model.parametric_model import ParametricEnergyModel
 from breakage_rate_model.powerlaw_separable import PowerLawSeparableModel
@@ -244,7 +248,121 @@ def _load_saved_model(kind: str, model_path: str):
     }
     if kind not in classes:
         raise ValueError(f"Unknown model kind {kind!r}.")
-    return classes[kind].load(model_path)
+    expected_type = classes[kind]
+    model = expected_type.load(model_path)
+    if not isinstance(model, expected_type):
+        raise TypeError(
+            f"Model file {model_path!r} was requested as {kind!r}, but contains "
+            f"{type(model).__name__} instead of {expected_type.__name__}."
+        )
+    if not model.is_fitted:
+        raise RuntimeError(f"Saved {kind!r} model at {model_path!r} is not fitted.")
+    return model
+
+
+def _report_group_features(group_index: int, group: EnergyGroupRecord) -> None:
+    """Print the canonical ten-feature contract for one energy curve."""
+    features_at_first_volume = full_energy_features(group, float(group.V[0]))
+    log_volumes = np.log(group.V)
+
+    print(f"Selected group index={group_index}, key={group.key!r}")
+    print("Canonical model features:")
+    for feature_index, feature_name in enumerate(FULL_ENERGY_FEATURE_NAMES):
+        if feature_name == "logV":
+            print(
+                f"  {feature_name}: variable across the curve; "
+                f"V=[{group.V[0]:.6g}, {group.V[-1]:.6g}], "
+                f"logV=[{log_volumes[0]:.6g}, {log_volumes[-1]:.6g}]"
+            )
+        else:
+            print(f"  {feature_name}: {features_at_first_volume[feature_index]:.6g}")
+    print("Group curve metadata:")
+    print(
+        f"  A0={group.A0:.6g}, Np=[{group.Np[0]}, {group.Np[-1]}], "
+        f"n_volume_points={group.V.size}"
+    )
+
+
+def compare_models_on_group(
+    h5_file: str,
+    group_index: int,
+    *,
+    show: bool = True,
+):
+    """Plot one group mean-energy curve against all four saved model predictions.
+
+    The input file is read with ``load_samples=False``.  The four model files
+    are expected beside the HDF5 file and must be named
+    ``<kind>_model.pkl`` for ``powerlaw``, ``parametric``, ``mlp`` and ``ann``.
+    Predictions are returned to energy scale because every current model
+    predicts ``log(E_mean)``.
+    """
+    if isinstance(group_index, bool) or not isinstance(group_index, (int, np.integer)):
+        raise TypeError("group_index must be a zero-based integer.")
+
+    groups = load_energy_groups_from_h5(h5_file, load_samples=False)
+    group_index = int(group_index)
+    if group_index < 0 or group_index >= len(groups):
+        raise IndexError(
+            f"group_index must satisfy 0 <= group_index < {len(groups)}, got {group_index}."
+        )
+    group = groups[group_index]
+    if group.E_samples is not None:
+        raise RuntimeError("Group comparison must not load raw E_samples.")
+
+    _report_group_features(group_index, group)
+
+    X_group = np.vstack(
+        [full_energy_features(group, float(volume)) for volume in group.V]
+    )
+    model_kinds = ("powerlaw", "parametric", "mlp", "ann")
+    model_directory = os.path.dirname(os.path.abspath(h5_file))
+    prediction_energy: dict[str, np.ndarray] = {}
+    for kind in model_kinds:
+        model_path = os.path.join(model_directory, f"{kind}_model.pkl")
+        if not os.path.isfile(model_path):
+            raise FileNotFoundError(
+                f"Required saved {kind!r} model is missing: {model_path}"
+            )
+        model = _load_saved_model(kind, model_path)
+        prediction_log = np.asarray(model.predict(X_group), dtype=float)
+        if prediction_log.shape != (group.V.size,):
+            raise RuntimeError(
+                f"{kind} prediction must have shape ({group.V.size},), "
+                f"got {prediction_log.shape}."
+            )
+        if not np.all(np.isfinite(prediction_log)):
+            raise FloatingPointError(f"{kind} produced non-finite log-energy predictions.")
+        with np.errstate(over="raise", invalid="raise"):
+            prediction = np.exp(prediction_log)
+        if not np.all(np.isfinite(prediction)) or np.any(prediction <= 0.0):
+            raise FloatingPointError(f"{kind} produced invalid energy predictions.")
+        prediction_energy[kind] = prediction
+
+    import matplotlib.pyplot as plt
+
+    figure, axis = plt.subplots(figsize=(9, 6))
+    axis.plot(
+        group.V,
+        group.E_mean,
+        "o",
+        color="black",
+        label="E_mean",
+        zorder=3,
+    )
+    for kind in model_kinds:
+        axis.plot(group.V, prediction_energy[kind], linewidth=2.0, label=kind)
+    axis.set_xscale("log")
+    axis.set_yscale("log")
+    axis.set_xlabel("particle volume V")
+    axis.set_ylabel("breakage energy E")
+    axis.set_title(f"Energy curve comparison: group {group_index} ({group.key})")
+    axis.grid(True, which="both", alpha=0.3)
+    axis.legend()
+    figure.tight_layout()
+    if show:
+        plt.show()
+    return figure
 
 
 def _fit_model(kind: str, split: GroupSplit, active_feature_names: Sequence[str]):
@@ -307,13 +425,22 @@ if __name__ == "__main__":
     # Edit these values directly when debugging through Spyder.
     DATA_PATH = r"D:\LMC\energy_pool"
     H5_FILE = os.path.join(DATA_PATH, "energy_scan_results.h5")
+    RUN_MODE = "compare_group"  # "train" or "compare_group"
     MODEL_KIND = "all"  # powerlaw / parametric / mlp / ann / all
     ONLY_ANALYZE = True
     ACTIVE_FEATURE_NAMES = DEFAULT_ACTIVE_FEATURE_NAMES
+    GROUP_INDEX = 0  # Zero-based group index, used only by RUN_MODE="compare_group".
 
-    EXPERIMENT_RESULT = run_experiment(
-        model_kind=MODEL_KIND,
-        h5_file=H5_FILE,
-        only_analyze=ONLY_ANALYZE,
-        active_feature_names=ACTIVE_FEATURE_NAMES,
-    )
+    if RUN_MODE == "train":
+        EXPERIMENT_RESULT = run_experiment(
+            model_kind=MODEL_KIND,
+            h5_file=H5_FILE,
+            only_analyze=ONLY_ANALYZE,
+            active_feature_names=ACTIVE_FEATURE_NAMES,
+        )
+    elif RUN_MODE == "compare_group":
+        GROUP_COMPARISON_FIGURE = compare_models_on_group(H5_FILE, GROUP_INDEX)
+    else:
+        raise ValueError(
+            f"RUN_MODE must be 'train' or 'compare_group', got {RUN_MODE!r}."
+        )

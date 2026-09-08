@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import math
-from typing import Tuple
 
 import numpy as np
 
@@ -15,11 +14,7 @@ from pbe_core.func.jit_kernel_break import (
     calc_break_rate_2d_flat as _kb_br2_single,
 )
 from .fenwick_new import FenwickSampler
-
-_ONE_SHOT_ADAPTER_NAMES = {"LMCRankAdapter", "LMCCopulaAdapter", "LMCFlowAdapter"}
-_TABLE_ADAPTER_NAME = "LMCTableAdapter"
-_LIVE_FALLBACK_ERROR = "LMCLiveFallback"
-_LIVE_DISABLE_ERROR = "LMCLiveDisable"
+from .lmc_adapter import LMCLiveUnbreakable
 
 class MCPBEBreak:
     """Breakage logic:
@@ -28,10 +23,6 @@ class MCPBEBreak:
     - two-level CDF builder (1D/2D) and discrete samplers
     - multi-fragment event by stochastic rounding of expected fragment count
     """
-
-    @staticmethod
-    def _adapter_type_name(adapter) -> str:
-        return type(adapter).__name__ if adapter is not None else ""
 
     def _prepare_break_config(self) -> None:
         """Cache breakage configuration that is effectively constant during one solve run."""
@@ -223,54 +214,29 @@ class MCPBEBreak:
 
         self._bf_ready = True
 
-    # [LMC-ADAPT] helpers
-    def _state_AX1_from_Vrem(self, Vrem: np.ndarray) -> Tuple[float, float]:
-        """Infer parent-particle state (A, X1) from remaining volume Vrem.
-
-        A is total amount; X1 is phase-1 fraction.
-        Uses a safe fallback when denominator is zero.
-        """
-        if self.dim == 1:
-            A = float(Vrem[0])
-            X1 = 1.0  # Single-component case; X1 is not used in practice.
-        else:
-            v1 = float(Vrem[0])
-            v3 = float(Vrem[1])
-            A = v1 + v3
-            X1 = (v1 / A) if A > 0.0 else 0.5
-        return A, X1
-            
     def _get_break_tables_for_state(self, Vrem: np.ndarray):
+        """Return the JIT-generated analytical fragment CDF tables.
+
+        ``Vrem`` remains part of the private method signature because the
+        stepwise fragment routine supplies it, but the analytical CDF is not
+        state dependent.  Live LMC fragmentation is handled separately by
+        :meth:`_break_build_fragments`.
         """
-                Return CDF tables for the current parent-particle state.
-
-                - If precomputed LMC adapter is enabled and available:
-                    fetch 1D/2D tables from adapter.
-                - Otherwise:
-                    use JIT-generated tables via _build_break_function() and self._bf*.
-        """
-        use_lmc = bool(self.use_lmc_pre_model and self.lmc_adapter is not None)
-        if not use_lmc:
-            if not self._bf_ready:
-                self._build_break_function()
-            if self.dim == 1:
-                return ("1d", self._bf1_rel, self._bf1_cdf, None, None, None, None, float(self.frag_num))
-            else:
-                return ("2d", self._bf2_rel1, self._bf2_rel3, self._bf2_rowsum_cdf, self._bf2_row_cdf, None, None, float(self.frag_num))
-
-        # LMC table-driven path
-        A, X1 = self._state_AX1_from_Vrem(Vrem)
-
-        # Use 1D table for pure-phase/degenerate states; otherwise 2D.
-        if self.dim == 2 and (Vrem[0] <= 0.0 or Vrem[1] <= 0.0):
-            rel1d, cdf1d, zmin1d, pexp = self.lmc_adapter.get_1d(A, X1)
-            return ("1d", rel1d, cdf1d, None, None, zmin1d, None, float(pexp))
+        del Vrem
+        if not self._bf_ready:
+            self._build_break_function()
         if self.dim == 1:
-            rel1d, cdf1d, zmin1d, pexp = self.lmc_adapter.get_1d(A, X1)
-            return ("1d", rel1d, cdf1d, None, None, zmin1d, None, float(pexp))
-        else:
-            rel1, rel3, rowsum_cdf, row_cdf, zmin1, zmin3, pexp = self.lmc_adapter.get_2d(A, X1)
-            return ("2d", rel1, rel3, rowsum_cdf, row_cdf, zmin1, zmin3, float(pexp))
+            return ("1d", self._bf1_rel, self._bf1_cdf, None, None, None, None, float(self.frag_num))
+        return (
+            "2d",
+            self._bf2_rel1,
+            self._bf2_rel3,
+            self._bf2_rowsum_cdf,
+            self._bf2_row_cdf,
+            None,
+            None,
+            float(self.frag_num),
+        )
         
     # ------------------------------------------------------------------
     # Produce one fragment from remaining volume vector
@@ -419,10 +385,10 @@ class MCPBEBreak:
             self._break_sampler.update(k, 0.0)
     
     # Wrap legacy stepwise splitting into a helper that samples fragments
-    # from table/builtin CDFs one by one.
+    # from the analytical JIT CDFs one by one.
     def _build_fragments_stepwise(self, Vrem_k: np.ndarray) -> list[np.ndarray]:
-        *_, pexp = self._get_break_tables_for_state(Vrem_k)
-        p = float(pexp) if (pexp is not None and self.use_lmc_pre_model) else float(self.frag_num)
+        self._get_break_tables_for_state(Vrem_k)
+        p = float(self.frag_num)
         fl = int(math.floor(p))
         ce = int(math.ceil(p))
         if fl <= 1:
@@ -439,123 +405,17 @@ class MCPBEBreak:
         frags.append(Vrem)
         return frags
     
-    # Live LMC small-particle fallback: generate NO_FRAG uniform fragments.
-    def _build_uniform_live_fragments(self, Vrem_k: np.ndarray) -> list[np.ndarray]:
-        """
-        When live LMC raises LMCLiveFallback (particle too small to host
-        the desired number of lattice cells), fall back to a simple,
-        deterministic uniform split into NO_FRAG fragments.
-
-        - For dim=1: split total volume V into NO_FRAG equal parts.
-        - For dim=2: split each phase volume (VA, VB) evenly into NO_FRAG
-          fragments, keeping the overall composition unchanged.
-        """
-        # Prefer NO_FRAG from the live LMC adapter; fall back to 2 if missing.
-        n = int(self.lmc_NO_FRAG)
-        if n < 2:
-            n = 2
-
-        if self.dim == 1:
-            V = float(Vrem_k[0])
-            v = V / float(n)
-            return [np.array([v], dtype=float) for _ in range(n)]
-
-        VA = float(Vrem_k[0])
-        VB = float(Vrem_k[1])
-        vA = VA / float(n)
-        vB = VB / float(n)
-        return [np.array([vA, vB], dtype=float) for _ in range(n)]
-    
-    # Unified fragment-source dispatcher: Rank one-shot / Live LMC / stepwise split.
     def _break_build_fragments(self, Vrem_k: np.ndarray) -> tuple[str, list[np.ndarray]]:
-        """
-        Dispatch order:
-          1) Live LMC (if enabled): on Fallback/Disable, fall back or disable.
-          2) Rank/Copula/Flow tables (if available): one-shot sampling.
-          3) Marginal table or analytic function: stepwise splitting.
-
-        Returns:
-          ("ok", frags) or ("disable", [])
-        """
-        # 1) Live LMC first
-        if self.use_lmc_live and (self.lmc_live is not None):
+        """Generate fragments from either live LMC or the analytical PBE CDF."""
+        if self.use_lmc_live:
+            if self.lmc_live is None:
+                raise RuntimeError("use_lmc_live=True but LMCLiveAdapter is not initialized.")
             try:
-                frags, _E = self.lmc_live.sample_one_shot(Vrem_k, self._rng)
-                return "ok", frags
+                fragments, _energy = self.lmc_live.sample_one_shot(Vrem_k, self._rng)
+            except LMCLiveUnbreakable:
+                return "disable", []
+            return "ok", fragments
 
-            except Exception as exc:
-                exc_name = type(exc).__name__
-                if exc_name == _LIVE_FALLBACK_ERROR:
-                    # Conditional fallback:
-                    #   - if a table/rank model (or adapter) is available, keep the
-                    #     original behavior and fall through to those models;
-                    #   - otherwise, fall back to a simple uniform NO_FRAG split.
-                    has_tables = bool(self.use_lmc_pre_model)
-                    has_adapter = self.lmc_adapter is not None
-
-                    if has_tables or has_adapter:
-                        # Old behavior: do nothing here and let the code fall through
-                        # to the table / rank-based breakage models below.
-                        pass
-                    else:
-                        # New behavior: no table/rank model available, so use a
-                        # simple deterministic uniform split into NO_FRAG fragments.
-                        frags = self._build_uniform_live_fragments(Vrem_k)
-                        return "ok", frags
-                elif exc_name == _LIVE_DISABLE_ERROR:
-                    # Caller can mark this particle as unbreakable after receiving "disable".
-                    return "disable", []
-                else:
-                    raise
-    
-        # 2) One-shot distribution adapters: rank / copula / flow
-        lmc_ad = self.lmc_adapter
-        ad_name = self._adapter_type_name(lmc_ad)
-        if ad_name in _ONE_SHOT_ADAPTER_NAMES:
-        # if ad_name in {"LMCRankAdapter", "LMCCopulaAdapter"}:
-            # --- Small-particle policy check (only required for "disable") ---
-            if lmc_ad.small_particle_policy == "disable":
-                A = float(Vrem_k[0]) if self.dim == 1 else float(Vrem_k[0] + Vrem_k[1])
-                if not lmc_ad.eligible_for_tables(A):
-                    return "disable", []
-    
-            # Build A and X1
-            if self.dim == 1:
-                A = float(Vrem_k[0])
-                X1 = 1.0
-            else:
-                A = float(Vrem_k[0] + Vrem_k[1])
-                X1 = float(Vrem_k[0] / A) if A > 0.0 else 0.5
-    
-            # One-shot method signatures differ by adapter type.
-            if ad_name == "LMCFlowAdapter":
-                # flow: sample_one_shot(A, X1, rng, N=None)
-                rA_list, rB_list = lmc_ad.sample_one_shot(A, X1, self._rng, N=None)
-            else:
-            # rank / copula: sample_one_shot(A, X1, rng, N=None, K_use=None, tail_strategy="equal")
-                rA_list, rB_list = lmc_ad.sample_one_shot(
-                    A, X1, self._rng, N=None, K_use=None, tail_strategy="equal"
-                )
-    
-            # Reconstruct volume fragments by dimensionality.
-            if self.dim == 1:
-                frags = [np.array([r * Vrem_k[0]], dtype=float) for r in rA_list]
-            else:
-                frags = [
-                    np.array([rA * Vrem_k[0], rB * Vrem_k[1]], dtype=float)
-                    for (rA, rB) in zip(rA_list, rB_list)
-                ]
-            return "ok", frags
-    
-        # 3) Marginal-table / analytic-function path: stepwise split
-        #    (LMCTableAdapter or pure JIT analytic model)
-        if ad_name == _TABLE_ADAPTER_NAME:
-            if lmc_ad.small_particle_policy == "disable":
-                A = float(Vrem_k[0]) if self.dim == 1 else float(Vrem_k[0] + Vrem_k[1])
-                if not lmc_ad.eligible_for_tables(A):
-                    return "disable", []
-    
-        # Use original stepwise splitting logic.
         return "ok", self._build_fragments_stepwise(Vrem_k)
     
     def _compute_dW(self, k: int) -> float:
@@ -622,6 +482,10 @@ class MCPBEBreak:
             status, frags = self._break_build_fragments(Vrem_k)
 
             if status == "disable":
+                # No physical packet was broken: only remove this particle's
+                # future propensity.  The solver's real-event counter must
+                # therefore not include the unsuccessful live-LMC attempt.
+                self._last_break_dW = 0.0
                 self._mark_unbreakable(k)
                 return
 

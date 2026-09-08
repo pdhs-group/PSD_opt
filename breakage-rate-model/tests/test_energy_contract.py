@@ -9,6 +9,9 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest import mock
+
+os.environ.setdefault("MPLBACKEND", "Agg")
 
 import h5py
 import numpy as np
@@ -20,6 +23,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "mcpbe" / "src"))
 
 from breakage_rate_model.data_io import load_energy_groups_from_h5
 from breakage_rate_model.data_io import EnergyGroupRecord
+from breakage_rate_model.ann_model import ANNEnergyModel
 from breakage_rate_model.datasets import build_energy_dataset
 from breakage_rate_model.mlp_model import MLPEnergyModel
 from breakage_rate_model.parametric_model import ParametricEnergyModel
@@ -255,6 +259,129 @@ class TestFeatureSelectionAndAdapter(unittest.TestCase):
         with StringIO() as stream, redirect_stdout(stream):
             silent_adapter.compute_rates_full(PBE())
             self.assertEqual(stream.getvalue(), "")
+
+
+class TestFourModelGroupComparison(unittest.TestCase):
+    @staticmethod
+    def _record(index: int) -> EnergyGroupRecord:
+        np_values = np.arange(1, 7, dtype=np.int64)
+        scale = 1.0 + 0.05 * index
+        energy = scale * np_values.astype(float) ** 0.8
+        return EnergyGroupRecord(
+            key=f"training-record-{index}",
+            NO_FRAG=2,
+            int_bre=0.0,
+            gamma=2.0 + index,
+            Df=1.8,
+            MAS=0.1 * index,
+            X1=0.2 + 0.01 * index,
+            A0=1.0,
+            N_GRIDS=1,
+            N_FRACS=1,
+            base_seed=index,
+            workers=1,
+            STR=np.array([1.0 + index, 2.0 + index, 3.0 + index]),
+            sigma_attr=None,
+            pearson_r_attr=None,
+            Np=np_values,
+            V=np_values.astype(float),
+            E_mean=energy,
+            E_std=np.zeros_like(energy),
+            E_samples=None,
+            sigma_fit=0.8,
+            b_fit=float(np.log(scale)),
+            pearson_r_fit=1.0,
+        )
+
+    @classmethod
+    def _save_all_models(cls, directory: Path) -> dict[str, object]:
+        groups = [cls._record(index) for index in range(12)]
+        dataset = build_energy_dataset(groups, target="log_mean")
+        models = {
+            "powerlaw": PowerLawSeparableModel(
+                enable_tail=True,
+                regress_type="ridge",
+                ridge_lambda=1.0,
+            ).fit(None, None, groups=groups),
+            "parametric": ParametricEnergyModel(
+                enable_tail=True,
+                residual_type="ridge",
+                residual_lambda=1.0,
+            ).fit(None, None, groups=groups),
+            "mlp": MLPEnergyModel(
+                hidden_sizes=(4,),
+                max_epochs=1,
+                batch_size=128,
+                patience=None,
+                seed=1,
+            ).fit(dataset.X, dataset.y),
+            "ann": ANNEnergyModel(
+                hidden_sizes=(4, 4, 2),
+                dropout=0.0,
+                max_epochs=1,
+                batch_size=128,
+                patience=None,
+                seed=1,
+            ).fit(dataset.X, dataset.y),
+        }
+        for kind, model in models.items():
+            model.save(str(directory / f"{kind}_model.pkl"))
+        return models
+
+    def test_compares_all_saved_models_with_mean_curve_and_errorbars(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_text:
+            directory = Path(directory_text)
+            h5_path = directory / "energy_pool.h5"
+            with h5py.File(h5_path, "w") as h5_file:
+                create_completed_run(h5_file, "curve")
+            self._save_all_models(directory)
+
+            with mock.patch.object(
+                TRAINING_MODULE,
+                "load_energy_groups_from_h5",
+                wraps=load_energy_groups_from_h5,
+            ) as reader:
+                figure = TRAINING_MODULE.compare_models_on_group(str(h5_path), 0, show=False)
+            reader.assert_called_once_with(str(h5_path), load_samples=False)
+
+            axis = figure.axes[0]
+            self.assertEqual(axis.get_xscale(), "log")
+            self.assertEqual(axis.get_yscale(), "log")
+            self.assertEqual(len(axis.containers), 0)
+            model_lines = [
+                line for line in axis.lines
+                if line.get_label() in {"powerlaw", "parametric", "mlp", "ann"}
+            ]
+            self.assertEqual(len(model_lines), 4)
+            raw_lines = [line for line in axis.lines if line.get_label() == "E_mean"]
+            self.assertEqual(len(raw_lines), 1)
+            for line in model_lines:
+                self.assertEqual(line.get_xdata().shape, (3,))
+                self.assertTrue(np.all(np.isfinite(line.get_ydata())))
+                self.assertTrue(np.all(line.get_ydata() > 0.0))
+
+            import matplotlib.pyplot as plt
+
+            plt.close(figure)
+
+    def test_comparison_rejects_invalid_group_and_saved_model_contracts(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_text:
+            directory = Path(directory_text)
+            h5_path = directory / "energy_pool.h5"
+            with h5py.File(h5_path, "w") as h5_file:
+                create_completed_run(h5_file, "curve")
+
+            with self.assertRaises(IndexError):
+                TRAINING_MODULE.compare_models_on_group(str(h5_path), -1, show=False)
+            with self.assertRaises(IndexError):
+                TRAINING_MODULE.compare_models_on_group(str(h5_path), 1, show=False)
+            with self.assertRaises(FileNotFoundError):
+                TRAINING_MODULE.compare_models_on_group(str(h5_path), 0, show=False)
+
+            models = self._save_all_models(directory)
+            models["powerlaw"].save(str(directory / "parametric_model.pkl"))
+            with self.assertRaisesRegex(TypeError, "requested as 'parametric'"):
+                TRAINING_MODULE.compare_models_on_group(str(h5_path), 0, show=False)
 
 
 class TestStructuralTraining(unittest.TestCase):

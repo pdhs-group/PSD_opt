@@ -153,13 +153,13 @@ def main():
         "copula": c_KIT_orange,
         "flow": c_KIT_purple,
     }
-    # profiler = cProfile.Profile()
-    # profiler.enable()
+    profiler = cProfile.Profile()
+    profiler.enable()
     m_live = MCPBESolver_new(dim=dim, init=False)
     mu_live, std_live, t_live, _, psd_info = run_mcpbe_new(m_live, seed, N_MC)
-    # profiler.disable()
-    # stats = pstats.Stats(profiler).strip_dirs().sort_stats("cumtime")
-    # stats.print_stats(20)
+    profiler.disable()
+    stats = pstats.Stats(profiler).strip_dirs().sort_stats("cumtime")
+    stats.print_stats(20)
     
     tp = m_live.t_vec
     results = {"live": (mu_live, std_live)}

@@ -19,30 +19,11 @@ import hashlib
 import json
 import math
 from pathlib import Path
-import sys
+import sys, os
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
 import h5py
 import numpy as np
-
-
-# def _bootstrap_project_paths() -> None:
-#     """Make monorepo source packages importable for Spyder and spawned workers."""
-#     project_root = Path(__file__).resolve().parents[2]
-#     for source_path in (
-#         project_root / "pbe-core" / "src",
-#         project_root / "lmc" / "src",
-#         project_root / "breakage-rate-model" / "src",
-#         project_root / "mcpbe" / "src",
-#     ):
-#         if not source_path.is_dir():
-#             raise FileNotFoundError(f"Required project source directory is missing: {source_path}")
-#         source_text = str(source_path)
-#         if source_text not in sys.path:
-#             sys.path.insert(0, source_text)
-
-
-# _bootstrap_project_paths()
 
 from breakage_rate_model.ann_model import ANNEnergyModel  # noqa: E402
 from breakage_rate_model.base import BaseEnergyModel  # noqa: E402
@@ -57,9 +38,10 @@ from wmcpbe import MCPBESolver  # noqa: E402
 # Spyder configuration: edit this block for a real study.
 # =============================================================================
 
-DATA_ROOT = Path(r"D:\LMC")
+DATA_ROOT = Path(r"D:\Codex_tem\LMC")
+# DATA_ROOT = Path(os.environ["TMP_PATH"])
 AGGREGATE_POOL_ROOT = DATA_ROOT
-BREAKAGE_MODEL_KIND = "mlp"  # "mlp", "ann", "powerlaw", or "parametric"
+BREAKAGE_MODEL_KIND = "ann"  # "mlp", "ann", "powerlaw", or "parametric"
 BREAKAGE_MODEL_PATH = DATA_ROOT / f"{BREAKAGE_MODEL_KIND}_model.pkl"
 
 # Old model pickles do not persist this metadata.  Bounds use the model input
@@ -70,12 +52,21 @@ WARN_POOL_OUT_OF_BOUNDS = True
 
 # Study output.  RESUME=True only accepts a file with the identical numerical
 # configuration fingerprint; completed conditions are then skipped.
-OUTPUT_DIRECTORY = DATA_ROOT / "pbe_parameter_scan_phase1"
+OUTPUT_DIRECTORY = DATA_ROOT / "pbe_parameter_scan_test"
+# OUTPUT_DIRECTORY = (
+#     Path(os.environ["STORAGE_PATH"])
+#     / "pbe_parameter_scan_phase1"
+# )
 RESULT_FILENAME = "phase1_results.h5"
+# Enable this branch to run exactly one fixed condition for solver studies:
+# MAS=0.5, X1=0.5, STR=(1.0, 1.0, 1.0), gamma=1.0. It overrides the four
+# scan-value tuples and CASE_INDICES below, and writes to a separate file.
+RUN_SINGLE_TEST_CASE = True
+SINGLE_TEST_RESULT_FILENAME = "single_case_test_results.h5"
 RESUME = True
 N_WORKERS = 1  # Increase to the scheduler allocation; never nest worker pools.
 BASE_SEED = 42
-N_REPEATS = 3
+N_REPEATS = 1
 
 # Scan dimensions: STR0 and STR2 are phase-swap symmetric, while STR1 is not.
 MAS_VALUES = (0.1, 0.5, 0.9)
@@ -89,16 +80,15 @@ DF = 1.8
 NO_FRAG = 2
 INT_BRE = 0.0
 LMC_A0_RUNTIME = 1.0
-SMALL_PARTICLE_POLICY = "disable"
 DELTA_CELLS = 0.1
 
 # Initial 2D PBE state.  ``build_initial_state`` supplies V_flat/W_init
 # directly, so this is an explicit monodisperse representative-particle
 # population rather than the solver's PGV-based initialization path.  Every
 # condition's X1 controls the phase partition within each identical particle.
-INITIAL_COMPUTE_PARTICLES = 4
-INITIAL_WEIGHT_PER_COMPUTE_PARTICLE = 1.0
-INITIAL_PARTICLE_VOLUME = 1_000.0
+INITIAL_COMPUTE_PARTICLES = 100
+INITIAL_WEIGHT_PER_COMPUTE_PARTICLE = 1000.0
+INITIAL_PARTICLE_VOLUME = 50000.0
 CONTROL_VOLUME = 1.0
 
 # PBE time/process controls.  The default isolates breakage; agglomeration
@@ -107,7 +97,7 @@ PROCESS_TYPE = "breakage"  # "breakage", "agglomeration", or "mix"
 END_TIME = 10.0
 N_TIME_POINTS = 11
 MAX_EVENTS = 100_000
-VERBOSE_SOLVER = False
+VERBOSE_SOLVER = True
 
 # Breakage controls.  The energy surrogate supplies the breakage rate; the
 # remaining values stay explicit for compatibility with the solver interface.
@@ -120,7 +110,7 @@ PL_P2 = 1.0
 PL_P3 = 1.0
 PL_P4 = 1.0
 BREAK_DW_CONST = 1.0
-LAMBDA_E = 1.0
+LAMBDA_E = 1e-6
 ENERGY_EXPONENT = 1.0
 RATE_MIN = 0.0
 RATE_MAX: Optional[float] = None
@@ -191,6 +181,7 @@ class StudyConfig:
     warn_pool_out_of_bounds: bool
     output_directory: Path
     result_filename: str
+    single_test_case: bool
     resume: bool
     n_workers: int
     base_seed: int
@@ -203,7 +194,6 @@ class StudyConfig:
     NO_FRAG: int
     int_bre: float
     lmc_A0_runtime: float
-    small_particle_policy: str
     delta_cells: float
     initial_compute_particles: int
     initial_weight_per_compute_particle: float
@@ -309,7 +299,7 @@ class RefreshRequirements:
 
 def build_default_config() -> StudyConfig:
     """Collect the editable Spyder constants into one serializable object."""
-    return StudyConfig(
+    config = StudyConfig(
         data_root=DATA_ROOT,
         aggregate_pool_root=AGGREGATE_POOL_ROOT,
         model_kind=BREAKAGE_MODEL_KIND,
@@ -319,6 +309,7 @@ def build_default_config() -> StudyConfig:
         warn_pool_out_of_bounds=WARN_POOL_OUT_OF_BOUNDS,
         output_directory=OUTPUT_DIRECTORY,
         result_filename=RESULT_FILENAME,
+        single_test_case=RUN_SINGLE_TEST_CASE,
         resume=RESUME,
         n_workers=N_WORKERS,
         base_seed=BASE_SEED,
@@ -331,7 +322,6 @@ def build_default_config() -> StudyConfig:
         NO_FRAG=NO_FRAG,
         int_bre=INT_BRE,
         lmc_A0_runtime=LMC_A0_RUNTIME,
-        small_particle_policy=SMALL_PARTICLE_POLICY,
         delta_cells=DELTA_CELLS,
         initial_compute_particles=INITIAL_COMPUTE_PARTICLES,
         initial_weight_per_compute_particle=INITIAL_WEIGHT_PER_COMPUTE_PARTICLE,
@@ -387,6 +377,17 @@ def build_default_config() -> StudyConfig:
         plot_case_ids=PLOT_CASE_IDS,
         case_indices=CASE_INDICES,
     )
+    if config.single_test_case:
+        return replace(
+            config,
+            result_filename=SINGLE_TEST_RESULT_FILENAME,
+            mas_values=(0.5,),
+            x1_values=(0.5,),
+            str_values=(1.0,),
+            gamma_values=(1.0,),
+            case_indices=None,
+        )
+    return config
 
 
 DEFAULT_CONFIG = build_default_config()
@@ -503,7 +504,6 @@ def apply_case_to_solver(solver: MCPBESolver, config: StudyConfig, case: ScanCas
     solver.recon_4pm_cond_max = config.recon_4pm_cond_max
     solver.recon_4pmc_eps_var = config.recon_4pmc_eps_var
 
-    solver.use_lmc_pre_model = False
     solver.use_lmc_live = True
     solver.lmc_pool_dir = str(config.aggregate_pool_root)
     solver.lmc_A0_runtime = config.lmc_A0_runtime
@@ -516,7 +516,6 @@ def apply_case_to_solver(solver: MCPBESolver, config: StudyConfig, case: ScanCas
     solver.lmc_allow_loops = True
     solver.lmc_accept_all_cracks = False
     solver.lmc_use_weighted_start = False
-    solver.lmc_small_particle_policy = config.small_particle_policy
     solver.lmc_delta_cells = config.delta_cells
     solver.lmc_warn_pool_out_of_bounds = config.warn_pool_out_of_bounds
 
@@ -623,6 +622,8 @@ def configuration_fingerprint(config: StudyConfig) -> str:
 def _validate_config_values(config: StudyConfig, cases: Sequence[ScanCase]) -> None:
     if config.model_kind not in _MODEL_TYPES:
         raise ValueError(f"model_kind must be one of {tuple(_MODEL_TYPES)}, got {config.model_kind!r}.")
+    if not isinstance(config.single_test_case, bool):
+        raise ValueError("single_test_case must be a bool.")
     if config.process_type not in {"breakage", "agglomeration", "mix"}:
         raise ValueError("process_type must be 'breakage', 'agglomeration', or 'mix'.")
     if config.n_workers < 1 or config.n_repeats < 1:
@@ -651,8 +652,6 @@ def _validate_config_values(config: StudyConfig, cases: Sequence[ScanCase]) -> N
     alpha_prim = np.asarray(config.alpha_prim, dtype=float)
     if alpha_prim.shape != (4,) or not np.all(np.isfinite(alpha_prim)):
         raise ValueError("alpha_prim must be a finite length-4 array for the 2D solver.")
-    if config.small_particle_policy not in {"fallback", "disable"}:
-        raise ValueError("small_particle_policy must be 'fallback' or 'disable'.")
     if config.rate_min < 0.0 or (config.rate_max is not None and config.rate_max < config.rate_min):
         raise ValueError("Breakage-rate bounds are inconsistent.")
     if not np.isfinite(config.break_dW_const) or config.break_dW_const <= 0.0:
@@ -720,7 +719,21 @@ def _validate_config_values(config: StudyConfig, cases: Sequence[ScanCase]) -> N
     if config.psd_basis not in {"volume", "number"}:
         raise ValueError("psd_basis must be 'volume' or 'number'.")
 
-    if len(cases) != 1080:
+    if config.single_test_case:
+        expected_test_case = (0.5, 0.5, (1.0, 1.0, 1.0), 1.0)
+        if len(cases) != 1:
+            raise RuntimeError(f"Single-test branch must contain exactly one case, got {len(cases)}.")
+        case = cases[0]
+        actual_test_case = (case.MAS, case.X1, case.STR, case.gamma)
+        if actual_test_case != expected_test_case:
+            raise RuntimeError(
+                "Single-test branch must use "
+                "MAS=0.5, X1=0.5, STR=(1.0, 1.0, 1.0), gamma=1.0; "
+                f"got {actual_test_case}."
+            )
+        if config.case_indices is not None:
+            raise RuntimeError("Single-test branch must override CASE_INDICES with None.")
+    elif len(cases) != 1080:
         raise RuntimeError(f"Phase-1 scan must contain 1080 cases, got {len(cases)}.")
     if any(case.STR[0] > case.STR[2] for case in cases):
         raise RuntimeError("STR symmetry enumeration contains a forbidden STR0 > STR2 case.")
@@ -1195,6 +1208,11 @@ def run_parameter_scan(config: StudyConfig = DEFAULT_CONFIG) -> Path:
     cases = build_scan_cases(config)
     validate_startup(config, cases)
     pending_cases = prepare_result_file(config, cases)
+    if config.single_test_case:
+        print(
+            "Single-test branch active: "
+            "MAS=0.5, X1=0.5, STR=(1.0, 1.0, 1.0), gamma=1.0."
+        )
     print(
         f"Phase-1 parameter scan: {len(cases)} defined conditions, "
         f"{len(pending_cases)} pending, {config.n_repeats} repeats each, "
