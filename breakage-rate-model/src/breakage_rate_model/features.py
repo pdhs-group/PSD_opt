@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Sequence, Tuple
 
 import numpy as np
@@ -32,6 +33,11 @@ DEFAULT_ACTIVE_FEATURE_NAMES: Tuple[str, ...] = (
 
 FEATURE_INDEX = {name: index for index, name in enumerate(FULL_ENERGY_FEATURE_NAMES)}
 INT_BRE_FEATURE_INDEX = FEATURE_INDEX["int_bre"]
+
+STRENGTH_NORMALIZATION_MODES: Tuple[str, ...] = (
+    "none",
+    "geometric_mean_relative",
+)
 
 
 def normalize_active_feature_names(
@@ -92,6 +98,89 @@ def require_full_feature_matrix(X: np.ndarray) -> np.ndarray:
     return X
 
 
+def normalize_strength_normalization(strength_normalization: str) -> str:
+    """Validate the persisted energy-strength preprocessing mode."""
+    mode = str(strength_normalization).strip().lower()
+    if mode not in STRENGTH_NORMALIZATION_MODES:
+        raise ValueError(
+            "strength_normalization must be one of "
+            f"{STRENGTH_NORMALIZATION_MODES}, got {strength_normalization!r}."
+        )
+    return mode
+
+
+def strength_log_scale(strengths: np.ndarray) -> np.ndarray:
+    """Return ``log(S0)`` for positive STR triples, ``S0=(prod STR)^(1/3)``."""
+    values = np.asarray(strengths, dtype=float)
+    if values.ndim == 1:
+        values = values.reshape(1, -1)
+    if values.ndim != 2 or values.shape[1] != 3:
+        raise ValueError(f"STR values must have shape (n, 3), got {values.shape}.")
+    if not np.all(np.isfinite(values)) or np.any(values <= 0.0):
+        raise ValueError("STR values must be finite and strictly positive.")
+    return np.mean(np.log(values), axis=1)
+
+
+def preprocess_full_energy_features(
+    X: np.ndarray,
+    strength_normalization: str,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return model-facing full features and the associated ``log(S0)`` values.
+
+    The external feature contract always retains raw positive ``STR0:3``.
+    In ``geometric_mean_relative`` mode, those internal columns become
+    ``log(STR_i / S0)`` while all non-STR columns stay unchanged.
+    """
+    X_full = require_full_feature_matrix(X)
+    mode = normalize_strength_normalization(strength_normalization)
+    if mode == "none":
+        return X_full, np.zeros(X_full.shape[0], dtype=float)
+
+    log_scale = strength_log_scale(X_full[:, 7:10])
+    X_model = X_full.copy()
+    X_model[:, 7:10] = np.log(X_full[:, 7:10]) - log_scale[:, None]
+    return X_model, log_scale
+
+
+def preprocess_log_energy_targets(
+    X: np.ndarray,
+    y_log_energy: np.ndarray,
+    strength_normalization: str,
+) -> np.ndarray:
+    """Map raw ``log(E)`` targets to the selected model energy unit."""
+    _, log_scale = preprocess_full_energy_features(X, strength_normalization)
+    y = np.asarray(y_log_energy, dtype=float)
+    if y.ndim != 1 or y.shape[0] != log_scale.shape[0] or not np.all(np.isfinite(y)):
+        raise ValueError("y_log_energy must be finite, one-dimensional, and aligned with X.")
+    return y - log_scale
+
+
+def preprocess_energy_groups(
+    groups: Sequence,
+    strength_normalization: str,
+) -> list:
+    """Return curve records expressed in the selected model energy unit."""
+    mode = normalize_strength_normalization(strength_normalization)
+    if mode == "none":
+        return list(groups)
+
+    normalized_groups = []
+    for record in groups:
+        log_scale = strength_log_scale(np.asarray(record.STR, dtype=float))[0]
+        scale = float(np.exp(log_scale))
+        samples = None if record.E_samples is None else record.E_samples / scale
+        normalized_groups.append(
+            replace(
+                record,
+                E_mean=record.E_mean / scale,
+                E_std=record.E_std / scale,
+                E_samples=samples,
+                b_fit=float(record.b_fit - log_scale),
+            )
+        )
+    return normalized_groups
+
+
 def full_energy_features(record, V_value: float) -> np.ndarray:
     """Build the canonical external feature vector from one energy-group record."""
     V_value = float(V_value)
@@ -125,7 +214,11 @@ def full_energy_features(record, V_value: float) -> np.ndarray:
     )
 
 
-def group_theta_features(record, active_feature_names: Sequence[str] | None) -> np.ndarray:
+def group_theta_features(
+    record,
+    active_feature_names: Sequence[str] | None,
+    strength_normalization: str = "none",
+) -> np.ndarray:
     """Build active non-volume features from a group without inventing a V value."""
     names = theta_feature_names(active_feature_names)
     if not names:
@@ -141,6 +234,9 @@ def group_theta_features(record, active_feature_names: Sequence[str] | None) -> 
     str_values = np.asarray(record.STR, dtype=float).reshape(-1)
     if str_values.shape != (3,) or not np.all(np.isfinite(str_values)):
         raise ValueError(f"STR must be a finite vector of length 3, got {np.asarray(record.STR).shape}")
+    if normalize_strength_normalization(strength_normalization) == "geometric_mean_relative":
+        log_scale = strength_log_scale(str_values)[0]
+        str_values = np.log(str_values) - log_scale
 
     values = {
         "log_gamma": np.log(gamma),

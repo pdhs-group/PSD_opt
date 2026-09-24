@@ -15,7 +15,9 @@ from .features import (
     FULL_ENERGY_FEATURE_NAMES,
     active_feature_indices,
     normalize_active_feature_names,
-    require_full_feature_matrix,
+    normalize_strength_normalization,
+    preprocess_full_energy_features,
+    preprocess_log_energy_targets,
 )
 
 
@@ -66,6 +68,7 @@ class ANNEnergyModel(BaseEnergyModel):
         seed: Optional[int] = None,
         name: Optional[str] = None,
         active_feature_names: Optional[Sequence[str]] = None,
+        strength_normalization: str = "none",
     ):
         super().__init__(name=name or "ANNEnergyModel")
         if input_dim != len(FULL_ENERGY_FEATURE_NAMES):
@@ -75,6 +78,7 @@ class ANNEnergyModel(BaseEnergyModel):
             )
         self.input_dim = input_dim
         self.active_feature_names = normalize_active_feature_names(active_feature_names)
+        self.strength_normalization = normalize_strength_normalization(strength_normalization)
         self._active_feature_indices = active_feature_indices(self.active_feature_names)
         self._model_input_dim = int(self._active_feature_indices.size)
         self.hidden_sizes = tuple(hidden_sizes)
@@ -108,8 +112,8 @@ class ANNEnergyModel(BaseEnergyModel):
             torch.cuda.manual_seed_all(seed)
 
     def _select_active_features(self, X: np.ndarray) -> np.ndarray:
-        X_full = require_full_feature_matrix(X)
-        return X_full[:, self._active_feature_indices].astype(np.float32, copy=False)
+        X_model, _ = preprocess_full_energy_features(X, self.strength_normalization)
+        return X_model[:, self._active_feature_indices].astype(np.float32, copy=False)
 
     def fit(
         self,
@@ -122,7 +126,9 @@ class ANNEnergyModel(BaseEnergyModel):
         if X_train is None or y_train is None:
             raise ValueError("ANNEnergyModel.fit requires X_train and y_train.")
         X_train_active = self._select_active_features(X_train)
-        y_train = np.asarray(y_train, dtype=np.float32)
+        y_train = preprocess_log_energy_targets(
+            X_train, y_train, self.strength_normalization
+        ).astype(np.float32, copy=False)
         if y_train.ndim != 1 or y_train.shape[0] != X_train_active.shape[0] or not np.all(np.isfinite(y_train)):
             raise ValueError("y_train must be a finite one-dimensional array aligned with X_train.")
         if X_train_active.shape[0] < 2:
@@ -139,7 +145,9 @@ class ANNEnergyModel(BaseEnergyModel):
         has_val = (X_val is not None) and (y_val is not None)
         if has_val:
             X_val_active = self._select_active_features(X_val)
-            y_val = np.asarray(y_val, dtype=np.float32)
+            y_val = preprocess_log_energy_targets(
+                X_val, y_val, self.strength_normalization
+            ).astype(np.float32, copy=False)
             if y_val.ndim != 1 or y_val.shape[0] != X_val_active.shape[0] or not np.all(np.isfinite(y_val)):
                 raise ValueError("y_val must be a finite one-dimensional array aligned with X_val.")
             X_val_active = (X_val_active - self._x_mean) / self._x_std

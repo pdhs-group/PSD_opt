@@ -1,8 +1,12 @@
 # -*- coding: utf-8 -*-
-"""Plot selected mean-result comparisons from a completed phase-1 scan.
+"""Plot baseline-relative mean-result comparisons from a completed phase-1 scan.
 
 This Spyder-friendly script only reads ``phase1_results.h5``.  It never
 restarts a simulation or modifies the HDF5 result file.
+Each metric is plotted as 100 * (value / its own t=0 value - 1).  A signed
+logarithmic y-axis keeps negative changes and the zero starting point visible.
+Diameter quantiles use the saved PSD grid, whose resolution limits changes
+near the initial monodisperse peak.
 """
 
 from __future__ import annotations
@@ -23,7 +27,8 @@ import matplotlib.pyplot as plt
 # =============================================================================
 
 RESULT_H5 = Path(r"D:\Codex_tem\LMC\pbe_parameter_scan_phase1\phase1_results.h5")
-OUTPUT_DIRECTORY = RESULT_H5.parent / "analysis_plots"
+OUTPUT_DIRECTORY = RESULT_H5.parent / "analysis_plots_log_rel_y"
+SYMLOG_LINTHRESH_PERCENT = 1.0e-6  # Signed log y-axis; zero has a narrow linear region.
 
 RUN_PRIMARY_COMPARISONS = True       # MAS/X1/gamma: final diameters, D50(t), moments
 RUN_STR_MOMENT_COMPARISONS = True    # Requested STR combinations: high-order moments
@@ -63,6 +68,8 @@ def _format_str(STR: tuple[float, float, float]) -> str:
 
 
 def _validate_configuration() -> None:
+    if not np.isfinite(SYMLOG_LINTHRESH_PERCENT) or SYMLOG_LINTHRESH_PERCENT <= 0.0:
+        raise ValueError("SYMLOG_LINTHRESH_PERCENT must be finite and positive.")
     for name, values in (("MAS_VALUES", MAS_VALUES), ("X1_VALUES", X1_VALUES), ("GAMMA_VALUES", GAMMA_VALUES)):
         if not values or not np.all(np.isfinite(values)):
             raise ValueError(f"{name} must be a non-empty finite sequence.")
@@ -192,6 +199,21 @@ def _set_scan_x_axis(axis: plt.Axes, parameter: str) -> None:
         axis.set_xscale("log")
 
 
+def _relative_change_percent(values: np.ndarray, initial: float) -> np.ndarray:
+    if not np.isfinite(initial) or initial <= 0.0:
+        raise ValueError("Relative-change baseline must be finite and positive.")
+    result = (np.asarray(values, dtype=float) / initial - 1.0) * 100.0
+    if not np.all(np.isfinite(result)):
+        raise ValueError("Relative-change values must be finite.")
+    return result
+
+
+def _set_relative_y_axis(axis: plt.Axes) -> None:
+    # Ordinary log scales cannot show zero or the negative changes in moments.
+    axis.set_yscale("symlog", linthresh=SYMLOG_LINTHRESH_PERCENT)
+    axis.axhline(0.0, color="0.5", linewidth=0.8)
+
+
 def _save_figure(figure: plt.Figure, path: Path) -> Path:
     figure.savefig(path, dpi=180)
     plt.close(figure)
@@ -201,20 +223,27 @@ def _save_figure(figure: plt.Figure, path: Path) -> Path:
 def _plot_final_diameters(
     parameter: str, values: tuple[float, ...], data: list[dict[str, np.ndarray]], psd_x_grid: np.ndarray, output_directory: Path
 ) -> Path:
-    d10 = np.array([_invert_cdf(psd_x_grid, item["psd_Q"][-1], 0.1) for item in data])
-    d90 = np.array([_invert_cdf(psd_x_grid, item["psd_Q"][-1], 0.9) for item in data])
-    d50 = np.array([item["x50"][-1] for item in data])
+    ratios = []
+    diameters = []
+    for item in data:
+        cdf_initial, cdf_final = item["psd_Q"][0], item["psd_Q"][-1]
+        ratio_initial = _invert_cdf(psd_x_grid, cdf_initial, 0.9) / _invert_cdf(psd_x_grid, cdf_initial, 0.1)
+        ratio_final = _invert_cdf(psd_x_grid, cdf_final, 0.9) / _invert_cdf(psd_x_grid, cdf_final, 0.1)
+        ratios.append(_relative_change_percent(ratio_final, ratio_initial))
+        diameter_initial = _invert_cdf(psd_x_grid, cdf_initial, 0.5)
+        diameter_final = _invert_cdf(psd_x_grid, cdf_final, 0.5)
+        diameters.append(_relative_change_percent(diameter_final, diameter_initial))
     figure, left = plt.subplots(figsize=(7, 4.5), constrained_layout=True)
     right = left.twinx()
-    first = left.plot(values, d90 / d10, "o-", color="tab:blue", label=r"$D_{90}/D_{10}$")
-    second = right.plot(values, d50, "s-", color="tab:orange", label=r"$D_{50}$")
+    first = left.plot(values, ratios, "o-", color="tab:blue", label=r"$\Delta(D_{90}/D_{10})/(D_{90}/D_{10})_0$")
+    second = right.plot(values, diameters, "s-", color="tab:orange", label=r"$\Delta D_{50}/D_{50,0}$")
     _set_scan_x_axis(left, parameter)
+    _set_relative_y_axis(left)
+    _set_relative_y_axis(right)
     left.set_xlabel(parameter)
-    left.set_ylabel(r"$D_{90}/D_{10}$", color="tab:blue")
-    right.set_ylabel(r"$D_{50}$", color="tab:orange")
-    left.ticklabel_format(axis="y", style="plain", useOffset=False)
-    right.ticklabel_format(axis="y", style="plain", useOffset=False)
-    left.set_title(f"Final size metrics: {parameter} scan")
+    left.set_ylabel(r"$\Delta(D_{90}/D_{10})/(D_{90}/D_{10})_0$ (%)", color="tab:blue")
+    right.set_ylabel(r"$\Delta D_{50}/D_{50,0}$ (%)", color="tab:orange")
+    left.set_title(f"Final relative size changes: {parameter} scan")
     left.grid(True)
     left.legend(first + second, [line.get_label() for line in first + second])
     return _save_figure(figure, output_directory / f"final_size_metrics_vs_{parameter}.png")
@@ -235,12 +264,10 @@ def _plot_time_series(
             np.array([_invert_cdf(psd_x_grid, cdf, 0.5) for cdf in item["psd_Q"]])
             if moment is None else item["moments"][moment[0], moment[1]]
         )
-        axis.plot(t_vec, y_values, "o-", label=f"{parameter}={_format_number(value)}")
+        axis.plot(t_vec, _relative_change_percent(y_values, float(y_values[0])), "o-", label=f"{parameter}={_format_number(value)}")
+    _set_relative_y_axis(axis)
     axis.set_xlabel("time")
-    axis.set_ylabel(r"$D_{50}$" if moment is None else rf"$\mu_{{{moment[0]},{moment[1]}}}$")
-    axis.ticklabel_format(
-        axis="y", style="plain" if moment is None else "sci", scilimits=(0, 0), useOffset=False
-    )
+    axis.set_ylabel(r"$\Delta D_{50}/D_{50,0}$ (%)" if moment is None else rf"$\Delta\mu_{{{moment[0]},{moment[1]}}}/\mu_{{{moment[0]},{moment[1]}}}(0)$ (%)")
     title_quantity = r"$D_{50}(t)$" if moment is None else rf"$\mu_{{{moment[0]},{moment[1]}}}(t)$"
     axis.set_title(f"{title_quantity}: {parameter} scan")
     axis.grid(True)
@@ -256,10 +283,11 @@ def _plot_str_moments(
     for moment in _MOMENT_ORDERS:
         figure, axis = plt.subplots(figsize=(7, 4.5), constrained_layout=True)
         for STR, item in zip(STR_COMPARISONS, data, strict=True):
-            axis.plot(t_vec, item["moments"][moment[0], moment[1]], "o-", label=f"STR={_format_str(STR)}")
+            y_values = item["moments"][moment[0], moment[1]]
+            axis.plot(t_vec, _relative_change_percent(y_values, float(y_values[0])), "o-", label=f"STR={_format_str(STR)}")
+        _set_relative_y_axis(axis)
         axis.set_xlabel("time")
-        axis.set_ylabel(rf"$\mu_{{{moment[0]},{moment[1]}}}$")
-        axis.ticklabel_format(axis="y", style="sci", scilimits=(0, 0), useOffset=False)
+        axis.set_ylabel(rf"$\Delta\mu_{{{moment[0]},{moment[1]}}}/\mu_{{{moment[0]},{moment[1]}}}(0)$ (%)")
         axis.set_title(rf"$\mu_{{{moment[0]},{moment[1]}}}(t)$: STR comparison")
         axis.grid(True)
         axis.legend()

@@ -50,3 +50,5 @@ poetry.lock
 *.MVMVM187
 AGENTS.md
 breakage-rate-model/tests/train_4_models.md
+/note
+scripts/LMC_MCPBE/parameter_scan_MANUAL.md

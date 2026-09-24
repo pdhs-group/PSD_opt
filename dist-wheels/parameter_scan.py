@@ -625,15 +625,6 @@ def _json_default(value: Any) -> Any:
     raise TypeError(f"Cannot serialize {type(value).__name__} to JSON.")
 
 
-_FINGERPRINT_EXCLUDED_KEYS = (
-    "output_directory", "result_filename", "resume", "n_workers",
-    "print_every_condition", "plot_case_ids", "case_indices",
-    # Slurm stages identical assets in a different TMP_PATH for every job.
-    "data_root", "mixed_aggregate_pool_root", "pure_aggregate_pool_root",
-    "mixed_model_path", "pure_model_path",
-)
-
-
 def _config_json(config: StudyConfig, *, include_runtime_controls: bool = True) -> str:
     payload = asdict(config)
     if not include_runtime_controls:
@@ -646,26 +637,8 @@ def _config_json(config: StudyConfig, *, include_runtime_controls: bool = True) 
 
 
 def configuration_fingerprint(config: StudyConfig) -> str:
-    """Hash numerical settings independently of per-job asset staging paths."""
-    payload = _fingerprint_payload(asdict(config))
-    text = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=_json_default, separators=(",", ":"))
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
-def _fingerprint_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
-    """Drop transient paths and normalize cross-platform PSD-grid roundoff."""
-    normalized = dict(payload)
-    for key in _FINGERPRINT_EXCLUDED_KEYS:
-        normalized.pop(key, None)
-    normalized["psd_x_grid"] = [format(float(value), ".12g") for value in normalized["psd_x_grid"]]
-    return normalized
-
-
-def _stored_config_matches_current(h5_file: h5py.File, config: StudyConfig) -> bool:
-    """Compare a legacy file after removing only transient asset locations."""
-    stored_payload = _fingerprint_payload(json.loads(_decode_h5_string(h5_file["config_json"][()])))
-    current_payload = _fingerprint_payload(asdict(config))
-    return stored_payload == json.loads(json.dumps(current_payload, default=_json_default))
+    """Hash numerical settings and scan definition, excluding runtime scheduling only."""
+    return hashlib.sha256(_config_json(config, include_runtime_controls=False).encode("utf-8")).hexdigest()
 
 
 def _validate_config_values(config: StudyConfig, cases: Sequence[ScanCase]) -> None:
@@ -887,7 +860,6 @@ def prepare_result_file(config: StudyConfig, cases: Sequence[ScanCase]) -> list[
         if "config_json" not in h5_file:
             h5_file.attrs["format_version"] = 2
             h5_file.attrs["config_fingerprint"] = fingerprint
-            h5_file.attrs["config_fingerprint_scheme"] = "numerical_without_runtime_asset_paths_v2"
             h5_file.attrs["initial_state_kind"] = "monodisperse_2d_explicit"
             h5_file.attrs["initial_compute_particles"] = config.initial_compute_particles
             h5_file.attrs["initial_weight_per_compute_particle"] = config.initial_weight_per_compute_particle
@@ -915,15 +887,10 @@ def prepare_result_file(config: StudyConfig, cases: Sequence[ScanCase]) -> list[
         else:
             stored_fingerprint = _decode_h5_string(h5_file.attrs["config_fingerprint"])
             if stored_fingerprint != fingerprint:
-                if not _stored_config_matches_current(h5_file, config):
-                    raise ValueError(
-                        "Existing result file has a different numerical configuration fingerprint. "
-                        "Refusing to combine non-comparable scans."
-                    )
-                h5_file.attrs["legacy_config_fingerprint"] = stored_fingerprint
-                h5_file.attrs["config_fingerprint"] = fingerprint
-                h5_file.attrs["config_fingerprint_scheme"] = "numerical_without_runtime_asset_paths_v2"
-                print("Migrated result-file fingerprint: ignored changed TMP_PATH asset locations.")
+                raise ValueError(
+                    "Existing result file has a different configuration fingerprint. "
+                    "Refusing to combine non-comparable scans."
+                )
             stored_cases = [_decode_h5_string(value) for value in h5_file["case_table_json"][...]]
             expected_cases = [json.dumps(case.as_dict(), sort_keys=True) for case in cases]
             if stored_cases != expected_cases:

@@ -28,10 +28,13 @@ from wmcpbe.lmc_adapter import LMCLiveAdapter, LMCLiveUnbreakable  # noqa: E402
 def _minimal_live_adapter() -> LMCLiveAdapter:
     """Return an adapter whose undersized-parent check needs no pool asset."""
     adapter = LMCLiveAdapter()
-    adapter._sim = object()  # The test exits before invoking the simulator.
-    adapter.pool_dir = "unused-by-small-parent-test"
+    adapter._mixed_sim = object()  # The test exits before invoking either simulator.
+    adapter._pure_sim = object()
+    adapter.mixed_pool_dir = "unused-mixed-pool"
+    adapter.pure_pool_dir = "unused-pure-pool"
     adapter.Df = 1.8
-    adapter.MAS = 0.5
+    adapter.mixed_MAS = 0.5
+    adapter.pure_MAS = 0.5
     adapter.NO_FRAG = 2
     adapter.A0_run = 1.0
     adapter.delta_cells = 0.1
@@ -92,6 +95,28 @@ class TestLiveLMCOnly(unittest.TestCase):
         self.assertEqual(float(solver._break_rate[0]), 0.0)
         self.assertEqual(float(solver._delta_break[0]), 0.0)
         self.assertEqual(solver._last_break_dW, 0.0)
+
+    def test_pure_pool_lookup_and_phase_writeback(self) -> None:
+        class FakeSimulator:
+            def __init__(self) -> None:
+                self.calls: list[dict[str, object]] = []
+
+            def mc_breakage_from_pool(self, **kwargs):
+                self.calls.append(kwargs)
+                return np.array([[2.0, 0.0, 2.0, 1.0], [3.0, 0.0, 3.0, 1.0]])
+
+        adapter = _minimal_live_adapter()
+        fake = FakeSimulator()
+        adapter._pure_sim = fake
+        pure_a, _ = adapter.sample_one_shot(np.array([5.0, 0.0]), np.random.default_rng(3), seed=7)
+        self.assertEqual(fake.calls[-1]["X1"], 0.0)
+        self.assertEqual(fake.calls[-1]["pool_dir"], "unused-pure-pool")
+        self.assertEqual(fake.calls[-1]["MAS"], 0.5)
+        np.testing.assert_allclose(np.sum(pure_a, axis=0), (5.0, 0.0))
+
+        pure_b, _ = adapter.sample_one_shot(np.array([0.0, 5.0]), np.random.default_rng(4), seed=8)
+        self.assertEqual(fake.calls[-1]["X1"], 0.0)
+        np.testing.assert_allclose(np.sum(pure_b, axis=0), (0.0, 5.0))
 
     def test_analytical_path_remains_available_when_live_lmc_is_disabled(self) -> None:
         solver = MCPBESolver(

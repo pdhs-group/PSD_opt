@@ -8,6 +8,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import h5py
 import matplotlib.pyplot as plt
@@ -59,6 +60,47 @@ def _write_minimal_results(path: Path) -> None:
 
 
 class TestParameterScanAnalysis(unittest.TestCase):
+    def test_relative_changes_keep_sign_and_use_symlog_axes(self) -> None:
+        np.testing.assert_allclose(ANALYSIS._relative_change_percent(np.array([10.0, 12.0, 8.0]), 10.0), [0.0, 20.0, -20.0])
+        with self.assertRaises(ValueError):
+            ANALYSIS._relative_change_percent(np.array([1.0]), 0.0)
+
+        cdf = np.array([[0.0, 0.1, 0.5, 0.9, 1.0], [0.0, 0.05, 0.4, 0.9, 1.0]])
+        data = {"psd_Q": cdf, "moments": np.full((3, 3, 2), [10.0, 12.0])}
+        grid = np.arange(1.0, 6.0)
+        with patch.object(ANALYSIS, "_save_figure", side_effect=lambda fig, path: path):
+            ANALYSIS._plot_final_diameters("MAS", (0.5,), [data], grid, Path("plots"))
+            figure = plt.gcf()
+            left, right = figure.axes
+            self.assertEqual((left.get_yscale(), right.get_yscale()), ("symlog", "symlog"))
+            self.assertAlmostEqual(left.lines[0].get_ydata()[0], -6.66666666666667)
+            self.assertAlmostEqual(right.lines[0].get_ydata()[0], 6.66666666666667)
+            plt.close(figure)
+
+            ANALYSIS._plot_time_series("MAS", (0.5,), [data], np.array([0.0, 1.0]), Path("plots"), grid, (2, 0))
+            figure = plt.gcf()
+            self.assertEqual(figure.axes[0].get_yscale(), "symlog")
+            np.testing.assert_allclose(figure.axes[0].lines[0].get_ydata(), [0.0, 20.0])
+            plt.close(figure)
+
+    def test_reversed_str_swaps_phase_moments(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            result_path = Path(directory) / "phase1_results.h5"
+            _write_minimal_results(result_path)
+            with h5py.File(result_path, "r") as h5_file:
+                index = ANALYSIS._condition_index(h5_file)
+                mirrored = ANALYSIS._read_requested_str_condition(
+                    index, (1000.0, 1000.0, 1.0), 3, 5
+                )["moments"]
+                stored = ANALYSIS._read_condition(
+                    index, 0.5, 0.5, (1.0, 1000.0, 1000.0), 1.0, 3, 5
+                )["moments"]
+            np.testing.assert_array_equal(mirrored[2, 0], stored[0, 2])
+            np.testing.assert_array_equal(mirrored[0, 2], stored[2, 0])
+            np.testing.assert_array_equal(mirrored[1, 1], stored[1, 1])
+            with self.assertRaises(ValueError):
+                ANALYSIS._canonical_str_request((1000.0, 1000.0, 1.0), 0.1)
+
     def test_writes_all_requested_figures_and_inverts_cdf(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             result_path = Path(directory) / "phase1_results.h5"

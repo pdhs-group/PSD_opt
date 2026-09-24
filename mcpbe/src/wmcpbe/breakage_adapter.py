@@ -1,13 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Energy-surrogate bridge for the wmcpbe breakage-rate interface.
-
-All supported energy surrogates receive the canonical full feature vector::
-
-    [logV, log_gamma, log_NO_FRAG, int_bre, Df, MAS, X1, STR0, STR1, STR2]
-
-Each surrogate selects its persisted active features internally.  This keeps
-the PBE/LMC interface independent of the model family.
-"""
+"""Mixed/pure energy-surrogate bridge for wmcpbe breakage rates."""
 
 from __future__ import annotations
 
@@ -30,25 +22,26 @@ _MODEL_TYPES = {
     "parametric": ParametricEnergyModel,
 }
 _NEURAL_MODEL_TYPES = (MLPEnergyModel, ANNEnergyModel)
+_PURE_ACTIVE_FEATURE_NAMES = ("logV", "log_gamma")
 
 
 class BreakageRateAdapter:
-    """Convert a trained energy surrogate into PBE single-particle rates.
+    """Convert mixed/pure energy models into PBE single-particle rates.
 
-    ``model_kind`` is deliberately explicit so a mismatched pickle fails
-    during solver setup rather than being used as an unintended model family.
-    ``model_logV_bounds`` refers to the normalized ``logV`` feature supplied
-    to the surrogate, namely ``log(V / A0_run)``.  Current legacy pickles do
-    not persist this range, so it must be configured here when extrapolation
-    warnings are required for such a model.
+    All callers supply the canonical ten-feature vector.  Mixed particles use
+    the mixed model output ``E/S0``.  Pure phase-1/phase-2 particles use the
+    shared pure reference model scaled by ``STR0/S0`` or ``STR2/S0``.
     """
 
     def __init__(
         self,
         *,
-        model_kind: str = "mlp",
-        model: Optional[BaseEnergyModel] = None,
-        model_path: Optional[str] = None,
+        mixed_model_kind: str,
+        pure_model_kind: str,
+        mixed_model: Optional[BaseEnergyModel] = None,
+        mixed_model_path: Optional[str] = None,
+        pure_model: Optional[BaseEnergyModel] = None,
+        pure_model_path: Optional[str] = None,
         lambda_E: float = 1.0,
         energy_exp: float = 1.0,
         energy_in_fn: Optional[Callable[[np.ndarray], np.ndarray]] = None,
@@ -62,203 +55,188 @@ class BreakageRateAdapter:
         rate_max: Optional[float] = None,
         eps_E: float = 1e-30,
         A0_run: float = 1.0,
-        model_logV_bounds: Optional[Sequence[float]] = None,
+        mixed_model_logV_bounds: Optional[Sequence[float]] = None,
+        pure_model_logV_bounds: Optional[Sequence[float]] = None,
         warn_model_extrapolation: bool = True,
     ):
-        normalized_kind = str(model_kind).lower().strip()
-        if normalized_kind not in _MODEL_TYPES:
-            raise ValueError(
-                f"model_kind must be one of {tuple(_MODEL_TYPES)}, got {model_kind!r}."
-            )
-        self.model_kind = normalized_kind
-        expected_type = _MODEL_TYPES[self.model_kind]
-
-        if model is None:
-            if model_path is None:
-                raise ValueError("Either 'model' or 'model_path' must be provided.")
-            model = BaseEnergyModel.load(model_path, device="cpu")
-        if not isinstance(model, expected_type):
-            raise TypeError(
-                f"model_kind={self.model_kind!r} requires {expected_type.__name__}, "
-                f"got {type(model).__name__}."
-            )
-        if not model.is_fitted:
-            raise RuntimeError(f"{type(model).__name__} must be fitted before use in wmcpbe.")
-        self.model: BaseEnergyModel = model
-        self._move_neural_model_to_cpu()
+        self.mixed_model_kind, self.mixed_model = self._load_model(
+            "mixed", mixed_model_kind, mixed_model, mixed_model_path
+        )
+        self.pure_model_kind, self.pure_model = self._load_model(
+            "pure", pure_model_kind, pure_model, pure_model_path
+        )
+        self._validate_model_contracts()
+        self._move_neural_model_to_cpu(self.mixed_model)
+        self._move_neural_model_to_cpu(self.pure_model)
 
         self.lambda_E = float(lambda_E)
         self.energy_exp = float(energy_exp)
         self.energy_in_fn = energy_in_fn
-
         self.gamma_default = float(gamma)
         self.NO_FRAG_default = float(NO_FRAG)
         self.int_bre_default = float(int_bre)
         self.Df_default = float(Df)
         self.MAS_default = float(MAS)
         self.STR_default = self._coerce_str(STR)
-
         self.rate_min = float(rate_min)
         self.rate_max = None if rate_max is None else float(rate_max)
         self.eps_E = float(eps_E)
         self.A0_run = float(A0_run)
+        if not np.isfinite(self.A0_run) or self.A0_run <= 0.0:
+            raise ValueError("A0_run must be finite and positive.")
+        if not np.isfinite(self.eps_E) or self.eps_E <= 0.0:
+            raise ValueError("eps_E must be finite and positive.")
 
-        self.model_logV_bounds = self._coerce_logV_bounds(model_logV_bounds)
+        self.mixed_model_logV_bounds = self._coerce_logV_bounds(mixed_model_logV_bounds)
+        self.pure_model_logV_bounds = self._coerce_logV_bounds(pure_model_logV_bounds)
         self.warn_model_extrapolation = bool(warn_model_extrapolation)
-        self._warned_below_model_range = False
-        self._warned_above_model_range = False
+        self._warned_ranges: set[tuple[str, str]] = set()
 
-    def _move_neural_model_to_cpu(self) -> None:
-        """Keep only neural model inference on CPU inside the PBE process."""
-        if isinstance(self.model, _NEURAL_MODEL_TYPES):
-            self.model.device = torch.device("cpu")
-            if self.model._net is not None:
-                self.model._net.to("cpu")
+    @staticmethod
+    def _load_model(
+        label: str,
+        model_kind: str,
+        model: Optional[BaseEnergyModel],
+        model_path: Optional[str],
+    ) -> tuple[str, BaseEnergyModel]:
+        kind = str(model_kind).lower().strip()
+        if kind not in _MODEL_TYPES:
+            raise ValueError(f"{label}_model_kind must be one of {tuple(_MODEL_TYPES)}, got {model_kind!r}.")
+        if (model is None) == (model_path is None):
+            raise ValueError(f"Provide exactly one of {label}_model or {label}_model_path.")
+        loaded = model if model is not None else BaseEnergyModel.load(model_path, device="cpu")
+        expected_type = _MODEL_TYPES[kind]
+        if not isinstance(loaded, expected_type):
+            raise TypeError(f"{label}_model_kind={kind!r} requires {expected_type.__name__}, got {type(loaded).__name__}.")
+        if not loaded.is_fitted:
+            raise RuntimeError(f"{label} energy model must be fitted before use in wmcpbe.")
+        return kind, loaded
+
+    def _validate_model_contracts(self) -> None:
+        if self.mixed_model.strength_normalization != "geometric_mean_relative":
+            raise ValueError("mixed energy model must use strength_normalization='geometric_mean_relative'.")
+        if self.pure_model.strength_normalization != "none":
+            raise ValueError("pure energy model must use strength_normalization='none'.")
+        if tuple(self.pure_model.active_feature_names) != _PURE_ACTIVE_FEATURE_NAMES:
+            raise ValueError("pure energy model must activate exactly ('logV', 'log_gamma').")
+
+    @staticmethod
+    def _move_neural_model_to_cpu(model: BaseEnergyModel) -> None:
+        if isinstance(model, _NEURAL_MODEL_TYPES):
+            model.device = torch.device("cpu")
+            if model._net is not None:
+                model._net.to("cpu")
 
     @staticmethod
     def _coerce_str(value: Sequence[float] | np.ndarray) -> np.ndarray:
-        str_values = np.asarray(value, dtype=float).reshape(-1)
-        if str_values.size != 3:
-            raise ValueError(f"STR must have length 3, got shape={np.asarray(value).shape}")
-        return str_values.copy()
+        values = np.asarray(value, dtype=float).reshape(-1)
+        if values.size != 3 or not np.all(np.isfinite(values)) or np.any(values <= 0.0):
+            raise ValueError("STR must contain three finite positive values.")
+        return values.copy()
 
     @staticmethod
-    def _coerce_logV_bounds(
-        value: Optional[Sequence[float]],
-    ) -> Optional[tuple[float, float]]:
+    def _coerce_logV_bounds(value: Optional[Sequence[float]]) -> Optional[tuple[float, float]]:
         if value is None:
             return None
         bounds = np.asarray(value, dtype=float).reshape(-1)
         if bounds.size != 2 or not np.all(np.isfinite(bounds)) or bounds[0] >= bounds[1]:
-            raise ValueError(
-                "model_logV_bounds must be two finite increasing values "
-                "for log(V / A0_run)."
-            )
+            raise ValueError("model logV bounds must be two finite increasing log(V / A0_run) values.")
         return float(bounds[0]), float(bounds[1])
 
-    def _get_lmc_params_from_pbe(
-        self, pbe
-    ) -> tuple[float, float, float, float, float, np.ndarray]:
-        """Read runtime LMC parameters, retaining the adapter construction defaults."""
-        gamma = float(getattr(pbe, "lmc_gamma", self.gamma_default))
-        NO_FRAG = float(getattr(pbe, "lmc_NO_FRAG", self.NO_FRAG_default))
-        int_bre = float(getattr(pbe, "lmc_int_bre", self.int_bre_default))
-        Df = float(getattr(pbe, "lmc_Df", self.Df_default))
-        MAS = float(getattr(pbe, "lmc_MAS", self.MAS_default))
-        STR = self._coerce_str(getattr(pbe, "lmc_STR", self.STR_default))
+    def _get_lmc_params_from_pbe(self, pbe) -> tuple[float, float, float, float, float, np.ndarray]:
+        gamma = float(pbe.lmc_gamma)
+        NO_FRAG = float(pbe.lmc_NO_FRAG)
+        int_bre = float(pbe.lmc_int_bre)
+        Df = float(pbe.lmc_Df)
+        MAS = float(pbe.lmc_mixed_MAS)
+        STR = self._coerce_str(pbe.lmc_STR)
         return gamma, NO_FRAG, int_bre, Df, MAS, STR
 
     def _energy_in(self, V: np.ndarray) -> np.ndarray:
-        """Compute the incident energy for a batch of normalized volumes."""
-        V = np.asarray(V, dtype=float)
+        values = np.asarray(V, dtype=float)
         if self.energy_in_fn is not None:
-            E_in = self.energy_in_fn(V)
-            return np.asarray(E_in, dtype=float)
-        return self.lambda_E * (V**self.energy_exp)
+            return np.asarray(self.energy_in_fn(values), dtype=float)
+        return self.lambda_E * values**self.energy_exp
 
-    def _warn_if_model_extrapolating(self, logV: np.ndarray) -> None:
-        """Emit one warning per extrapolation direction without changing rates."""
-        if not self.warn_model_extrapolation or self.model_logV_bounds is None:
+    def _warn_if_model_extrapolating(self, label: str, logV: np.ndarray) -> None:
+        if not self.warn_model_extrapolation:
             return
-        lower, upper = self.model_logV_bounds
-        logV = np.asarray(logV, dtype=float)
-        if np.any(logV < lower) and not self._warned_below_model_range:
-            print(
-                "[BreakageRateAdapter][WARNING] Energy-model volume extrapolation "
-                f"below its configured training range: requested log(V/A0_run) down to "
-                f"{float(np.min(logV)):.6g}, training range [{lower:.6g}, {upper:.6g}]."
-            )
-            self._warned_below_model_range = True
-        if np.any(logV > upper) and not self._warned_above_model_range:
-            print(
-                "[BreakageRateAdapter][WARNING] Energy-model volume extrapolation "
-                f"above its configured training range: requested log(V/A0_run) up to "
-                f"{float(np.max(logV)):.6g}, training range [{lower:.6g}, {upper:.6g}]."
-            )
-            self._warned_above_model_range = True
+        bounds = self.mixed_model_logV_bounds if label == "mixed" else self.pure_model_logV_bounds
+        if bounds is None:
+            return
+        lower, upper = bounds
+        if np.any(logV < lower) and (label, "below") not in self._warned_ranges:
+            print(f"[BreakageRateAdapter][WARNING] {label} energy-model volume extrapolation below its configured training range: requested log(V/A0_run) down to {float(np.min(logV)):.6g}, training range [{lower:.6g}, {upper:.6g}].")
+            self._warned_ranges.add((label, "below"))
+        if np.any(logV > upper) and (label, "above") not in self._warned_ranges:
+            print(f"[BreakageRateAdapter][WARNING] {label} energy-model volume extrapolation above its configured training range: requested log(V/A0_run) up to {float(np.max(logV)):.6g}, training range [{lower:.6g}, {upper:.6g}].")
+            self._warned_ranges.add((label, "above"))
 
-    def _build_features_batch(
-        self,
-        pbe,
-        indices: Optional[Sequence[int]] = None,
-    ) -> tuple[np.ndarray, np.ndarray]:
-        """Build the canonical full feature matrix for active PBE particles."""
-        dim = int(getattr(pbe, "dim", 1))
-        a = int(getattr(pbe, "a_tot", 0))
+    def _build_features_batch(self, pbe, indices: Optional[Sequence[int]] = None) -> tuple[np.ndarray, np.ndarray]:
+        dim = int(pbe.dim)
+        a = int(pbe.a_tot)
         if a <= 0:
-            return np.zeros((0, 10), dtype=float), np.zeros((0,), dtype=float)
-
+            return np.empty((0, 10), dtype=float), np.empty(0, dtype=float)
+        idx = np.arange(a, dtype=int) if indices is None else np.asarray(indices, dtype=int)
+        if idx.ndim != 1 or np.any(idx < 0) or np.any(idx >= a):
+            raise IndexError("Requested breakage-rate index is outside the active particle range.")
         V_flat = np.asarray(pbe.V_flat, dtype=float)
-        if indices is None:
-            idx = np.arange(a, dtype=int)
-        else:
-            idx = np.asarray(indices, dtype=int)
-            idx = idx[(idx >= 0) & (idx < a)]
-        if idx.size == 0:
-            return np.zeros((0, 10), dtype=float), np.zeros((0,), dtype=float)
-
         if dim == 1:
             V = V_flat[-1, idx]
             X1 = np.ones_like(V)
         elif dim == 2:
-            v1 = V_flat[0, idx]
-            v3 = V_flat[1, idx]
-            V = v1 + v3
-            X1 = np.where(V > 0.0, v1 / V, 0.5)
+            phase_1, phase_2 = V_flat[0, idx], V_flat[1, idx]
+            V = phase_1 + phase_2
+            if np.any(V <= 0.0):
+                raise ValueError("Active 2D particles must have strictly positive total volume.")
+            X1 = phase_1 / V
         else:
-            raise NotImplementedError(
-                f"BreakageRateAdapter only supports dim=1 or 2 (got dim={dim})"
-            )
-
+            raise NotImplementedError(f"BreakageRateAdapter only supports dim=1 or 2 (got dim={dim}).")
+        if not np.all(np.isfinite(V)) or np.any(V <= 0.0) or not np.all(np.isfinite(X1)) or np.any((X1 < 0.0) | (X1 > 1.0)):
+            raise ValueError("Active particle volumes and phase fractions must be finite and physical.")
         V = V / self.A0_run
         gamma, NO_FRAG, int_bre, Df, MAS, STR = self._get_lmc_params_from_pbe(pbe)
-        logV = np.log(np.maximum(V, 1e-30))
-        self._warn_if_model_extrapolating(logV)
-
-        X = np.stack(
-            [
-                logV,
-                np.full_like(logV, np.log(gamma), dtype=float),
-                np.full_like(logV, np.log(NO_FRAG), dtype=float),
-                np.full_like(logV, int_bre, dtype=float),
-                np.full_like(logV, Df, dtype=float),
-                np.full_like(logV, MAS, dtype=float),
-                X1,
-                np.full_like(logV, STR[0], dtype=float),
-                np.full_like(logV, STR[1], dtype=float),
-                np.full_like(logV, STR[2], dtype=float),
-            ],
-            axis=1,
-        )
+        if not np.isfinite(gamma) or gamma <= 0.0 or not np.isfinite(NO_FRAG) or NO_FRAG <= 0.0:
+            raise ValueError("gamma and NO_FRAG must be finite and positive.")
+        logV = np.log(V)
+        X = np.stack((logV, np.full_like(logV, np.log(gamma)), np.full_like(logV, np.log(NO_FRAG)), np.full_like(logV, int_bre), np.full_like(logV, Df), np.full_like(logV, MAS), X1, np.full_like(logV, STR[0]), np.full_like(logV, STR[1]), np.full_like(logV, STR[2])), axis=1)
         return X, V
 
-    def compute_rates_full(self, pbe) -> np.ndarray:
-        """Compute breakage rates for all active particles in the solver."""
-        X, V = self._build_features_batch(pbe, indices=None)
-        if X.shape[0] == 0:
-            return np.zeros((0,), dtype=float)
+    def _predict_log_energy(self, X: np.ndarray) -> np.ndarray:
+        X1 = X[:, 6]
+        mixed_mask = (X1 > 0.0) & (X1 < 1.0)
+        pure_1_mask = X1 == 1.0
+        pure_2_mask = X1 == 0.0
+        if not np.all(mixed_mask | pure_1_mask | pure_2_mask):
+            raise ValueError("X1 must be exactly 0 or 1 for pure particles, or strictly between them for mixed particles.")
+        log_energy = np.empty(X.shape[0], dtype=float)
+        if np.any(mixed_mask):
+            self._warn_if_model_extrapolating("mixed", X[mixed_mask, 0])
+            log_energy[mixed_mask] = np.asarray(self.mixed_model.predict(X[mixed_mask]), dtype=float)
+        if np.any(pure_1_mask | pure_2_mask):
+            pure_mask = pure_1_mask | pure_2_mask
+            self._warn_if_model_extrapolating("pure", X[pure_mask, 0])
+            log_reference = np.asarray(self.pure_model.predict(X[pure_mask]), dtype=float)
+            log_s0 = np.mean(np.log(X[pure_mask, 7:10]), axis=1)
+            log_scale = np.where(pure_1_mask[pure_mask], np.log(X[pure_mask, 7]) - log_s0, np.log(X[pure_mask, 9]) - log_s0)
+            log_energy[pure_mask] = log_reference + log_scale
+        if not np.all(np.isfinite(log_energy)):
+            raise FloatingPointError("Energy model produced non-finite log-energy predictions.")
+        return log_energy
 
-        E_need = np.exp(np.asarray(self.model.predict(X), dtype=float))
-        E_need = np.maximum(E_need, self.eps_E)
+    def compute_rates_full(self, pbe) -> np.ndarray:
+        X, V = self._build_features_batch(pbe)
+        if X.shape[0] == 0:
+            return np.empty(0, dtype=float)
+        E_need = np.maximum(np.exp(self._predict_log_energy(X)), self.eps_E)
         rates = self._energy_in(V) / E_need
+        if not np.all(np.isfinite(rates)):
+            raise FloatingPointError("Computed non-finite energy-model breakage rates.")
         rates = np.maximum(rates, self.rate_min)
-        if self.rate_max is not None:
-            rates = np.minimum(rates, self.rate_max)
-        return rates
+        return np.minimum(rates, self.rate_max) if self.rate_max is not None else rates
 
     def compute_rate_single(self, pbe, i: int) -> float:
-        """Compute the breakage rate for one active particle index."""
-        a = int(getattr(pbe, "a_tot", 0))
-        if i < 0 or i >= a:
-            return 0.0
-
         X, V = self._build_features_batch(pbe, indices=[i])
-        if X.shape[0] == 0:
-            return 0.0
-
-        E_need = max(float(np.exp(self.model.predict(X)[0])), self.eps_E)
-        rate = float(self._energy_in(np.array([V[0]], dtype=float))[0]) / E_need
-        rate = max(rate, self.rate_min)
-        if self.rate_max is not None:
-            rate = min(rate, self.rate_max)
-        return float(rate)
+        E_need = max(float(np.exp(self._predict_log_energy(X)[0])), self.eps_E)
+        rate = max(float(self._energy_in(V)[0]) / E_need, self.rate_min)
+        return min(rate, self.rate_max) if self.rate_max is not None else rate

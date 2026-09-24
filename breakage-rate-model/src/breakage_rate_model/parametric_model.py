@@ -34,7 +34,9 @@ from .features import (
     active_feature_indices,
     group_theta_features,
     normalize_active_feature_names,
-    require_full_feature_matrix,
+    normalize_strength_normalization,
+    preprocess_energy_groups,
+    preprocess_full_energy_features,
     theta_feature_indices,
     theta_feature_names,
 )
@@ -80,6 +82,7 @@ class ParametricEnergyModel(BaseEnergyModel):
         tol_int_bre: float = 1e-12,
         name: Optional[str] = None,
         active_feature_names: Optional[Sequence[str]] = None,
+        strength_normalization: str = "none",
     ):
         super().__init__(name=name or "ParametricEnergyModel")
 
@@ -102,6 +105,7 @@ class ParametricEnergyModel(BaseEnergyModel):
 
         # θ 维度固定为 6: [log gamma, log NO_FRAG, int_bre, Df, MAS, X1]
         self.active_feature_names = normalize_active_feature_names(active_feature_names)
+        self.strength_normalization = normalize_strength_normalization(strength_normalization)
         self._active_feature_indices = active_feature_indices(self.active_feature_names)
         self._theta_feature_names = theta_feature_names(self.active_feature_names)
         self._theta_feature_indices = theta_feature_indices(self.active_feature_names)
@@ -187,7 +191,11 @@ class ParametricEnergyModel(BaseEnergyModel):
                 alpha_g = 0.0
 
             # θ 特征
-            theta_vec = group_theta_features(rec, self.active_feature_names)
+            theta_vec = group_theta_features(
+                rec,
+                self.active_feature_names,
+                self.strength_normalization,
+            )
 
             theta_list.append(theta_vec)
 
@@ -434,7 +442,11 @@ class ParametricEnergyModel(BaseEnergyModel):
             is_erosion = abs(rec.int_bre) <= self.tol_int_bre
 
             # θ 特征
-            theta_vec = group_theta_features(rec, self.active_feature_names)
+            theta_vec = group_theta_features(
+                rec,
+                self.active_feature_names,
+                self.strength_normalization,
+            )
 
             # trend 参数
             sigma_g, Vc_g, Emax_g, alpha_g = self._predict_trend_params(
@@ -608,6 +620,7 @@ class ParametricEnergyModel(BaseEnergyModel):
             1) trend：按 erosion / normal 分簇，两段(+尾巴)模型 + plateau 加权；
             2) residual：在 logE 空间构建残差 δ，并按簇拟合线性 / Ridge 模型。
         """
+        groups = preprocess_energy_groups(groups, self.strength_normalization)
         self._fit_trend_from_groups(groups)
         self._fit_residual_model(groups)
         self._is_fitted = True
@@ -686,7 +699,7 @@ class ParametricEnergyModel(BaseEnergyModel):
         if not self._is_fitted:
             raise RuntimeError("ParametricEnergyModel is not fitted.")
 
-        X = require_full_feature_matrix(X)
+        X, _ = preprocess_full_energy_features(X, self.strength_normalization)
 
         logV = X[:, 0]
         V = np.exp(logV)

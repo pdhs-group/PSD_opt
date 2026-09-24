@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import os
 from pathlib import Path
+import pickle
 import sys
 import tempfile
 import unittest
@@ -24,7 +25,12 @@ sys.path.insert(0, str(PROJECT_ROOT / "mcpbe" / "src"))
 from breakage_rate_model.data_io import load_energy_groups_from_h5
 from breakage_rate_model.data_io import EnergyGroupRecord
 from breakage_rate_model.ann_model import ANNEnergyModel
+from breakage_rate_model.base import BaseEnergyModel
 from breakage_rate_model.datasets import build_energy_dataset
+from breakage_rate_model.features import (
+    preprocess_full_energy_features,
+    preprocess_log_energy_targets,
+)
 from breakage_rate_model.mlp_model import MLPEnergyModel
 from breakage_rate_model.parametric_model import ParametricEnergyModel
 from breakage_rate_model.powerlaw_separable import PowerLawSeparableModel
@@ -160,6 +166,19 @@ class TestEnergyGroupReader(unittest.TestCase):
 
 
 class TestFeatureSelectionAndAdapter(unittest.TestCase):
+    @staticmethod
+    def _fitted_mlp_pair() -> tuple[MLPEnergyModel, MLPEnergyModel]:
+        X = np.array(
+            [[0.0, 0.7, 0.0, 0.0, 1.8, 0.1, 0.2, 1.0, 1.1, 1.2],
+             [0.2, 0.9, 0.0, 0.0, 1.8, 0.2, 0.3, 1.1, 1.2, 1.3],
+             [0.4, 1.1, 0.0, 0.0, 1.8, 0.3, 0.4, 1.2, 1.3, 1.4],
+             [0.6, 1.3, 0.0, 0.0, 1.8, 0.4, 0.5, 1.3, 1.4, 1.5]], dtype=float)
+        y = np.array([0.0, 0.1, 0.2, 0.3], dtype=float)
+        common = dict(hidden_sizes=(4,), max_epochs=1, batch_size=2, patience=None, seed=1)
+        mixed = MLPEnergyModel(strength_normalization="geometric_mean_relative", **common).fit(X, y)
+        pure = MLPEnergyModel(active_feature_names=("logV", "log_gamma"), strength_normalization="none", **common).fit(X, y)
+        return mixed, pure
+
     def test_powerlaw_ignores_excluded_features_and_uses_str(self) -> None:
         model = PowerLawSeparableModel(active_feature_names=("logV", "STR0"))
         model._theta_dim = 1
@@ -182,59 +201,46 @@ class TestFeatureSelectionAndAdapter(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "not trained"):
             model.predict(first)
 
-    def test_adapter_passes_full_features_to_default_active_mlp(self) -> None:
-        X = np.array(
-            [
-                [0.0, 1.0, 0.0, 0.0, 1.8, 0.0, 0.1, 1.0, 1.1, 1.2],
-                [0.2, 1.1, 0.0, 0.0, 1.8, 0.1, 0.2, 1.1, 1.2, 1.3],
-                [0.4, 1.2, 0.0, 0.0, 1.8, 0.2, 0.3, 1.2, 1.3, 1.4],
-                [0.6, 1.3, 0.0, 0.0, 1.8, 0.3, 0.4, 1.3, 1.4, 1.5],
-            ],
-            dtype=float,
-        )
-        y = np.array([0.0, 0.1, 0.2, 0.3], dtype=float)
-        model = MLPEnergyModel(
-            hidden_sizes=(4,), max_epochs=1, batch_size=2, patience=None, seed=1
-        ).fit(X, y)
-
+    def test_adapter_routes_full_features_and_scales_pure_phases(self) -> None:
+        mixed, pure = self._fitted_mlp_pair()
+        mixed.predict = lambda X: np.full(X.shape[0], np.log(4.0))
+        pure.predict = lambda X: np.full(X.shape[0], np.log(10.0))
         class PBE:
-            dim = 1
-            a_tot = 2
-            V_flat = np.array([[1.0, 2.0]])
+            dim, a_tot = 2, 3
+            V_flat = np.array([[4.0, 3.0, 0.0], [0.0, 3.0, 4.0], [4.0, 6.0, 4.0]])
+            lmc_gamma, lmc_NO_FRAG, lmc_int_bre, lmc_Df, lmc_mixed_MAS = 6.0, 2.0, 0.0, 1.8, 0.5
+            lmc_STR = np.array([8.0, 2.0, 1.0])
 
         adapter = BreakageRateAdapter(
-            model_kind="mlp", model=model, gamma=6.0, NO_FRAG=2.0, Df=1.8
+            mixed_model_kind="mlp", mixed_model=mixed,
+            pure_model_kind="mlp", pure_model=pure,
         )
         features, _ = adapter._build_features_batch(PBE())
-        self.assertEqual(features.shape, (2, 10))
+        self.assertEqual(features.shape, (3, 10))
+        s0 = 16.0 ** (1.0 / 3.0)
+        np.testing.assert_allclose(np.exp(adapter._predict_log_energy(features)), (80.0 / s0, 4.0, 10.0 / s0))
         rates = adapter.compute_rates_full(PBE())
-        self.assertEqual(rates.shape, (2,))
+        self.assertEqual(rates.shape, (3,))
         self.assertTrue(np.all(np.isfinite(rates)))
 
-        with self.assertRaisesRegex(TypeError, "model_kind='ann'"):
-            BreakageRateAdapter(model_kind="ann", model=model)
+        with self.assertRaisesRegex(TypeError, "mixed_model_kind='ann'"):
+            BreakageRateAdapter(mixed_model_kind="ann", mixed_model=mixed, pure_model_kind="mlp", pure_model=pure)
+        with self.assertRaisesRegex(ValueError, "mixed energy model"):
+            BreakageRateAdapter(mixed_model_kind="mlp", mixed_model=pure, pure_model_kind="mlp", pure_model=pure)
 
     def test_adapter_model_volume_warning_is_once_and_can_be_disabled(self) -> None:
-        X = np.array(
-            [
-                [0.0, 1.0, 0.0, 0.0, 1.8, 0.0, 0.1, 1.0, 1.1, 1.2],
-                [0.2, 1.1, 0.0, 0.0, 1.8, 0.1, 0.2, 1.1, 1.2, 1.3],
-                [0.4, 1.2, 0.0, 0.0, 1.8, 0.2, 0.3, 1.2, 1.3, 1.4],
-                [0.6, 1.3, 0.0, 0.0, 1.8, 0.3, 0.4, 1.3, 1.4, 1.5],
-            ],
-            dtype=float,
-        )
-        model = MLPEnergyModel(
-            hidden_sizes=(4,), max_epochs=1, batch_size=2, patience=None, seed=1
-        ).fit(X, np.array([0.0, 0.1, 0.2, 0.3], dtype=float))
+        mixed, pure = self._fitted_mlp_pair()
 
         class PBE:
             dim = 1
             a_tot = 2
             V_flat = np.array([[1.0, 2.0]])
+            lmc_gamma, lmc_NO_FRAG, lmc_int_bre, lmc_Df, lmc_mixed_MAS = 6.0, 2.0, 0.0, 1.8, 0.5
+            lmc_STR = np.array([1.0, 1.0, 1.0])
 
         adapter = BreakageRateAdapter(
-            model_kind="mlp", model=model, model_logV_bounds=(0.1, 0.5)
+            mixed_model_kind="mlp", mixed_model=mixed, pure_model_kind="mlp", pure_model=pure,
+            pure_model_logV_bounds=(0.1, 0.5),
         )
         from contextlib import redirect_stdout
         from io import StringIO
@@ -251,9 +257,8 @@ class TestFeatureSelectionAndAdapter(unittest.TestCase):
         self.assertEqual(second_output, "")
 
         silent_adapter = BreakageRateAdapter(
-            model_kind="mlp",
-            model=model,
-            model_logV_bounds=(0.1, 0.5),
+            mixed_model_kind="mlp", mixed_model=mixed, pure_model_kind="mlp", pure_model=pure,
+            pure_model_logV_bounds=(0.1, 0.5),
             warn_model_extrapolation=False,
         )
         with StringIO() as stream, redirect_stdout(stream):
@@ -412,6 +417,119 @@ class TestStructuralTraining(unittest.TestCase):
         parametric = ParametricEnergyModel(residual_type="ridge", residual_lambda=1.0)
         parametric.fit(None, None, groups=train_groups)
         self.assertTrue(np.all(np.isfinite(parametric.predict(validation.X))))
+
+
+class TestStrengthNormalization(unittest.TestCase):
+    def test_geometric_mean_preprocessing_is_global_scale_invariant(self) -> None:
+        X = np.array(
+            [
+                [np.log(100.0), 0.0, np.log(2.0), 0.0, 1.8, 0.5, 0.2, 1.0, 10.0, 100.0],
+                [np.log(200.0), 1.0, np.log(2.0), 0.0, 1.8, 0.5, 0.8, 10.0, 100.0, 1.0],
+            ],
+            dtype=float,
+        )
+        y_log = np.log(np.array([5.0, 9.0], dtype=float))
+        multiplier = 100.0
+        X_scaled = X.copy()
+        X_scaled[:, 7:10] *= multiplier
+        y_scaled_log = y_log + np.log(multiplier)
+
+        X_relative, _ = preprocess_full_energy_features(
+            X, "geometric_mean_relative"
+        )
+        X_scaled_relative, _ = preprocess_full_energy_features(
+            X_scaled, "geometric_mean_relative"
+        )
+        np.testing.assert_allclose(X_relative, X_scaled_relative)
+        np.testing.assert_allclose(
+            preprocess_log_energy_targets(X, y_log, "geometric_mean_relative"),
+            preprocess_log_energy_targets(
+                X_scaled, y_scaled_log, "geometric_mean_relative"
+            ),
+        )
+
+    def test_strength_preprocessing_rejects_invalid_str(self) -> None:
+        X = np.zeros((1, 10), dtype=float)
+        X[0, 0] = np.log(10.0)
+        X[0, 1] = 0.0
+        X[0, 2] = np.log(2.0)
+        X[0, 4] = 1.8
+        X[0, 7:10] = (1.0, 0.0, 1.0)
+        with self.assertRaisesRegex(ValueError, "strictly positive"):
+            preprocess_full_energy_features(X, "geometric_mean_relative")
+
+    def test_all_model_families_keep_full_input_with_relative_strengths(self) -> None:
+        groups = [TestStructuralTraining._record(index) for index in range(12)]
+        dataset = build_energy_dataset(groups, target="log_mean")
+        mode = "geometric_mean_relative"
+        models = (
+            PowerLawSeparableModel(
+                enable_tail=True,
+                regress_type="ridge",
+                ridge_lambda=1.0,
+                strength_normalization=mode,
+            ).fit(None, None, groups=groups),
+            ParametricEnergyModel(
+                enable_tail=True,
+                residual_type="ridge",
+                residual_lambda=1.0,
+                strength_normalization=mode,
+            ).fit(None, None, groups=groups),
+            MLPEnergyModel(
+                hidden_sizes=(4,),
+                max_epochs=1,
+                batch_size=128,
+                patience=None,
+                seed=1,
+                strength_normalization=mode,
+            ).fit(dataset.X, dataset.y),
+            ANNEnergyModel(
+                hidden_sizes=(4, 4, 2),
+                dropout=0.0,
+                max_epochs=1,
+                batch_size=128,
+                patience=None,
+                seed=1,
+                strength_normalization=mode,
+            ).fit(dataset.X, dataset.y),
+        )
+        for model in models:
+            prediction = model.predict(dataset.X)
+            self.assertEqual(prediction.shape, dataset.y.shape)
+            self.assertTrue(np.all(np.isfinite(prediction)))
+            self.assertEqual(model.strength_normalization, mode)
+
+    def test_old_pickle_without_strength_unit_contract_is_rejected(self) -> None:
+        model = MLPEnergyModel(hidden_sizes=(4,), max_epochs=1, batch_size=2)
+        del model.strength_normalization
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "old_model.pkl"
+            with path.open("wb") as handle:
+                pickle.dump(model, handle)
+            with self.assertRaisesRegex(ValueError, "energy-strength unit"):
+                BaseEnergyModel.load(str(path))
+
+    def test_pure_group_validation_and_prefixed_names(self) -> None:
+        groups = []
+        for index in range(6):
+            record = TestStructuralTraining._record(index)
+            groups.append(
+                EnergyGroupRecord(
+                    **{
+                        **record.__dict__,
+                        "gamma": 1.0 + index,
+                        "MAS": 0.5,
+                        "X1": 0.0,
+                        "STR": np.ones(3, dtype=float),
+                    }
+                )
+            )
+        TRAINING_MODULE._validate_pure_groups(groups)
+        self.assertEqual(TRAINING_MODULE._model_filename("mlp", "mixed"), "mixed_mlp_model.pkl")
+        self.assertEqual(TRAINING_MODULE._model_filename("mlp", "pure"), "pure_mlp_model.pkl")
+        groups[0].STR = np.array([1.0, 1.0, 2.0])
+        with self.assertRaisesRegex(ValueError, "STR"):
+            TRAINING_MODULE._validate_pure_groups(groups)
 
 
 class TestMergeEnergyPool(unittest.TestCase):

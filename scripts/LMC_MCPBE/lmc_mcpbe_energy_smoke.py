@@ -40,10 +40,14 @@ from wmcpbe import MCPBESolver  # noqa: E402
 # Spyder configuration: edit only this section for parameter studies.
 # =============================================================================
 
-DATA_ROOT = Path(r"D:\LMC")
-BREAKAGE_MODEL_KIND = "mlp"  # "mlp", "ann", "powerlaw", or "parametric"
-BREAKAGE_MODEL_PATH = DATA_ROOT / f"{BREAKAGE_MODEL_KIND}_model.pkl"
-AGGREGATE_POOL_ROOT = DATA_ROOT
+DATA_ROOT = Path(r"D:\Codex_tem\LMC")
+MIXED_BREAKAGE_MODEL_KIND = "ann"  # "mlp", "ann", "powerlaw", or "parametric"
+PURE_BREAKAGE_MODEL_KIND = "ann"
+MIXED_BREAKAGE_MODEL_PATH = DATA_ROOT / "mixed_ann_model.pkl"
+PURE_BREAKAGE_MODEL_PATH = DATA_ROOT / "pure_ann_model.pkl"
+MIXED_AGGREGATE_POOL_ROOT = DATA_ROOT
+PURE_AGGREGATE_POOL_ROOT = DATA_ROOT / "pure_agg_pool"
+PURE_POOL_MAS = 0.5
 
 # This temporary MLP was trained with energy-pool A0=1.0.  Keep this identical
 # to the energy model and aggregate-pool lattice-cell scale unless both assets
@@ -53,12 +57,13 @@ LMC_A0_RUNTIME = 1.0
 # The currently available temporary model files predate persisted training
 # volume metadata.  These bounds are therefore explicit and refer to
 # log(V / LMC_A0_RUNTIME), not to raw PBE volume.
-MODEL_LOGV_BOUNDS = (float(np.log(100.0)), float(np.log(50_000.0)))
+MIXED_MODEL_LOGV_BOUNDS = (float(np.log(100.0)), float(np.log(50_000.0)))
+PURE_MODEL_LOGV_BOUNDS = (float(np.log(100.0)), float(np.log(50_000.0)))
 WARN_MODEL_EXTRAPOLATION = True
 WARN_POOL_OUT_OF_BOUNDS = True
 
-# A 2D parent is required to expose X1.  Its components are
-# [PARENT_VOLUME * X1, PARENT_VOLUME * (1 - X1)].
+# A 2D parent exposes X1.  Set X1 exactly to 1.0 or 0.0 to smoke-test the
+# pure phase-1 or phase-2 route, respectively.
 PARENT_VOLUME = 1_000.0
 X1 = 0.5
 INITIAL_PARTICLES = 4
@@ -96,15 +101,17 @@ def _pool_directory_name(df: float, mas: float) -> str:
 
 def _validate_configuration() -> None:
     """Fail before constructing a solver when external assets or controls are invalid."""
-    if BREAKAGE_MODEL_KIND not in {"mlp", "ann", "powerlaw", "parametric"}:
-        raise ValueError("BREAKAGE_MODEL_KIND must select one of the four trained models.")
-    if not BREAKAGE_MODEL_PATH.is_file():
-        raise FileNotFoundError(
-            f"Selected energy model does not exist: {BREAKAGE_MODEL_PATH}"
-        )
-    if not AGGREGATE_POOL_ROOT.is_dir():
-        raise FileNotFoundError(f"Aggregate-pool root does not exist: {AGGREGATE_POOL_ROOT}")
-    expected_pool = AGGREGATE_POOL_ROOT / _pool_directory_name(DF, MAS)
+    for label, kind, path, root in (
+        ("mixed", MIXED_BREAKAGE_MODEL_KIND, MIXED_BREAKAGE_MODEL_PATH, MIXED_AGGREGATE_POOL_ROOT),
+        ("pure", PURE_BREAKAGE_MODEL_KIND, PURE_BREAKAGE_MODEL_PATH, PURE_AGGREGATE_POOL_ROOT),
+    ):
+        if kind not in {"mlp", "ann", "powerlaw", "parametric"}:
+            raise ValueError(f"{label}_BREAKAGE_MODEL_KIND must select one of the four trained models.")
+        if not path.is_file():
+            raise FileNotFoundError(f"Selected {label} energy model does not exist: {path}")
+        if not root.is_dir():
+            raise FileNotFoundError(f"{label.capitalize()} aggregate-pool root does not exist: {root}")
+    expected_pool = MIXED_AGGREGATE_POOL_ROOT / _pool_directory_name(DF, MAS)
     if not expected_pool.is_dir() or not (expected_pool / "pool_index.sqlite").is_file():
         raise FileNotFoundError(
             "No completed NPZ+SQLite aggregate pool matches the selected Df/MAS: "
@@ -112,8 +119,8 @@ def _validate_configuration() -> None:
         )
     if not np.isfinite(PARENT_VOLUME) or PARENT_VOLUME <= 0.0:
         raise ValueError("PARENT_VOLUME must be finite and positive.")
-    if not np.isfinite(X1) or not 0.0 < X1 < 1.0:
-        raise ValueError("X1 must be strictly between 0 and 1 for this 2D smoke test.")
+    if not np.isfinite(X1) or not 0.0 <= X1 <= 1.0:
+        raise ValueError("X1 must lie in [0, 1] for this 2D smoke test.")
     if INITIAL_PARTICLES < 1 or MAX_EVENTS != 1:
         raise ValueError("INITIAL_PARTICLES must be positive and MAX_EVENTS must remain exactly 1.")
     if NO_FRAG < 2:
@@ -126,13 +133,13 @@ def _validate_configuration() -> None:
         raise ValueError("Breakage-rate bounds are inconsistent.")
     if not np.isfinite(BREAK_DW_CONST) or BREAK_DW_CONST <= 0.0:
         raise ValueError("BREAK_DW_CONST must be finite and positive.")
-    logV_bounds = np.asarray(MODEL_LOGV_BOUNDS, dtype=float)
-    if (
-        logV_bounds.shape != (2,)
-        or not np.all(np.isfinite(logV_bounds))
-        or logV_bounds[0] >= logV_bounds[1]
-    ):
-        raise ValueError("MODEL_LOGV_BOUNDS must be two finite increasing log-volume values.")
+    pure_pool = PURE_AGGREGATE_POOL_ROOT / _pool_directory_name(DF, PURE_POOL_MAS)
+    if not pure_pool.is_dir() or not (pure_pool / "pool_index.sqlite").is_file():
+        raise FileNotFoundError(f"No completed pure NPZ+SQLite aggregate pool matches Df/MAS: {pure_pool}")
+    for label, bounds_value in (("mixed", MIXED_MODEL_LOGV_BOUNDS), ("pure", PURE_MODEL_LOGV_BOUNDS)):
+        logV_bounds = np.asarray(bounds_value, dtype=float)
+        if logV_bounds.shape != (2,) or not np.all(np.isfinite(logV_bounds)) or logV_bounds[0] >= logV_bounds[1]:
+            raise ValueError(f"{label}_MODEL_LOGV_BOUNDS must be two finite increasing log-volume values.")
 
 
 def _initial_particle_state() -> tuple[np.ndarray, np.ndarray]:
@@ -175,10 +182,12 @@ def _build_solver() -> MCPBESolver:
 
     # Live LMC + aggregate pool.
     solver.use_lmc_live = True
-    solver.lmc_pool_dir = str(AGGREGATE_POOL_ROOT)
+    solver.lmc_mixed_pool_dir = str(MIXED_AGGREGATE_POOL_ROOT)
+    solver.lmc_pure_pool_dir = str(PURE_AGGREGATE_POOL_ROOT)
     solver.lmc_A0_runtime = LMC_A0_RUNTIME
     solver.lmc_Df = DF
-    solver.lmc_MAS = MAS
+    solver.lmc_mixed_MAS = MAS
+    solver.lmc_pure_MAS = PURE_POOL_MAS
     solver.lmc_NO_FRAG = NO_FRAG
     solver.lmc_gamma = GAMMA
     solver.lmc_int_bre = INT_BRE
@@ -191,9 +200,12 @@ def _build_solver() -> MCPBESolver:
     # Energy-rate adapter.  It keeps this full ten-feature runtime interface
     # regardless of which subset was active when the selected model was trained.
     solver.lmc_use_breakage_model = True
-    solver.lmc_breakage_model_kind = BREAKAGE_MODEL_KIND
-    solver.lmc_breakage_model_path = str(BREAKAGE_MODEL_PATH)
-    solver.lmc_breakage_model_logV_bounds = MODEL_LOGV_BOUNDS
+    solver.lmc_mixed_breakage_model_kind = MIXED_BREAKAGE_MODEL_KIND
+    solver.lmc_pure_breakage_model_kind = PURE_BREAKAGE_MODEL_KIND
+    solver.lmc_mixed_breakage_model_path = str(MIXED_BREAKAGE_MODEL_PATH)
+    solver.lmc_pure_breakage_model_path = str(PURE_BREAKAGE_MODEL_PATH)
+    solver.lmc_mixed_breakage_model_logV_bounds = MIXED_MODEL_LOGV_BOUNDS
+    solver.lmc_pure_breakage_model_logV_bounds = PURE_MODEL_LOGV_BOUNDS
     solver.lmc_warn_model_extrapolation = WARN_MODEL_EXTRAPOLATION
     solver.lmc_warn_pool_out_of_bounds = WARN_POOL_OUT_OF_BOUNDS
     solver.lmc_lambda_E = LAMBDA_E
@@ -223,7 +235,7 @@ def run_smoke() -> dict[str, object]:
 
     adapter = solver.lmc_breakage_adapter
     features, _normalized_volume = adapter._build_features_batch(solver)
-    predicted_log_energy = adapter.model.predict(features)
+    predicted_log_energy = adapter._predict_log_energy(features)
     if not np.all(np.isfinite(predicted_log_energy)):
         raise FloatingPointError("Energy model produced non-finite log-energy predictions.")
 
@@ -232,9 +244,10 @@ def run_smoke() -> dict[str, object]:
     finally:
         # ``solve`` already clears the cache on normal completion; ``close``
         # also handles failures before that cleanup point.
-        solver.lmc_live._sim.close()
+        solver.lmc_live.close()
 
-    pool_stats = solver.lmc_live._sim.agg_pool.debug_stats()
+    simulator = solver.lmc_live._mixed_sim if 0.0 < X1 < 1.0 else solver.lmc_live._pure_sim
+    pool_stats = simulator.agg_pool.debug_stats()
     if pool_stats["pool_read_calls"] < 1 or pool_stats["pool_npz_file_opens"] < 1:
         raise RuntimeError("No aggregate-pool sample was read during the breakage event.")
     if solver.sim_break_events != 1.0:
@@ -262,7 +275,8 @@ def run_smoke() -> dict[str, object]:
         "real_breakage_events": float(solver.real_break_events),
         "initial_phase_volume": initial_phase_volume,
         "final_phase_volume": final_phase_volume,
-        "energy_model_active_features": tuple(adapter.model.active_feature_names),
+        "mixed_energy_model_active_features": tuple(adapter.mixed_model.active_feature_names),
+        "pure_energy_model_active_features": tuple(adapter.pure_model.active_feature_names),
         "log_energy_range": (
             float(np.min(predicted_log_energy)),
             float(np.max(predicted_log_energy)),

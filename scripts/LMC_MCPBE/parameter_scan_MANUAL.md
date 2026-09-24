@@ -167,12 +167,15 @@ W_init[k]    = INITIAL_WEIGHT_PER_COMPUTE_PARTICLE
 
 ```python
 solver.use_lmc_live = True
-solver.lmc_pool_dir = str(config.aggregate_pool_root)
+solver.lmc_mixed_pool_dir = str(config.mixed_aggregate_pool_root)
+solver.lmc_pure_pool_dir = str(config.pure_aggregate_pool_root)
+solver.lmc_mixed_MAS = case.MAS
+solver.lmc_pure_MAS = config.pure_pool_MAS
 ```
 
 活动 `wmcpbe` 仅保留实时 LMC adapter；不再支持 table/rank/copula/flow 的离线碎片分布。`MCPBEBase._init_lmc()` 创建 `LMCLiveAdapter` 并把 `STR`、`NO_FRAG`、`gamma`、`int_bre`、`Df`、`MAS`、`A0_run` 等参数传入模拟器。若 parent 对应的格点不足，或实时 LMC 未产生有效正体积碎片，该 parent 会被标记为不可破碎（破碎 propensity 置零），不会回退到均匀切分或其他模型。见 [`mcpbe_base.py :: MCPBEBase._init_lmc`](../../mcpbe/src/wmcpbe/mcpbe_base.py)。
 
-`AggPool` 使用 `Df` 和 `MAS` 定位 pool 目录，并对目标大小和 `X1` 做现有的端点选择/近邻取样。请求超出已有大小或 `X1` 范围时，默认只打印一次方向性警告，仍保留已有端点选择行为；设置 `WARN_POOL_OUT_OF_BOUNDS = False` 可以关闭日志，但不会改变取样规则。见 [`agg_pool_npz_sqlite.py :: AggPool._resolve_pool_dir, _warn_if_out_of_bounds`](../../lmc/src/lmc/agg_pool_npz_sqlite.py)。
+`LMCLiveAdapter` 持有两套 simulator：`0 < X1 < 1` 使用 mixed pool 和 case 的 `MAS`；精确 `X1=1` 或 `X1=0` 使用共享 pure pool，固定以 `X1=0`、`pure_pool_MAS` 查询后分别写回相 1 或相 2。请求超出已有大小或 `X1` 范围时，默认只打印一次方向性警告，仍保留已有端点选择行为；设置 `WARN_POOL_OUT_OF_BOUNDS = False` 可以关闭日志，但不会改变取样规则。见 [`lmc_adapter.py :: LMCLiveAdapter.sample_one_shot`](../../mcpbe/src/wmcpbe/lmc_adapter.py)。
 
 ### 6.2 能量模型到破碎速率
 
@@ -180,8 +183,10 @@ solver.lmc_pool_dir = str(config.aggregate_pool_root)
 
 ```python
 solver.lmc_use_breakage_model = True
-solver.lmc_breakage_model_kind = config.model_kind
-solver.lmc_breakage_model_path = str(config.model_path)
+solver.lmc_mixed_breakage_model_kind = config.mixed_model_kind
+solver.lmc_mixed_breakage_model_path = str(config.mixed_model_path)
+solver.lmc_pure_breakage_model_kind = config.pure_model_kind
+solver.lmc_pure_breakage_model_path = str(config.pure_model_path)
 ```
 
 支持模型类别：`"mlp"`、`"ann"`、`"powerlaw"` 和 `"parametric"`。模型类别与 pickle 实际类不一致会在初始化时抛出 `TypeError`，不会静默切换模型。见 [`breakage_adapter.py :: _MODEL_TYPES, BreakageRateAdapter.__init__`](../../mcpbe/src/wmcpbe/breakage_adapter.py)。
@@ -202,7 +207,7 @@ X1   = phase_1_volume / (phase_1_volume + phase_2_volume)  # 2D 情形
 
 训练时保存的模型自行选择其 `active_feature_names`；adapter 始终传递完整十维向量。因此接口在四类模型之间一致，即使模型实际只使用 7 个有效变量。见 [`breakage_adapter.py :: BreakageRateAdapter._build_features_batch`](../../mcpbe/src/wmcpbe/breakage_adapter.py)。
 
-模型输出是预测的 `log(E_need)`，adapter 以指数还原为能量需求并按下式计算单粒子破碎速率：
+mixed 模型输出 `log(E/S0)`。pure 模型输出 `log(E_ref)`，对纯相 1/相 2 分别加上 `log(STR0/S0)` / `log(STR2/S0)`，其中 `S0=(STR0·STR1·STR2)^(1/3)`。因此两条分支都得到相同的相对能量单位后再计算速率：
 
 ```text
 E_need = exp(model.predict(X))

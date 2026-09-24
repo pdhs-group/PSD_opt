@@ -19,6 +19,7 @@ import pickle
 import matplotlib.pyplot as plt
 
 from .data_io import EnergyGroupRecord
+from .features import normalize_strength_normalization
 
 
 # =============================================================================
@@ -290,6 +291,12 @@ class BaseEnergyModel(ABC):
                 "This model pickle predates the canonical full-feature interface and "
                 "cannot be loaded. Retrain it with the current code."
             )
+        if not hasattr(model, "strength_normalization"):
+            raise ValueError(
+                "This model pickle predates the persisted energy-strength unit "
+                "contract and cannot be loaded. Retrain it with the current code."
+            )
+        normalize_strength_normalization(model.strength_normalization)
 
         # 对 torch 模型做一下设备修正（若可用）
         try:

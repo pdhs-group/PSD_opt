@@ -26,7 +26,11 @@ import optuna
 from optuna.samplers import CmaEsSampler
 
 from breakage_rate_model.ann_model import ANNEnergyModel
-from breakage_rate_model.features import DEFAULT_ACTIVE_FEATURE_NAMES
+from breakage_rate_model.features import (
+    DEFAULT_ACTIVE_FEATURE_NAMES,
+    normalize_strength_normalization,
+    preprocess_log_energy_targets,
+)
 from breakage_rate_model.mlp_model import MLPEnergyModel
 from breakage_rate_model.parametric_model import ParametricEnergyModel
 from breakage_rate_model.powerlaw_separable import PowerLawSeparableModel
@@ -36,18 +40,23 @@ from breakage_rate_model.powerlaw_separable import PowerLawSeparableModel
 # Spyder configuration
 # =============================================================================
 
-DATA_DIRECTORY = Path(r"D:\LMC\energy_pool")
-H5_FILENAME = "energy_scan_results.h5"
+DATA_DIRECTORY = Path(r"D:\Codex_tem\LMC\energy_pool")
+# DATA_DIRECTORY = Path(os.environ["STORAGE_PATH"])
+MIXED_H5_FILENAME = "energy_scan_results.h5"
+PURE_H5_FILENAME = "psd_data_pure.h5"
+SEARCH_DATASET = "mixed"  # mixed / pure
 SEARCH_KIND = "powerlaw"  # powerlaw / parametric / mlp / ann
 N_TRIALS = 400  # Number of *new* trials appended by each invocation.
 SAMPLER_SEED = 42
 VALIDATION_RATIO = 0.2
 SPLIT_SEED = 42
 OBJECTIVE_METRIC = "group_mae_log"
-ACTIVE_FEATURE_NAMES = DEFAULT_ACTIVE_FEATURE_NAMES
+MIXED_ACTIVE_FEATURE_NAMES = DEFAULT_ACTIVE_FEATURE_NAMES
+PURE_ACTIVE_FEATURE_NAMES = ("logV", "log_gamma")
 SHOW_TRAINING_OUTPUT = False
 
 _VALID_SEARCH_KINDS = ("powerlaw", "parametric", "mlp", "ann")
+_VALID_SEARCH_DATASETS = ("mixed", "pure")
 _VALID_METRICS = {
     "rmse_log",
     "mae_log",
@@ -73,6 +82,8 @@ class SearchContext:
     sampler_seed: int
     objective_metric: str
     show_training_output: bool
+    dataset_kind: str
+    strength_normalization: str
 
 
 @dataclass(frozen=True)
@@ -115,6 +126,8 @@ def build_search_context(
     split_seed: int,
     objective_metric: str,
     show_training_output: bool,
+    dataset_kind: str,
+    strength_normalization: str,
 ) -> SearchContext:
     """Load curve means once and create the one fixed group-disjoint split."""
     h5_path = Path(h5_file).resolve()
@@ -126,9 +139,24 @@ def build_search_context(
         raise ValueError(
             f"Unknown objective_metric {objective_metric!r}; expected one of {sorted(_VALID_METRICS)}."
         )
+    if dataset_kind not in _VALID_SEARCH_DATASETS:
+        raise ValueError(
+            f"dataset_kind must be one of {_VALID_SEARCH_DATASETS}, got {dataset_kind!r}."
+        )
+    strength_normalization = normalize_strength_normalization(strength_normalization)
+    expected_strength_normalization = (
+        "geometric_mean_relative" if dataset_kind == "mixed" else "none"
+    )
+    if strength_normalization != expected_strength_normalization:
+        raise ValueError(
+            f"{dataset_kind} searches require strength_normalization="
+            f"{expected_strength_normalization!r}."
+        )
 
     training_module = _load_training_module()
     groups, dataset = training_module.load_data(str(h5_path))
+    if dataset_kind == "pure":
+        training_module._validate_pure_groups(groups)
     split = training_module.split_train_val_by_group(
         groups, dataset, val_ratio=validation_ratio, seed=split_seed
     )
@@ -141,6 +169,8 @@ def build_search_context(
         sampler_seed=int(sampler_seed),
         objective_metric=objective_metric,
         show_training_output=bool(show_training_output),
+        dataset_kind=dataset_kind,
+        strength_normalization=strength_normalization,
     )
 
 
@@ -278,8 +308,13 @@ def _fit_and_evaluate(
         started = time.perf_counter()
         prediction = model.predict(context.split.X_val)
         predict_seconds = time.perf_counter() - started
+    y_val_model_unit = preprocess_log_energy_targets(
+        context.split.X_val,
+        context.split.y_val,
+        context.strength_normalization,
+    )
     metrics = context.training_module.evaluate_predictions(
-        context.split.y_val, prediction, context.split.meta_val
+        y_val_model_unit, prediction, context.split.meta_val
     )
     return {name: float(value) for name, value in metrics.items()}, fit_seconds, predict_seconds
 
@@ -372,8 +407,14 @@ def _base_configuration(
     search_space: Mapping[str, Any],
     fixed_parameters: Mapping[str, Any],
 ) -> dict[str, Any]:
+    if context.dataset_kind == "pure" and tuple(active_feature_names) != PURE_ACTIVE_FEATURE_NAMES:
+        raise ValueError(
+            f"Pure-model searches require active features {PURE_ACTIVE_FEATURE_NAMES}."
+        )
     return {
         "kind": kind,
+        "dataset_kind": context.dataset_kind,
+        "strength_normalization": context.strength_normalization,
         "source_h5": _source_metadata(context.h5_file),
         "group_split": _split_metadata(context.split),
         "objective_metric": context.objective_metric,
@@ -453,6 +494,7 @@ def search_powerlaw(
             regress_type=regress_type,
             ridge_lambda=float(parameters["ridge_lambda"]),
             active_feature_names=active_feature_names,
+            strength_normalization=context.strength_normalization,
         )
 
     def build_trial_model(trial: optuna.trial.Trial) -> PowerLawSeparableModel:
@@ -534,6 +576,7 @@ def search_parametric(
             plateau_weight=float(parameters["plateau_weight"]),
             tol_int_bre=tol_int_bre,
             active_feature_names=active_feature_names,
+            strength_normalization=context.strength_normalization,
         )
 
     def build_trial_model(trial: optuna.trial.Trial) -> ParametricEnergyModel:
@@ -615,6 +658,7 @@ def search_mlp(
             device=device,
             seed=seed,
             active_feature_names=active_feature_names,
+            strength_normalization=context.strength_normalization,
         )
 
     def build_trial_model(trial: optuna.trial.Trial) -> MLPEnergyModel:
@@ -713,6 +757,7 @@ def search_ann(
             device=device,
             seed=seed,
             active_feature_names=active_feature_names,
+            strength_normalization=context.strength_normalization,
         )
 
     def build_trial_model(trial: optuna.trial.Trial) -> ANNEnergyModel:
@@ -745,8 +790,29 @@ def search_ann(
 
 def main() -> SearchResult:
     """Run one selected search. Edit the explicit ranges and fixed values below in Spyder."""
-    h5_file = DATA_DIRECTORY / H5_FILENAME
-    output_directory = DATA_DIRECTORY / "hyperparameter_search"
+    dataset_kind = SEARCH_DATASET.lower()
+    if dataset_kind not in _VALID_SEARCH_DATASETS:
+        raise ValueError(
+            f"SEARCH_DATASET must be one of {_VALID_SEARCH_DATASETS}, got {SEARCH_DATASET!r}."
+        )
+    kind = SEARCH_KIND.lower()
+    if kind not in _VALID_SEARCH_KINDS:
+        raise ValueError(f"SEARCH_KIND must be one of {_VALID_SEARCH_KINDS}, got {SEARCH_KIND!r}.")
+    dataset_settings = {
+        "mixed": {
+            "h5_file": DATA_DIRECTORY / MIXED_H5_FILENAME,
+            "active_feature_names": MIXED_ACTIVE_FEATURE_NAMES,
+            "strength_normalization": "geometric_mean_relative",
+        },
+        "pure": {
+            "h5_file": DATA_DIRECTORY / PURE_H5_FILENAME,
+            "active_feature_names": PURE_ACTIVE_FEATURE_NAMES,
+            "strength_normalization": "none",
+        },
+    }
+    settings = dataset_settings[dataset_kind]
+    h5_file = settings["h5_file"]
+    output_directory = DATA_DIRECTORY / "hyperparameter_search" / dataset_kind
     context = build_search_context(
         h5_file,
         output_directory=output_directory,
@@ -756,8 +822,10 @@ def main() -> SearchResult:
         split_seed=SPLIT_SEED,
         objective_metric=OBJECTIVE_METRIC,
         show_training_output=SHOW_TRAINING_OUTPUT,
+        dataset_kind=dataset_kind,
+        strength_normalization=settings["strength_normalization"],
     )
-    kind = SEARCH_KIND.lower()
+    active_feature_names = settings["active_feature_names"]
 
     # PowerLaw: searchable continuous parameters and all fixed model settings.
     powerlaw_search_space = {
@@ -777,7 +845,7 @@ def main() -> SearchResult:
         "alpha_bounds": (0.0, 0.5),
         "max_v": None,
         "regress_type": "ridge",
-        "active_feature_names": ACTIVE_FEATURE_NAMES,
+        "active_feature_names": active_feature_names,
     }
 
     # Parametric: searchable residual/trend parameters and all fixed settings.
@@ -794,7 +862,7 @@ def main() -> SearchResult:
         "residual_type": "ridge",
         "enable_tail": True,
         "tol_int_bre": 1e-12,
-        "active_feature_names": ACTIVE_FEATURE_NAMES,
+        "active_feature_names": active_feature_names,
     }
 
     # MLP: searchable capacity/optimiser settings and all fixed settings.
@@ -811,7 +879,7 @@ def main() -> SearchResult:
         "batch_size": 128,
         "device": None,
         "seed": 42,
-        "active_feature_names": ACTIVE_FEATURE_NAMES,
+        "active_feature_names": active_feature_names,
     }
 
     # ANN: searchable capacity/dropout/optimiser settings and all fixed settings.
@@ -830,8 +898,24 @@ def main() -> SearchResult:
         "batch_size": 256,
         "device": None,
         "seed": 42,
-        "active_feature_names": ACTIVE_FEATURE_NAMES,
+        "active_feature_names": active_feature_names,
     }
+
+    if dataset_kind == "pure":
+        # Pure data has only six gamma curves; retain the optimiser ranges but
+        # avoid spending CMA-ES trials on network widths disproportionate to 80 training rows.
+        mlp_search_space["hidden_1_range"] = (4, 64)
+        mlp_search_space["hidden_2_range"] = (4, 64)
+        mlp_search_space["patience_range"] = (10, 60)
+        mlp_fixed_parameters["max_epochs"] = 300
+        mlp_fixed_parameters["batch_size"] = 32
+
+        ann_search_space["hidden_1_range"] = (8, 64)
+        ann_search_space["hidden_2_range"] = (8, 64)
+        ann_search_space["hidden_3_range"] = (4, 32)
+        ann_search_space["patience_range"] = (10, 80)
+        ann_fixed_parameters["max_epochs"] = 400
+        ann_fixed_parameters["batch_size"] = 32
 
     if kind == "powerlaw":
         return search_powerlaw(context, **powerlaw_search_space, **powerlaw_fixed_parameters)
@@ -841,7 +925,7 @@ def main() -> SearchResult:
         return search_mlp(context, **mlp_search_space, **mlp_fixed_parameters)
     if kind == "ann":
         return search_ann(context, **ann_search_space, **ann_fixed_parameters)
-    raise ValueError(f"SEARCH_KIND must be one of {_VALID_SEARCH_KINDS}, got {SEARCH_KIND!r}.")
+    raise AssertionError(f"Validated search kind {kind!r} was not dispatched.")
 
 
 if __name__ == "__main__":

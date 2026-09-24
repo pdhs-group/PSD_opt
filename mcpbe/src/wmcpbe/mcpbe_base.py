@@ -129,7 +129,6 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
                 )
 
         self.lmc_A0_runtime = float(getattr(self, "lmc_A0_runtime", 1.0))
-        self.lmc_pool_dir = getattr(self, "lmc_pool_dir", "Pool_Path")
         self.lmc_STR = np.asarray(
             getattr(self, "lmc_STR", np.array([1.0, 1.0, 1.0], dtype=float)),
             dtype=float,
@@ -143,23 +142,10 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         self.lmc_int_bre = float(getattr(self, "lmc_int_bre", 0.0))
         self.lmc_delta_cells = float(getattr(self, "lmc_delta_cells", 0.1))
         self.lmc_Df = float(getattr(self, "lmc_Df", 1.6))
-        self.lmc_MAS = float(getattr(self, "lmc_MAS", 0.5))
         self.use_lmc_live = bool(getattr(self, "use_lmc_live", False))
         # —— Energy-surrogate breakage-rate model related settings ——
         self.lmc_use_breakage_model = bool(
             getattr(self, "lmc_use_breakage_model", False)
-        )
-        self.lmc_breakage_model_path = getattr(
-            self, "lmc_breakage_model_path", None
-        )
-        self.lmc_breakage_model_kind = str(
-            getattr(self, "lmc_breakage_model_kind", "mlp")
-        )
-        # Bounds are for the energy-model input feature log(V / A0_runtime).
-        # They are optional because existing model pickles predate persisted
-        # training-volume metadata.
-        self.lmc_breakage_model_logV_bounds = getattr(
-            self, "lmc_breakage_model_logV_bounds", None
         )
         self.lmc_warn_model_extrapolation = bool(
             getattr(self, "lmc_warn_model_extrapolation", True)
@@ -177,6 +163,10 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         self.lmc_breakage_adapter = None
 
         if self.use_lmc_live:
+            self.lmc_mixed_pool_dir = self.lmc_mixed_pool_dir
+            self.lmc_pure_pool_dir = self.lmc_pure_pool_dir
+            self.lmc_mixed_MAS = float(self.lmc_mixed_MAS)
+            self.lmc_pure_MAS = float(self.lmc_pure_MAS)
             from .lmc_adapter import LMCLiveAdapter
 
             self.lmc_live = LMCLiveAdapter()
@@ -191,36 +181,43 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
                 int_bre=self.lmc_int_bre,
                 A0_run=self.lmc_A0_runtime,
                 delta_cells=self.lmc_delta_cells,
-                pool_dir=self.lmc_pool_dir,
+                mixed_pool_dir=self.lmc_mixed_pool_dir,
+                pure_pool_dir=self.lmc_pure_pool_dir,
                 Df=self.lmc_Df,
-                MAS=self.lmc_MAS,
+                mixed_MAS=self.lmc_mixed_MAS,
+                pure_MAS=self.lmc_pure_MAS,
                 warn_pool_out_of_bounds=self.lmc_warn_pool_out_of_bounds,
                 rebuild=True,
             )
 
         # -------------- Energy-surrogate breakage-rate model init (import on demand) --------------
         if self.lmc_use_breakage_model:
-            if not self.lmc_breakage_model_path:
-                raise ValueError(
-                    "lmc_use_breakage_model=True but lmc_breakage_model_path is not set."
-                )
-
+            self.lmc_mixed_MAS = float(self.lmc_mixed_MAS)
+            self.lmc_mixed_breakage_model_path = self.lmc_mixed_breakage_model_path
+            self.lmc_pure_breakage_model_path = self.lmc_pure_breakage_model_path
+            self.lmc_mixed_breakage_model_kind = str(self.lmc_mixed_breakage_model_kind)
+            self.lmc_pure_breakage_model_kind = str(self.lmc_pure_breakage_model_kind)
+            self.lmc_mixed_breakage_model_logV_bounds = self.lmc_mixed_breakage_model_logV_bounds
+            self.lmc_pure_breakage_model_logV_bounds = self.lmc_pure_breakage_model_logV_bounds
             from .breakage_adapter import BreakageRateAdapter
 
             self.lmc_breakage_adapter = BreakageRateAdapter(
-                model_kind=self.lmc_breakage_model_kind,
-                model_path=self.lmc_breakage_model_path,
+                mixed_model_kind=self.lmc_mixed_breakage_model_kind,
+                mixed_model_path=self.lmc_mixed_breakage_model_path,
+                pure_model_kind=self.lmc_pure_breakage_model_kind,
+                pure_model_path=self.lmc_pure_breakage_model_path,
                 lambda_E=self.lmc_lambda_E,
                 energy_exp=self.lmc_energy_exp,
                 gamma=self.lmc_gamma,
                 NO_FRAG=self.lmc_NO_FRAG,
                 int_bre=self.lmc_int_bre,
                 Df=self.lmc_Df,
-                MAS=self.lmc_MAS,
+                MAS=self.lmc_mixed_MAS,
                 rate_min=self.lmc_rate_min,
                 rate_max=self.lmc_rate_max,
                 A0_run=self.lmc_A0_runtime,
-                model_logV_bounds=self.lmc_breakage_model_logV_bounds,
+                mixed_model_logV_bounds=self.lmc_mixed_breakage_model_logV_bounds,
+                pure_model_logV_bounds=self.lmc_pure_breakage_model_logV_bounds,
                 warn_model_extrapolation=self.lmc_warn_model_extrapolation,
             )
 
@@ -970,8 +967,8 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
             # if count%100 == 0: print([f"[Test] events = {count}"])
             if self.a_tot < 2 and pt in ("agglomeration", "mix"):
                 break
-        if self.use_lmc_live and self.lmc_live._sim.agg_pool is not None:
-            self.lmc_live._sim.agg_pool.close_pool_cache()
+        if self.use_lmc_live and self.lmc_live is not None:
+            self.lmc_live.close()
         self.MACHINE_TIME = time.time() - t0
         if self.VERBOSE:
             print(
@@ -1110,8 +1107,8 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
             # if count%100 == 0: print([f"[Test] events = {count}"])
             if self.a_tot < 2 and pt in ("agglomeration", "mix"):
                 break
-        if self.use_lmc_live and self.lmc_live._sim.agg_pool is not None:
-            self.lmc_live._sim.agg_pool.close_pool_cache()
+        if self.use_lmc_live and self.lmc_live is not None:
+            self.lmc_live.close()
         self.MACHINE_TIME = time.time() - t0
         if self.VERBOSE:
             print(
@@ -2309,6 +2306,8 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         for name in big_attrs:
             setattr(self, name, None)
         self._bf_cache.clear()
+        if self.lmc_live is not None:
+            self.lmc_live.close()
         self.lmc_live = None
         if gc_clean:
             import gc
@@ -2516,9 +2515,11 @@ class MCPBEBase(MCPBETimeHelper, BaseSolver):
         # LMC-related configuration
         print(f"    lmc_A0_runtime     = {getattr(self, 'lmc_A0_runtime', None)}")
         print(f"    use_lmc_live       = {getattr(self, 'use_lmc_live', None)}")
-        print(f"    lmc_pool_dir       = {getattr(self, 'lmc_pool_dir', None)}")
+        print(f"    lmc_mixed_pool_dir = {getattr(self, 'lmc_mixed_pool_dir', None)}")
+        print(f"    lmc_pure_pool_dir  = {getattr(self, 'lmc_pure_pool_dir', None)}")
         print(f"    lmc_Df             = {getattr(self, 'lmc_Df', None)}")
-        print(f"    lmc_MAS            = {getattr(self, 'lmc_MAS', None)}")
+        print(f"    lmc_mixed_MAS      = {getattr(self, 'lmc_mixed_MAS', None)}")
+        print(f"    lmc_pure_MAS       = {getattr(self, 'lmc_pure_MAS', None)}")
 
         # Live adapter presence
         live = getattr(self, "lmc_live", None)

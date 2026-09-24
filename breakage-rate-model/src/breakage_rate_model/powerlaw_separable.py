@@ -40,7 +40,9 @@ from .features import (
     active_feature_indices,
     group_theta_features,
     normalize_active_feature_names,
-    require_full_feature_matrix,
+    normalize_strength_normalization,
+    preprocess_energy_groups,
+    preprocess_full_energy_features,
     theta_feature_indices,
     theta_feature_names,
 )
@@ -573,6 +575,7 @@ class PowerLawSeparableModel(BaseEnergyModel):
         regress_type: str = "linear",   # "linear" or "ridge"
         ridge_lambda: float = 1e-2,
         active_feature_names: Optional[Sequence[str]] = None,
+        strength_normalization: str = "none",
     ):
         super().__init__(name=name or "PowerLawSeparableModel")
 
@@ -592,6 +595,7 @@ class PowerLawSeparableModel(BaseEnergyModel):
         self.regress_type = regress_type
         self.ridge_lambda = ridge_lambda
         self.active_feature_names = normalize_active_feature_names(active_feature_names)
+        self.strength_normalization = normalize_strength_normalization(strength_normalization)
         self._active_feature_indices = active_feature_indices(self.active_feature_names)
         self._theta_feature_names = theta_feature_names(self.active_feature_names)
         self._theta_feature_indices = theta_feature_indices(self.active_feature_names)
@@ -664,7 +668,11 @@ class PowerLawSeparableModel(BaseEnergyModel):
                 alpha_g = 0.0
 
             # θ 特征: [log gamma, log NO_FRAG, int_bre, Df, MAS, X1]
-            theta_vec = group_theta_features(rec, self.active_feature_names)
+            theta_vec = group_theta_features(
+                rec,
+                self.active_feature_names,
+                self.strength_normalization,
+            )
 
             theta_list.append(theta_vec)
 
@@ -765,6 +773,7 @@ class PowerLawSeparableModel(BaseEnergyModel):
             - "linear" : 普通最小二乘 (np.linalg.lstsq)
             - "ridge"  : 岭回归 (闭式解)，使用 self.ridge_lambda（若存在）或默认 1e-2
         """
+        groups = preprocess_energy_groups(groups, self.strength_normalization)
         erosion_groups, normal_groups = split_groups_by_int_bre(groups)
 
         # 侵蚀簇：按需拟合尾巴，但不做权重
@@ -951,7 +960,7 @@ class PowerLawSeparableModel(BaseEnergyModel):
         if not self._is_fitted:
             raise RuntimeError("PowerLawSeparableModel is not fitted.")
 
-        X = require_full_feature_matrix(X)
+        X, _ = preprocess_full_energy_features(X, self.strength_normalization)
         V = np.exp(X[:, 0])
         theta = X[:, self._theta_feature_indices]
         int_bre = X[:, INT_BRE_FEATURE_INDEX]
