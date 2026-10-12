@@ -224,7 +224,7 @@ class LMCSimulator:
     def _emit_crack_step_trace(
         self,
         *,
-        callback: Callable[..., None],
+        callback: Callable[..., Optional[bool]],
         Hbond_before: np.ndarray,
         Vbond_before: np.ndarray,
         path_info: List[Tuple[int, int, int, int]],
@@ -237,7 +237,8 @@ class LMCSimulator:
         crack_energy: float,
         trace_stride: int,
         context: Optional[Dict[str, Any]] = None,
-    ) -> None:
+        stop_on_callback: bool = False,
+    ) -> Optional[Tuple[int, float]]:
         if self.M is None:
             raise RuntimeError("Grid is not initialized. Call generate_grid() first.")
         if not path_info:
@@ -275,7 +276,7 @@ class LMCSimulator:
             active_group.append(path_so_far.copy())
             crack_groups_frame.append(active_group)
 
-            callback(
+            stop_requested = callback(
                 simulator=self,
                 M=self.M,
                 Hbond=Hb_frame.copy(),
@@ -294,6 +295,9 @@ class LMCSimulator:
                 energy_so_far=float(energy_so_far),
                 context=dict(context or {}),
             )
+            if stop_on_callback and accepted and stop_requested:
+                return step_idx + 1, energy_so_far
+        return None
 
     # ------------------------------
     # Fracture until target fragments
@@ -306,10 +310,11 @@ class LMCSimulator:
                                  plot_intermediate: bool = False,
                                  plot_final: bool = False,
                                  track_crack_paths: bool = True,
-                                 crack_step_callback: Optional[Callable[..., None]] = None,
+                                 crack_step_callback: Optional[Callable[..., Optional[bool]]] = None,
                                  trace_rejected_cracks: bool = False,
                                  trace_stride: int = 1,
-                                 crack_step_context: Optional[Dict[str, Any]] = None) -> Tuple[np.ndarray, np.ndarray, np.ndarray, float, List[List[Tuple[int, int, int]]]]:
+                                 crack_step_context: Optional[Dict[str, Any]] = None,
+                                 stop_on_crack_step: bool = False) -> Tuple[np.ndarray, np.ndarray, np.ndarray, float, List[List[Tuple[int, int, int]]]]:
         """
         Keep breaking bonds (with rollback if no new fragment formed) until we reach NO_FRAG.
         Returns:
@@ -319,9 +324,20 @@ class LMCSimulator:
         step by step on copies of the pre-crack bond arrays and emitted through
         the callback. Rejected cracks are skipped unless trace_rejected_cracks
         is True.
+
+        With stop_on_crack_step=True, NO_FRAG is ignored and a truthy callback
+        result stops at that accepted path prefix. max_steps must be explicit
+        and trace_stride must be 1. The full crack uses the original generation
+        and acceptance rules; its unobserved suffix is restored at stopping.
         """
         if self.M is None or self.Hbond is None or self.Vbond is None or self.meta is None:
             raise RuntimeError("Grid is not initialized. Call generate_grid() first.")
+        if stop_on_crack_step:
+            if crack_step_callback is None or trace_stride != 1:
+                raise ValueError("Crack-step stopping requires a callback and trace_stride=1.")
+            if (not isinstance(max_steps, (int, np.integer))
+                    or isinstance(max_steps, (bool, np.bool_)) or max_steps < 0):
+                raise ValueError("Crack-step stopping requires an explicit nonnegative integer max_steps.")
         rng = np.random.default_rng(seed)
 
         if self.accept_all_cracks:
@@ -337,6 +353,7 @@ class LMCSimulator:
         self._cache.build_initial(self.Hbond, self.Vbond)
 
         labels, cnt1, cnt2 = self.analyze_fragments_compact()
+        initial_cells = int((cnt1 + cnt2).sum())
         target = max(1, int(NO_FRAG) if NO_FRAG is not None else self.NO_FRAG)
         energy_total = 0.0
         need_crack_paths = bool(
@@ -353,8 +370,10 @@ class LMCSimulator:
             max_steps = max(target * 4, int(1.1 * max(1, n_bonds)))
 
         steps = 0
-        while (cnt1.size + 0) < target and steps < max_steps:
+        while ((stop_on_crack_step or cnt1.size < target) and steps < max_steps
+               and (not stop_on_crack_step or cnt1.size < initial_cells)):
             steps += 1
+            energy_before = energy_total
             trace_Hbond_before = None
             trace_Vbond_before = None
             trace_crack_groups_before: List[List[List[Tuple[int, int, int]]]] = []
@@ -390,7 +409,7 @@ class LMCSimulator:
                     if need_crack_paths and len(current_group) > 0:
                         crack_groups.append(current_group)
                         current_group = []
-                    if plot_intermediate and self.plotter is not None:
+                    if plot_intermediate and self.plotter is not None and not stop_on_crack_step:
                         self.plotter.plot_compact(
                             self.M,
                             self.Hbond,
@@ -416,7 +435,7 @@ class LMCSimulator:
                         self._cache.recompute_at(self.Hbond, self.Vbond, touch)
                     else:
                         self._cache.on_bonds_broken(path_info)
-                    if plot_intermediate and self.plotter is not None:
+                    if plot_intermediate and self.plotter is not None and not stop_on_crack_step:
                         self.plotter.plot_compact(
                             self.M,
                             self.Hbond,
@@ -434,13 +453,14 @@ class LMCSimulator:
                             self.Vbond[ii, jj] = int(old)
                     labels_new, cnt1_new, cnt2_new = labels, cnt1, cnt2
 
+            stopped_prefix = None
             if (
                 crack_step_callback is not None
                 and (accepted_for_trace or bool(trace_rejected_cracks))
                 and trace_Hbond_before is not None
                 and trace_Vbond_before is not None
             ):
-                self._emit_crack_step_trace(
+                stopped_prefix = self._emit_crack_step_trace(
                     callback=crack_step_callback,
                     Hbond_before=trace_Hbond_before,
                     Vbond_before=trace_Vbond_before,
@@ -454,9 +474,35 @@ class LMCSimulator:
                     crack_energy=float(E),
                     trace_stride=int(trace_stride),
                     context=crack_step_context,
+                    stop_on_callback=stop_on_crack_step,
                 )
+            if stopped_prefix is not None:
+                prefix_length, prefix_energy = stopped_prefix
+                # Stop the accepted crack at the event; this is not rejection rollback.
+                for axis, ii, jj, old in reversed(path_info[prefix_length:]):
+                    if axis == 0:
+                        self.Hbond[ii, jj] = int(old)
+                    else:
+                        self.Vbond[ii, jj] = int(old)
+                energy_total = energy_before + prefix_energy
+                crack_groups = trace_crack_groups_before + [
+                    trace_current_group_before + [
+                        [(a, i, j) for a, i, j, _old in path_info[:prefix_length]]
+                    ]
+                ]
+                current_group = []
+                labels_new, cnt1_new, cnt2_new = self.analyze_fragments_compact()
+                self._cache.build_initial(self.Hbond, self.Vbond)
 
             labels, cnt1, cnt2 = labels_new, cnt1_new, cnt2_new
+
+            if stop_on_crack_step and accepted_for_trace and plot_intermediate and self.plotter is not None:
+                self.plotter.plot_compact(
+                    self.M, self.Hbond, self.Vbond, labels=labels,
+                    crack_paths=crack_groups, title=f"Fragment #{cnt1.size} created", mode='materials',
+                )
+            if stopped_prefix is not None:
+                break
 
             if not self.use_weighted_start:
                 if ((self.Hbond != -1).sum() + (self.Vbond != -1).sum()) == 0:

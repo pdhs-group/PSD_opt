@@ -26,7 +26,7 @@ import matplotlib.pyplot as plt
 # Editable configuration
 # =============================================================================
 
-RESULT_H5 = Path(r"D:\Codex_tem\LMC\pbe_parameter_scan_phase1\phase1_results.h5")
+RESULT_H5 = Path(r"D:\Codex_tem\LMC\pbe_parameter_scan_phase3\phase1_results.h5")
 OUTPUT_DIRECTORY = RESULT_H5.parent / "analysis_plots_log_rel_y"
 SYMLOG_LINTHRESH_PERCENT = 1.0e-6  # Signed log y-axis; zero has a narrow linear region.
 
