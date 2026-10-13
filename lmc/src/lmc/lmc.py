@@ -44,16 +44,28 @@ class LMCSimulator:
                  use_weighted_start: bool = False,
                  plotter: Plotter | None = None,
                  pool_dir: str | None = None,
-                 warn_pool_out_of_bounds: bool = True) -> None:
+                 warn_pool_out_of_bounds: bool = True,
+                 loading_axis: str | None = None,
+                 loading_kappa: float = 0.0) -> None:
         self.STR = np.asarray(STR, dtype=float)  # [11,12,22]
         self.NO_FRAG = int(NO_FRAG)
         self.gamma = float(gamma)
         self.allow_loops = bool(allow_loops)
         self.accept_all_cracks = bool(accept_all_cracks)
-        if self.allow_loops and accept_all_cracks:
-            print("[Warning]")
         self.use_weighted_start = bool(use_weighted_start)
         self.warn_pool_out_of_bounds = bool(warn_pool_out_of_bounds)
+        if loading_axis not in (None, "x", "y"):
+            raise ValueError("Axial tension loading_axis must be None, 'x', or 'y'.")
+        self.loading_axis = loading_axis
+        self.loading_kappa = float(loading_kappa)
+        if not math.isfinite(self.loading_kappa) or self.loading_kappa < 0:
+            raise ValueError("loading_kappa must be finite and nonnegative.")
+        if self.loading_axis is None and self.loading_kappa != 0:
+            raise ValueError("A positive loading_kappa requires an explicit loading_axis.")
+        # Hbond joins x-neighbors; Vbond joins y-neighbors (crack tangent is perpendicular).
+        self._loading_weights = np.ones(2, dtype=np.float64)
+        if self.loading_axis is not None:
+            self._loading_weights[0 if self.loading_axis == "x" else 1] = math.exp(self.loading_kappa)
 
         # runtime state (set by generate_grid)
         self.M: np.ndarray | None = None
@@ -212,6 +224,7 @@ class LMCSimulator:
             1 if self.allow_loops else 0, 
             int(r0), int(c0), int(max_path),
             urand.astype(np.float64),
+            self._loading_weights,
         )
 
         path_info: List[Tuple[int, int, int, int]] = []

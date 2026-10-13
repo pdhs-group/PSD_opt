@@ -333,7 +333,7 @@ def _choose_index(weights: np.ndarray, K: int, u: float) -> int:
 @njit(cache=True)
 def run_one_fracture_kernel(Hbond, Vbond, H, W, str11, str12, str22, gamma, int_bre_len,
                             allow_loops, r0, c0, max_path,
-                            urand):
+                            urand, loading_weights):
     # Preallocate path recording buffers (upper bound length = max_path).
     # Each broken bond step will append one entry to these arrays.
     axis_arr = np.empty(max_path, np.int16)   # 0=Hbond, 1=Vbond for each broken step
@@ -415,14 +415,13 @@ def run_one_fracture_kernel(Hbond, Vbond, H, W, str11, str12, str22, gamma, int_
         # No way to go: return immediately with "complete=1" and zero steps
         return r, c, 0, energy, 0, axis_arr, i_arr, j_arr, old_arr
 
-    # Build sampling weights for the *first* choice:
-    # - if random_first==1: uniform over the K candidates (w=1.0)
-    # - else: inverse of bond strength (weaker bond => larger probability).
+    # First choice: inverse strength times tensile preference for the bond normal.
     for k in range(K):
         t = types[k]
         w = (1.0 / max(str11,1e-12) if t==11
                    else (1.0 / max(str12,1e-12) if t==12
                          else (1.0 / max(str22,1e-12) if t==22 else 0.0)))
+        w *= loading_weights[loc_axis[k]]
         weights[k] = w
 
     # Sample one candidate direction index using a pre-generated uniform urand[ui]
@@ -518,6 +517,7 @@ def run_one_fracture_kernel(Hbond, Vbond, H, W, str11, str12, str22, gamma, int_
                   (1.0 / max(str22,1e-12) if t==22 else 0.0)))
             if dirs[k] == prev_dir:
                 w *= gamma
+            w *= loading_weights[loc_axis[k]]
             weights[k] = w
             wsum += w
             
